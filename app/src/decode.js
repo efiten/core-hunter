@@ -11,7 +11,7 @@ let hashToName = {}
 // where name always includes the leading '#'.
 export function deriveChannelSecret(name) {
   const n = name.startsWith('#') ? name : '#' + name
-  return CryptoJS.SHA256(n).toString(CryptoJS.enc.Hex).slice(0, 32)
+  return CryptoJS.SHA256(CryptoJS.enc.Utf8.parse(n)).toString(CryptoJS.enc.Hex).slice(0, 32)
 }
 
 // initDecoder builds the decryption keyStore + a 1-byte channel-hash → name map.
