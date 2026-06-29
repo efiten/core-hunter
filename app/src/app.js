@@ -432,6 +432,7 @@ function buildSettingsSheet() {
         </div>
         <p id="ss-manfix-status" class="ss-manfix-status"></p>
       </div>
+      <p class="ss-version">core-hunter v${__APP_VERSION__}</p>
       <button id="ss-close">Done</button>
     </div>`
 

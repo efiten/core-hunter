@@ -12,9 +12,12 @@ import (
 	"github.com/efiten/core-hunter/server/internal/config"
 	"github.com/efiten/core-hunter/server/internal/ingest"
 	"github.com/efiten/core-hunter/server/internal/store"
+	"github.com/efiten/core-hunter/server/internal/version"
 )
 
 func main() {
+	log.Printf("core-hunter ingestor version %s starting", version.Version)
+
 	cfgPath := "config.json"
 	if len(os.Args) > 1 {
 		cfgPath = os.Args[1]
@@ -56,13 +59,14 @@ func main() {
 	client := mqtt.NewClient(opts)
 
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if client == nil || !client.IsConnected() {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("mqtt disconnected"))
+			_, _ = w.Write([]byte(`{"status":"mqtt disconnected","version":"` + version.Version + `"}`))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version.Version + `"}`))
 	})
 
 	go func() {
