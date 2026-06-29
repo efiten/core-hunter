@@ -5,7 +5,7 @@ import { getConfig } from './config.js'
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 export function createHuntMap(containerId) {
-  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, destroy() {} }
+  if (typeof L === 'undefined') return { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setLayerMode() {}, applyBasemap() {}, focusReception() {}, destroy() {} }
   const cfg = getConfig()
   const offset = (cfg && cfg.rssiCalibrationOffset) || 0
   const map = L.map(containerId, { zoomControl: false }).setView([51, 4], 14)
@@ -102,8 +102,15 @@ export function createHuntMap(containerId) {
   // flips (false when the user pans away, true on recenter).
   function onFollowChange(cb) { onFollow = cb }
   function setLayerMode(m) { mode = m }
+  function focusReception(rec) {
+    if (!rec || rec.lat == null || rec.lon == null) return
+    centerOn(rec.lat, rec.lon)
+    const popup = L.popup({ autoPan: true }).setLatLng([rec.lat, rec.lon]).setContent(popupHtml(rec)).openOn(map)
+    wireIsolate(popup, rec)
+    wireIgnore(popup, rec)
+  }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setLayerMode, applyBasemap, focusReception, destroy }
 }
 
 function popupHtml(r) {
@@ -114,7 +121,7 @@ function popupHtml(r) {
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
   return `<div class="ch-popup">SNR ${esc(r.snr)} · RSSI ${esc(r.rssi)}<br>`
-    + `hops ${esc(r.hops)} · ${esc(r.packet_type)}<br>`
+    + `${esc(r.packet_type)}<br>`
     + senderLine + chanLine + textLine + '<br>'
     + `<button class="ch-isolate" ${r.sender_id ? '' : 'disabled'}>Isolate sender</button>`
     + ` <button class="ch-ignore" ${r.sender_id ? '' : 'disabled'}>Ignore this ID</button></div>`
