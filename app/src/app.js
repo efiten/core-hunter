@@ -543,7 +543,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   } catch (e) {
     console.warn('[config]', e.message)
   }
-  initDecoder((getConfig() || {}).channelKeys)
+  initDecoder((getConfig() || {}).channelKeys, (getConfig() || {}).channels)
 
   // Initialise map
   state.map = createHuntMap('map')

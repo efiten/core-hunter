@@ -41,6 +41,17 @@ describe('normalizeConfig — resolvers array', () => {
   })
 })
 
+describe('normalizeConfig channels', () => {
+  it('normalizes channels: prepends #, dedups, drops non-strings', () => {
+    const c = normalizeConfig({ mqttUrl: 'wss://x/ws', channels: ['#chat', 'test', '#chat', 5, ' #weer '] })
+    expect(c.channels).toEqual(['#chat', '#test', '#weer'])
+  })
+  it('channels defaults to [] when absent/invalid', () => {
+    expect(normalizeConfig({ mqttUrl: 'wss://x/ws' }).channels).toEqual([])
+    expect(normalizeConfig({ mqttUrl: 'wss://x/ws', channels: 'nope' }).channels).toEqual([])
+  })
+})
+
 describe('normalizeConfig channelKeys', () => {
   it('keeps a hex channelKeys map, lowercased', () => {
     const c = normalizeConfig({ mqttUrl: 'wss://x/ws', channelKeys: { public: '8B3387E9C5CDEA6AC9E5EDBAA115CD72' } })

@@ -36,6 +36,17 @@ export function normalizeConfig(raw) {
     c.resolvers = [{ url: c.resolveUrl }];
   }
 
+  // Normalize channels: keep strings, trim, prepend '#' if missing, dedup preserving order.
+  if (Array.isArray(raw.channels)) {
+    const seen = new Set()
+    c.channels = raw.channels
+      .filter(v => typeof v === 'string')
+      .map(v => { const s = v.trim(); return s.startsWith('#') ? s : '#' + s })
+      .filter(v => { if (seen.has(v)) return false; seen.add(v); return true })
+  } else {
+    c.channels = []
+  }
+
   if (raw.channelKeys && typeof raw.channelKeys === 'object' && !Array.isArray(raw.channelKeys)) {
     for (const [name, key] of Object.entries(raw.channelKeys)) {
       if (typeof key === 'string' && /^[0-9a-fA-F]+$/.test(key) && key.length > 0 && key.length % 2 === 0) {

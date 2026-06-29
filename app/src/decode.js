@@ -7,13 +7,28 @@ export function bytesToHex(bytes) { return _bytesToHex(bytes).toLowerCase() }
 let keyStore = null
 let hashToName = {}
 
-// initDecoder builds the decryption keyStore + a 1-byte channel-hash → name map
-// from the config channelKeys ({ name: hexSecret }). Call once at startup.
-export function initDecoder(channelKeys) {
-  const secrets = Object.values(channelKeys || {})
+// deriveChannelSecret returns the first 16 bytes (32 hex chars) of SHA256(name),
+// where name always includes the leading '#'.
+export function deriveChannelSecret(name) {
+  const n = name.startsWith('#') ? name : '#' + name
+  return CryptoJS.SHA256(n).toString(CryptoJS.enc.Hex).slice(0, 32)
+}
+
+// initDecoder builds the decryption keyStore + a 1-byte channel-hash → name map.
+// channels (string[]) are derived first; explicit channelKeys override on name clash.
+// Single-arg callers (no channels) still work — channels defaults to [].
+export function initDecoder(channelKeys, channels = []) {
+  const combined = {}
+  for (const name of (channels || [])) {
+    combined[name] = deriveChannelSecret(name)
+  }
+  for (const [name, hex] of Object.entries(channelKeys || {})) {
+    combined[name] = hex
+  }
+  const secrets = Object.values(combined)
   keyStore = MeshCoreDecoder.createKeyStore({ channelSecrets: secrets })
   hashToName = {}
-  for (const [name, hex] of Object.entries(channelKeys || {})) {
+  for (const [name, hex] of Object.entries(combined)) {
     const h = CryptoJS.SHA256(CryptoJS.enc.Hex.parse(hex)).toString(CryptoJS.enc.Hex)
     hashToName[h.slice(0, 2)] = name // firmware uses 1 byte of sha256(secret) as the channel hash
   }

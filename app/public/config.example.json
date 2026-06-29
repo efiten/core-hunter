@@ -7,5 +7,6 @@
     { "label": "NL", "sf": 7, "url": "https://corescope-nl.example/api/nodes/resolve" }
   ],
   "rssiCalibrationOffset": 0,
+  "channels": ["#meshcore", "#test"],
   "channelKeys": { "public": "8b3387e9c5cdea6ac9e5edbaa115cd72" }
 }
