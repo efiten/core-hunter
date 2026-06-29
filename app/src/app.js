@@ -22,6 +22,8 @@ import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter } from './filters.js'
+import { feedItems } from './feed.js'
+import { createFeedPanel } from './feedpanel.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -67,6 +69,7 @@ const state = {
   rxPubkey: '',
   name: '',
   map: null,
+  feed: null,
   connected: false,
   // Drain dedup: in-memory Set of row ids already published this session.
   // Rows are NEVER deleted from IndexedDB — the local store is the hunter's
@@ -168,16 +171,14 @@ async function processFrame(dv) {
 
 async function renderTick() {
   try {
-    // Keep MQTT dot honest — reflects live broker connection state each tick
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
-
+    const rows = await state.queue.takeAll()
+    const now = Date.now()
     if (state.map) {
-      const rows = await state.queue.takeAll()
-      const now = Date.now()
       const fn = makeFilter({ ...state.filter, ignore: state.ignore })
-      const visible = rows.filter((r) => fn(r, now))
-      state.map.render(visible, now)
+      state.map.render(rows.filter((r) => fn(r, now)), now)
     }
+    if (state.feed) state.feed.render(feedItems(rows, { ignore: state.ignore, limit: 50 }), now)
   } catch (_) {
     // silent — render failure must not crash the loop
   }
@@ -546,6 +547,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Initialise map
   state.map = createHuntMap('map')
+
+  // Initialise feed panel
+  state.feed = createFeedPanel('feed-panel', {
+    onTapRow: (rec) => { if (state.map) state.map.focusReception(rec) },
+    onIsolate: (id) => document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id } })),
+    onIgnore: (id) => document.dispatchEvent(new CustomEvent('hunt:ignore-sender', { detail: { id } })),
+  })
 
   // Build sheets (static HTML injected once)
   buildFilterSheet()
