@@ -88,3 +88,26 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-manfix-status.ss-manfix-active { color: var(--ch-accent-2); }
 .ss-manfix-error { font-size: 13px; color: var(--ch-accent-2); margin-top: 4px; }
 .ss-version { font-size: 12px; color: var(--ch-muted); text-align: center; margin: 12px 0 0; }
+
+/* ---- Messages feed panel ---- */
+#feed-panel {
+  position: fixed; left: 0; right: 0; bottom: var(--ch-hud-h, 96px); z-index: 5;
+  background: var(--ch-surface); color: var(--ch-text);
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex; flex-direction: column; max-height: 45vh;
+}
+#feed-handle {
+  background: transparent; color: var(--ch-text); border: 0; text-align: left;
+  padding: 8px 12px; font: inherit; cursor: pointer;
+}
+#feed-count { color: var(--ch-muted); }
+#feed-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+#feed-panel.collapsed #feed-list { display: none; }
+.feed-item { display: flex; align-items: center; border-top: 1px solid rgba(255,255,255,0.06); }
+.feed-row { flex: 1; display: grid; grid-template-columns: 3.5em 1fr auto; gap: 8px; align-items: baseline;
+  background: transparent; color: var(--ch-text); border: 0; text-align: left; padding: 8px 10px; font: inherit; cursor: pointer; }
+.feed-rssi { color: var(--ch-accent); font-variant-numeric: tabular-nums; }
+.feed-label { font-weight: 600; }
+.feed-mid { color: var(--ch-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feed-time { color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+.feed-iso, .feed-ign { background: transparent; color: var(--ch-text); border: 0; padding: 0 10px; font-size: 1.1em; cursor: pointer; }
