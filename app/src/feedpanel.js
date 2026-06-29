@@ -10,7 +10,7 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
   const list = root.querySelector('#feed-list')
   handle.addEventListener('click', () => root.classList.toggle('collapsed'))
 
-  function row(rec) {
+  function row(rec, nowMs) {
     const li = document.createElement('li')
     li.className = 'feed-item'
 
@@ -22,7 +22,7 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
     const mid = document.createElement('span'); mid.className = 'feed-mid'
     mid.textContent = rec.sender_kind === 'channel_name' ? (rec._text || '') : 'advert'
     const time = document.createElement('span'); time.className = 'feed-time'
-    time.textContent = relTime(rec.rx_at, Date.now())
+    time.textContent = relTime(rec.rx_at, nowMs)
     body.append(rssi, label, mid, time)
     body.addEventListener('click', () => onTapRow && onTapRow(rec))
 
@@ -35,9 +35,9 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
     return li
   }
 
-  function render(items, _nowMs) {
+  function render(items, nowMs) {
     countEl.textContent = '(' + items.length + ')'
-    list.replaceChildren(...items.map(row))
+    list.replaceChildren(...items.map((rec) => row(rec, nowMs)))
   }
 
   return { render, toggle: () => root.classList.toggle('collapsed') }

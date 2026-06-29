@@ -17,6 +17,7 @@
   --ch-sig-none:  #5b6675;   /* heard, no metric          */
 
   --ch-bar-track: #1b2230;   /* HUD signal-bar track */
+  --ch-border:    rgba(255,255,255,0.08);
 }
 
 /* ---- LIGHT theme: warm paper + teal accent (its own identity, not inverted dark) ---- */
@@ -38,4 +39,5 @@
   --ch-sig-none:  #9aa3ad;
 
   --ch-bar-track: #d8d2c4;   /* HUD signal-bar track (light) */
+  --ch-border:    rgba(0,0,0,0.10);
 }
