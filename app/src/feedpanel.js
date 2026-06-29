@@ -8,7 +8,14 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
   const handle = root.querySelector('#feed-handle')
   const countEl = root.querySelector('#feed-count')
   const list = root.querySelector('#feed-list')
-  handle.addEventListener('click', () => root.classList.toggle('collapsed'))
+  let _lastSig = null
+
+  function updateGlyph() {
+    const collapsed = root.classList.contains('collapsed')
+    handle.firstChild.textContent = (collapsed ? '▲' : '▼') + ' Messages '
+  }
+  updateGlyph()
+  handle.addEventListener('click', () => { root.classList.toggle('collapsed'); updateGlyph() })
 
   function row(rec, nowMs) {
     const li = document.createElement('li')
@@ -37,6 +44,9 @@ export function createFeedPanel(rootId, { onTapRow, onIsolate, onIgnore } = {}) 
 
   function render(items, nowMs) {
     countEl.textContent = '(' + items.length + ')'
+    const sig = items.length + '|' + (items[0] ? items[0].sender_id + items[0].rx_at : '')
+    if (sig === _lastSig) return
+    _lastSig = sig
     list.replaceChildren(...items.map((rec) => row(rec, nowMs)))
   }
 

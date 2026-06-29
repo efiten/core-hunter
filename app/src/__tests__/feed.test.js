@@ -34,4 +34,9 @@ describe('relTime', () => {
     expect(relTime('2026-06-29T10:02:00Z', now)).toBe('3m')
     expect(relTime('2026-06-29T08:05:00Z', now)).toBe('2h')
   })
+  it('returns — for missing or unparseable rxAt', () => {
+    expect(relTime(null, now)).toBe('—')
+    expect(relTime(undefined, now)).toBe('—')
+    expect(relTime('not-a-date', now)).toBe('—')
+  })
 })

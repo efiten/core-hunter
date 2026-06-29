@@ -555,6 +555,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     onIgnore: (id) => document.dispatchEvent(new CustomEvent('hunt:ignore-sender', { detail: { id } })),
   })
 
+  // Publish the real HUD height as --ch-hud-h so #feed-panel sits above it
+  const hudEl = document.getElementById('hud')
+  if (hudEl) {
+    const setHudH = () => document.documentElement.style.setProperty('--ch-hud-h', hudEl.offsetHeight + 'px')
+    setHudH()
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(setHudH).observe(hudEl)
+    window.addEventListener('resize', setHudH)
+  }
+
   // Build sheets (static HTML injected once)
   buildFilterSheet()
   buildSettingsSheet()

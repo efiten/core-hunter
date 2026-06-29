@@ -11,6 +11,7 @@ export function feedItems(records, { ignore, limit = 50 } = {}) {
 }
 
 export function relTime(rxAt, nowMs) {
+  if (rxAt == null || Number.isNaN(Date.parse(rxAt))) return '—'
   const s = Math.max(0, Math.round((nowMs - Date.parse(rxAt)) / 1000))
   if (s < 60) return s + 's'
   if (s < 3600) return Math.floor(s / 60) + 'm'

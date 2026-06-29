@@ -18,7 +18,7 @@ A **live Messages panel** that lists recent **decrypted channel messages + adver
 3. **Layout:** bottom **collapsible panel** — a `Messages (N)` handle above the HUD; tap to expand a scrollable list, newest on top.
 4. **Row content:** RSSI (the default signal metric) + sender label + — for channel rows — the decrypted **text**, plus relative time (`12s`/`1m`). Advert rows show the node name/pubkey + an `advert` tag. **No hop badge** (every captured reception is zero-hop by the capture rule, so it would be noise).
 5. **Tap a row** → centre the map on that reception + open its popup. Inline per-row actions **Isolate sender / Ignore this ID** (same `hunt:isolate-sender` / `hunt:ignore-sender` events as the popup).
-6. **Local/display only:** the feed reads the same IndexedDB record snapshot the map uses; decrypted text is **HTML-escaped** and **never stored or published** (unchanged from iter-3). **No `server/` change.**
+6. **Local/display only:** the feed reads the same IndexedDB record snapshot the map uses; decrypted text is **HTML-escaped** and **never stored server-side or published** (it persists locally in IndexedDB as part of the record, but is stripped before any MQTT publish; unchanged from iter-3). **No `server/` change.**
 7. **Popup cleanup (folded in):** remove the redundant `hops 0 ·` from the marker popup — show just the packet type — since everything displayed is zero-hop.
 
 ## Architecture & module map (`app/src/`)
