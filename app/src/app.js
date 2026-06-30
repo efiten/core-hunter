@@ -25,6 +25,7 @@ import { makeFilter } from './filters.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
 import { buildDiscoverFrame } from './discover.js'
+import { createWakeLock } from './wakelock.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -72,6 +73,7 @@ const state = {
   map: null,
   feed: null,
   connected: false,
+  wakeLock: null,
   // Drain dedup: in-memory Set of row ids already published this session.
   // Rows are NEVER deleted from IndexedDB — the local store is the hunter's
   // working set; re-publish dedup is the backend's concern (via raw+rx_at).
@@ -288,6 +290,7 @@ async function disconnectAll(silent) {
   state.connected = false
   el('discover-btn').disabled = true
 
+  if (state.wakeLock) state.wakeLock.disable()
   if (state.publisher) { state.publisher.end(); state.publisher = null }
   try { state.gps.stop() } catch (_) {}
   if (state.transport) {
@@ -547,6 +550,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.warn('[config]', e.message)
   }
   initDecoder((getConfig() || {}).channelKeys, (getConfig() || {}).channels)
+  state.wakeLock = createWakeLock()
 
   // Initialise map
   state.map = createHuntMap('map')
@@ -574,7 +578,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Wire controls
   el('connect-btn').addEventListener('click', () => {
     if (state.connected) disconnectAll()
-    else connectAll()
+    else { state.wakeLock.enable(); connectAll() }
   })
 
   el('discover-btn').addEventListener('click', sendDiscover)
