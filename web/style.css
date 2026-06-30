@@ -1,0 +1,10 @@
+:root { --ch-bg:#0b0e14; --ch-text:#e6edf3; --ch-surface:rgba(18,23,33,0.92);
+  --ch-sig-hot:#ff453a; --ch-sig-warm:#ff9f0a; --ch-sig-mid:#ffd60a; --ch-sig-cool:#40c8ff; --ch-sig-cold:#5e7bff; --ch-sig-none:#5b6675; }
+* { box-sizing: border-box; }
+html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
+#bar { position:fixed; top:0; left:0; right:0; z-index:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
+#bar select, #bar input, #bar button { background:#11161f; color:var(--ch-text); border:1px solid #2a3340; border-radius:6px; padding:5px 8px; font:inherit; }
+#bar button { cursor:pointer; }
+#status { color:#9aa; margin-left:auto; }
+#map { position:fixed; inset:0; top:48px; }
