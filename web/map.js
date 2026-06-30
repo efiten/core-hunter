@@ -2,8 +2,15 @@ import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+
+// Theme: restore saved choice (default dark) before drawing so the basemap matches.
+const BASEMAP = { dark: 'dark_all', light: 'light_all' }
+let theme = localStorage.getItem('ch-theme') === 'light' ? 'light' : 'dark'
+document.documentElement.setAttribute('data-theme', theme)
+
 const map = L.map('map', { zoomControl: true }).setView([51, 4], 12)
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map)
+const tileUrl = (t) => `https://{s}.basemaps.cartocdn.com/${BASEMAP[t]}/{z}/{x}/{y}{r}.png`
+const tiles = L.tileLayer(tileUrl(theme), { maxZoom: 19 }).addTo(map)
 const pointLayer = L.layerGroup().addTo(map)
 const hexLayer = L.layerGroup().addTo(map)
 let mode = 'points'
@@ -61,6 +68,18 @@ document.getElementById('layer-toggle').addEventListener('click', (e) => {
   e.target.textContent = mode
   refresh()
 })
+const themeBtn = document.getElementById('theme-toggle')
+const syncThemeBtn = () => { themeBtn.textContent = theme === 'dark' ? '🌙' : '☀️' }
+syncThemeBtn()
+themeBtn.addEventListener('click', () => {
+  theme = theme === 'dark' ? 'light' : 'dark'
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('ch-theme', theme)
+  tiles.setUrl(tileUrl(theme))
+  syncThemeBtn()
+  refresh() // redraw markers/polygons so they pick up the new --ch-sig-* colors
+})
+
 map.on('moveend zoomend', refresh)
 window.__refresh = refresh
 refresh()
