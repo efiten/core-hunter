@@ -10,6 +10,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/efiten/core-hunter/server/internal/config"
+	"github.com/efiten/core-hunter/server/internal/httpapi"
 	"github.com/efiten/core-hunter/server/internal/ingest"
 	"github.com/efiten/core-hunter/server/internal/store"
 	"github.com/efiten/core-hunter/server/internal/version"
@@ -58,7 +59,8 @@ func main() {
 
 	client := mqtt.NewClient(opts)
 
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if client == nil || !client.IsConnected() {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -68,9 +70,10 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version.Version + `"}`))
 	})
+	httpapi.RegisterRoutes(mux, st)
 
 	go func() {
-		if err := http.ListenAndServe(cfg.HTTPAddr, nil); err != nil {
+		if err := http.ListenAndServe(cfg.HTTPAddr, mux); err != nil {
 			log.Printf("http server stopped: %v", err)
 		}
 	}()
