@@ -26,7 +26,6 @@
     <div id="hud-readout-row">
       <div id="hud-rssi">—</div>
       <div id="hud-snr">—</div>
-      <span id="hud-hop">hop —</span>
     </div>
     <div id="hud-bar">
       <div id="hud-bar-fill"></div>
@@ -36,7 +35,10 @@
       <span>COLDER · WEAK</span>
       <span>WARMER · CLOSE</span>
     </div>
-    <button id="connect-btn">Connect</button>
+    <div id="hud-btn-row">
+      <button id="connect-btn">Connect</button>
+      <button id="discover-btn" disabled>Discover</button>
+    </div>
   </section>
   <button id="layer-toggle" aria-label="Toggle layers">
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">

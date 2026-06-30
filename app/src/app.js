@@ -24,6 +24,7 @@ import { createHuntMap } from './huntmap.js'
 import { makeFilter } from './filters.js'
 import { feedItems } from './feed.js'
 import { createFeedPanel } from './feedpanel.js'
+import { buildDiscoverFrame } from './discover.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -119,16 +120,6 @@ function updateHud(rec) {
   // Secondary: SNR (small muted)
   el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : 'SNR —'
 
-  // Hop pill: amber when data present
-  const hopEl = el('hud-hop')
-  if (rec.hops != null) {
-    hopEl.textContent = 'hop ' + rec.hops + ' · direct'
-    hopEl.classList.remove('no-data')
-  } else {
-    hopEl.textContent = 'hop —'
-    hopEl.classList.add('no-data')
-  }
-
   // Thermal bar marker — continuous position from RSSI
   const offset = (getConfig() && getConfig().rssiCalibrationOffset) || 0
   const pct = rssiToPct(rec.rssi, offset)
@@ -216,6 +207,16 @@ async function drainLoop() {
 }
 
 // ---------------------------------------------------------------------------
+// Single-shot discover
+// ---------------------------------------------------------------------------
+
+function sendDiscover() {
+  if (!state.connected || !state.transport) return
+  const tag = crypto.getRandomValues(new Uint8Array(4))
+  state.transport.send(buildDiscoverFrame(tag)).catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
 // Connect / disconnect
 // ---------------------------------------------------------------------------
 
@@ -272,6 +273,7 @@ async function connectAll() {
 
     btn.textContent = 'Disconnect'
     btn.disabled = false
+    el('discover-btn').disabled = false
   } catch (e) {
     console.error('[connect]', e)
     btn.textContent = 'Connect (retry)'
@@ -284,6 +286,7 @@ async function disconnectAll(silent) {
   setDot('dot-ble', false)
   setDot('dot-mqtt', false)
   state.connected = false
+  el('discover-btn').disabled = true
 
   if (state.publisher) { state.publisher.end(); state.publisher = null }
   try { state.gps.stop() } catch (_) {}
@@ -573,6 +576,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (state.connected) disconnectAll()
     else connectAll()
   })
+
+  el('discover-btn').addEventListener('click', sendDiscover)
 
   el('layer-toggle').addEventListener('click', cycleLayer)
 

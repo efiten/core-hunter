@@ -33,11 +33,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #hud-snr { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 
-#hud-hop { margin-left: auto; font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
-  font-size: 12px; padding: 4px 10px; border-radius: 999px;
-  color: #0b0e14; background: var(--ch-accent-2); font-weight: 600; }
-#hud-hop.no-data { background: var(--ch-bar-track); color: var(--ch-muted); }
-
 /* Thermal bar: always-visible full gradient + marker */
 #hud-bar { position: relative; height: 9px; border-radius: 5px; overflow: visible; }
 #hud-bar-fill { position: absolute; inset: 0; border-radius: 5px;
@@ -53,10 +48,16 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 9px; letter-spacing: .1em; color: var(--ch-muted); text-transform: uppercase;
   margin-top: -2px; }
 
-/* Connect button */
-#connect-btn { width: 100%; border: none; border-radius: 11px; padding: 11px;
-  background: var(--ch-accent); color: #0b0e14; font-weight: 650; font-size: 14px;
-  font-family: system-ui, sans-serif; cursor: pointer; margin-top: 4px; }
+/* Connect + Discover button row */
+#hud-btn-row { display: flex; gap: 8px; margin-top: 4px; }
+#connect-btn { flex: 1; border: none; border-radius: 11px; padding: 11px;
+  background: var(--ch-accent); color: var(--ch-bg); font-weight: 650; font-size: 14px;
+  font-family: system-ui, sans-serif; cursor: pointer; }
+#discover-btn { flex: 0 0 auto; border: 1px solid var(--ch-accent-2); border-radius: 11px;
+  padding: 11px 18px; background: transparent; color: var(--ch-accent-2); font-weight: 600;
+  font-size: 14px; font-family: system-ui, sans-serif; cursor: pointer; }
+#discover-btn:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed;
+  opacity: 0.45; }
 
 /* ---- FABs ---- */
 #layer-toggle, #filter-btn, #settings-btn, #recenter-btn { position: fixed; right: 14px; width: 46px; height: 46px;
