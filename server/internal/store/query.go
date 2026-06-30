@@ -1,0 +1,104 @@
+package store
+
+import (
+	"database/sql"
+	"strings"
+)
+
+type Filter struct {
+	MinLat, MinLon, MaxLat, MaxLon float64
+	HasBBox                        bool
+	From, To, Hunter, Sender       string
+	Ignore                         []string
+	Limit                          int
+}
+
+type Point struct {
+	Lat          float64  `json:"lat"`
+	Lon          float64  `json:"lon"`
+	RSSI         *int     `json:"rssi"`
+	SNR          *float64 `json:"snr"`
+	SenderID     string   `json:"sender_id"`
+	SenderLabel  string   `json:"sender_label"`
+	SenderKind   string   `json:"sender_kind"`
+	HunterPubkey string   `json:"hunter_pubkey"`
+	HunterName   string   `json:"hunter_name"`
+	ChannelName  string   `json:"channel_name"`
+	PacketType   string   `json:"packet_type"`
+	RxAt         string   `json:"rx_at"`
+}
+
+func (f Filter) where() (string, []any) {
+	conds := []string{"is_direct=1"}
+	var args []any
+	if f.HasBBox {
+		conds = append(conds, "lat BETWEEN ? AND ?", "lon BETWEEN ? AND ?")
+		args = append(args, f.MinLat, f.MaxLat, f.MinLon, f.MaxLon)
+	}
+	if f.From != "" {
+		conds = append(conds, "rx_at >= ?"); args = append(args, f.From)
+	}
+	if f.To != "" {
+		conds = append(conds, "rx_at <= ?"); args = append(args, f.To)
+	}
+	if f.Hunter != "" {
+		conds = append(conds, "hunter_pubkey = ?"); args = append(args, f.Hunter)
+	}
+	if f.Sender != "" {
+		conds = append(conds, "sender_id IS NOT NULL AND lower(sender_id) LIKE ?"); args = append(args, strings.ToLower(f.Sender)+"%")
+	}
+	if len(f.Ignore) > 0 {
+		ph := make([]string, len(f.Ignore))
+		for i, s := range f.Ignore { ph[i] = "?"; args = append(args, strings.ToLower(s)) }
+		conds = append(conds, "(sender_id IS NULL OR lower(sender_id) NOT IN ("+strings.Join(ph, ",")+"))")
+	}
+	return strings.Join(conds, " AND "), args
+}
+
+func (s *Store) QueryPoints(f Filter) ([]Point, error) {
+	if f.Limit <= 0 { f.Limit = 5000 }
+	w, args := f.where()
+	args = append(args, f.Limit)
+	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,hunter_pubkey,hunter_name,channel_name,packet_type,rx_at
+		FROM hunter_receptions WHERE `+w+` ORDER BY rx_at DESC LIMIT ?`, args...)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var out []Point
+	for rows.Next() {
+		var p Point
+		var rssi sql.NullInt64
+		var snr sql.NullFloat64
+		var sid, slabel, skind, cn sql.NullString
+		if err := rows.Scan(&p.Lat, &p.Lon, &rssi, &snr, &sid, &slabel, &skind, &p.HunterPubkey, &p.HunterName, &cn, &p.PacketType, &p.RxAt); err != nil {
+			return nil, err
+		}
+		if rssi.Valid { v := int(rssi.Int64); p.RSSI = &v }
+		if snr.Valid { p.SNR = &snr.Float64 }
+		p.SenderID, p.SenderLabel, p.SenderKind, p.ChannelName = sid.String, slabel.String, skind.String, cn.String
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+type Hunter struct {
+	Pubkey string `json:"hunter_pubkey"`
+	Name   string `json:"hunter_name"`
+	Count  int    `json:"count"`
+}
+
+func (s *Store) Hunters(from, to string) ([]Hunter, error) {
+	conds := []string{"is_direct=1"}
+	var args []any
+	if from != "" { conds = append(conds, "rx_at >= ?"); args = append(args, from) }
+	if to != "" { conds = append(conds, "rx_at <= ?"); args = append(args, to) }
+	rows, err := s.db.Query(`SELECT hunter_pubkey, max(hunter_name), count(*) FROM hunter_receptions WHERE `+strings.Join(conds, " AND ")+` GROUP BY hunter_pubkey ORDER BY 3 DESC`, args...)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	var out []Hunter
+	for rows.Next() {
+		var h Hunter
+		if err := rows.Scan(&h.Pubkey, &h.Name, &h.Count); err != nil { return nil, err }
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
