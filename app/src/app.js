@@ -140,6 +140,13 @@ function refreshFilterIndicator() {
   el('filter-btn').classList.toggle('active', isFilterActive(state.filter))
 }
 
+// Light the settings button's badge while the ignore-list is non-empty
+// (closed-sheet signal that some stations are being hidden). Called wherever
+// state.ignore changes.
+function refreshIgnoreIndicator() {
+  el('settings-btn').classList.toggle('active', state.ignore.size > 0)
+}
+
 // ---------------------------------------------------------------------------
 // Capture pipeline
 // ---------------------------------------------------------------------------
@@ -468,6 +475,7 @@ function renderIgnoreList(listEl) {
       state.ignore.delete(key)
       saveIgnore(state.ignore)
       renderIgnoreList(listEl)
+      refreshIgnoreIndicator()
     })
     row.appendChild(label)
     row.appendChild(rm)
@@ -556,6 +564,7 @@ function buildSettingsSheet() {
     state.ignore.clear()
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
+    refreshIgnoreIndicator()
   })
 
   // Manual position — prefill inputs from persisted state
@@ -635,6 +644,7 @@ document.addEventListener('hunt:ignore-sender', (e) => {
   if (!e.detail || !e.detail.id) return
   state.ignore.add(String(e.detail.id).toLowerCase())
   saveIgnore(state.ignore)
+  refreshIgnoreIndicator()
   // next renderTick picks up the updated set automatically
 })
 
@@ -713,8 +723,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // Reflect the initial filter state on the button (inactive at default)
+  // Reflect the initial filter + ignore state on the buttons
   refreshFilterIndicator()
+  refreshIgnoreIndicator()
 
   // Start background loops
   renderTick()

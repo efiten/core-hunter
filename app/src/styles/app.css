@@ -73,9 +73,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #recenter-btn { bottom: 354px; }
 #layer-toggle svg, #filter-btn svg, #recenter-btn svg { pointer-events: none; }
 
-/* Active-filter indicator: accent badge in the corner of the filter FAB */
-#filter-btn.active { color: var(--ch-accent); }
-#filter-btn.active::after { content: ''; position: absolute; top: 7px; right: 7px;
+/* Active indicator: accent badge in the corner of a FAB.
+   Filter FAB → a filter is narrowing; settings FAB → the ignore-list is non-empty. */
+#filter-btn.active, #settings-btn.active { color: var(--ch-accent); }
+#filter-btn.active::after, #settings-btn.active::after { content: ''; position: absolute; top: 7px; right: 7px;
   width: 11px; height: 11px; border-radius: 50%;
   background: var(--ch-accent); border: 2px solid var(--ch-surface); }
 
