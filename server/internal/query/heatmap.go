@@ -68,9 +68,7 @@ func Heatmap(points []store.Point, res int) FeatureCollection {
 			continue
 		}
 		coords := make([][2]float64, len(ring))
-		for i, ll := range ring {
-			coords[i] = [2]float64{ll[1], ll[0]} // [lat,lon] → GeoJSON [lon,lat]
-		}
+		copy(coords, ring) // HexBoundary already returns GeoJSON-order [lon,lat]
 		hs := make([]string, 0, len(a.hunters))
 		for h := range a.hunters {
 			hs = append(hs, h)

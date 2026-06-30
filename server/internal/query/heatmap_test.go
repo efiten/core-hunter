@@ -23,7 +23,14 @@ func TestHeatmapBestRSSIPerCell(t *testing.T) {
 	if len(p.Hunters) != 2 {
 		t.Fatalf("want 2 hunters, got %v", p.Hunters)
 	}
-	if len(fc.Features[0].Geometry.Coordinates) != 1 || len(fc.Features[0].Geometry.Coordinates[0]) < 7 {
+	ring := fc.Features[0].Geometry.Coordinates
+	if len(ring) != 1 || len(ring[0]) < 7 {
 		t.Fatalf("polygon ring malformed")
+	}
+	// GeoJSON order is [lon,lat]: the cell holds points near lon=4, lat=51,
+	// so the first coordinate (lon) must be near 4 and the second (lat) near 51.
+	lon, lat := ring[0][0][0], ring[0][0][1]
+	if lon < 3 || lon > 5 || lat < 50 || lat > 52 {
+		t.Fatalf("coords not GeoJSON [lon,lat]: got [%v,%v]", lon, lat)
 	}
 }
