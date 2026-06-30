@@ -70,7 +70,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version.Version + `"}`))
 	})
-	httpapi.RegisterRoutes(mux, st)
+	httpapi.RegisterRoutes(mux, st, cfg.Ignore)
 
 	go func() {
 		if err := http.ListenAndServe(cfg.HTTPAddr, mux); err != nil {

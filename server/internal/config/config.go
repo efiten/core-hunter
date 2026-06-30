@@ -12,6 +12,9 @@ type Config struct {
 	MQTTTopic    string `json:"mqttTopic"`
 	DBPath       string `json:"dbPath"`
 	HTTPAddr     string `json:"httpAddr"`
+	// Ignore is a server-side default list of sender_ids excluded from all read
+	// endpoints (merged with any per-request ?ignore=). Case-insensitive.
+	Ignore []string `json:"ignore"`
 }
 
 func Load(path string) (Config, error) {

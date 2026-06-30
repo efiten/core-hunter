@@ -7,6 +7,10 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { m
 const pointLayer = L.layerGroup().addTo(map)
 const hexLayer = L.layerGroup().addTo(map)
 let mode = 'points'
+const bar = document.getElementById('bar')
+const setMapTop = () => { document.getElementById('map').style.top = bar.offsetHeight + 'px'; map.invalidateSize() }
+setMapTop()
+window.addEventListener('resize', setMapTop)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
@@ -40,6 +44,7 @@ async function drawHex() {
       .bindTooltip(`best RSSI ${esc(f.properties.best_rssi)} · ${f.properties.count} pts · ${(f.properties.hunters||[]).length} hunters`)
       .addTo(hexLayer)
   }
+  document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
 }
 
 let t = null

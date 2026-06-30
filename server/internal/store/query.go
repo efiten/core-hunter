@@ -47,37 +47,53 @@ func (f Filter) where() (string, []any) {
 	if f.Sender != "" {
 		conds = append(conds, "sender_id IS NOT NULL AND lower(sender_id) LIKE ?"); args = append(args, strings.ToLower(f.Sender)+"%")
 	}
-	if len(f.Ignore) > 0 {
-		ph := make([]string, len(f.Ignore))
-		for i, s := range f.Ignore { ph[i] = "?"; args = append(args, strings.ToLower(s)) }
-		conds = append(conds, "(sender_id IS NULL OR lower(sender_id) NOT IN ("+strings.Join(ph, ",")+"))")
-	}
+	conds, args = ignoreCond(conds, args, f.Ignore)
 	return strings.Join(conds, " AND "), args
 }
 
-func (s *Store) QueryPoints(f Filter) ([]Point, error) {
+// ignoreCond appends the server-side ignore-list exclusion (case-insensitive
+// sender_id) to a WHERE accumulator. Shared by QueryPoints and Hunters so every
+// read endpoint excludes the same senders.
+func ignoreCond(conds []string, args []any, ignore []string) ([]string, []any) {
+	if len(ignore) == 0 {
+		return conds, args
+	}
+	ph := make([]string, len(ignore))
+	for i, s := range ignore {
+		ph[i] = "?"
+		args = append(args, strings.ToLower(s))
+	}
+	return append(conds, "(sender_id IS NULL OR lower(sender_id) NOT IN ("+strings.Join(ph, ",")+"))"), args
+}
+
+// QueryPoints returns zero-hop rows matching f, newest first, capped at f.Limit
+// (default 5000). truncated is true when more rows matched than were returned.
+func (s *Store) QueryPoints(f Filter) (out []Point, truncated bool, err error) {
 	if f.Limit <= 0 { f.Limit = 5000 }
 	w, args := f.where()
-	args = append(args, f.Limit)
+	args = append(args, f.Limit+1) // fetch one extra to detect truncation precisely
 	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,hunter_pubkey,hunter_name,channel_name,packet_type,rx_at
 		FROM hunter_receptions WHERE `+w+` ORDER BY rx_at DESC LIMIT ?`, args...)
-	if err != nil { return nil, err }
+	if err != nil { return nil, false, err }
 	defer rows.Close()
-	var out []Point
 	for rows.Next() {
 		var p Point
 		var rssi sql.NullInt64
 		var snr sql.NullFloat64
 		var sid, slabel, skind, cn sql.NullString
 		if err := rows.Scan(&p.Lat, &p.Lon, &rssi, &snr, &sid, &slabel, &skind, &p.HunterPubkey, &p.HunterName, &cn, &p.PacketType, &p.RxAt); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		if rssi.Valid { v := int(rssi.Int64); p.RSSI = &v }
 		if snr.Valid { p.SNR = &snr.Float64 }
 		p.SenderID, p.SenderLabel, p.SenderKind, p.ChannelName = sid.String, slabel.String, skind.String, cn.String
 		out = append(out, p)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil { return nil, false, err }
+	if len(out) > f.Limit {
+		out, truncated = out[:f.Limit], true
+	}
+	return out, truncated, nil
 }
 
 type Hunter struct {
@@ -86,11 +102,12 @@ type Hunter struct {
 	Count  int    `json:"count"`
 }
 
-func (s *Store) Hunters(from, to string) ([]Hunter, error) {
+func (s *Store) Hunters(from, to string, ignore []string) ([]Hunter, error) {
 	conds := []string{"is_direct=1"}
 	var args []any
 	if from != "" { conds = append(conds, "rx_at >= ?"); args = append(args, from) }
 	if to != "" { conds = append(conds, "rx_at <= ?"); args = append(args, to) }
+	conds, args = ignoreCond(conds, args, ignore)
 	rows, err := s.db.Query(`SELECT hunter_pubkey, max(hunter_name), count(*) FROM hunter_receptions WHERE `+strings.Join(conds, " AND ")+` GROUP BY hunter_pubkey ORDER BY 3 DESC`, args...)
 	if err != nil { return nil, err }
 	defer rows.Close()

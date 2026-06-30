@@ -23,14 +23,16 @@ func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
 	return v[0], v[1], v[2], v[3], true
 }
 
-func filterFrom(r *http.Request) store.Filter {
+func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{From: q.Get("from"), To: q.Get("to"), Hunter: q.Get("hunter"), Sender: q.Get("sender")}
 	if minLat, minLon, maxLat, maxLon, ok := ParseBBox(q.Get("bbox")); ok {
 		f.HasBBox, f.MinLat, f.MinLon, f.MaxLat, f.MaxLon = true, minLat, minLon, maxLat, maxLon
 	}
+	// Server-configured ignore list is always enforced, merged with any per-request ?ignore=.
+	f.Ignore = append([]string(nil), baseIgnore...)
 	if ig := strings.TrimSpace(q.Get("ignore")); ig != "" {
-		f.Ignore = strings.Split(ig, ",")
+		f.Ignore = append(f.Ignore, strings.Split(ig, ",")...)
 	}
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil { f.Limit = n }
 	return f
@@ -41,26 +43,28 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func RegisterRoutes(mux *http.ServeMux, s *store.Store) {
+const heatmapCap = 50000
+
+func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string) {
 	mux.HandleFunc("/api/points", func(w http.ResponseWriter, r *http.Request) {
-		pts, err := s.QueryPoints(filterFrom(r))
+		pts, trunc, err := s.QueryPoints(filterFrom(r, ignore))
 		if err != nil { http.Error(w, err.Error(), 500); return }
-		writeJSON(w, map[string]any{"points": pts, "truncated": len(pts) >= effLimit(r)})
+		writeJSON(w, map[string]any{"points": pts, "truncated": trunc})
 	})
 	mux.HandleFunc("/api/heatmap", func(w http.ResponseWriter, r *http.Request) {
 		z, _ := strconv.Atoi(r.URL.Query().Get("z"))
-		pts, err := s.QueryPoints(filterFrom(r))
+		f := filterFrom(r, ignore)
+		f.Limit = heatmapCap
+		pts, trunc, err := s.QueryPoints(f)
 		if err != nil { http.Error(w, err.Error(), 500); return }
-		writeJSON(w, query.Heatmap(pts, geo.ResForZoom(z)))
+		fc := query.Heatmap(pts, geo.ResForZoom(z))
+		fc.Truncated = trunc
+		writeJSON(w, fc)
 	})
 	mux.HandleFunc("/api/hunters", func(w http.ResponseWriter, r *http.Request) {
-		hs, err := s.Hunters(r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+		f := filterFrom(r, ignore)
+		hs, err := s.Hunters(f.From, f.To, f.Ignore)
 		if err != nil { http.Error(w, err.Error(), 500); return }
 		writeJSON(w, map[string]any{"hunters": hs})
 	})
-}
-
-func effLimit(r *http.Request) int {
-	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 { return n }
-	return 5000
 }

@@ -8,8 +8,9 @@ import (
 )
 
 type FeatureCollection struct {
-	Type     string    `json:"type"`
-	Features []Feature `json:"features"`
+	Type      string    `json:"type"`
+	Features  []Feature `json:"features"`
+	Truncated bool      `json:"truncated,omitempty"`
 }
 type Feature struct {
 	Type       string  `json:"type"`
