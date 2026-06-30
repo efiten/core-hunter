@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/efiten/core-hunter/compare/web-v0.2.0...web-v0.3.0) (2026-06-30)
+
+
+### Features
+
+* **app,web:** resolve node names from CoreScope for full-pubkey senders ([197fc5a](https://github.com/efiten/core-hunter/commit/197fc5a399f6655c240951cea086bf56d891fcd1))
+
 ## [0.2.0](https://github.com/efiten/core-hunter/compare/web-v0.1.0...web-v0.2.0) (2026-06-30)
 
 
