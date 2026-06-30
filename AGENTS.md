@@ -153,6 +153,27 @@ before running.
 
 ## 5. How we work
 
+### 5.0 Start every task with an issue — problem/feature → issue → PR
+
+Before you start a new feature or fix, open a GitHub issue for it. The lifecycle of all work is:
+
+> **problem or feature → issue → PR**
+
+1. **Open the issue first.** Write down everything needed to act on it without guessing: the problem
+   (or the feature and why it matters), the expected behaviour / acceptance criteria, which component
+   it touches (`app` / `server` / `web`), and any reproduction steps, screenshots, logs, or context.
+   If the request came from someone else and the information is incomplete, **ask the contributor for
+   the missing details before starting** — do not begin coding against an underspecified issue.
+2. **Work from that issue.** One issue = one focused logical change (the same one-change rule as PRs,
+   see §6). If the work splits into independent pieces, open an issue per piece.
+3. **Link the PR back to the issue.** Put a closing keyword in the PR description —
+   `Closes #<n>` (or `Fixes #<n>`) — so merging the PR auto-closes the issue and the issue ↔ PR trail
+   is preserved.
+
+Why: the issue is the one place where the problem and the agreed scope are recorded *before* any code
+exists. It lets any agent or contributor pick up the work with full context, keeps scope from
+drifting, and gives every PR a traceable reason for existing. **No issue → no PR.**
+
 ### 5.1 Test-driven development (TDD) — required for every logic change
 
 Follow **red → green** strictly:
@@ -219,6 +240,9 @@ Do not claim "done" based on intent. Run the commands and confirm green output.
 The project commits directly to `master` and keeps `origin/master` green at all times. Every push
 should leave the build and tests passing. Contributors working via a fork should keep PRs small and
 focused; one logical change per PR.
+
+Every PR traces back to an issue (§5.0). Reference it in the PR description with a closing keyword —
+`Closes #<n>` / `Fixes #<n>` — so merging auto-closes the issue.
 
 ### Staging
 
