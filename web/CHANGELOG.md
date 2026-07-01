@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/efiten/core-hunter/compare/web-v0.4.0...web-v0.4.1) (2026-07-01)
+
+
+### Documentation
+
+* dedupe release changelogs (drop merge-commit duplicates) ([#70](https://github.com/efiten/core-hunter/issues/70)) ([10d0528](https://github.com/efiten/core-hunter/commit/10d0528017a72cdc4db530dafaf157a37bb7487f))
+
 ## [0.4.0](https://github.com/efiten/core-hunter/compare/web-v0.3.0...web-v0.4.0) (2026-07-01)
 
 
