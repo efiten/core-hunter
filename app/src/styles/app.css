@@ -142,6 +142,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .splash-blurb { color: var(--ch-muted); font-size: 15px; line-height: 1.5; }
 .splash-blurb a { color: var(--ch-accent-2); }
 .splash-status { margin-top: 18px; font-size: 14px; color: var(--ch-text); }
+/* Pinned position disclaimer + one rotating hunting tip (min-height avoids a
+   layout jump as tips of different length cycle in). */
+.splash-disclaimer { margin-top: 20px; font-size: 12px; line-height: 1.45; color: var(--ch-muted); }
+.splash-tip { margin-top: 12px; min-height: 3em; font-size: 14px; line-height: 1.45; color: var(--ch-text); }
 .splash-retry { margin-top: 10px; border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
   background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }

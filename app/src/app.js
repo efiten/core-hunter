@@ -31,7 +31,7 @@ import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
-import { splashState, SPLASH_COPY } from './splash.js'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -174,11 +174,32 @@ function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
+// Rotating splash tips: the pinned disclaimer plus one cycling hunting tip,
+// shown only while waiting for a GPS fix so the wait is spent learning to hunt.
+let tipTimer = null
+let tipIdx = 0
+function showTip() { el('splash-tip').textContent = pickTip(SPLASH_TIPS, tipIdx) }
+function startTipRotation() {
+  el('splash-disclaimer').textContent = SPLASH_DISCLAIMER
+  if (tipTimer) return // already rotating
+  showTip()
+  tipTimer = setInterval(() => { tipIdx++; showTip() }, 6000)
+}
+function stopTipRotation() {
+  if (tipTimer) { clearInterval(tipTimer); tipTimer = null }
+}
+
 // Splash: shown until the first GPS fix, per splashState(). Call wherever
 // hasFix/connected/bleError/gpsError changes.
 function refreshSplash() {
   const s = splashState(state)
   el('splash').hidden = s === 'hidden'
+  // Tips + disclaimer only during the actual GPS wait; stop the timer otherwise.
+  const showTips = s === 'waiting-gps'
+  el('splash-disclaimer').hidden = !showTips
+  el('splash-tip').hidden = !showTips
+  if (showTips) startTipRotation()
+  else stopTipRotation()
   if (s === 'hidden') return
   el('splash-status').textContent = SPLASH_COPY[s]
   el('splash-retry-gps').hidden = s !== 'gps-error'
