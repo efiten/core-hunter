@@ -5,27 +5,19 @@
 
 ### Features
 
-* **app:** attenuator compensation added back to plotted RSSI ([1d00b13](https://github.com/efiten/core-hunter/commit/1d00b136dbae308a0f35904548439720cc504c16))
 * **app:** attenuator compensation added back to plotted RSSI ([5a6deb7](https://github.com/efiten/core-hunter/commit/5a6deb71ee45bf51272c9bd8ce295b5274ed246d)), closes [#54](https://github.com/efiten/core-hunter/issues/54)
 * **app:** capture FLOOD last-hop relay (path[last]) as a directly-heard node ([f08e88a](https://github.com/efiten/core-hunter/commit/f08e88af3d6acbe170fbf51c87157a8957feeb29)), closes [#64](https://github.com/efiten/core-hunter/issues/64)
-* **app:** capture FLOOD last-hop relay (path[last]) as a directly-heard repeater ([0982218](https://github.com/efiten/core-hunter/commit/098221881971a141d9e4455e29670fba1e82465e))
-* **app:** controls + filter UI rework — settings to top bar, Discover FAB, ignore as a filter ([9649f50](https://github.com/efiten/core-hunter/commit/9649f50a6525cfa8df90914c262b35c5c575e372))
 * **app:** move settings to the top bar, Discover as a radar-icon FAB above the filter ([3f2378f](https://github.com/efiten/core-hunter/commit/3f2378f49d8fd2117d67f6d226c59d92ecb7a554)), closes [#45](https://github.com/efiten/core-hunter/issues/45)
-* **app:** startup splash + GPS-loading indicator ([dc11dc6](https://github.com/efiten/core-hunter/commit/dc11dc668c229245f3024162028ff387f1ac6ab1))
 * **app:** startup splash + GPS-loading indicator ([75fc9bf](https://github.com/efiten/core-hunter/commit/75fc9bfc470f2cc75fc52bcfd193d9285568a6da))
-* **app:** target dropdown with pinned top senders ([5ba68f1](https://github.com/efiten/core-hunter/commit/5ba68f11c94dc9dfbab4b2b539ecb292bbbdf8c1))
 * **app:** target dropdown with pinned top senders ([a76da15](https://github.com/efiten/core-hunter/commit/a76da1541e1de51bce7a3687f8d172a273977f67))
 * **app:** treat the ignore-list as a filter (move to filter sheet, light filter FAB) ([82dc174](https://github.com/efiten/core-hunter/commit/82dc174959dda9d57da3539908a17f8a7dc09408)), closes [#48](https://github.com/efiten/core-hunter/issues/48)
 * identify every zero-hop node (advert + discover) by ID + role, resolve name via API ([3728f26](https://github.com/efiten/core-hunter/commit/3728f262d84fbeab984d130e0979422326532db9)), closes [#41](https://github.com/efiten/core-hunter/issues/41)
-* identify zero-hop nodes (advert + discover) by ID + role, resolve name via API ([5bc0d50](https://github.com/efiten/core-hunter/commit/5bc0d50697cbb390ccb153714aec70584ef11246))
 
 
 ### Bug Fixes
 
 * **app:** add missing styles for the radio settings section ([f93f158](https://github.com/efiten/core-hunter/commit/f93f1588f5cc8df48d50efddcd98ba65a6d0c3cc))
-* **app:** don't let MQTT connect failure abort the BLE connect ([b5a72dd](https://github.com/efiten/core-hunter/commit/b5a72dd80a702c927db1c12d715e03b331738847))
 * **app:** don't let MQTT connect failure abort the BLE connect ([984afdf](https://github.com/efiten/core-hunter/commit/984afdf9d3c6d0c7729645a934c11dbe8e0ec67e))
-* **app:** keep the hex-heat grid aligned during zoom ([c1b7828](https://github.com/efiten/core-hunter/commit/c1b782839f6d3908a273007aa6c50a5b65f0a76d))
 * **app:** keep the hex-heat grid aligned during zoom (rebuild on zoomend, not mid-animation) ([bd00863](https://github.com/efiten/core-hunter/commit/bd00863866185c1fd56cefecfe44ada4a8a7ab81)), closes [#44](https://github.com/efiten/core-hunter/issues/44)
 
 ## [0.6.0](https://github.com/efiten/core-hunter/compare/app-v0.5.0...app-v0.6.0) (2026-06-30)
