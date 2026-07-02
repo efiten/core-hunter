@@ -32,6 +32,29 @@ test('__locateRender draws centroid, strongest marker, heatmap and info card', a
   await expect(info).toContainText('1-byte ID') // senderId '4a' (< 64 chars) -> hash note
 })
 
+test('"?" toggles the plain-English legend in the Locate info box', async ({ page }) => {
+  await page.goto('/')
+  await page.waitForFunction(() => typeof window.__locateRender === 'function')
+  await page.evaluate((pts) => window.__locateRender(pts, '4a'), POINTS)
+
+  const legend = page.locator('#locate-info .lc-legend')
+  const help = page.locator('#locate-info .lc-help')
+  await expect(legend).toBeHidden() // collapsed by default
+  await expect(help).toHaveAttribute('aria-expanded', 'false')
+
+  await help.click()
+  await expect(legend).toBeVisible()
+  await expect(legend).toContainText('Search radius')
+  await expect(help).toHaveAttribute('aria-expanded', 'true')
+
+  // survives a re-render (5 s poll re-renders the box)
+  await page.evaluate((pts) => window.__locateRender(pts, '4a'), POINTS)
+  await expect(page.locator('#locate-info .lc-legend')).toBeVisible()
+
+  await page.locator('#locate-info .lc-help').click()
+  await expect(page.locator('#locate-info .lc-legend')).toBeHidden()
+})
+
 test('heatmap fades to a transparent border — no rectangle artifact', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => typeof window.__locateRender === 'function')

@@ -28,6 +28,14 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
 #locate-info .lc-warn { color: var(--ch-sig-warm); }
 #locate-info .lc-muted { color: var(--ch-muted); }
+#locate-info .lc-help { margin-left: 4px; width: 16px; height: 16px; padding: 0; line-height: 14px;
+  font-size: 11px; border: 1px solid var(--ch-border); border-radius: 50%; background: transparent;
+  color: var(--ch-muted); cursor: pointer; vertical-align: middle; }
+#locate-info .lc-help:hover { color: var(--ch-text); border-color: var(--ch-text); }
+#locate-info .lc-legend { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--ch-border);
+  color: var(--ch-muted); font-size: 11px; line-height: 1.5; }
+#locate-info .lc-legend dt { font-weight: 600; color: var(--ch-text); }
+#locate-info .lc-legend dd { margin: 0 0 6px; }
 .lc-centroid { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ch-bg);
   background: var(--ch-sig-hot); box-shadow: 0 0 0 2px var(--ch-sig-hot); }
 .lc-strongest { font-size: 16px; line-height: 18px; text-align: center; color: var(--ch-sig-warm);
