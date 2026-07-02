@@ -1,4 +1,5 @@
 import { API_BASE } from './config.js'
+import { initial } from './urlstate.js'
 
 const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
 
@@ -36,6 +37,13 @@ async function loadHunters() {
       o.value = h.hunter_pubkey
       o.textContent = `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
       sel.appendChild(o)
+    }
+    // The shared/saved hunter can only be applied once its option exists (options
+    // arrive async). Re-assert it and fire change so the view + URL pick it up.
+    const want = initial('hunter', '')
+    if (want && sel.value !== want) {
+      sel.value = want
+      if (sel.value === want) sel.dispatchEvent(new Event('change'))
     }
   } catch (_) {}
 }

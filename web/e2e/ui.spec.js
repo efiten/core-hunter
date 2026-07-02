@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
   }))
 })
 
-test('theme toggle flips data-theme, persists, and swaps the glyph', async ({ page }) => {
+test('theme toggle flips data-theme, persists, reflects in URL, and swaps the glyph', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.locator('#theme-toggle')).toHaveText('🌙')
@@ -16,7 +16,32 @@ test('theme toggle flips data-theme, persists, and swaps the glyph', async ({ pa
   await page.click('#theme-toggle')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.locator('#theme-toggle')).toHaveText('☀️')
-  expect(await page.evaluate(() => localStorage.getItem('ch-theme'))).toBe('light')
+  await expect(page).toHaveURL(/theme=light/)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ch-state')).theme)).toBe('light')
+})
+
+test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)', async ({ page }) => {
+  // Open a link carrying full state — a second viewer must see the same thing.
+  await page.goto('/?theme=light&mode=hex&sender=4a2b&z=15')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await expect(page.locator('#layer-toggle')).toHaveText('hex')
+  await expect(page.locator('#f-sender')).toHaveValue('4a2b')
+  expect(await page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(15)
+})
+
+test('settings survive a reload via localStorage (no URL params)', async ({ page }) => {
+  await page.goto('/')
+  await page.click('#theme-toggle') // -> light
+  await page.click('#layer-toggle') // points -> hex
+  await expect(page.locator('#layer-toggle')).toHaveText('hex')
+
+  // Reload with a bare URL: the URL was rewritten by replaceState, so strip it to
+  // prove the state is also restored from localStorage alone.
+  await page.evaluate(() => history.replaceState(null, '', location.pathname))
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.locator('#layer-toggle')).toHaveText('hex')
 })
 
 test('layer toggle cycles points → hex → both, and hex fetches /api/heatmap', async ({ page }) => {

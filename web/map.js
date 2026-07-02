@@ -2,15 +2,22 @@ import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate } from './locate.js'
+import * as urlstate from './urlstate.js'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
-// Theme: restore saved choice (default dark) before drawing so the basemap matches.
+// Theme: restore the shared/saved choice (default dark) before drawing so the
+// basemap matches. urlstate resolves URL > stored > default.
 const BASEMAP = { dark: 'dark_all', light: 'light_all' }
-let theme = localStorage.getItem('ch-theme') === 'light' ? 'light' : 'dark'
+let theme = urlstate.initial('theme', 'dark') === 'light' ? 'light' : 'dark'
 document.documentElement.setAttribute('data-theme', theme)
 
-const map = L.map('map', { zoomControl: true }).setView([51, 4], 12)
+// Initial map view from the shared/saved state (falls back to a Belgium-ish view).
+const iLat = parseFloat(urlstate.initial('lat', '')), iLon = parseFloat(urlstate.initial('lon', ''))
+const iZoom = parseInt(urlstate.initial('z', ''), 10)
+const map = L.map('map', { zoomControl: true }).setView(
+  Number.isFinite(iLat) && Number.isFinite(iLon) ? [iLat, iLon] : [51, 4],
+  Number.isFinite(iZoom) ? iZoom : 12)
 const tileUrl = (t) => `https://{s}.basemaps.cartocdn.com/${BASEMAP[t]}/{z}/{x}/{y}{r}.png`
 const tiles = L.tileLayer(tileUrl(theme), { maxZoom: 19 }).addTo(map)
 const pointLayer = L.layerGroup().addTo(map)
@@ -37,8 +44,10 @@ function heatColor(v, stops) {
   return [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * f))
 }
 
-let mode = 'points'
+const MODES = ['points', 'hex', 'both']
+let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'points'
 const bar = document.getElementById('bar')
+document.getElementById('layer-toggle').textContent = mode
 const setMapTop = () => { document.getElementById('map').style.top = bar.offsetHeight + 'px'; map.invalidateSize() }
 setMapTop()
 window.addEventListener('resize', setMapTop)
@@ -105,6 +114,7 @@ export function refresh() {
 document.getElementById('layer-toggle').addEventListener('click', (e) => {
   mode = mode === 'points' ? 'hex' : mode === 'hex' ? 'both' : 'points'
   e.target.textContent = mode
+  urlstate.save()
   refresh()
 })
 const themeBtn = document.getElementById('theme-toggle')
@@ -113,15 +123,15 @@ syncThemeBtn()
 themeBtn.addEventListener('click', () => {
   theme = theme === 'dark' ? 'light' : 'dark'
   document.documentElement.setAttribute('data-theme', theme)
-  localStorage.setItem('ch-theme', theme)
   tiles.setUrl(tileUrl(theme))
   syncThemeBtn()
+  urlstate.save()
   refresh() // redraw markers/polygons so they pick up the new --ch-sig-* colors
 })
 
-map.on('moveend zoomend', refresh)
+map.on('moveend zoomend', () => { urlstate.save(); refresh() })
 window.__refresh = refresh
-refresh()
+window.__mapZoom = () => map.getZoom() // test hook
 
 // Paint a normalized density grid to a canvas and return a Leaflet image overlay.
 function heatmapOverlay(hm) {
@@ -256,6 +266,7 @@ function activateLocate() {
   locateBtn.classList.add('on')
   // focus mode: hide every non-relevant layer so only the located node shows
   pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  urlstate.save()
   drawLocate()
   locateTimer = setInterval(drawLocate, 5000)
 }
@@ -265,6 +276,7 @@ function deactivateLocate() {
   clearInterval(locateTimer); locateTimer = null
   locateLayer.clearLayers()
   document.getElementById('locate-info').hidden = true
+  urlstate.save()
   refresh() // restore points/hex per mode
   if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
   if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
@@ -338,4 +350,36 @@ for (const id of ['f-from', 'f-to']) {
     if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
     if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
   })
+}
+
+// --- Shareable URL + localStorage persistence -------------------------------
+// Register every setting once. A new setting only needs one register() /
+// bindControl() line here to be reflected in the URL and restored next visit.
+urlstate.register({ key: 'theme', get: () => theme,
+  set: (v) => { if (v === 'light' || v === 'dark') { theme = v; document.documentElement.setAttribute('data-theme', theme); tiles.setUrl(tileUrl(theme)); syncThemeBtn() } } })
+urlstate.register({ key: 'mode', get: () => mode,
+  set: (v) => { if (MODES.includes(v)) { mode = v; document.getElementById('layer-toggle').textContent = mode } } })
+// Map view: applied synchronously at construction (top of file); here we only
+// need the getters so pan/zoom lands in the URL and storage.
+urlstate.register({ key: 'lat', get: () => map.getCenter().lat.toFixed(5), set: () => {} })
+urlstate.register({ key: 'lon', get: () => map.getCenter().lng.toFixed(5), set: () => {} })
+urlstate.register({ key: 'z', get: () => String(map.getZoom()), set: () => {} })
+urlstate.bindControl('hunter', 'f-hunter')
+urlstate.bindControl('sender', 'f-sender', { events: ['change', 'input'] })
+urlstate.bindControl('from', 'f-from')
+urlstate.bindControl('to', 'f-to')
+urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
+urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
+const wantLocate = urlstate.initial('locate', '') === '1'
+urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
+
+urlstate.load()
+
+// Restore state that a value alone does not trigger (checkbox draw, locate focus).
+if (wantLocate && window.currentFilters().sender) {
+  activateLocate()
+} else {
+  if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+  if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+  refresh()
 }
