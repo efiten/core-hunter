@@ -10,18 +10,27 @@ import { getConfig } from './config.js';
 
 const cache = new Map(); // key (lowercase hex) -> name | ''
 
-// A full MeshCore public key is 32 bytes = 64 lowercase-hex chars. Only these
-// can be resolved unambiguously; 1-byte path/source hashes (2 hex) cannot.
+// A full MeshCore public key is 32 bytes = 64 lowercase-hex chars.
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i;
 export function isFullPubkey(id) { return typeof id === 'string' && FULL_PUBKEY.test(id); }
 
+// Resolvable = 2..32 bytes (4..64 hex): full advert pubkeys, discover 8-byte
+// prefixes, AND CoreScope 2-byte relay path-prefixes — CoreScope resolves all of
+// these, returning `ambiguous` when a prefix collides (handled by resolveName,
+// cached as ''). 1-byte hashes (2 hex) stay excluded: too collision-prone to
+// name. Mirrors the analysis website's gate (web/names.js) so a relayed advert
+// heard by the hunter shows the same repeater name the map does.
+const RESOLVABLE = /^[0-9a-f]{4,64}$/i;
+export function isResolvableId(id) { return typeof id === 'string' && RESOLVABLE.test(id); }
+
 // resolvableKey decides whether a reception's sender should be looked up.
 // Fill-only: skip when a name is already present (advert appData.name, channel
-// sender). Resolve only when the sender_id is a full pubkey (advert/discover) —
-// never a 1-byte hash. Returns the lowercase key to resolve, or null.
+// sender). Resolve any resolvable id (full pubkey or >= 2-byte prefix); the
+// resolver's ambiguous flag guards against wrong names. Returns the lowercase
+// key to resolve, or null.
 export function resolvableKey(rec) {
   if (!rec || rec.sender_label) return null;
-  return isFullPubkey(rec.sender_id) ? rec.sender_id.toLowerCase() : null;
+  return isResolvableId(rec.sender_id) ? rec.sender_id.toLowerCase() : null;
 }
 
 // cachedName returns a previously-resolved name ('' = resolved-but-unknown) for
