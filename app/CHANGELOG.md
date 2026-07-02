@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/efiten/core-hunter/compare/app-v0.12.0...app-v0.13.0) (2026-07-02)
+
+
+### Features
+
+* **app:** Settings reload button with deploy version check ([#162](https://github.com/efiten/core-hunter/issues/162)) ([0b4702e](https://github.com/efiten/core-hunter/commit/0b4702e3e1bf7c1991a15e81046a5f45b2682896))
+
 ## [0.12.0](https://github.com/efiten/core-hunter/compare/app-v0.11.0...app-v0.12.0) (2026-07-02)
 
 
