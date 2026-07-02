@@ -19,6 +19,7 @@
     <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
     <span id="status"></span>
+    <span id="sf-counts"></span>
     <span id="ch-version"></span>
   </header>
   <div id="locate-info" hidden></div>
@@ -34,6 +35,12 @@
     fetch(`${API_BASE}/api/version`)
       .then((r) => r.json())
       .then((d) => { if (d.server) el.textContent = `web v${VERSION} · srv v${d.server}`; })
+      .catch(() => {});
+  </script>
+  <script type="module">
+    import { nodeCountsText } from './nodecounts.js';
+    nodeCountsText()
+      .then((t) => { if (t) document.getElementById('sf-counts').textContent = t; })
       .catch(() => {});
   </script>
 </body>

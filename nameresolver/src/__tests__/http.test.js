@@ -36,6 +36,20 @@ describe('resolvePrefixResponse', () => {
 })
 
 describe('createServer', () => {
+  it('serves /api/nodes/count', async () => {
+    const store = { ...fakeStore([]), count: () => 42 }
+    const server = createServer(store)
+    await new Promise((resolve) => server.listen(0, resolve))
+    const port = server.address().port
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/api/nodes/count`)
+      expect(r.status).toBe(200)
+      expect(await r.json()).toEqual({ count: 42 })
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
+
   it('serves /healthz and /api/nodes/resolve', async () => {
     const store = fakeStore([{ pubkey: 'aabbccdd', name: 'One', lat: null, lon: null }])
     const server = createServer(store)

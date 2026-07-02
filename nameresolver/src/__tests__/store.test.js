@@ -13,6 +13,16 @@ describe('openStore', () => {
     s.close()
   })
 
+  it('count returns the number of stored nodes', () => {
+    const s = openStore(':memory:')
+    expect(s.count()).toBe(0)
+    s.upsert({ pubkey: 'aabbccdd', name: 'One', lat: null, lon: null })
+    s.upsert({ pubkey: 'aabbccdd', name: 'One again', lat: null, lon: null }) // same pubkey
+    s.upsert({ pubkey: 'aabbeeff', name: 'Two', lat: null, lon: null })
+    expect(s.count()).toBe(2)
+    s.close()
+  })
+
   it('resolvePrefix returns unique, ambiguous, and miss correctly', () => {
     const s = openStore(':memory:')
     s.upsert({ pubkey: 'aabbccdd', name: 'One', lat: null, lon: null })

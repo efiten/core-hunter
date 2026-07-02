@@ -18,6 +18,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #bar button { cursor:pointer; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 #status { color:var(--ch-muted); margin-left:auto; }
+#sf-counts { color:var(--ch-muted); font-size:12px; }
 #ch-version { color:var(--ch-muted); font-size:12px; }
 #map { position:fixed; inset:0; top:48px; }
 #locate-toggle.on { background: var(--ch-sig-warm); color: var(--ch-bg); }

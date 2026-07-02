@@ -18,6 +18,7 @@ export function openStore(dbPath) {
   // pubkey is validated hex upstream; the LIKE pattern is a bound parameter.
   const resolveStmt = db.prepare(`SELECT pubkey, name, lat, lon FROM nodes WHERE pubkey LIKE ? LIMIT 2`)
   const allStmt = db.prepare(`SELECT pubkey, name, lat, lon FROM nodes`)
+  const countStmt = db.prepare(`SELECT COUNT(*) AS c FROM nodes`)
 
   return {
     upsert(rec) {
@@ -25,6 +26,9 @@ export function openStore(dbPath) {
     },
     resolvePrefix(prefix) {
       return resolveStmt.all(prefix + '%')
+    },
+    count() {
+      return Number(countStmt.get().c)
     },
     loadCache() {
       const m = new Map()

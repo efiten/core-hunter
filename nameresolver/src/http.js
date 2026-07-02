@@ -30,6 +30,11 @@ export function createServer(store) {
       res.end('ok')
       return
     }
+    if (req.method === 'GET' && url.pathname === '/api/nodes/count') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ count: store.count() }))
+      return
+    }
     if (req.method === 'GET' && url.pathname === '/api/nodes/resolve') {
       const { status, json } = resolvePrefixResponse(store, url.searchParams.get('prefix'))
       res.writeHead(status, { 'content-type': 'application/json' })
