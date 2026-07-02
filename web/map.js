@@ -2,6 +2,7 @@ import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate } from './locate.js'
+import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
@@ -21,12 +22,18 @@ const map = L.map('map', { zoomControl: true }).setView(
 const tileUrl = (t) => `https://{s}.basemaps.cartocdn.com/${BASEMAP[t]}/{z}/{x}/{y}{r}.png`
 const tiles = L.tileLayer(tileUrl(theme), { maxZoom: 19 }).addTo(map)
 const pointLayer = L.layerGroup().addTo(map)
+// Canvas renderer: SVG markers get sluggish past a few thousand; canvas keeps
+// the 25k-point layer and large Locate datasets smooth.
+const ptCanvas = L.canvas({ padding: 0.5 })
 const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
 let locateActive = false
 let locateTimer = null
+// Whether the "?" legend in the Locate info box is expanded. Persisted across
+// the box's 5 s re-renders so a poll doesn't collapse it under the user.
+let legendOpen = false
 
 // Density-cloud ramp from the --ch-sig-* tokens (warm -> hot only: yellow ->
 // orange -> red), so the canvas honours the CSS-variable colour rule. The cold
@@ -64,9 +71,9 @@ function qs() {
 
 async function drawPoints() {
   pointLayer.clearLayers()
-  const r = await fetch(`${API_BASE}/api/points?${qs()}`); const d = await r.json()
+  const { points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
   const unresolved = new Set()
-  for (const pt of d.points || []) {
+  for (const pt of points) {
     if (!pt.sender_label && isResolvableId(pt.sender_id) && cachedName(pt.sender_id) === undefined) {
       unresolved.add(pt.sender_id.toLowerCase())
     }
@@ -75,11 +82,11 @@ async function drawPoints() {
     const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
     const locBtn = sid ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
     const tier = rssiTier(pt.rssi)
-    L.circleMarker([pt.lat, pt.lon], { radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
+    L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}${locBtn}`)
       .addTo(pointLayer)
   }
-  document.getElementById('status').textContent = `${(d.points||[]).length} points${d.truncated ? ' (capped)' : ''}`
+  document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
@@ -168,11 +175,11 @@ function renderLocate(points, senderId) {
   // observation points: inliers coloured by RSSI, outliers greyed/dashed
   for (const p of res.inliers) {
     const tier = rssiTier(p.rssi)
-    L.circleMarker([p.lat, p.lon], { radius: 4, color: cssVar(tierColorVar(tier)), weight: 1,
+    L.circleMarker([p.lat, p.lon], { renderer: ptCanvas, radius: 4, color: cssVar(tierColorVar(tier)), weight: 1,
       fillColor: cssVar(tierColorVar(tier)), fillOpacity: 0.7 }).addTo(locateLayer)
   }
   for (const p of res.outliers) {
-    L.circleMarker([p.lat, p.lon], { radius: 4, color: cssVar('--ch-sig-none'), weight: 1,
+    L.circleMarker([p.lat, p.lon], { renderer: ptCanvas, radius: 4, color: cssVar('--ch-sig-none'), weight: 1,
       dashArray: '2,2', fillColor: cssVar('--ch-sig-none'), fillOpacity: 0.2 }).addTo(locateLayer)
   }
   if (res.centroid) {
@@ -203,10 +210,24 @@ function updateLocateInfo(res, senderId) {
   const encHint = s.encirclement < 0.5 ? '<div class="lc-warn">One-sided — drive around the estimate to tighten.</div>' : ''
   const hashNote = isHash ? `<div class="lc-warn">1-byte ID — assumed one node; ${res.outliers.length} outlier(s) excluded.</div>` : ''
   const strong = res.strongest ? ` · ★ strongest ${esc(res.strongest.rssi)} dBm` : ''
-  box.innerHTML = `<h4>Locate</h4>`
+  box.innerHTML = `<h4>Locate <button type="button" class="lc-help" aria-label="Explain these numbers" aria-expanded="${legendOpen}">?</button></h4>`
     + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
     + encHint + hashNote
     + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. Within driven area · ~hundreds of m · no TX calibration.</div>`
+    + locateLegendHtml()
+}
+
+// Plain-English legend for the Locate numbers, toggled by the "?" button. Kept
+// collapsed by default (hidden unless legendOpen) so the box stays compact; the
+// same markup renders on every update so the delegated toggle handler and the
+// persisted legendOpen keep it in sync across re-renders.
+function locateLegendHtml() {
+  return `<dl class="lc-legend"${legendOpen ? '' : ' hidden'}>`
+    + `<dt>Points</dt><dd>Receptions used — more points, more reliable.</dd>`
+    + `<dt>Search radius</dt><dd>The node is likely within this distance of the ● dot. Smaller = tighter fix.</dd>`
+    + `<dt>Encircle</dt><dd>Share of directions you heard it from. Higher = more trustworthy estimate.</dd>`
+    + `<dt>★ Strongest</dt><dd>Your loudest reception (dBm). Its marker is the best spot to head toward.</dd>`
+    + `</dl>`
 }
 
 // Test hook: render a supplied point array (no API needed).
@@ -232,11 +253,11 @@ async function drawLocate() {
     }
     return
   }
-  let d
+  let fetched
   try {
-    const r = await fetch(`${API_BASE}/api/points?${locateQs(f)}`)
-    if (!r.ok) throw new Error(`points ${r.status}`)
-    d = await r.json()
+    // Full paged dataset: the solver input and the drawn dots are the same
+    // array, so the centroid always sits within the visible cloud.
+    fetched = await fetchPointsPaged(locateQs(f), { maxTotal: 100000 })
   } catch (e) {
     if (locateActive) {
       box.hidden = false
@@ -244,7 +265,7 @@ async function drawLocate() {
     }
     return
   }
-  const points = (d.points || []).map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi }))
+  const points = fetched.points.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi }))
   // When a CoreScope layer is shown, count that node's CoreScope sightings too —
   // resilient (a failed source just contributes nothing).
   const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
@@ -291,6 +312,17 @@ document.addEventListener('click', (e) => {
   document.getElementById('f-sender').value = btn.dataset.sender
   map.closePopup()
   activateLocate()
+})
+
+// "?" toggle in the Locate info box: expand/collapse the plain-English legend.
+// Flips it in place (no full re-render) and remembers the state for the next poll.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.lc-help')
+  if (!btn) return
+  legendOpen = !legendOpen
+  btn.setAttribute('aria-expanded', String(legendOpen))
+  const leg = document.querySelector('#locate-info .lc-legend')
+  if (leg) leg.hidden = !legendOpen
 })
 
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---

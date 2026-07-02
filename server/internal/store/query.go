@@ -11,6 +11,7 @@ type Filter struct {
 	From, To, Hunter, Sender       string
 	Ignore                         []string
 	Limit                          int
+	Offset                         int
 }
 
 type Point struct {
@@ -68,13 +69,15 @@ func ignoreCond(conds []string, args []any, ignore []string) ([]string, []any) {
 }
 
 // QueryPoints returns zero-hop rows matching f, newest first, capped at f.Limit
-// (default 5000). truncated is true when more rows matched than were returned.
+// (default 5000), skipping f.Offset rows for paging. truncated is true when
+// more rows matched beyond the returned page.
 func (s *Store) QueryPoints(f Filter) (out []Point, truncated bool, err error) {
 	if f.Limit <= 0 { f.Limit = 5000 }
+	if f.Offset < 0 { f.Offset = 0 }
 	w, args := f.where()
-	args = append(args, f.Limit+1) // fetch one extra to detect truncation precisely
+	args = append(args, f.Limit+1, f.Offset) // fetch one extra to detect truncation precisely
 	rows, err := s.db.Query(`SELECT lat,lon,rssi,snr,sender_id,sender_label,sender_kind,sender_role,hunter_pubkey,hunter_name,channel_name,packet_type,rx_at
-		FROM hunter_receptions WHERE `+w+` ORDER BY rx_at DESC LIMIT ?`, args...)
+		FROM hunter_receptions WHERE `+w+` ORDER BY rx_at DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil { return nil, false, err }
 	defer rows.Close()
 	for rows.Next() {

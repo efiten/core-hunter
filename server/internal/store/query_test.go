@@ -60,6 +60,29 @@ func TestQueryPointsTruncation(t *testing.T) {
 	if len(got) != 3 || trunc { t.Fatalf("expected 3 rows + not truncated, got %d trunc=%v", len(got), trunc) }
 }
 
+func TestQueryPointsOffsetPaging(t *testing.T) {
+	st := seed(t); defer st.Close()
+	// 3 zero-hop rows, newest first: bb(11:00), aa@h2(10:30), aa@h1(10:00).
+	p1, trunc1, err := st.QueryPoints(Filter{Limit: 2})
+	if err != nil { t.Fatalf("page1: %v", err) }
+	p2, trunc2, err := st.QueryPoints(Filter{Limit: 2, Offset: 2})
+	if err != nil { t.Fatalf("page2: %v", err) }
+	if len(p1) != 2 || !trunc1 { t.Fatalf("page1: want 2 rows truncated, got %d trunc=%v", len(p1), trunc1) }
+	if len(p2) != 1 || trunc2 { t.Fatalf("page2: want 1 row not truncated, got %d trunc=%v", len(p2), trunc2) }
+	if p1[0].RxAt != "2026-06-30T11:00:00Z" || p2[0].RxAt != "2026-06-30T10:00:00Z" {
+		t.Fatalf("pages out of order: p1[0]=%s p2[0]=%s", p1[0].RxAt, p2[0].RxAt)
+	}
+	// no overlap between pages
+	for _, a := range p1 {
+		if a.RxAt == p2[0].RxAt && a.HunterPubkey == p2[0].HunterPubkey {
+			t.Fatalf("pages overlap on %s", a.RxAt)
+		}
+	}
+	// offset past the end → empty, not truncated
+	p3, trunc3, _ := st.QueryPoints(Filter{Limit: 2, Offset: 10})
+	if len(p3) != 0 || trunc3 { t.Fatalf("past-end page: got %d trunc=%v", len(p3), trunc3) }
+}
+
 func TestHunters(t *testing.T) {
 	st := seed(t); defer st.Close()
 	hs, _ := st.Hunters("", "", nil)

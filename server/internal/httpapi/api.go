@@ -36,6 +36,7 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 		f.Ignore = append(f.Ignore, strings.Split(ig, ",")...)
 	}
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil { f.Limit = n }
+	if n, err := strconv.Atoi(q.Get("offset")); err == nil { f.Offset = n }
 	return f
 }
 

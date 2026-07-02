@@ -81,9 +81,12 @@ test('discover sender: prefix ID is resolved to a name via the API, popup shows 
   await page.goto('/')
   await resolveReq
 
-  // after resolution + redraw, the marker popup shows the resolved name and role
+  // after resolution + redraw, the marker popup shows the resolved name and role.
+  // Points render on a canvas (no per-marker DOM); the fixture point [51,4] is
+  // the initial map center, so clicking the middle of the map hits it.
   await expect(async () => {
-    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    const box = await page.locator('#map').boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
     await expect(page.locator('.leaflet-popup-content')).toContainText('NEO7HI · Repeater', { timeout: 1000 })
   }).toPass()
 })
@@ -99,8 +102,10 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
   await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
   await page.goto('/')
 
+  // Canvas-rendered point: click the map center where the fixture marker sits.
   await expect(async () => {
-    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    const box = await page.locator('#map').boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
     await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })
   }).toPass()
   await page.locator('.lc-locate').click()
