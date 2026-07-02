@@ -74,6 +74,32 @@ cp public/config.example.json public/config.json
 
 `config.json` is gitignored; never commit credentials.
 
+### Broker ACL (required)
+
+`config.json` is served next to `index.html`, so **every visitor to the PWA can
+read `mqttUsername`/`mqttPassword`** — this is unavoidable for a browser-based MQTT
+publisher. The credentials are safe to expose *only* if the broker account is locked
+down so a leaked credential can do nothing but publish receptions. Do not point the PWA
+at a broker where this account can subscribe or publish freely.
+
+Configure the EMQX account (`hunter-pub` in the examples) with exactly these two
+authorization rules, in order:
+
+| # | Permission | Action | Topic | Effect |
+|---|---|---|---|---|
+| 1 | allow | publish | `meshcore/hunter/${clientid}/packets` | publish receptions only |
+| 2 | deny | all | `#` | block everything else |
+
+Rule 2 is the catch-all: with it in place the account cannot subscribe to any topic
+(no reading other clients' feeds) and cannot publish anywhere but its own packets
+topic — even if EMQX's global `no_match` default is `allow`. If you run additional
+broker accounts, set the broker-wide authorization default to `deny` as well.
+
+Residual risk that no ACL can remove: because the MQTT client id is chosen by the
+connecting client, anyone with the credentials can still publish fabricated receptions
+(fake GPS/SNR) under any client id. That can pollute the map's data but grants no read
+access and no other capability. Add server-side plausibility checks if that matters.
+
 ## The capture rule
 
 - **`is_direct = (hops === 0)`.** Only zero-hop receptions — where the radio
