@@ -1,9 +1,10 @@
 // Client-side node-name resolution for the analysis map. Each distinct pubkey /
-// pubkey-prefix is fetched from the CoreScope resolver at most once and cached.
-// Resolvable = a full 32-byte pubkey (advert) OR a >= 4-byte prefix (discover
-// reply) — CoreScope resolves those uniquely. 1-byte source/path hashes (2 hex)
-// are ambiguous and skipped.
-import { RESOLVE_URL } from './config.js'
+// pubkey-prefix is fetched from the configured resolvers (tried in order, first
+// unambiguous hit wins) at most once and cached. Resolvable = a full 32-byte
+// pubkey (advert) OR a >= 4-byte prefix (discover reply) — the resolvers
+// resolve those uniquely. 1-byte source/path hashes (2 hex) are ambiguous and
+// skipped.
+import { RESOLVE_URLS } from './config.js'
 
 const cache = new Map() // key (lowercase hex) -> name | ''
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i
@@ -22,24 +23,36 @@ export function cachedName(key) {
   return cache.has(k) ? cache.get(k) : undefined
 }
 
-// resolveName fetches a name for a full pubkey, caching the result. A unique hit
-// caches the name; an ambiguous/not-found response caches '' (so we stop asking).
-// Transport errors are NOT cached, so they retry on a later draw. Returns the
-// name or ''.
-export async function resolveName(key) {
-  if (!RESOLVE_URL) return ''
+// resolveName fetches a name for a full pubkey, trying each resolver url in
+// order and caching the result. A unique hit from any resolver caches the name
+// and stops the search; an HTTP error or ambiguous/not-found response falls
+// through to the next resolver. Once all resolvers have been tried, '' is
+// cached (so we stop asking) UNLESS one of them had a transport error, in
+// which case '' is returned uncached so it retries on a later draw.
+export async function resolveName(key, urls = RESOLVE_URLS) {
+  if (!urls || urls.length === 0) return ''
   const k = String(key).toLowerCase()
   if (cache.has(k)) return cache.get(k)
-  try {
-    const r = await fetch(RESOLVE_URL + '?prefix=' + encodeURIComponent(k))
-    if (!r.ok) return '' // transient — do not cache
-    const j = await r.json()
-    const name = !j.ambiguous && j.name ? j.name : ''
-    cache.set(k, name)
-    return name
-  } catch {
-    return '' // network error — do not cache, retry later
+
+  let anyNetworkError = false
+  for (const url of urls) {
+    try {
+      const r = await fetch(url + '?prefix=' + encodeURIComponent(k))
+      if (!r.ok) continue // HTTP error from this resolver — try the next
+      const j = await r.json()
+      const name = !j.ambiguous && j.name ? j.name : ''
+      if (name) {
+        cache.set(k, name)
+        return name
+      }
+      // ambiguous or not found — try next resolver
+    } catch {
+      anyNetworkError = true // transient — keep going, don't cache '' at the end
+    }
   }
+
+  if (!anyNetworkError) cache.set(k, '')
+  return ''
 }
 
 // senderName picks the best label for a point: an existing server label wins
