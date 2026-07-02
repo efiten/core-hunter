@@ -170,6 +170,51 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   await expect(page.locator('#locate-info')).toBeVisible()
 })
 
+test('unchecking a CS layer clears it even if a name-resolution redraw is in flight', async ({ page }) => {
+  await page.route('**/api/observer-points*', (route) => {
+    const src = new URL(route.request().url()).searchParams.get('src')
+    const pts = src === 'rxlog'
+      ? [{ lat: 51, lon: 4, rssi: -100, snr: -5, heard_key: '1d6f', src: 'rxlog', observer: 'Erwin Mobile', rx_at: '2026-06-30T15:00:00Z' }]
+      : []
+    route.fulfill({ json: { points: pts } })
+  })
+  // Slow resolver: the point draws immediately (unresolved), then a redraw is
+  // scheduled for when this resolves. We uncheck before it does.
+  await page.route('**/nodes/resolve*', async (r) => {
+    await new Promise((res) => setTimeout(res, 400))
+    r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
+  })
+  await page.goto('/')
+
+  await page.check('#cs-relays')
+  await expect(page.locator('path.leaflet-interactive')).toHaveCount(1) // point drawn
+  await page.uncheck('#cs-relays')
+  await expect(page.locator('path.leaflet-interactive')).toHaveCount(0) // cleared now
+  await expect(page).toHaveURL((u) => !u.searchParams.has('rel'))
+  // Wait past the resolver delay: the pending redraw must NOT re-add the point.
+  await page.waitForTimeout(700)
+  await expect(page.locator('path.leaflet-interactive')).toHaveCount(0)
+})
+
+test('Clear button resets filters, drops CS layers, and leaves the URL clean', async ({ page }) => {
+  await page.route('**/api/observer-points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/?sender=4a2b&adv=1')
+  await expect(page.locator('#f-sender')).toHaveValue('4a2b')
+  await expect(page.locator('#cs-adverts')).toBeChecked()
+
+  await page.click('#clear-filters')
+  await expect(page.locator('#f-sender')).toHaveValue('')
+  await expect(page.locator('#cs-adverts')).not.toBeChecked()
+  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv'))
+})
+
+test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
+  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
+  await page.goto('/')
+  await page.fill('#f-sender', '7b0e24700e0c0d3e')
+  await expect(page.locator('#f-sender')).toHaveAttribute('title', 'NEO7HI')
+})
+
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/?mode=points') // points requests — the cold default is hex (#141)
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))

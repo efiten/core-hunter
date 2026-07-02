@@ -21,6 +21,17 @@ function defaultToday() {
 }
 defaultToday()
 
+// Reset every filter to its default: all hunters, no sender, timeframe = today.
+// Exposed for the "Clear" button; map.js handles the layer/locate/redraw side.
+function resetFilters() {
+  document.getElementById('f-hunter').value = ''
+  const s = document.getElementById('f-sender'); s.value = ''; s.title = ''
+  const now = new Date()
+  document.getElementById('f-from').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0))
+  document.getElementById('f-to').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59))
+}
+window.__resetFilters = resetFilters
+
 window.currentFilters = () => ({
   hunter: document.getElementById('f-hunter').value,
   sender: document.getElementById('f-sender').value.trim(),

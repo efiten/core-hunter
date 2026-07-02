@@ -342,6 +342,10 @@ async function drawObserverPoints(src, layer, ring) {
     if (!r.ok) return
     d = await r.json()
   } catch { return }
+  // The checkbox may have been unchecked while this fetch was in flight —
+  // bail so a late response doesn't re-populate a layer the user just turned
+  // off (the toggle already cleared it and dropped adv/rel from the URL).
+  if (!csCbForSrc(src).checked) { layer.clearLayers(); return }
   const unresolved = new Set()
   for (const pt of d.points || []) {
     const id = (pt.heard_key || '').toLowerCase()
@@ -361,13 +365,16 @@ async function drawObserverPoints(src, layer, ring) {
   }
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
-      if (names.some((n) => n)) drawObserverPoints(src, layer, ring)
+      // Same guard as above: don't redraw for a layer that's been switched off
+      // (or gone into Locate focus) while the names were resolving.
+      if (names.some((n) => n) && csCbForSrc(src).checked && !locateActive) drawObserverPoints(src, layer, ring)
     })
   }
 }
 
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
+const csCbForSrc = (src) => (src === 'advert' ? csAdvertCb : csRelayCb)
 function toggleCsLayer(cb, src, layer, ring) {
   if (locateActive) { drawLocate(); return } // focus mode: feed Locate, not the all-nodes layer
   cb.checked ? drawObserverPoints(src, layer, ring) : layer.clearLayers()
@@ -384,6 +391,30 @@ for (const id of ['f-from', 'f-to']) {
     if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
   })
 }
+
+// Clear button: reset every filter to its default, drop the CS observer layers,
+// leave Locate, then redraw + persist (empty values fall out of the URL).
+document.getElementById('clear-filters').addEventListener('click', () => {
+  if (window.__resetFilters) window.__resetFilters()
+  csAdvertCb.checked = false; csRelayCb.checked = false
+  csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  if (locateActive) deactivateLocate() // restores points/hex per mode
+  refresh()
+  urlstate.save()
+})
+
+// Hover the sender box to see the resolved node name (if known): resolve the
+// typed prefix (debounced) and stash it in the input's native tooltip.
+const senderEl = document.getElementById('f-sender')
+let senderTitleTimer = null
+function updateSenderTitle() {
+  const v = senderEl.value.trim().toLowerCase()
+  if (!isResolvableId(v)) { senderEl.title = ''; return }
+  const c = cachedName(v)
+  if (c !== undefined) { senderEl.title = c || ''; return }
+  resolveName(v).then((n) => { if (senderEl.value.trim().toLowerCase() === v) senderEl.title = n || '' })
+}
+senderEl.addEventListener('input', () => { clearTimeout(senderTitleTimer); senderTitleTimer = setTimeout(updateSenderTitle, 300) })
 
 // --- Shareable URL + localStorage persistence -------------------------------
 // Register every setting once. A new setting only needs one register() /
@@ -407,6 +438,7 @@ const wantLocate = urlstate.initial('locate', '') === '1'
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
+updateSenderTitle() // tooltip for a sender restored from the URL/storage
 
 // Restore state that a value alone does not trigger (checkbox draw, locate focus).
 if (wantLocate && window.currentFilters().sender) {
