@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.14.0](https://github.com/efiten/core-hunter/compare/app-v0.13.0...app-v0.14.0) (2026-07-02)
+
+
+### Features
+
+* **app:** fade reception points with age instead of hard-vanishing ([#164](https://github.com/efiten/core-hunter/issues/164)) ([cf9a62b](https://github.com/efiten/core-hunter/commit/cf9a62b3996384f0ff38acf011b5fef7e46ad54f))
+* **app:** make the Messages-panel ignore button a toggle ([#165](https://github.com/efiten/core-hunter/issues/165)) ([228ce93](https://github.com/efiten/core-hunter/commit/228ce93912283be5745f7920f434cae0b49b7dd4))
+
+
+### Bug Fixes
+
+* **app:** show discover responses in the Messages panel ([#166](https://github.com/efiten/core-hunter/issues/166)) ([2e8c2c7](https://github.com/efiten/core-hunter/commit/2e8c2c707ad8078c3e817a952cca63b486c14992))
+
 ## [0.13.0](https://github.com/efiten/core-hunter/compare/app-v0.12.0...app-v0.13.0) (2026-07-02)
 
 
