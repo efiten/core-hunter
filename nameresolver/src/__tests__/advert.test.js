@@ -33,9 +33,9 @@ describe('extractAdvert', () => {
   it('returns null lat/lon for an advert without a location', () => {
     const fake = {
       payloadType: PayloadType.Advert,
-      payload: { decoded: { publicKey: 'AABBCCDD', appData: { hasName: true, name: 'x', hasLocation: false } } },
+      payload: { decoded: { publicKey: 'AABBCCDD'.repeat(8), appData: { hasName: true, name: 'x', hasLocation: false } } },
     }
-    expect(extractAdvert(fake)).toEqual({ pubkey: 'aabbccdd', name: 'x', lat: null, lon: null })
+    expect(extractAdvert(fake)).toEqual({ pubkey: 'aabbccdd'.repeat(8), name: 'x', lat: null, lon: null })
   })
 
   it('returns null when the pubkey is not hex', () => {

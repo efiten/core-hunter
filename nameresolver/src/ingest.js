@@ -49,5 +49,8 @@ export function startIngest(cfg, { store, cache }) {
       // one bad packet must not kill the stream
     }
   })
+  client.on('error', (e) => {
+    console.error('nameresolver: mqtt error:', e.message)
+  })
   return client
 }

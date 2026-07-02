@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.5.0" },
+  "engines": { "node": ">=22.13.0" },
   "scripts": {
     "start": "node src/index.js config.json",
     "test": "vitest run"

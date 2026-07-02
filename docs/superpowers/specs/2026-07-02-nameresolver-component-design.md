@@ -124,7 +124,7 @@ placeholders) documents the shape:
 | `mqttUsername` | yes | Read/subscribe account for the SF7 broker |
 | `mqttPassword` | yes | Password for that account |
 | `topics` | no | Topic filters to subscribe to (default `["meshcore/+/+/packets"]`) |
-| `httpAddr` | no | HTTP listen address (default `:8090` inside the container) |
+| `httpPort` | no | HTTP listen port (default `8090` inside the container) |
 | `dbPath` | no | SQLite file path (default `/app/data/nameresolver.db`) |
 
 ## Deployment

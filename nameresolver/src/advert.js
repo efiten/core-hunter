@@ -1,6 +1,6 @@
 import { PayloadType } from '@michaelhart/meshcore-decoder'
 
-const HEX_PUBKEY = /^[0-9a-f]{2,64}$/
+const HEX_PUBKEY = /^[0-9a-f]{64}$/
 
 // extractAdvert maps a decoded packet to {pubkey,name,lat,lon} when it is an
 // advert that carries a name. Returns null otherwise. Location is null unless
