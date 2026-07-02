@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/efiten/core-hunter/compare/web-v0.4.1...web-v0.5.0) (2026-07-02)
+
+
+### Features
+
+* lift the 5000-point cap — paged points fetch (map 25k, Locate all) ([#160](https://github.com/efiten/core-hunter/issues/160)) ([0a1413b](https://github.com/efiten/core-hunter/commit/0a1413b5a027de4417ca31a576b0c1e01f3efa7a))
+* nameresolver — standalone SF7 name resolver + web multi-resolver support ([#156](https://github.com/efiten/core-hunter/issues/156)) ([a574d8a](https://github.com/efiten/core-hunter/commit/a574d8af0b0f250bee52cd7a24b751280eaf8bd5))
+* show SF7/SF8 node counts in the website top bar ([#158](https://github.com/efiten/core-hunter/issues/158)) ([819f4b3](https://github.com/efiten/core-hunter/commit/819f4b3093b5e0f6d372745778d6c54a6821bcbe))
+* **web:** complete the Locate legend toggle (style + e2e test) ([#161](https://github.com/efiten/core-hunter/issues/161)) ([1c98734](https://github.com/efiten/core-hunter/commit/1c9873436266d92e2aec94cac1ed72e18bb5e8a1))
+* **web:** reflect all settings in the URL and persist them ([#135](https://github.com/efiten/core-hunter/issues/135)) ([2b75f6f](https://github.com/efiten/core-hunter/commit/2b75f6fd466addd1b98aecbc0f8d7dc9f19e99ea)), closes [#134](https://github.com/efiten/core-hunter/issues/134)
+
+
+### Bug Fixes
+
+* **web:** map starts in hex mode by default ([#152](https://github.com/efiten/core-hunter/issues/152)) ([6794d77](https://github.com/efiten/core-hunter/commit/6794d77939eb32978c239dee11128028130cddb6))
+
 ## [0.4.1](https://github.com/efiten/core-hunter/compare/web-v0.4.0...web-v0.4.1) (2026-07-01)
 
 

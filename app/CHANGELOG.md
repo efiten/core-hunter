@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.12.0](https://github.com/efiten/core-hunter/compare/app-v0.11.0...app-v0.12.0) (2026-07-02)
+
+
+### Features
+
+* **app:** auto-fade the locate-info box after 2s ([#127](https://github.com/efiten/core-hunter/issues/127)) ([3f887d1](https://github.com/efiten/core-hunter/commit/3f887d1351bf5ad38018cc3a5ecf5ed72d3a36ec))
+* **app:** distinct icon for the combined points+hex layer mode ([#126](https://github.com/efiten/core-hunter/issues/126)) ([07092f9](https://github.com/efiten/core-hunter/commit/07092f92d23348d4e9957873d25d970c3204069f))
+* **app:** focus the existing PWA instance instead of relaunching ([#153](https://github.com/efiten/core-hunter/issues/153)) ([bba418a](https://github.com/efiten/core-hunter/commit/bba418a43c83e14a78a8370aed4094312ddabd95))
+* **app:** manual pause/resume for the MQTT connection ([#121](https://github.com/efiten/core-hunter/issues/121)) ([496406c](https://github.com/efiten/core-hunter/commit/496406c81766b58f725e87a146c4c40d1f57968e))
+* **app:** mark individual non-default settings within the sheets ([#110](https://github.com/efiten/core-hunter/issues/110)) ([a2f1dfa](https://github.com/efiten/core-hunter/commit/a2f1dfab790889d01886439c8524dc25cee5d9de))
+* **app:** mark the selected target active in the target list ([#108](https://github.com/efiten/core-hunter/issues/108)) ([208920a](https://github.com/efiten/core-hunter/commit/208920ac75eefb77d5175942cf2d9c7b122be972))
+* **app:** real map rotation on device heading + two-finger rotate gesture ([#151](https://github.com/efiten/core-hunter/issues/151)) ([033033b](https://github.com/efiten/core-hunter/commit/033033bb657891a83155ae414a59556af818fe1d))
+* **app:** replace settings-btn emoji with an inline SVG gear icon ([#113](https://github.com/efiten/core-hunter/issues/113)) ([3e4c241](https://github.com/efiten/core-hunter/commit/3e4c2414a24bbe36a6acd6fab2e5eb66460e1bb5))
+* **app:** show splash disclaimer + tips on every visible screen ([#123](https://github.com/efiten/core-hunter/issues/123)) ([21d8bc6](https://github.com/efiten/core-hunter/commit/21d8bc6c818f1c2634fb7a02a476e893d851c94c))
+* **app:** tap outside filter/settings/target sheets to close ([#111](https://github.com/efiten/core-hunter/issues/111)) ([b6dbb3f](https://github.com/efiten/core-hunter/commit/b6dbb3f5ad111706a0f204c58f3f00915c63acb6))
+* **app:** toggle FAB for the single-hunter locate overlay ([#120](https://github.com/efiten/core-hunter/issues/120)) ([aa95e7d](https://github.com/efiten/core-hunter/commit/aa95e7d38ec1dd8f7f853555ac56d74891533b09))
+
+
+### Bug Fixes
+
+* **app:** direct-only filter must check hops === 0, not is_direct ([#150](https://github.com/efiten/core-hunter/issues/150)) ([66301e1](https://github.com/efiten/core-hunter/commit/66301e1825c381331a4a13ec1d7bed4c005bff19))
+* **app:** disable pull-to-refresh (breaks active BLE/MQTT connection) ([#133](https://github.com/efiten/core-hunter/issues/133)) ([6adb347](https://github.com/efiten/core-hunter/commit/6adb347b9b96ccaee29f7991449ff08be7e621bd))
+* **app:** ignore-sender updates the map immediately ([#112](https://github.com/efiten/core-hunter/issues/112)) ([355e809](https://github.com/efiten/core-hunter/commit/355e809945b6db980198096a7b51df3ed07edfdb))
+* **app:** raise map maxZoom from 19 to 20 ([#107](https://github.com/efiten/core-hunter/issues/107)) ([475ab1b](https://github.com/efiten/core-hunter/commit/475ab1bb03462a06795515b3645411995fc1fd8b))
+* **app:** render points above the hex layer in 'both' mode ([#125](https://github.com/efiten/core-hunter/issues/125)) ([963871d](https://github.com/efiten/core-hunter/commit/963871d8147bf3fb2459ca1b55f06834a8c185b0))
+* **app:** resolve relayed-advert prefixes to repeater names ([#137](https://github.com/efiten/core-hunter/issues/137)) ([6a5037a](https://github.com/efiten/core-hunter/commit/6a5037abd8bbbc52fa49db872cd8d9a37a0ff705)), closes [#136](https://github.com/efiten/core-hunter/issues/136)
+* **app:** Settings connect/disconnect button stays disabled after connecting ([#124](https://github.com/efiten/core-hunter/issues/124)) ([986a275](https://github.com/efiten/core-hunter/commit/986a275fb5760f76db1e32e62dc9e972d9a0ac40))
+
+
+### Documentation
+
+* **app:** document required publish-only broker ACL ([#154](https://github.com/efiten/core-hunter/issues/154)) ([f80459a](https://github.com/efiten/core-hunter/commit/f80459a24cf42fa09ea502480ca3f85c8b400e4a))
+
+
+### Miscellaneous Chores
+
+* **app:** remove the Manual position (dev) debug feature ([#122](https://github.com/efiten/core-hunter/issues/122)) ([5e43aa7](https://github.com/efiten/core-hunter/commit/5e43aa753636aff6d1a1896d6a7435e5dd2644d7))
+
 ## [0.11.0](https://github.com/efiten/core-hunter/compare/app-v0.10.0...app-v0.11.0) (2026-07-01)
 
 

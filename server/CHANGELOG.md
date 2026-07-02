@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/efiten/core-hunter/compare/server-v0.4.1...server-v0.5.0) (2026-07-02)
+
+
+### Features
+
+* lift the 5000-point cap — paged points fetch (map 25k, Locate all) ([#160](https://github.com/efiten/core-hunter/issues/160)) ([0a1413b](https://github.com/efiten/core-hunter/commit/0a1413b5a027de4417ca31a576b0c1e01f3efa7a))
+
 ## [0.4.1](https://github.com/efiten/core-hunter/compare/server-v0.4.0...server-v0.4.1) (2026-07-01)
 
 
