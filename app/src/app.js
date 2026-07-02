@@ -33,6 +33,7 @@ import { buildDiscoverFrame } from './discover.js'
 import { createWakeLock } from './wakelock.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState } from './rotation.js'
+import { parseVersion, isUpdateAvailable } from './update.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -739,8 +740,16 @@ function buildSettingsSheet() {
         <input type="checkbox" id="ss-theme" />
         Light theme
       </label>
-      <p class="ss-version">core-hunter v${__APP_VERSION__}</p>
+      <div class="ss-version-row">
+        <span class="ss-version">core-hunter v${__APP_VERSION__}</span>
+        <span id="ss-update-status" class="ss-update-status" hidden></span>
+        <button id="ss-reload-btn" class="ss-reload" type="button">Reload</button>
+      </div>
     </div>`
+
+  // Reload drops the live BLE/MQTT session on purpose — it's the deliberate
+  // way to pick up a new build now that pull-to-refresh is disabled (#132).
+  el('ss-reload-btn').addEventListener('click', () => location.reload())
 
   el('ss-conn-btn').addEventListener('click', () => {
     if (state.connected) {
@@ -786,6 +795,24 @@ function buildSettingsSheet() {
 
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+}
+
+// Fetch the deployed version (no-store so we always see the live file) and, if
+// it's newer than the running build, surface an "update available" hint and
+// flag the reload button. Failure (dev server, offline) is silent — the button
+// still reloads on demand. Runs when the Settings sheet opens.
+async function checkForUpdate() {
+  const status = el('ss-update-status')
+  const btn = el('ss-reload-btn')
+  if (!status || !btn) return
+  let latest = null
+  try {
+    latest = parseVersion(await (await fetch('/version.json', { cache: 'no-store' })).text())
+  } catch { /* offline / dev server — leave as up-to-date */ }
+  const stale = isUpdateAvailable(__APP_VERSION__, latest)
+  status.textContent = stale ? `v${latest} available` : ''
+  status.hidden = !stale
+  btn.classList.toggle('ss-reload-update', stale)
 }
 
 // ---------------------------------------------------------------------------
@@ -1036,6 +1063,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       el('filter-sheet').hidden = true
       el('target-sheet').hidden = true
       refreshConnState()
+      checkForUpdate()
     }
   })
 
