@@ -1,0 +1,8 @@
+{
+  "mqttUrl": "wss://<sf7-broker-host>:8084/mqtt",
+  "mqttUsername": "<set me>",
+  "mqttPassword": "<set me>",
+  "topics": ["meshcore/+/+/packets"],
+  "httpPort": 8090,
+  "dbPath": "/app/data/nameresolver.db"
+}

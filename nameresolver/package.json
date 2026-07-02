@@ -1,0 +1,18 @@
+{
+  "name": "@core-hunter/nameresolver",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.5.0" },
+  "scripts": {
+    "start": "node src/index.js config.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@michaelhart/meshcore-decoder": "^0.3.0",
+    "mqtt": "^5.10.1"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}
