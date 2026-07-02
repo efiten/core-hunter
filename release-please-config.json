@@ -34,6 +34,10 @@
       "extra-files": [
         "version.js"
       ]
+    },
+    "nameresolver": {
+      "release-type": "node",
+      "component": "nameresolver"
     }
   }
 }
