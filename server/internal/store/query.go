@@ -141,3 +141,22 @@ func (s *Store) Hunters(from, to string, ignore []string) ([]Hunter, error) {
 	}
 	return out, rows.Err()
 }
+
+// HunterOrdinals ranks each hunter_pubkey by first appearance (MIN(rx_at) asc)
+// and returns a 1-based ordinal per pubkey. Deterministic and stable.
+func (s *Store) HunterOrdinals() (map[string]int, error) {
+	rows, err := s.db.Query(
+		`SELECT hunter_pubkey FROM hunter_receptions
+		 GROUP BY hunter_pubkey ORDER BY MIN(rx_at) ASC, hunter_pubkey ASC`)
+	if err != nil { return nil, err }
+	defer rows.Close()
+	out := map[string]int{}
+	n := 0
+	for rows.Next() {
+		var pk string
+		if err := rows.Scan(&pk); err != nil { return nil, err }
+		n++
+		out[pk] = n
+	}
+	return out, rows.Err()
+}

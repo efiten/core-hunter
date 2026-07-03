@@ -127,3 +127,11 @@ func TestHuntersIgnore(t *testing.T) {
 	m := map[string]int{}; for _, h := range hs { m[h.Pubkey] = h.Count }
 	if m["h1"] != 2 || m["h2"] != 0 { t.Fatalf("hunters ignore wrong: %+v", hs) }
 }
+
+func TestHunterOrdinals(t *testing.T) {
+	st := seed(t) // h1 first at 10:00, h2 first at 10:30 (see existing seed rows)
+	defer st.Close()
+	ord, err := st.HunterOrdinals()
+	if err != nil { t.Fatalf("ordinals: %v", err) }
+	if ord["h1"] != 1 || ord["h2"] != 2 { t.Fatalf("ordinals by first appearance wrong: %+v", ord) }
+}
