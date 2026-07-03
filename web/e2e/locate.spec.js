@@ -112,3 +112,13 @@ test('Locate surfaces a fetch error instead of crashing the poll loop', async ({
   await page.click('#locate-toggle')
   await expect(page.locator('#locate-info')).toContainText('Could not load points')
 })
+
+test('best-signal star never renders for guests', async ({ page }) => {
+  await page.route('**/api/auth/me', r => r.fulfill({ json: { role: 'guest' } }))
+  await page.route('**/api/points*', r => r.fulfill({ json: { points: [
+    { lat: 51, lon: 4, rssi: -60, snr: 8, sender_id: 'aa', hunter_pubkey: 'h1', hunter_name: 'Hunter 1', rx_at: '2026-07-03T10:00:00Z' }
+  ], truncated: false } }))
+  await page.goto('/?locate=1&sender=aa')  // attempt to force Locate via URL
+  await expect(page.locator('.lc-strongest')).toHaveCount(0)
+  await expect(page.locator('.lc-centroid')).toHaveCount(0)
+})
