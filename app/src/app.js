@@ -865,7 +865,20 @@ function buildSettingsSheet() {
   })
   el('ss-acc-cancel').addEventListener('click', closeAccForm)
 
-  function maybeOfferLink() {} // replaced in Task 8
+  function maybeOfferLink() {
+    const s = accountDisplayState(state.account, state.rxPubkey)
+    el('ss-acc-link').hidden = !s.showLink
+  }
+
+  el('ss-acc-link').addEventListener('click', async () => {
+    if (!state.rxPubkey) return
+    const short = state.rxPubkey.slice(0, 12) + '…'
+    accMsg(`Linking companion ${short}…`)
+    const r = await postAuth('/api/auth/link-companion', buildLinkBody(state.rxPubkey))
+    if (r.ok) { await refreshAccount(); accMsg('Companion linked.', true) }
+    else if (r.status === 401) accMsg('Log in first.')
+    else accMsg('Linking failed — check your connection.')
+  })
 
   el('ss-acc-form').addEventListener('submit', async (e) => {
     e.preventDefault()
