@@ -44,6 +44,47 @@ CREATE TABLE IF NOT EXISTS raw_messages (
   received_at  TEXT NOT NULL,
   error        TEXT
 );
+CREATE TABLE IF NOT EXISTS users (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  username      TEXT NOT NULL UNIQUE,
+  email         TEXT,
+  password_hash TEXT NOT NULL DEFAULT '',
+  role          TEXT NOT NULL DEFAULT 'hunter',
+  status        TEXT NOT NULL DEFAULT 'active',
+  created_at    TEXT NOT NULL,
+  last_login_at TEXT
+);
+CREATE TABLE IF NOT EXISTS companions (
+  pubkey    TEXT PRIMARY KEY,
+  user_id   INTEGER NOT NULL,
+  linked_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_companions_user ON companions(user_id);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL,
+  remember   INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  ip         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE TABLE IF NOT EXISTS tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL,
+  purpose    TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT
+);
+CREATE TABLE IF NOT EXISTS audit_log (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  at            TEXT NOT NULL,
+  actor_user_id INTEGER,
+  action        TEXT NOT NULL,
+  target        TEXT,
+  ip            TEXT,
+  details       TEXT
+);
 `
 
 func Open(path string) (*Store, error) {
