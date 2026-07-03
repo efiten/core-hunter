@@ -9,9 +9,11 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/efiten/core-hunter/server/internal/auth"
 	"github.com/efiten/core-hunter/server/internal/config"
 	"github.com/efiten/core-hunter/server/internal/httpapi"
 	"github.com/efiten/core-hunter/server/internal/ingest"
+	"github.com/efiten/core-hunter/server/internal/mail"
 	"github.com/efiten/core-hunter/server/internal/store"
 	"github.com/efiten/core-hunter/server/internal/version"
 )
@@ -70,6 +72,30 @@ func main() {
 
 	client := mqtt.NewClient(opts)
 
+	// --- user management wiring ---
+	if cfg.BootstrapAdmin != "" {
+		if u, _ := st.UserByUsername(cfg.BootstrapAdmin); u != nil {
+			if err := st.SetRoleStatus(u.ID, "admin", "active"); err != nil {
+				log.Printf("bootstrap admin: %v", err)
+			} else {
+				log.Printf("bootstrap admin: promoted %q to admin", cfg.BootstrapAdmin)
+			}
+		}
+	}
+	var mailer httpapi.Mailer
+	if cfg.BrevoSmtpHost != "" {
+		sender := &mail.Sender{
+			Host: cfg.BrevoSmtpHost, Port: cfg.BrevoSmtpPort,
+			User: cfg.BrevoUser, ApiKey: cfg.BrevoApiKey, From: cfg.MailFrom,
+		}
+		mailer = &mailerAdapter{sender: sender, baseURL: cfg.BaseURL}
+	}
+	limiter := auth.NewRateLimiter(5, time.Minute)
+	authAPI := &httpapi.AuthAPI{Store: st, CookieSecure: cfg.CookieSecure, Limiter: limiter, Mailer: mailer, BaseURL: cfg.BaseURL}
+	adminAPI := &httpapi.AdminAPI{Store: st, Mailer: mailer, BaseURL: cfg.BaseURL}
+	resolveAPI := &httpapi.ResolveAPI{Upstreams: cfg.ResolveUpstreams, Client: &http.Client{Timeout: 5 * time.Second}}
+	deps := &httpapi.Deps{Auth: authAPI, Admin: adminAPI, Resolve: resolveAPI}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -81,10 +107,11 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","version":"` + version.Version + `"}`))
 	})
-	httpapi.RegisterRoutes(mux, st, cfg.Ignore, cs)
+	httpapi.RegisterRoutes(mux, st, cfg.Ignore, cs, deps)
+	handler := httpapi.WithAuth(mux, st, cfg.CookieSecure)
 
 	go func() {
-		if err := http.ListenAndServe(cfg.HTTPAddr, mux); err != nil {
+		if err := http.ListenAndServe(cfg.HTTPAddr, handler); err != nil {
 			log.Printf("http server stopped: %v", err)
 		}
 	}()
@@ -101,4 +128,19 @@ func main() {
 	log.Printf("shutting down")
 	client.Disconnect(250)
 	_ = st.Close()
+}
+
+// mailerAdapter implements httpapi.Mailer over mail.Sender, building the
+// account emails from the configured base URL.
+type mailerAdapter struct {
+	sender  *mail.Sender
+	baseURL string
+}
+
+func (m *mailerAdapter) SendSetPassword(to, token string) error {
+	return m.sender.Send(to, mail.BuildSetPassword(m.baseURL, token))
+}
+
+func (m *mailerAdapter) SendReset(to, token string) error {
+	return m.sender.Send(to, mail.BuildReset(m.baseURL, token))
 }

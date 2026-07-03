@@ -133,6 +133,22 @@ func TestTokensConsumeOnce(t *testing.T) {
 	}
 }
 
+func TestBootstrapAdminPromotion(t *testing.T) {
+	st, _ := Open(":memory:")
+	defer st.Close()
+	id, _ := st.CreateUser("efite", "", "h", "hunter", "active")
+	// simulate the main.go bootstrap: promote existing user to admin
+	u, _ := st.UserByUsername("efite")
+	if u == nil {
+		t.Fatal("user missing")
+	}
+	st.SetRoleStatus(u.ID, "admin", "active")
+	got, _ := st.UserByID(id)
+	if got.Role != "admin" {
+		t.Fatalf("bootstrap promotion failed: %+v", got)
+	}
+}
+
 func TestAudit(t *testing.T) {
 	st, _ := Open(":memory:")
 	defer st.Close()
