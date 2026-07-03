@@ -221,3 +221,9 @@ test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.fill('#f-sender', '4a')
   await req // only resolves if a points request carrying sender=4a was issued
 })
+
+test('assets are cache-busted with the version query', async ({ page }) => {
+  await page.goto('/')
+  const cssHref = await page.getAttribute('link[rel="stylesheet"][href^="style.css"]', 'href')
+  expect(cssHref).toMatch(/^style\.css\?v=/)
+})

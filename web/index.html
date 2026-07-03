@@ -5,7 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>core-hunter — analysis</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+  <script type="module">
+    import { VERSION } from './version.js'
+    const v = '?v=' + VERSION
+    const css = document.createElement('link')
+    css.rel = 'stylesheet'; css.href = 'style.css' + v
+    document.head.appendChild(css)
+    for (const src of ['filters.js', 'map.js']) {
+      const s = document.createElement('script')
+      s.type = 'module'; s.src = src + v
+      document.body.appendChild(s)
+    }
+  </script>
 </head>
 <body>
   <header id="bar">
@@ -28,8 +39,6 @@
   <div id="locate-info" hidden></div>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script type="module" src="filters.js"></script>
-  <script type="module" src="map.js"></script>
   <script type="module">
     import { VERSION } from './version.js';
     import { API_BASE } from './config.js';
