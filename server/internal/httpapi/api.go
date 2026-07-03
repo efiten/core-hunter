@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/efiten/core-hunter/server/internal/auth"
 	"github.com/efiten/core-hunter/server/internal/geo"
 	"github.com/efiten/core-hunter/server/internal/query"
 	"github.com/efiten/core-hunter/server/internal/store"
@@ -48,6 +50,34 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	return f
 }
 
+// degradeFilter applies the guest window+cap and resolves a pseudonym hunter
+// token to a real pubkey for sub-member callers. Returns the adjusted filter.
+func degradeFilter(f store.Filter, a Auth, ps auth.Pseudonyms, now time.Time) store.Filter {
+	if a.AtLeast("member") { return f }
+	// window + cap for the degraded view
+	if f.From == "" || f.From < windowFrom(now) { f.From = windowFrom(now) }
+	if f.Limit <= 0 || f.Limit > guestPointCap { f.Limit = guestPointCap }
+	// hunter filter: a pseudonym token resolves to its real pubkey; a raw
+	// pubkey is honoured only when it's the caller's own companion, else
+	// blanked -- otherwise a guest/hunter could pass any real pubkey and
+	// deanonymize/target that specific hunter's rows
+	if f.Hunter != "" {
+		if n, ok := auth.ParsePseudonym(f.Hunter); ok {
+			f.Hunter = pubkeyForOrdinal(ps, n) // "" if none -> query returns nothing
+		} else if !a.ownsCompanion(strings.ToLower(f.Hunter)) {
+			f.Hunter = ""
+		}
+	}
+	return f
+}
+
+func pubkeyForOrdinal(ps auth.Pseudonyms, n int) string {
+	for pk, ord := range ps {
+		if ord == n { return pk }
+	}
+	return ""
+}
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
@@ -63,8 +93,21 @@ type Deps struct {
 
 func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *store.CSReader, deps *Deps) {
 	mux.HandleFunc("/api/points", func(w http.ResponseWriter, r *http.Request) {
-		pts, trunc, err := s.QueryPoints(filterFrom(r, ignore))
+		a := AuthOf(r)
+		f := filterFrom(r, ignore)
+		var ps auth.Pseudonyms
+		if !a.AtLeast("member") {
+			ord, _ := s.HunterOrdinals()
+			ps = auth.Pseudonyms(ord)
+			f = degradeFilter(f, a, ps, time.Now())
+		}
+		pts, trunc, err := s.QueryPoints(f)
 		if err != nil { http.Error(w, err.Error(), 500); return }
+		if !a.AtLeast("member") {
+			own := map[string]bool{}
+			for _, c := range a.Companions { own[c] = true }
+			pts = degradePoints(pts, ps, own)
+		}
 		writeJSON(w, map[string]any{"points": pts, "truncated": trunc})
 	})
 	mux.HandleFunc("/api/heatmap", func(w http.ResponseWriter, r *http.Request) {
