@@ -1,13 +1,7 @@
 // Same-origin in production (nginx serves /api). Empty base = relative.
+// Node-name resolution goes through the server's own same-origin
+// /api/resolve proxy (see names.js) — no cross-origin corsproxy hop needed.
 export const API_BASE = ''
-
-// CoreScope / nameresolver node-name resolvers (prefix -> {name, ambiguous}),
-// tried in order — first unambiguous hit wins. Cross-origin via the same CORS
-// proxy the scanner app uses. Empty array disables name lookup.
-export const RESOLVE_URLS = [
-  'https://corsproxy.on8ar.eu/cs/api/nodes/resolve',   // SF8 (CoreScope)
-  'https://corsproxy.on8ar.eu/sf7/api/nodes/resolve',  // SF7 (nameresolver)
-]
 
 // Per-SF node-count sources for the top-bar display. `pick` extracts the
 // count from each endpoint's response shape (CoreScope stats vs nameresolver

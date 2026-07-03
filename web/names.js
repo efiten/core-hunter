@@ -1,10 +1,9 @@
 // Client-side node-name resolution for the analysis map. Each distinct pubkey /
-// pubkey-prefix is fetched from the configured resolvers (tried in order, first
-// unambiguous hit wins) at most once and cached. Resolvable = a full 32-byte
-// pubkey (advert) OR a >= 4-byte prefix (discover reply) — the resolvers
-// resolve those uniquely. 1-byte source/path hashes (2 hex) are ambiguous and
-// skipped.
-import { RESOLVE_URLS } from './config.js'
+// pubkey-prefix is fetched from the same-origin resolve proxy at most once and
+// cached. Resolvable = a full 32-byte pubkey (advert) OR a >= 4-byte prefix
+// (discover reply) — the resolver resolves those uniquely. 1-byte source/path
+// hashes (2 hex) are ambiguous and skipped.
+import { API_BASE } from './config.js'
 
 const cache = new Map() // key (lowercase hex) -> name | ''
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i
@@ -23,36 +22,28 @@ export function cachedName(key) {
   return cache.has(k) ? cache.get(k) : undefined
 }
 
-// resolveName fetches a name for a full pubkey, trying each resolver url in
-// order and caching the result. A unique hit from any resolver caches the name
-// and stops the search; an HTTP error or ambiguous/not-found response falls
-// through to the next resolver. Once all resolvers have been tried, '' is
-// cached (so we stop asking) UNLESS one of them had a transport error, in
-// which case '' is returned uncached so it retries on a later draw.
-export async function resolveName(key, urls = RESOLVE_URLS) {
-  if (!urls || urls.length === 0) return ''
+// Test-only seam: clears the resolved-name cache between specs.
+export function _resetNameCache() { cache.clear() }
+
+// resolveName fetches a name for a prefix/pubkey via the same-origin resolve
+// proxy and caches the result (null = resolved-but-unknown/ambiguous). Network
+// errors leave the id unresolved (uncached) so it retries on a later draw.
+export async function resolveName(key) {
   const k = String(key).toLowerCase()
   if (cache.has(k)) return cache.get(k)
 
-  let anyNetworkError = false
-  for (const url of urls) {
-    try {
-      const r = await fetch(url + '?prefix=' + encodeURIComponent(k))
-      if (!r.ok) continue // HTTP error from this resolver — try the next
+  let name = null
+  try {
+    const r = await fetch(`${API_BASE}/api/resolve?prefix=${encodeURIComponent(k)}`, { credentials: 'same-origin' })
+    if (r.ok) {
       const j = await r.json()
-      const name = !j.ambiguous && j.name ? j.name : ''
-      if (name) {
-        cache.set(k, name)
-        return name
-      }
-      // ambiguous or not found — try next resolver
-    } catch {
-      anyNetworkError = true // transient — keep going, don't cache '' at the end
+      if (j && j.name && !j.ambiguous) name = j.name
     }
+    cache.set(k, name)
+  } catch {
+    // transient — leave uncached so it retries on a later draw
   }
-
-  if (!anyNetworkError) cache.set(k, '')
-  return ''
+  return name
 }
 
 // senderName picks the best label for a point: an existing server label wins

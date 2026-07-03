@@ -88,10 +88,10 @@ test('discover sender: prefix ID is resolved to a name via the API, popup shows 
       hunter_name: 'X', packet_type: 'Control', rx_at: '2026-06-30T15:40:51Z',
     }] },
   }))
-  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
 
   // the website must look up the 8-byte discover prefix (not just full pubkeys)
-  const resolveReq = page.waitForRequest((r) => r.url().includes('/nodes/resolve') && r.url().includes('7b0e24700e0c0d3e'))
+  const resolveReq = page.waitForRequest((r) => r.url().includes('/api/resolve') && r.url().includes('7b0e24700e0c0d3e'))
   await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
   await resolveReq
 
@@ -113,7 +113,7 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
       sender_role: 'Repeater', hunter_name: 'X', packet_type: 'Control', rx_at: '2026-06-30T15:40:51Z',
     }] },
   }))
-  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
   await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
 
   // Canvas-rendered point: click the map center where the fixture marker sits.
@@ -137,7 +137,7 @@ test('CoreScope relays checkbox (off by default) draws observer points with reso
       : []
     route.fulfill({ json: { points: pts } })
   })
-  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
 
   await expect(page.locator('#cs-relays')).not.toBeChecked() // off by default
@@ -168,7 +168,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
     }
     route.fulfill({ json: { points: pts } })
   })
-  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
   await page.check('#cs-relays')
 
@@ -195,7 +195,7 @@ test('unchecking a CS layer clears it even if a name-resolution redraw is in fli
   })
   // Slow resolver: the point draws immediately (unresolved), then a redraw is
   // scheduled for when this resolves. We uncheck before it does.
-  await page.route('**/nodes/resolve*', async (r) => {
+  await page.route('**/api/resolve*', async (r) => {
     await new Promise((res) => setTimeout(res, 400))
     r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
   })
@@ -224,7 +224,7 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
 })
 
 test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
-  await page.route('**/nodes/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
   await page.goto('/')
   await page.fill('#f-sender', '7b0e24700e0c0d3e')
   await expect(page.locator('#f-sender')).toHaveAttribute('title', 'NEO7HI')
