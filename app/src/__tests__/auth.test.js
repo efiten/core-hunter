@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth } from '../auth.js'
+import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth, accountDisplayState } from '../auth.js'
 
 describe('validateRegistration', () => {
   const ok = { username: 'alice', password: '0123456789', companionPubkey: 'ab'.repeat(32) }
@@ -65,5 +65,26 @@ describe('postAuth', () => {
   it('returns a network sentinel on fetch throw', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down') }))
     expect(await postAuth('/api/auth/login', {})).toEqual({ ok: false, status: 0, data: { error: 'network' } })
+  })
+})
+
+describe('accountDisplayState', () => {
+  it('guest offers login and register', () => {
+    const s = accountDisplayState({ role: 'guest' }, '')
+    expect(s).toMatchObject({ loggedIn: false, showLogin: true, showRegister: true, showLogout: false, showLink: false })
+    expect(s.label).toBe('Not logged in')
+  })
+  it('authed shows username, role and logout', () => {
+    const s = accountDisplayState({ role: 'hunter', username: 'alice', companions: ['ff'] }, 'ff')
+    expect(s).toMatchObject({ loggedIn: true, showLogin: false, showRegister: false, showLogout: true, showLink: false })
+    expect(s.label).toBe('alice (hunter)')
+  })
+  it('offers to link a connected but unlinked companion', () => {
+    const s = accountDisplayState({ role: 'hunter', username: 'alice', companions: ['ff'] }, 'aa')
+    expect(s.showLink).toBe(true)
+  })
+  it('does not offer link when no companion connected', () => {
+    const s = accountDisplayState({ role: 'hunter', username: 'alice', companions: [] }, '')
+    expect(s.showLink).toBe(false)
   })
 })

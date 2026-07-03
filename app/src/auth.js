@@ -47,3 +47,26 @@ export async function postAuth(path, body) {
     return { ok: false, status: 0, data: { error: 'network' } }
   }
 }
+
+export function accountDisplayState(me, rxPubkey) {
+  const guest = !me || me.role === 'guest' || !me.username
+  if (guest) {
+    return {
+      label: 'Not logged in',
+      loggedIn: false,
+      showLogin: true,
+      showRegister: true,
+      showLogout: false,
+      showLink: false,
+    }
+  }
+  const companions = me.companions || []
+  return {
+    label: `${me.username} (${me.role})`,
+    loggedIn: true,
+    showLogin: false,
+    showRegister: false,
+    showLogout: true,
+    showLink: !!rxPubkey && !companions.includes(rxPubkey),
+  }
+}
