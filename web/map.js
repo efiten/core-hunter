@@ -119,8 +119,15 @@ function applyLocateGate() {
   if (btn) btn.hidden = !show
   if (!show && locateActive) deactivateLocate()
 }
-// Task 9 fills this in with real observer-points-gating UI; stub kept until then.
-function applyObserverGate() {}
+// Hides the CS-layer toggle control (and drops its layers) for non-members;
+// the server returns 403 for /api/observer-points below member so there is
+// nothing useful to show or fetch.
+function applyObserverGate() {
+  const show = canSeeObserverPoints(currentRole)
+  const toggle = document.querySelector('.cs-layer-toggle')
+  if (toggle) toggle.hidden = !show
+  if (!show) clearObserverLayers()
+}
 
 function applyRole(me) {
   currentRole = me.role || 'guest'
@@ -304,8 +311,10 @@ async function drawLocate() {
   const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
   const hk = encodeURIComponent(f.sender)
   const extra = []
-  if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
-  if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+  if (canSeeObserverPoints(currentRole)) {
+    if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
+    if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+  }
   if (extra.length) {
     const res = await Promise.all(extra.map((u) => fetch(u).then((r) => (r.ok ? r.json() : { points: [] })).catch(() => ({ points: [] }))))
     for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
@@ -364,6 +373,7 @@ document.addEventListener('click', (e) => {
 // repeater name. Relays (last-hop repeaters) drawn as a ring to distinguish them
 // from the solid advert (zero-hop node) dots.
 async function drawObserverPoints(src, layer, ring) {
+  if (!canSeeObserverPoints(currentRole)) return
   layer.clearLayers()
   const f = (window.currentFilters && window.currentFilters()) || {}
   const p = new URLSearchParams({ src })
@@ -408,6 +418,13 @@ async function drawObserverPoints(src, layer, ring) {
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
 const csCbForSrc = (src) => (src === 'advert' ? csAdvertCb : csRelayCb)
+// Drops both CS observer layers and resets their checkboxes — used when the
+// gate hides the toggle so a later role change doesn't reveal a stale-checked
+// control with a cleared layer.
+function clearObserverLayers() {
+  csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  csAdvertCb.checked = false; csRelayCb.checked = false
+}
 function toggleCsLayer(cb, src, layer, ring) {
   if (locateActive) { drawLocate(); return } // focus mode: feed Locate, not the all-nodes layer
   cb.checked ? drawObserverPoints(src, layer, ring) : layer.clearLayers()

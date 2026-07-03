@@ -92,3 +92,30 @@ test('guest ?locate=1 does not restore Locate', async ({ page }) => {
   await expect(page.locator('#locate-toggle')).toBeHidden()
   await expect(page.locator('.lc-strongest')).toHaveCount(0)
 })
+
+test('observer-point layers are hidden for guests and a 403 does not break the map', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  await page.route('**/api/observer-points*', r => r.fulfill({ status: 403, json: { error: 'forbidden' } }))
+  const pageErrors = []
+  page.on('pageerror', (e) => pageErrors.push(e))
+  await page.goto('/')
+  // the CS-layer toggle must not be shown for guests
+  await expect(page.locator('.cs-layer-toggle')).toBeHidden()
+  // map still renders (no unhandled rejection breaking the app)
+  await expect(page.locator('#map')).toBeVisible()
+  expect(pageErrors).toHaveLength(0)
+})
+
+test('observer-point (CS) layers are available for members', async ({ page }) => {
+  await mockRole(page, { role: 'member', username: 'm' })
+  await page.route('**/api/observer-points*', r => r.fulfill({ json: { points: [] } }))
+  const pageErrors = []
+  page.on('pageerror', (e) => pageErrors.push(e))
+  await page.goto('/')
+  await expect(page.locator('.cs-layer-toggle')).toBeVisible()
+  const req = page.waitForRequest((r) => r.url().includes('/observer-points'))
+  await page.check('#cs-adverts')
+  await req
+  await expect(page.locator('#map')).toBeVisible()
+  expect(pageErrors).toHaveLength(0)
+})
