@@ -21,3 +21,29 @@ export function buildLoginBody({ username, password, remember }) {
 export function buildLinkBody(companionPubkey) {
   return { companion_pubkey: companionPubkey }
 }
+
+export async function fetchMe() {
+  try {
+    const r = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store' })
+    if (!r.ok) return { role: 'guest' }
+    return await r.json()
+  } catch (_) {
+    return { role: 'guest', offline: true }
+  }
+}
+
+export async function postAuth(path, body) {
+  try {
+    const r = await fetch(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    let data = {}
+    try { data = await r.json() } catch (_) { data = {} }
+    return { ok: r.ok, status: r.status, data }
+  } catch (_) {
+    return { ok: false, status: 0, data: { error: 'network' } }
+  }
+}

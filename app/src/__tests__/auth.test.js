@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody } from '../auth.js'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth } from '../auth.js'
 
 describe('validateRegistration', () => {
   const ok = { username: 'alice', password: '0123456789', companionPubkey: 'ab'.repeat(32) }
@@ -32,5 +32,38 @@ describe('body builders', () => {
   })
   it('buildLinkBody wraps the pubkey', () => {
     expect(buildLinkBody('ff')).toEqual({ companion_pubkey: 'ff' })
+  })
+})
+
+afterEach(() => { vi.restoreAllMocks() })
+
+describe('fetchMe', () => {
+  it('returns the parsed me-shape on success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200,
+      json: async () => ({ role: 'hunter', username: 'alice', companions: ['ff'] }) })))
+    expect(await fetchMe()).toEqual({ role: 'hunter', username: 'alice', companions: ['ff'] })
+  })
+  it('returns offline guest on network error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down') }))
+    expect(await fetchMe()).toEqual({ role: 'guest', offline: true })
+  })
+})
+
+describe('postAuth', () => {
+  it('returns ok+status+data on success', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200,
+      json: async () => ({ role: 'hunter', username: 'alice' }) })))
+    const r = await postAuth('/api/auth/login', { username: 'alice' })
+    expect(r).toEqual({ ok: true, status: 200, data: { role: 'hunter', username: 'alice' } })
+  })
+  it('tolerates an empty 204 body', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 204,
+      json: async () => { throw new Error('no body') } })))
+    const r = await postAuth('/api/auth/logout', {})
+    expect(r).toEqual({ ok: true, status: 204, data: {} })
+  })
+  it('returns a network sentinel on fetch throw', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down') }))
+    expect(await postAuth('/api/auth/login', {})).toEqual({ ok: false, status: 0, data: { error: 'network' } })
   })
 })
