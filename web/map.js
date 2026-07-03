@@ -127,6 +127,7 @@ function applyRole(me) {
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
   notice.textContent = msg || ''
+  notice.title = msg ? 'Guests & hunters see: last 24 h, max 500 recent points, ~1 km positions, anonymised hunters. Members see full data.' : ''
   notice.hidden = !msg
   applyLocateGate()
   applyObserverGate()

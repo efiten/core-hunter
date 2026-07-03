@@ -29,4 +29,7 @@ describe('role helpers', () => {
     expect(guestNotice('guest')).toMatch(/24 h|coarse|approximate/i)
     expect(guestNotice('member')).toBeNull()
   })
+  it('hunter also sees the degraded notice (own data is exact server-side, global is coarse)', () => {
+    expect(guestNotice('hunter')).not.toBeNull()
+  })
 })
