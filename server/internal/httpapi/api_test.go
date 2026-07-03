@@ -34,7 +34,7 @@ func TestFilterFromHopsAndTypes(t *testing.T) {
 
 func TestVersionEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
-	RegisterRoutes(mux, nil, nil, nil)
+	RegisterRoutes(mux, nil, nil, nil, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/version", nil))
 	if rec.Code != http.StatusOK { t.Fatalf("status = %d, want 200", rec.Code) }

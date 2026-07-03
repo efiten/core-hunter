@@ -55,7 +55,13 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 const heatmapCap = 50000
 
-func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *store.CSReader) {
+type Deps struct {
+	Auth    *AuthAPI
+	Admin   *AdminAPI
+	Resolve *ResolveAPI
+}
+
+func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *store.CSReader, deps *Deps) {
 	mux.HandleFunc("/api/points", func(w http.ResponseWriter, r *http.Request) {
 		pts, trunc, err := s.QueryPoints(filterFrom(r, ignore))
 		if err != nil { http.Error(w, err.Error(), 500); return }
@@ -100,4 +106,22 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		if err != nil { http.Error(w, err.Error(), 500); return }
 		writeJSON(w, map[string]any{"points": pts})
 	})
+	if deps == nil { return }
+	if deps.Auth != nil {
+		mux.HandleFunc("/api/auth/me", deps.Auth.Me)
+		mux.HandleFunc("/api/auth/register", deps.Auth.Register)
+		mux.HandleFunc("/api/auth/login", deps.Auth.Login)
+		mux.HandleFunc("/api/auth/logout", deps.Auth.Logout)
+		mux.HandleFunc("/api/auth/link-companion", deps.Auth.LinkCompanion)
+		mux.HandleFunc("/api/auth/reset-request", deps.Auth.ResetRequest)
+		mux.HandleFunc("/api/auth/reset", deps.Auth.Reset)
+	}
+	if deps.Resolve != nil {
+		mux.HandleFunc("/api/resolve", deps.Resolve.Resolve)
+	}
+	if deps.Admin != nil {
+		mux.HandleFunc("/api/admin/users", deps.Admin.Users)
+		mux.HandleFunc("/api/admin/users/", deps.Admin.UserPatch) // trailing slash → {id}
+		mux.HandleFunc("/api/admin/audit", deps.Admin.Audit)
+	}
 }
