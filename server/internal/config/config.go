@@ -18,10 +18,21 @@ type Config struct {
 	// Ignore is a server-side default list of sender_ids excluded from all read
 	// endpoints (merged with any per-request ?ignore=). Case-insensitive.
 	Ignore []string `json:"ignore"`
+
+	// --- user management (v1.0) ---
+	CookieSecure     bool     `json:"cookieSecure"` // default true (see Load)
+	BaseURL          string   `json:"baseUrl"`      // e.g. https://map.mesh-hunter.eu, for mail links
+	BrevoSmtpHost    string   `json:"brevoSmtpHost"`
+	BrevoSmtpPort    int      `json:"brevoSmtpPort"`
+	BrevoUser        string   `json:"brevoUser"`
+	BrevoApiKey      string   `json:"brevoApiKey"`
+	MailFrom         string   `json:"mailFrom"`
+	BootstrapAdmin   string   `json:"bootstrapAdmin"`   // username promoted to admin on startup if it exists
+	ResolveUpstreams []string `json:"resolveUpstreams"` // SF7/SF8 resolve URLs proxied by /api/resolve
 }
 
 func Load(path string) (Config, error) {
-	var c Config
+	c := Config{CookieSecure: true} // default; explicit "cookieSecure":false overrides
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return c, err
