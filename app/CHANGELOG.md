@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/efiten/core-hunter/compare/app-v0.14.0...app-v0.14.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **app:** correct leaflet-rotate's renderer zoom transform to stop drift ([#168](https://github.com/efiten/core-hunter/issues/168)) ([a0f6093](https://github.com/efiten/core-hunter/commit/a0f6093e6d38f98dc8fa1e4b223462c6ef947405))
+
 ## [0.14.0](https://github.com/efiten/core-hunter/compare/app-v0.13.0...app-v0.14.0) (2026-07-02)
 
 

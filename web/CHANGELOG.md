@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/efiten/core-hunter/compare/web-v0.5.0...web-v0.6.0) (2026-07-03)
+
+
+### Features
+
+* web filter parity with the app (packet-type + direct-only via hops) ([#170](https://github.com/efiten/core-hunter/issues/170)) ([3ce0640](https://github.com/efiten/core-hunter/commit/3ce0640def61afe4fb0331c2ab2e5dfb6a3ffaec))
+
+
+### Bug Fixes
+
+* **web:** CS-layer toggle clears reliably; add Clear button + sender-name hover ([#171](https://github.com/efiten/core-hunter/issues/171)) ([4594d75](https://github.com/efiten/core-hunter/commit/4594d75062375657c7cc6187b2f0610e55baf790))
+
 ## [0.5.0](https://github.com/efiten/core-hunter/compare/web-v0.4.1...web-v0.5.0) (2026-07-02)
 
 
