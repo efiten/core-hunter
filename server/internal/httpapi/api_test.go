@@ -177,6 +177,42 @@ func TestPointsPseudonymTokenResolves(t *testing.T) {
 	}
 }
 
+// TestPointsHunterOwnFullHistory: a hunter's OWN companion rows must come back
+// exact + full history (no 24h window, no 500 cap), while OTHER hunters' old
+// rows still get dropped by the guest-style window (#Important-1, spec §4).
+func TestPointsHunterOwnFullHistory(t *testing.T) {
+	st, _ := store.Open(":memory:")
+	defer st.Close()
+	recent := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	old := time.Now().Add(-72 * time.Hour).UTC().Format(time.RFC3339)
+	st.Insert(store.Reception{HunterPubkey: "aaaa", HunterName: "Alice", RxAt: recent, RSSI: -70, Raw: "00", IsDirect: true, Lat: 51.23456, Lon: 4.98765, SenderID: "s1", PacketType: "Response"})
+	st.Insert(store.Reception{HunterPubkey: "aaaa", HunterName: "Alice", RxAt: old, RSSI: -70, Raw: "00", IsDirect: true, Lat: 51.0, Lon: 4.0, SenderID: "s1old", PacketType: "Response"})
+	st.Insert(store.Reception{HunterPubkey: "bbbb", HunterName: "Bob", RxAt: recent, RSSI: -80, Raw: "00", IsDirect: true, Lat: 52.11111, Lon: 5.22222, SenderID: "s2", PacketType: "Response"})
+	st.Insert(store.Reception{HunterPubkey: "bbbb", HunterName: "Bob", RxAt: old, RSSI: -80, Raw: "00", IsDirect: true, Lat: 52.0, Lon: 5.0, SenderID: "s2old", PacketType: "Response"})
+	a := Auth{Role: "hunter", UserID: 1, Username: "alice", Companions: []string{"aaaa"}}
+	out := doPoints(t, st, a)
+	pts := out["points"].([]any)
+	var sawOldOwn, sawOldOther bool
+	for _, p := range pts {
+		m := p.(map[string]any)
+		if m["sender_id"] == "s1old" {
+			sawOldOwn = true
+			if m["hunter_pubkey"] != "aaaa" || m["hunter_name"] != "Alice" {
+				t.Fatalf("own old row must stay exact: %v", m)
+			}
+		}
+		if m["sender_id"] == "s2old" {
+			sawOldOther = true
+		}
+	}
+	if !sawOldOwn {
+		t.Fatalf("own old (>24h) row must be included with full history, got points: %v", pts)
+	}
+	if sawOldOther {
+		t.Fatalf("other hunter's old (>24h) row must still be dropped by the 24h window, got points: %v", pts)
+	}
+}
+
 func doHeatmap(t *testing.T, st *store.Store, a Auth, query string) map[string]any {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, st, nil, nil, nil)
@@ -414,6 +450,45 @@ func TestHuntersHunterOwnReal(t *testing.T) {
 	}
 	if !sawOwnReal || !sawOtherPseudonym {
 		t.Fatalf("expected both an own-real and an other-pseudonymised entry, got out=%v", out)
+	}
+}
+
+// TestHuntersHunterMultipleCompanionsReal: a hunter with 2 companions must see
+// BOTH real on /api/hunters, and a third hunter still pseudonymised
+// (#Important-2, spec §5.1/§5.3).
+func TestHuntersHunterMultipleCompanionsReal(t *testing.T) {
+	st, _ := store.Open(":memory:")
+	defer st.Close()
+	recent := time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339)
+	st.Insert(store.Reception{HunterPubkey: "aaaa", HunterName: "Alice", RxAt: recent, RSSI: -70, Raw: "00", IsDirect: true, Lat: 51.0, Lon: 4.0, SenderID: "s1", PacketType: "Response"})
+	st.Insert(store.Reception{HunterPubkey: "bbbb", HunterName: "Bob", RxAt: recent, RSSI: -80, Raw: "00", IsDirect: true, Lat: 52.0, Lon: 5.0, SenderID: "s2", PacketType: "Response"})
+	st.Insert(store.Reception{HunterPubkey: "cccc", HunterName: "Carol", RxAt: recent, RSSI: -75, Raw: "00", IsDirect: true, Lat: 53.0, Lon: 6.0, SenderID: "s3", PacketType: "Response"})
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	a := Auth{Role: "hunter", UserID: 1, Username: "alice", Companions: []string{"aaaa", "bbbb"}}
+	r := httptest.NewRequest("GET", "/api/hunters", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, a))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	var out map[string]any
+	json.Unmarshal(w.Body.Bytes(), &out)
+	sawAliceReal, sawBobReal, sawCarolPseudonym := false, false, false
+	for _, h := range out["hunters"].([]any) {
+		m := h.(map[string]any)
+		switch m["hunter_pubkey"] {
+		case "aaaa":
+			if m["hunter_name"] != "Alice" { t.Fatalf("companion aaaa must stay real: %v", m) }
+			sawAliceReal = true
+		case "bbbb":
+			if m["hunter_name"] != "Bob" { t.Fatalf("companion bbbb must stay real: %v", m) }
+			sawBobReal = true
+		default:
+			if m["hunter_pubkey"].(string)[0] != 'h' { t.Fatalf("third hunter must be pseudonymised: %v", m) }
+			sawCarolPseudonym = true
+		}
+	}
+	if !sawAliceReal || !sawBobReal || !sawCarolPseudonym {
+		t.Fatalf("expected both own companions real and the third pseudonymised, got out=%v", out)
 	}
 }
 

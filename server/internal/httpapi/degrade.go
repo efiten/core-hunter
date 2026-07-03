@@ -40,10 +40,10 @@ func degradePoints(pts []store.Point, ps auth.Pseudonyms, own map[string]bool) [
 	return out
 }
 
-func pseudonymiseHunters(hs []store.Hunter, ps auth.Pseudonyms, ownPubkey string) []store.Hunter {
+func pseudonymiseHunters(hs []store.Hunter, ps auth.Pseudonyms, own map[string]bool) []store.Hunter {
 	out := make([]store.Hunter, len(hs))
 	for i, h := range hs {
-		if h.Pubkey == ownPubkey && ownPubkey != "" {
+		if own[h.Pubkey] {
 			out[i] = h
 			continue
 		}

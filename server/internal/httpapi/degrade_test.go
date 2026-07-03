@@ -41,17 +41,38 @@ func TestPseudonymiseHunters(t *testing.T) {
 		{Pubkey: "aaaa", Name: "Alice", Count: 10},
 		{Pubkey: "bbbb", Name: "Bob", Count: 5},
 	}
-	// guest: ownPubkey "" -> all pseudonymised, counts kept
-	g := pseudonymiseHunters(hs, ps, "")
+	// guest: empty own set -> all pseudonymised, counts kept
+	g := pseudonymiseHunters(hs, ps, nil)
 	if g[0].Pubkey != "h1" || g[0].Name != "Hunter 1" || g[0].Count != 10 {
 		t.Fatalf("guest hunter not pseudonymised: %+v", g[0])
 	}
 	// hunter: own entry real, others pseudonymised
-	h := pseudonymiseHunters(hs, ps, "aaaa")
+	h := pseudonymiseHunters(hs, ps, map[string]bool{"aaaa": true})
 	if h[0].Pubkey != "aaaa" || h[0].Name != "Alice" {
 		t.Fatalf("own hunter should stay real: %+v", h[0])
 	}
 	if h[1].Pubkey != "h2" {
 		t.Fatalf("other hunter should be pseudonymised: %+v", h[1])
+	}
+}
+
+// TestPseudonymiseHuntersMultipleOwn: a caller with multiple own companions
+// must see ALL of them real, not just the first.
+func TestPseudonymiseHuntersMultipleOwn(t *testing.T) {
+	ps := auth.Pseudonyms{"aaaa": 1, "bbbb": 2, "cccc": 3}
+	hs := []store.Hunter{
+		{Pubkey: "aaaa", Name: "Alice", Count: 10},
+		{Pubkey: "bbbb", Name: "Bob", Count: 5},
+		{Pubkey: "cccc", Name: "Carol", Count: 1},
+	}
+	h := pseudonymiseHunters(hs, ps, map[string]bool{"aaaa": true, "bbbb": true})
+	if h[0].Pubkey != "aaaa" || h[0].Name != "Alice" {
+		t.Fatalf("own hunter aaaa should stay real: %+v", h[0])
+	}
+	if h[1].Pubkey != "bbbb" || h[1].Name != "Bob" {
+		t.Fatalf("own hunter bbbb should stay real: %+v", h[1])
+	}
+	if h[2].Pubkey != "h3" {
+		t.Fatalf("other hunter should be pseudonymised: %+v", h[2])
 	}
 }

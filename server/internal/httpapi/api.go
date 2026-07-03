@@ -66,10 +66,15 @@ func resolveHunterFilter(f store.Filter, a Auth, ps auth.Pseudonyms) store.Filte
 // token to a real pubkey for sub-member callers. Returns the adjusted filter.
 func degradeFilter(f store.Filter, a Auth, ps auth.Pseudonyms, now time.Time) store.Filter {
 	if a.AtLeast("member") { return f }
-	// window + cap for the degraded view
+	return resolveHunterFilter(applyGuestWindowCap(f, now), a, ps)
+}
+
+// applyGuestWindowCap forces the 24h window + 500-row cap onto f (used for
+// any view of a sub-member caller that isn't their own full-history data).
+func applyGuestWindowCap(f store.Filter, now time.Time) store.Filter {
 	if f.From == "" || f.From < windowFrom(now) { f.From = windowFrom(now) }
 	if f.Limit <= 0 || f.Limit > guestPointCap { f.Limit = guestPointCap }
-	return resolveHunterFilter(f, a, ps)
+	return f
 }
 
 func pubkeyForOrdinal(ps auth.Pseudonyms, n int) string {
@@ -96,18 +101,51 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 	mux.HandleFunc("/api/points", func(w http.ResponseWriter, r *http.Request) {
 		a := AuthOf(r)
 		f := filterFrom(r, ignore)
-		var ps auth.Pseudonyms
-		if !a.AtLeast("member") {
-			ord, _ := s.HunterOrdinals()
-			ps = auth.Pseudonyms(ord)
-			f = degradeFilter(f, a, ps, time.Now())
+		if a.AtLeast("member") {
+			pts, trunc, err := s.QueryPoints(f)
+			if err != nil { http.Error(w, err.Error(), 500); return }
+			writeJSON(w, map[string]any{"points": pts, "truncated": trunc})
+			return
 		}
-		pts, trunc, err := s.QueryPoints(f)
-		if err != nil { http.Error(w, err.Error(), 500); return }
-		if !a.AtLeast("member") {
-			own := map[string]bool{}
-			for _, c := range a.Companions { own[c] = true }
-			pts = degradePoints(pts, ps, own)
+		ord, _ := s.HunterOrdinals()
+		ps := auth.Pseudonyms(ord)
+		f = resolveHunterFilter(f, a, ps)
+		own := map[string]bool{}
+		for _, c := range a.Companions { own[strings.ToLower(c)] = true }
+		var pts []store.Point
+		var trunc bool
+		switch {
+		case f.Hunter != "" && a.ownsCompanion(strings.ToLower(f.Hunter)):
+			// filtered to one of the caller's own companions: exact, full history
+			p, t, err := s.QueryPoints(f)
+			if err != nil { http.Error(w, err.Error(), 500); return }
+			pts, trunc = p, t
+		case f.Hunter != "":
+			// filtered to a specific OTHER hunter: windowed+capped, pseudonymised
+			p, t, err := s.QueryPoints(applyGuestWindowCap(f, time.Now()))
+			if err != nil { http.Error(w, err.Error(), 500); return }
+			pts, trunc = degradePoints(p, ps, nil), t
+		default:
+			// unfiltered sub-member view: own companions exact+full history,
+			// everyone else windowed+capped+pseudonymised (#Important-1, spec §4)
+			others, ot, err := s.QueryPoints(applyGuestWindowCap(f, time.Now()))
+			if err != nil { http.Error(w, err.Error(), 500); return }
+			var rest []store.Point
+			for _, p := range others {
+				if !own[strings.ToLower(p.HunterPubkey)] { rest = append(rest, p) }
+			}
+			pseudo := degradePoints(rest, ps, nil)
+			var ownRows []store.Point
+			ownTrunc := false
+			for c := range own {
+				of := f
+				of.Hunter, of.From, of.Limit = c, "", 0
+				rows, t, err := s.QueryPoints(of)
+				if err != nil { http.Error(w, err.Error(), 500); return }
+				ownRows = append(ownRows, rows...)
+				if t { ownTrunc = true }
+			}
+			pts, trunc = append(ownRows, pseudo...), ot || ownTrunc
 		}
 		writeJSON(w, map[string]any{"points": pts, "truncated": trunc})
 	})
@@ -147,11 +185,9 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		if !a.AtLeast("member") {
 			ord, _ := s.HunterOrdinals()
 			ps := auth.Pseudonyms(ord)
-			ownPubkey := ""
-			if a.Role == "hunter" && len(a.Companions) > 0 {
-				ownPubkey = a.Companions[0] // first companion shown real; others pseudonymised
-			}
-			hs = pseudonymiseHunters(hs, ps, ownPubkey)
+			own := map[string]bool{}
+			for _, c := range a.Companions { own[strings.ToLower(c)] = true }
+			hs = pseudonymiseHunters(hs, ps, own)
 		}
 		writeJSON(w, map[string]any{"hunters": hs})
 	})
