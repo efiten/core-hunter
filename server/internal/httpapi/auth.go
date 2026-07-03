@@ -276,6 +276,28 @@ func (h *AuthAPI) Login(w http.ResponseWriter, r *http.Request) {
 	writeMe(w, h.authForUser(u.ID))
 }
 
+func (h *AuthAPI) LinkCompanion(w http.ResponseWriter, r *http.Request) {
+	a := AuthOf(r)
+	if a.UserID == 0 {
+		writeErr(w, 401, "unauthenticated")
+		return
+	}
+	var in struct {
+		CompanionPubkey string `json:"companion_pubkey"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.CompanionPubkey == "" {
+		writeErr(w, 400, "companion_required")
+		return
+	}
+	pk := strings.ToLower(in.CompanionPubkey)
+	if err := h.Store.LinkCompanion(a.UserID, pk); err != nil {
+		writeErr(w, 500, "link_error")
+		return
+	}
+	h.Store.AddAudit(a.UserID, "link_companion", pk, clientIP(r), "")
+	writeMe(w, h.authForUser(a.UserID))
+}
+
 func (h *AuthAPI) Logout(w http.ResponseWriter, r *http.Request) {
 	if ck, err := r.Cookie(CookieName); err == nil && ck.Value != "" {
 		h.Store.DeleteSession(auth.HashToken(ck.Value))

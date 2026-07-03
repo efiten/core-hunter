@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -127,5 +128,31 @@ func TestLoginLogout(t *testing.T) {
 		strings.NewReader(`{"username":"alice","password":"correcthorse"}`)))
 	if w3.Code != 403 {
 		t.Fatalf("disabled should be 403, got %d", w3.Code)
+	}
+}
+
+func TestLinkCompanionRequiresAuth(t *testing.T) {
+	h, st := newAuthAPI(t)
+	defer st.Close()
+	// unauthenticated
+	w := httptest.NewRecorder()
+	h.LinkCompanion(w, httptest.NewRequest("POST", "/api/auth/link-companion",
+		strings.NewReader(`{"companion_pubkey":"cc33"}`)))
+	if w.Code != 401 {
+		t.Fatalf("unauth link should be 401, got %d", w.Code)
+	}
+	// authenticated via context
+	uid, _ := st.CreateUser("alice", "", "h", "hunter", "active")
+	r := httptest.NewRequest("POST", "/api/auth/link-companion",
+		strings.NewReader(`{"companion_pubkey":"CC33"}`))
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey,
+		Auth{UserID: uid, Username: "alice", Role: "hunter"}))
+	w2 := httptest.NewRecorder()
+	h.LinkCompanion(w2, r)
+	if w2.Code != 200 {
+		t.Fatalf("auth link should be 200, got %d", w2.Code)
+	}
+	if owner, _ := st.UserIDForCompanion("cc33"); owner != uid { // lowercased
+		t.Fatalf("companion not linked (lowercased): %d", owner)
 	}
 }
