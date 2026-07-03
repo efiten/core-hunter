@@ -368,6 +368,124 @@ func TestHeatmapPseudonymTokenResolves(t *testing.T) {
 	}
 }
 
+func TestHuntersGuestPseudonymised(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	r := httptest.NewRequest("GET", "/api/hunters", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Guest()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	var out map[string]any
+	json.Unmarshal(w.Body.Bytes(), &out)
+	for _, h := range out["hunters"].([]any) {
+		m := h.(map[string]any)
+		if m["hunter_pubkey"].(string)[0] != 'h' {
+			t.Fatalf("guest hunter pubkey should be pseudonym: %v", m)
+		}
+	}
+}
+
+// TestHuntersHunterOwnReal: a hunter caller sees their own companion's entry
+// real (pubkey+name) while every other hunter's entry stays pseudonymised.
+func TestHuntersHunterOwnReal(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	a := Auth{Role: "hunter", UserID: 1, Username: "alice", Companions: []string{"aaaa"}}
+	r := httptest.NewRequest("GET", "/api/hunters", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, a))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	var out map[string]any
+	json.Unmarshal(w.Body.Bytes(), &out)
+	sawOwnReal, sawOtherPseudonym := false, false
+	for _, h := range out["hunters"].([]any) {
+		m := h.(map[string]any)
+		if m["hunter_pubkey"] == "aaaa" {
+			if m["hunter_name"] != "Alice" { t.Fatalf("own hunter entry must stay real: %v", m) }
+			sawOwnReal = true
+		} else {
+			if m["hunter_pubkey"].(string)[0] != 'h' { t.Fatalf("other hunter entry must be pseudonymised: %v", m) }
+			sawOtherPseudonym = true
+		}
+	}
+	if !sawOwnReal || !sawOtherPseudonym {
+		t.Fatalf("expected both an own-real and an other-pseudonymised entry, got out=%v", out)
+	}
+}
+
+// TestHuntersMemberReal: member/admin callers get the unchanged, fully real list.
+func TestHuntersMemberReal(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	r := httptest.NewRequest("GET", "/api/hunters", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Auth{Role: "member", UserID: 1, Username: "m"}))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	var out map[string]any
+	json.Unmarshal(w.Body.Bytes(), &out)
+	seen := map[string]bool{}
+	for _, h := range out["hunters"].([]any) {
+		m := h.(map[string]any)
+		seen[m["hunter_pubkey"].(string)] = true
+	}
+	if !seen["aaaa"] || !seen["bbbb"] {
+		t.Fatalf("member must see real hunter pubkeys, got %v", seen)
+	}
+}
+
+func TestObserverPointsBlockedForGuest(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	r := httptest.NewRequest("GET", "/api/observer-points?src=advert", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Guest()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatalf("observer-points must be 403 for guest, got %d", w.Code)
+	}
+}
+
+// TestObserverPointsBlockedForHunter: a hunter (sub-member) caller must also
+// be blocked, not just guest.
+func TestObserverPointsBlockedForHunter(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	a := Auth{Role: "hunter", UserID: 1, Username: "alice", Companions: []string{"aaaa"}}
+	r := httptest.NewRequest("GET", "/api/observer-points?src=advert", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, a))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 403 {
+		t.Fatalf("observer-points must be 403 for hunter, got %d", w.Code)
+	}
+}
+
+// TestObserverPointsMemberOK: member/admin behavior is unchanged -- 200 with
+// the (feature-disabled, cs==nil in this test) empty points body.
+func TestObserverPointsMemberOK(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	r := httptest.NewRequest("GET", "/api/observer-points?src=advert", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Auth{Role: "member", UserID: 1, Username: "m"}))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("observer-points must be 200 for member, got %d", w.Code)
+	}
+}
+
 // TestDegradeFilterCapClampsNegative: a negative (or zero, or over-cap) limit
 // must always clamp to guestPointCap for a sub-member caller -- store.QueryPoints
 // treats any <=0 limit as "use its own 5000 default", which would otherwise

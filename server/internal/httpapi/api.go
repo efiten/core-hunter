@@ -140,9 +140,19 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		writeJSON(w, fc)
 	})
 	mux.HandleFunc("/api/hunters", func(w http.ResponseWriter, r *http.Request) {
+		a := AuthOf(r)
 		f := filterFrom(r, ignore)
 		hs, err := s.Hunters(f.From, f.To, f.Ignore)
 		if err != nil { http.Error(w, err.Error(), 500); return }
+		if !a.AtLeast("member") {
+			ord, _ := s.HunterOrdinals()
+			ps := auth.Pseudonyms(ord)
+			ownPubkey := ""
+			if a.Role == "hunter" && len(a.Companions) > 0 {
+				ownPubkey = a.Companions[0] // first companion shown real; others pseudonymised
+			}
+			hs = pseudonymiseHunters(hs, ps, ownPubkey)
+		}
 		writeJSON(w, map[string]any{"hunters": hs})
 	})
 	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +161,7 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 	// CoreScope mobile-observer points (extra optional map layers). src selects
 	// the layer: advert (zero-hop nodes) or rxlog (last-hop repeaters).
 	mux.HandleFunc("/api/observer-points", func(w http.ResponseWriter, r *http.Request) {
+		if !AuthOf(r).AtLeast("member") { writeErr(w, 403, "forbidden"); return }
 		if cs == nil { // feature disabled (no CoreScope DB configured)
 			writeJSON(w, map[string]any{"points": []store.ObserverPoint{}})
 			return
