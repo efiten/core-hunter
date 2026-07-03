@@ -519,6 +519,8 @@ async function disconnectAll(silent) {
   setDot('dot-ble', false)
   setDot('dot-mqtt', false)
   state.connected = false
+  state.rxPubkey = ''
+  state.sf = null
   el('discover-btn').disabled = true
 
   if (state.wakeLock) state.wakeLock.disable()
@@ -865,11 +867,6 @@ function buildSettingsSheet() {
   })
   el('ss-acc-cancel').addEventListener('click', closeAccForm)
 
-  function maybeOfferLink() {
-    const s = accountDisplayState(state.account, state.rxPubkey)
-    el('ss-acc-link').hidden = !s.showLink
-  }
-
   el('ss-acc-link').addEventListener('click', async () => {
     if (!state.rxPubkey) return
     const short = state.rxPubkey.slice(0, 12) + '…'
@@ -899,7 +896,7 @@ function buildSettingsSheet() {
     if (accFormMode === 'login') {
       const remember = el('ss-acc-remember').checked
       const r = await postAuth('/api/auth/login', buildLoginBody({ username, password, remember }))
-      if (r.ok) { closeAccForm(); await refreshAccount(); maybeOfferLink() }
+      if (r.ok) { closeAccForm(); await refreshAccount() }
       else if (r.status === 401) accMsg('Wrong username or password.')
       else if (r.status === 403) accMsg('This account is disabled.')
       else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
