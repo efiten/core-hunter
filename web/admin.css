@@ -1,0 +1,9 @@
+body { background: var(--ch-bg); color: var(--ch-text); font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+.admin-head { display: flex; gap: 16px; align-items: baseline; }
+.tab-btn { background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border); border-radius: 6px; padding: 6px 10px; }
+table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--ch-border); }
+.row-actions button { margin-right: 4px; background: var(--ch-input-bg); color: var(--ch-text); border: 1px solid var(--ch-border); border-radius: 4px; }
+.invite input, .invite select { background: var(--ch-input-bg); color: var(--ch-text); border: 1px solid var(--ch-border); border-radius: 4px; padding: 4px; margin-right: 6px; }
+#audit-list { list-style: none; padding: 0; font-family: monospace; }
+#audit-list li { padding: 4px 0; border-bottom: 1px solid var(--ch-border); }

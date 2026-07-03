@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>core-hunter — admin</title>
+  <script type="module">
+    // Honor the theme saved by the map (shared ch-state localStorage key /
+    // ?theme= URL param), same precedence as map.js. Default dark.
+    import { initial } from './urlstate.js'
+    document.documentElement.dataset.theme = initial('theme', 'dark') === 'light' ? 'light' : 'dark'
+  </script>
+  <script type="module">
+    import { VERSION } from './version.js'
+    const v = '?v=' + VERSION
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'style.css' + v; document.head.appendChild(css)
+    const acss = document.createElement('link'); acss.rel = 'stylesheet'; acss.href = 'admin.css' + v; document.head.appendChild(acss)
+    const s = document.createElement('script'); s.type = 'module'; s.src = 'admin.js' + v; document.body.appendChild(s)
+  </script>
+</head>
+<body>
+  <header class="admin-head">
+    <h1>Admin</h1>
+    <nav><button class="tab-btn" data-tab="tab-users">Users</button>
+      <button class="tab-btn" data-tab="tab-audit">Audit</button></nav>
+  </header>
+  <section id="tab-users" class="tab">
+    <form id="invite-form" class="invite">
+      <input id="inv-user" placeholder="username" />
+      <input id="inv-email" type="email" placeholder="email" />
+      <select id="inv-role"><option value="member">member</option><option value="admin">admin</option></select>
+      <button type="submit">Invite</button>
+    </form>
+    <table><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Companions</th><th>Last login</th><th>Actions</th></tr></thead>
+      <tbody id="users-body"></tbody></table>
+  </section>
+  <section id="tab-audit" class="tab" hidden><ul id="audit-list"></ul></section>
+</body>
+</html>
