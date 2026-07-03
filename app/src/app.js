@@ -855,6 +855,14 @@ function buildSettingsSheet() {
   }
 
   el('ss-acc-login').addEventListener('click', () => openAccForm('login'))
+  el('ss-acc-register').addEventListener('click', () => {
+    if (!state.connected || !state.rxPubkey) {
+      accMsg('Connect a companion first — registration links it to your account.')
+      el('ss-acc-msg').hidden = false
+      return
+    }
+    openAccForm('register')
+  })
   el('ss-acc-cancel').addEventListener('click', closeAccForm)
 
   function maybeOfferLink() {} // replaced in Task 8
@@ -874,7 +882,23 @@ function buildSettingsSheet() {
       else accMsg('Login failed — check your connection.')
       return
     }
-    // register branch added in Task 7
+    if (accFormMode === 'register') {
+      const email = el('ss-acc-email').value
+      const errs = validateRegistration({ username, password, companionPubkey: state.rxPubkey })
+      if (errs.length) {
+        accMsg(errs.includes('password_too_short') ? 'Password must be at least 10 characters.'
+             : errs.includes('username_invalid') ? 'Enter a username.'
+             : 'Connect a companion first.')
+        return
+      }
+      const r = await postAuth('/api/auth/register',
+        buildRegisterBody({ username, password, email, companionPubkey: state.rxPubkey }))
+      if (r.ok) { closeAccForm(); await refreshAccount(); accMsg('Account created — logged in.', true) }
+      else if (r.status === 409) accMsg('That username is taken.')
+      else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
+      else accMsg('Registration failed — check your connection.')
+      return
+    }
   })
 
   refreshAccount()
