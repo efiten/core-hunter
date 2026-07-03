@@ -47,3 +47,14 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .pp-id { color: var(--ch-muted); font-size: 11px; word-break: break-all; }
 .lc-locate { margin-top: 6px; padding: 3px 9px; border: none; border-radius: 6px; cursor: pointer;
   background: var(--ch-sig-warm); color: var(--ch-bg); font: inherit; font-size: 12px; }
+.lc-modal { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1000;
+  background: color-mix(in srgb, var(--ch-bg) 60%, transparent); }
+.lc-modal[hidden] { display: none; }
+.lc-card { background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
+  border-radius: 10px; padding: 16px; min-width: 260px; backdrop-filter: blur(8px);
+  display: flex; flex-direction: column; gap: 8px; }
+.lc-card input[type=text], .lc-card input[type=password] {
+  background: var(--ch-input-bg); color: var(--ch-text); border: 1px solid var(--ch-border);
+  border-radius: 6px; padding: 8px; }
+.lc-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.lc-remember { font-size: .9em; color: var(--ch-muted); }

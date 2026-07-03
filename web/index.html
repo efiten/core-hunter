@@ -32,11 +32,25 @@
     <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
     <button id="clear-filters" title="Clear all filters">Clear</button>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
+    <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="status"></span>
     <span id="sf-counts"></span>
     <span id="ch-version"></span>
   </header>
   <div id="locate-info" hidden></div>
+  <div id="login-modal" class="lc-modal" hidden>
+    <form id="login-form" class="lc-card">
+      <h4>Log in</h4>
+      <input id="login-user" type="text" placeholder="Username" autocomplete="username" />
+      <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+      <label class="lc-remember"><input id="login-remember" type="checkbox" /> Remember me</label>
+      <p id="login-error" class="lc-warn" hidden>Login failed.</p>
+      <div class="lc-actions">
+        <button id="login-submit" type="submit">Log in</button>
+        <button id="login-cancel" type="button">Cancel</button>
+      </div>
+    </form>
+  </div>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script type="module">
@@ -54,6 +68,10 @@
     nodeCountsText()
       .then((t) => { if (t) document.getElementById('sf-counts').textContent = t; })
       .catch(() => {});
+  </script>
+  <script type="module">
+    import { initAuthBar } from './login.js';
+    initAuthBar(() => {});
   </script>
 </body>
 </html>
