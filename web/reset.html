@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>core-hunter — set password</title>
+  <script type="module">
+    // Honor the theme saved by the map (shared ch-state localStorage key /
+    // ?theme= URL param), same precedence as map.js/admin.html. Default dark.
+    import { initial } from './urlstate.js'
+    document.documentElement.dataset.theme = initial('theme', 'dark') === 'light' ? 'light' : 'dark'
+  </script>
+  <script type="module">
+    import { VERSION } from './version.js'
+    const v = '?v=' + VERSION
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'style.css' + v; document.head.appendChild(css)
+    const s = document.createElement('script'); s.type = 'module'; s.src = 'reset.js' + v; document.body.appendChild(s)
+  </script>
+</head>
+<body>
+  <form id="reset-form" class="lc-card" style="max-width:320px;margin:40px auto">
+    <h4>Set a new password</h4>
+    <input id="rp-pass" type="password" placeholder="New password (min 10 chars)" autocomplete="new-password" />
+    <p id="rp-error" class="lc-warn" hidden></p>
+    <p id="rp-ok" hidden>Password set — you can now log in on the map.</p>
+    <button type="submit">Save</button>
+  </form>
+</body>
+</html>
