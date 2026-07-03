@@ -88,3 +88,14 @@ describe('accountDisplayState', () => {
     expect(s.showLink).toBe(false)
   })
 })
+
+describe('offline resilience', () => {
+  it('offline me yields a guest display state, no throw', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down') }))
+    const me = await fetchMe()
+    expect(me.role).toBe('guest')
+    const s = accountDisplayState(me, '')
+    expect(s.loggedIn).toBe(false)
+    expect(s.showLogin).toBe(true)
+  })
+})
