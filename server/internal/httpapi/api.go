@@ -50,6 +50,18 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	return f
 }
 
+// resolveHunterFilter maps a pseudonym token to the real pubkey and blanks a raw
+// pubkey that isn't the sub-member caller's own companion (prevents cross-hunter targeting).
+func resolveHunterFilter(f store.Filter, a Auth, ps auth.Pseudonyms) store.Filter {
+	if f.Hunter == "" { return f }
+	if n, ok := auth.ParsePseudonym(f.Hunter); ok {
+		f.Hunter = pubkeyForOrdinal(ps, n) // "" if none -> query returns nothing
+	} else if !a.ownsCompanion(strings.ToLower(f.Hunter)) {
+		f.Hunter = ""
+	}
+	return f
+}
+
 // degradeFilter applies the guest window+cap and resolves a pseudonym hunter
 // token to a real pubkey for sub-member callers. Returns the adjusted filter.
 func degradeFilter(f store.Filter, a Auth, ps auth.Pseudonyms, now time.Time) store.Filter {
@@ -57,18 +69,7 @@ func degradeFilter(f store.Filter, a Auth, ps auth.Pseudonyms, now time.Time) st
 	// window + cap for the degraded view
 	if f.From == "" || f.From < windowFrom(now) { f.From = windowFrom(now) }
 	if f.Limit <= 0 || f.Limit > guestPointCap { f.Limit = guestPointCap }
-	// hunter filter: a pseudonym token resolves to its real pubkey; a raw
-	// pubkey is honoured only when it's the caller's own companion, else
-	// blanked -- otherwise a guest/hunter could pass any real pubkey and
-	// deanonymize/target that specific hunter's rows
-	if f.Hunter != "" {
-		if n, ok := auth.ParsePseudonym(f.Hunter); ok {
-			f.Hunter = pubkeyForOrdinal(ps, n) // "" if none -> query returns nothing
-		} else if !a.ownsCompanion(strings.ToLower(f.Hunter)) {
-			f.Hunter = ""
-		}
-	}
-	return f
+	return resolveHunterFilter(f, a, ps)
 }
 
 func pubkeyForOrdinal(ps auth.Pseudonyms, n int) string {
@@ -111,11 +112,29 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		writeJSON(w, map[string]any{"points": pts, "truncated": trunc})
 	})
 	mux.HandleFunc("/api/heatmap", func(w http.ResponseWriter, r *http.Request) {
+		a := AuthOf(r)
 		z, _ := strconv.Atoi(r.URL.Query().Get("z"))
 		f := filterFrom(r, ignore)
+		var ps auth.Pseudonyms
+		sub := !a.AtLeast("member")
+		if sub {
+			ord, _ := s.HunterOrdinals()
+			ps = auth.Pseudonyms(ord)
+			f = resolveHunterFilter(f, a, ps)
+			ownFull := f.Hunter != "" && a.ownsCompanion(strings.ToLower(f.Hunter))
+			if !ownFull {
+				if z > guestHeatmapMaxZ { z = guestHeatmapMaxZ }
+				if f.From == "" || f.From < windowFrom(time.Now()) { f.From = windowFrom(time.Now()) }
+			}
+		}
 		f.Limit = heatmapCap
 		pts, trunc, err := s.QueryPoints(f)
 		if err != nil { http.Error(w, err.Error(), 500); return }
+		if sub {
+			own := map[string]bool{}
+			for _, c := range a.Companions { own[c] = true }
+			pts = degradePoints(pts, ps, own)
+		}
 		fc := query.Heatmap(pts, geo.ResForZoom(z))
 		fc.Truncated = trunc
 		writeJSON(w, fc)

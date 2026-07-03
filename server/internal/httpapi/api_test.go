@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -173,6 +174,197 @@ func TestPointsPseudonymTokenResolves(t *testing.T) {
 	m := pts[0].(map[string]any)
 	if m["hunter_pubkey"] != "h1" || m["hunter_name"] != "Hunter 1" {
 		t.Fatalf("pseudonym-filtered row must stay pseudonymised: %v", m)
+	}
+}
+
+func doHeatmap(t *testing.T, st *store.Store, a Auth, query string) map[string]any {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	r := httptest.NewRequest("GET", "/api/heatmap"+query, nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, a))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	var out map[string]any
+	json.Unmarshal(w.Body.Bytes(), &out)
+	return out
+}
+
+func heatmapTotal(t *testing.T, g map[string]any) int {
+	feats := g["features"].([]any)
+	total := 0
+	for _, f := range feats {
+		total += int(f.(map[string]any)["properties"].(map[string]any)["count"].(float64))
+	}
+	return total
+}
+
+func TestHeatmapGuestResFloor(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	// request a very high zoom as guest -> server must floor it
+	r := httptest.NewRequest("GET", "/api/heatmap?z=18", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Guest()))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	var g map[string]any
+	json.Unmarshal(w.Body.Bytes(), &g)
+	feats := g["features"].([]any)
+	if len(feats) == 0 {
+		t.Fatal("expected some hex features")
+	}
+	// cell id encodes "res:q:r"; res must be <= ResForZoom(12)
+	first := feats[0].(map[string]any)["properties"].(map[string]any)["cell"].(string)
+	res := first[:strings.Index(first, ":")]
+	if res != "12" {
+		t.Fatalf("guest heatmap res = %s, want capped to 12", res)
+	}
+	// Compare against member (full res) to prove guest is coarser or equal.
+	rm := httptest.NewRequest("GET", "/api/heatmap?z=18", nil)
+	rm = rm.WithContext(context.WithValue(rm.Context(), authCtxKey, Auth{Role: "member"}))
+	wm := httptest.NewRecorder()
+	mux.ServeHTTP(wm, rm)
+	// (assert member response is 200 and non-empty; exact res comparison depends on geo.ResForZoom)
+	if wm.Code != 200 {
+		t.Fatalf("member heatmap failed: %d", wm.Code)
+	}
+	var gm map[string]any
+	json.Unmarshal(wm.Body.Bytes(), &gm)
+	mfeats := gm["features"].([]any)
+	mfirst := mfeats[0].(map[string]any)["properties"].(map[string]any)["cell"].(string)
+	mres := mfirst[:strings.Index(mfirst, ":")]
+	if mres != "18" {
+		t.Fatalf("member heatmap res = %s, want full 18", mres)
+	}
+}
+
+// TestHeatmapGuestWindowDrop: guest heatmap must drop rows older than the 24h
+// window even at low zoom (no res floor triggered).
+func TestHeatmapGuestWindowDrop(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doHeatmap(t, st, Guest(), "?z=5")
+	if got := heatmapTotal(t, out); got != 2 {
+		t.Fatalf("guest heatmap should drop the >24h row, got total count %d, want 2", got)
+	}
+}
+
+// TestHeatmapMemberFullNoWindow: member/admin heatmap is unchanged -- full
+// resolution, no window, all rows counted (including the old one).
+func TestHeatmapMemberFullNoWindow(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doHeatmap(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?z=5")
+	if got := heatmapTotal(t, out); got != 3 {
+		t.Fatalf("member heatmap should see all 3 rows, got total count %d", got)
+	}
+}
+
+// TestHeatmapHunterOwnFilterFullRes: a hunter filtering on their OWN companion
+// pubkey gets full resolution (their own data, no degradation).
+func TestHeatmapHunterOwnFilterFullRes(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	a := Auth{Role: "hunter", UserID: 1, Username: "alice", Companions: []string{"aaaa"}}
+	out := doHeatmap(t, st, a, "?z=18&hunter=aaaa")
+	feats := out["features"].([]any)
+	if len(feats) == 0 {
+		t.Fatal("expected some hex features")
+	}
+	first := feats[0].(map[string]any)["properties"].(map[string]any)["cell"].(string)
+	res := first[:strings.Index(first, ":")]
+	if res != "18" {
+		t.Fatalf("hunter own-filter heatmap res = %s, want full 18", res)
+	}
+}
+
+// TestHeatmapGuestRawPubkeyNotTargeted: a guest passing a real, raw pubkey via
+// ?hunter= must NOT get a heatmap scoped to just that hunter's rows -- that
+// would deanonymize/target them. The response must match the unfiltered guest
+// heatmap (same total count, more than one hunter still visible).
+func TestHeatmapGuestRawPubkeyNotTargeted(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	baseline := doHeatmap(t, st, Guest(), "")
+	out := doHeatmap(t, st, Guest(), "?hunter=bbbb")
+	if got, want := heatmapTotal(t, out), heatmapTotal(t, baseline); got != want {
+		t.Fatalf("raw pubkey must not narrow the guest heatmap: got total %d, want %d (unfiltered)", got, want)
+	}
+	seen := map[string]bool{}
+	for _, feat := range out["features"].([]any) {
+		props := feat.(map[string]any)["properties"].(map[string]any)
+		if hs, ok := props["hunters"].([]any); ok {
+			for _, h := range hs { seen[h.(string)] = true }
+		}
+	}
+	if len(seen) < 2 {
+		t.Fatalf("raw pubkey must not target a single hunter, got hunters: %v", seen)
+	}
+}
+
+// TestHeatmapGuestNamesPseudonymised: a guest's heatmap must never expose real
+// hunter names in per-cell Props.Hunters -- only "Hunter N" pseudonyms.
+func TestHeatmapGuestNamesPseudonymised(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doHeatmap(t, st, Guest(), "")
+	for _, feat := range out["features"].([]any) {
+		props := feat.(map[string]any)["properties"].(map[string]any)
+		hs, ok := props["hunters"].([]any)
+		if !ok { continue }
+		for _, h := range hs {
+			name := h.(string)
+			if name == "Alice" || name == "Bob" {
+				t.Fatalf("guest heatmap leaked a real hunter name: %v", name)
+			}
+			if len(name) < 6 || name[:6] != "Hunter" {
+				t.Fatalf("guest heatmap hunter name not pseudonymised: %v", name)
+			}
+		}
+	}
+}
+
+// TestHeatmapHunterOwnPubkeyFullRes: a hunter filtering by their OWN companion
+// pubkey gets full resolution (not capped) and their own real name is left
+// intact in the per-cell hunter list.
+func TestHeatmapHunterOwnPubkeyFullRes(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	a := Auth{Role: "hunter", UserID: 1, Username: "alice", Companions: []string{"aaaa"}}
+	out := doHeatmap(t, st, a, "?z=18&hunter=aaaa")
+	feats := out["features"].([]any)
+	if len(feats) == 0 {
+		t.Fatal("expected some hex features")
+	}
+	first := feats[0].(map[string]any)["properties"].(map[string]any)["cell"].(string)
+	res := first[:strings.Index(first, ":")]
+	if res != "18" {
+		t.Fatalf("own-pubkey heatmap res = %s, want full 18 (not capped)", res)
+	}
+	sawAlice := false
+	for _, feat := range feats {
+		props := feat.(map[string]any)["properties"].(map[string]any)
+		hs, ok := props["hunters"].([]any)
+		if !ok { continue }
+		for _, h := range hs {
+			if h.(string) == "Alice" { sawAlice = true }
+		}
+	}
+	if !sawAlice {
+		t.Fatal("own-companion heatmap must show the real hunter name in the cell list")
+	}
+}
+
+// TestHeatmapPseudonymTokenResolves: a guest filtering by a pseudonym token
+// (h1) must resolve to the ordinal-1 real hunter's rows (non-empty heatmap),
+// not silently return empty because the token was never resolved.
+func TestHeatmapPseudonymTokenResolves(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doHeatmap(t, st, Guest(), "?hunter=h1")
+	if got := heatmapTotal(t, out); got == 0 {
+		t.Fatal("pseudonym-token hunter filter returned an empty heatmap, want resolved to the ordinal-1 hunter's rows")
 	}
 }
 
