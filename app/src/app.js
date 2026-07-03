@@ -34,6 +34,7 @@ import { createWakeLock } from './wakelock.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_TIPS, pickTip } from './splash.js'
 import { compassHeading, bearingForHeading, nextCompassState } from './rotation.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
+import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState } from './auth.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -460,6 +461,20 @@ function setHuntingChrome(connected) {
   window.dispatchEvent(new Event('resize'))
 }
 
+// Fetch the current account/session and reflect it in the Account section:
+// status label + which of Register/Login/Logout/Link are visible. Called
+// whenever the Settings sheet opens (and once on first build).
+async function refreshAccount() {
+  const me = await fetchMe()
+  state.account = me
+  const s = accountDisplayState(me, state.rxPubkey)
+  el('ss-account-status').textContent = s.label
+  el('ss-acc-register').hidden = !s.showRegister
+  el('ss-acc-login').hidden = !s.showLogin
+  el('ss-acc-logout').hidden = !s.showLogout
+  el('ss-acc-link').hidden = !s.showLink
+}
+
 // Mirror the connection state into the BLE-settings Connection section. No-op
 // until the settings sheet has been built.
 function refreshConnState() {
@@ -820,6 +835,8 @@ function buildSettingsSheet() {
 
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+
+  refreshAccount()
 }
 
 // Fetch the deployed version (no-store so we always see the live file) and, if
@@ -1091,6 +1108,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       el('filter-sheet').hidden = true
       el('target-sheet').hidden = true
       refreshConnState()
+      refreshAccount()
       checkForUpdate()
     }
   })
