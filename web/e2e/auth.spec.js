@@ -12,7 +12,10 @@ test('guest sees a Log in button and can log in', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('#auth-btn')).toHaveText(/log in/i)
 
-  await page.route('**/api/auth/login', r => r.fulfill({ json: { role: 'member', username: 'alice' } }))
+  // The login response is deliberately a different (minimal) shape from /api/auth/me —
+  // if the client trusted this body instead of re-fetching /api/auth/me, the button
+  // would stay "Log in" (no username here) instead of showing "alice".
+  await page.route('**/api/auth/login', r => r.fulfill({ json: { ok: true } }))
   await page.click('#auth-btn')
   await page.fill('#login-user', 'alice')
   await page.fill('#login-pass', 'correcthorse')
@@ -31,4 +34,25 @@ test('bad credentials show an error', async ({ page }) => {
   await page.fill('#login-pass', 'wrongwrongwrong')
   await page.click('#login-submit')
   await expect(page.locator('#login-error')).toBeVisible()
+})
+
+test('logout returns the button to Log in', async ({ page }) => {
+  await mockRole(page, { role: 'member', username: 'alice' })
+  await page.goto('/')
+  await expect(page.locator('#auth-btn')).toHaveText(/alice/i)
+
+  await page.route('**/api/auth/logout', r => r.fulfill({ status: 204 }))
+  await page.route('**/api/auth/me', r => r.fulfill({ json: { role: 'guest' } }))
+  await page.click('#auth-btn')
+  await expect(page.locator('#auth-btn')).toHaveText(/log in/i)
+})
+
+test('guest sees the degraded-view notice; member does not', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  await page.goto('/')
+  await expect(page.locator('#guest-notice')).toBeVisible()
+
+  await mockRole(page, { role: 'member', username: 'm' })
+  await page.reload()
+  await expect(page.locator('#guest-notice')).toBeHidden()
 })

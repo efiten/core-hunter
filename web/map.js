@@ -4,6 +4,10 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } fro
 import { locate } from './locate.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
+import { initAuthBar } from './login.js'
+import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
+
+let currentRole = 'guest'
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -107,6 +111,22 @@ async function drawHex() {
       .addTo(hexLayer)
   }
   document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
+}
+
+// Task 5 fills this in with real locate-gating UI; stub kept until then.
+function applyLocateGate() {}
+// Task 9 fills this in with real observer-points-gating UI; stub kept until then.
+function applyObserverGate() {}
+
+function applyRole(me) {
+  currentRole = me.role || 'guest'
+  const notice = document.getElementById('guest-notice')
+  const msg = guestNotice(currentRole)
+  notice.textContent = msg || ''
+  notice.hidden = !msg
+  applyLocateGate()
+  applyObserverGate()
+  refresh()
 }
 
 let t = null
@@ -450,3 +470,7 @@ if (wantLocate && window.currentFilters().sender) {
   if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
   refresh()
 }
+
+// Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
+// role-dependent UI (guest notice + Tasks 5/9 gating) whenever it changes.
+initAuthBar(applyRole)

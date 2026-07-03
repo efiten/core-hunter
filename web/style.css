@@ -21,6 +21,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #f-types { display:inline-flex; gap:4px; flex-wrap:wrap; }
 #bar .f-chip { font-size:12px; padding:3px 8px; border-radius:12px; color:var(--ch-muted); }
 #bar .f-chip.active { color:var(--ch-bg); background:var(--ch-sig-cool); border-color:var(--ch-sig-cool); }
+.guest-notice { color: var(--ch-muted); font-size: .85em; }
+.guest-notice[hidden] { display: none; }
+.lc-warn { color: var(--ch-sig-warm); }
 #status { color:var(--ch-muted); margin-left:auto; }
 #sf-counts { color:var(--ch-muted); font-size:12px; }
 #ch-version { color:var(--ch-muted); font-size:12px; }
