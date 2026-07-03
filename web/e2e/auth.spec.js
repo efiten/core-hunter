@@ -56,3 +56,39 @@ test('guest sees the degraded-view notice; member does not', async ({ page }) =>
   await page.reload()
   await expect(page.locator('#guest-notice')).toBeHidden()
 })
+
+test('Locate is hidden for guests, shown for members', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  await page.goto('/')
+  await expect(page.locator('#locate-toggle')).toBeHidden()
+
+  await mockRole(page, { role: 'member', username: 'm' })
+  await page.reload()
+  await expect(page.locator('#locate-toggle')).toBeVisible()
+})
+
+// A small spread of synthetic receptions (same shape as locate.spec.js) so the
+// solver has enough points to produce a centroid/strongest marker.
+const LOCATE_POINTS = [
+  { lat: 51.000, lon: 4.000, rssi: -52 }, // strongest
+  { lat: 51.010, lon: 4.000, rssi: -88 },
+  { lat: 50.990, lon: 4.000, rssi: -90 },
+  { lat: 51.000, lon: 4.012, rssi: -86 },
+]
+
+test('member ?locate=1 restores Locate', async ({ page }) => {
+  await mockRole(page, { role: 'member', username: 'm' })
+  await page.route('**/api/points*', r => r.fulfill({ json: { points: LOCATE_POINTS, truncated: false } }))
+  await page.goto('/?locate=1&sender=aa')
+  // currentRole is only known once /api/auth/me resolves (async); the restore
+  // is deferred until then, so give it a moment before asserting.
+  await expect(page.locator('.lc-strongest')).toHaveCount(1)
+  await expect(page.locator('#locate-info')).toBeVisible()
+})
+
+test('guest ?locate=1 does not restore Locate', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  await page.goto('/?locate=1&sender=aa')
+  await expect(page.locator('#locate-toggle')).toBeHidden()
+  await expect(page.locator('.lc-strongest')).toHaveCount(0)
+})

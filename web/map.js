@@ -113,8 +113,12 @@ async function drawHex() {
   document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
 }
 
-// Task 5 fills this in with real locate-gating UI; stub kept until then.
-function applyLocateGate() {}
+function applyLocateGate() {
+  const show = canSeeLocate(currentRole)
+  const btn = document.getElementById('locate-toggle')
+  if (btn) btn.hidden = !show
+  if (!show && locateActive) deactivateLocate()
+}
 // Task 9 fills this in with real observer-points-gating UI; stub kept until then.
 function applyObserverGate() {}
 
@@ -127,6 +131,13 @@ function applyRole(me) {
   applyLocateGate()
   applyObserverGate()
   refresh()
+  // Deferred ?locate=1 restore (Task 5): fires once, the first time the
+  // resolved role can see Locate — including a guest who logs in as a member
+  // later, since applyRole() re-runs on login too.
+  if (wantLocate && !locateRestored && canSeeLocate(currentRole) && window.currentFilters().sender) {
+    locateRestored = true
+    activateLocate()
+  }
 }
 
 let t = null
@@ -303,6 +314,7 @@ async function drawLocate() {
 
 const locateBtn = document.getElementById('locate-toggle')
 function activateLocate() {
+  if (!canSeeLocate(currentRole)) return
   if (locateActive) { drawLocate(); return }
   locateActive = true
   locateBtn.classList.add('on')
@@ -457,19 +469,20 @@ urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 const wantLocate = urlstate.initial('locate', '') === '1'
+let locateRestored = false // wantLocate fires at most once, see applyRole() below
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
 updateSenderTitle() // tooltip for a sender restored from the URL/storage
 
 // Restore state that a value alone does not trigger (checkbox draw, locate focus).
-if (wantLocate && window.currentFilters().sender) {
-  activateLocate()
-} else {
-  if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
-  if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
-  refresh()
-}
+// A ?locate=1 restore is NOT triggered here: currentRole is still the 'guest'
+// default at this point (initAuthBar()'s fetchMe() below hasn't resolved yet),
+// so activateLocate()'s role gate would always block it. That restore is
+// deferred into applyRole(), once the real role is known.
+if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+refresh()
 
 // Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
 // role-dependent UI (guest notice + Tasks 5/9 gating) whenever it changes.

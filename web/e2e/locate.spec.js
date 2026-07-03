@@ -12,6 +12,7 @@ const POINTS = [
 // Stub the read endpoints by default so the page's own refresh/poll never errors
 // and the test asserts only what it sets up. Individual tests override as needed.
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
