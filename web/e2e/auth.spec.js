@@ -119,3 +119,36 @@ test('observer-point (CS) layers are available for members', async ({ page }) =>
   await expect(page.locator('#map')).toBeVisible()
   expect(pageErrors).toHaveLength(0)
 })
+
+// Regression: the CS-layer deep-link restore (?adv=1/?rel=1) runs at module-eval
+// time, before /api/auth/me resolves — currentRole is still 'guest' then, so
+// drawObserverPoints() early-returns and the checkbox ends up checked with an
+// empty layer. Once the real (member) role lands, applyObserverGate() must
+// redraw any checked CS layers, not just unhide the toggle.
+test('member deep-link ?adv=1 draws the CS advert layer on load', async ({ page }) => {
+  await mockRole(page, { role: 'member', username: 'm' })
+  await page.route('**/api/observer-points*', r => r.fulfill({ json: { points: [
+    { lat: 51.0, lon: 4.0, rssi: -60, snr: 8, heard_key: 'aa', observer: 'obs1', rx_at: '2026-07-03T10:00:00Z' }
+  ] } }))
+  await page.goto('/?adv=1')
+  await expect(page.locator('#cs-adverts')).toBeChecked()
+  // mode defaults to 'hex' with an empty heatmap and no points, so any rendered
+  // path marker on the map can only be the CS advert layer's circleMarker.
+  await expect(page.locator('path.leaflet-interactive')).toHaveCount(1)
+})
+
+test('guest popup has no Locate button', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  await page.route('**/api/points*', r => r.fulfill({ json: { points: [
+    { lat: 51, lon: 4, rssi: -60, snr: 8, sender_id: 'aa', hunter_name: 'Hunter 1', rx_at: '2026-07-03T10:00:00Z' }
+  ], truncated: false } }))
+  await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
+  // Points render on a canvas (no per-marker DOM); the fixture point [51,4] is
+  // the initial map center, so clicking the middle of the map hits it.
+  await expect(async () => {
+    const box = await page.locator('#map').boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(page.locator('.leaflet-popup')).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  await expect(page.locator('.lc-locate')).toHaveCount(0)
+})

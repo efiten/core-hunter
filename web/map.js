@@ -85,7 +85,7 @@ async function drawPoints() {
     const role = pt.sender_role ? ` · ${esc(pt.sender_role)}` : ''
     const sid = pt.sender_id || ''
     const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
-    const locBtn = sid ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
+    const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
     const tier = rssiTier(pt.rssi)
     L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || pt.packet_type)}<br>${esc(pt.rx_at)}${locBtn}`)
@@ -126,7 +126,16 @@ function applyObserverGate() {
   const show = canSeeObserverPoints(currentRole)
   const toggle = document.querySelector('.cs-layer-toggle')
   if (toggle) toggle.hidden = !show
-  if (!show) clearObserverLayers()
+  if (!show) {
+    clearObserverLayers()
+  } else {
+    // Deferred CS-layer deep-link restore (mirrors the Locate restore below):
+    // the ?adv=1/?rel=1 checkbox state was applied at module-eval time, before
+    // the real role was known, so drawObserverPoints() early-returned then.
+    // Redraw only the checked layers now that the gate is open.
+    if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
+    if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+  }
 }
 
 function applyRole(me) {
@@ -398,7 +407,7 @@ async function drawObserverPoints(src, layer, ring) {
     const name = (isResolvableId(id) && cachedName(id)) || id || '—'
     const hk = pt.heard_key || ''
     const idLine = hk ? `<br><span class="pp-id">${esc(hk)}</span>` : ''
-    const locBtn = hk ? `<br><button class="lc-locate" data-sender="${esc(hk)}">Locate this sender</button>` : ''
+    const locBtn = (hk && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(hk)}">Locate this sender</button>` : ''
     const opts = ring
       ? { radius: 6, color: col, weight: 2, fillColor: col, fillOpacity: 0.12 }
       : { radius: 4, color: col, weight: 1, fillColor: col, fillOpacity: fillOpacity(tier) }
