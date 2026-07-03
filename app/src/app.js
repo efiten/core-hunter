@@ -880,6 +880,17 @@ function buildSettingsSheet() {
     else accMsg('Linking failed — check your connection.')
   })
 
+  el('ss-acc-logout').addEventListener('click', async () => {
+    const r = await postAuth('/api/auth/logout', {})
+    if (r.ok) {
+      closeAccForm()
+      await refreshAccount()
+      accMsg('Logged out.', true)
+    } else {
+      accMsg('Logout failed — check your connection.')
+    }
+  })
+
   el('ss-acc-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const username = el('ss-acc-username').value.trim()
