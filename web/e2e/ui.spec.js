@@ -66,6 +66,20 @@ test('hunter dropdown is populated from /api/hunters', async ({ page }) => {
   await expect(page.locator('#f-hunter')).toContainText('ON8AR (42)')
 })
 
+test('hunter dropdown shows pseudonymised labels for guests', async ({ page }) => {
+  // Guests get server-issued pseudonyms (hunter_pubkey="h<N>", hunter_name="Hunter <N>");
+  // override this spec's default member mock just for this test.
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.route('**/api/hunters*', (r) => r.fulfill({
+    json: { hunters: [{ hunter_pubkey: 'h1', hunter_name: 'Hunter 1', count: 42 }] },
+  }))
+  await page.goto('/')
+
+  const opt = page.locator('#f-hunter option', { hasText: 'Hunter 1 (42)' })
+  await expect(opt).toHaveCount(1)
+  await expect(opt).toHaveAttribute('value', 'h1')
+})
+
 test('discover sender: prefix ID is resolved to a name via the API, popup shows name · role', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({
     json: { points: [{

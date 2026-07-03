@@ -12,25 +12,11 @@ const FILTER_PACKET_TYPES = [
   { value: 'Trace',       label: 'Trace' },
 ]
 
-// Packet-type toggle chips: none active = all types (no filter).
-const typesHost = document.getElementById('f-types')
-for (const t of FILTER_PACKET_TYPES) {
-  const b = document.createElement('button')
-  b.type = 'button'; b.className = 'f-chip'; b.dataset.type = t.value; b.textContent = t.label
-  b.addEventListener('click', () => {
-    b.classList.toggle('active')
-    save()
-    if (window.__refresh) window.__refresh()
-  })
-  typesHost.appendChild(b)
-}
-
-// getters/setter used by currentFilters and the urlstate registration (map.js).
-window.currentTypes = () =>
-  [...typesHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.type).join(',')
-window.setTypes = (v) => {
-  const want = new Set(String(v || '').split(',').filter(Boolean))
-  for (const b of typesHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.type))
+// Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
+// (server-issued "Hunter <N>" pseudonym), members+ get the real name; unnamed
+// falls back to an 8-char pubkey prefix.
+export function hunterOptionLabel(h) {
+  return `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
 }
 
 const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
@@ -51,7 +37,6 @@ function defaultToday() {
   if (!from.value) from.value = toLocalInput(start)
   if (!to.value) to.value = toLocalInput(end)
 }
-defaultToday()
 
 // Reset every filter to its default: all hunters, no sender, timeframe = today.
 // Exposed for the "Clear" button; map.js handles the layer/locate/redraw side.
@@ -62,17 +47,6 @@ function resetFilters() {
   document.getElementById('f-from').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0))
   document.getElementById('f-to').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59))
 }
-window.__resetFilters = resetFilters
-
-window.currentFilters = () => ({
-  hunter: document.getElementById('f-hunter').value,
-  sender: document.getElementById('f-sender').value.trim(),
-  from: localToUTC(document.getElementById('f-from').value),
-  to: localToUTC(document.getElementById('f-to').value),
-  types: window.currentTypes(),
-  // direct-only = zero-hop (#138 semantics); empty string drops the param
-  hops: document.getElementById('f-direct').checked ? '0' : '',
-})
 
 async function loadHunters() {
   try {
@@ -81,7 +55,7 @@ async function loadHunters() {
     for (const h of d.hunters || []) {
       const o = document.createElement('option')
       o.value = h.hunter_pubkey
-      o.textContent = `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
+      o.textContent = hunterOptionLabel(h)
       sel.appendChild(o)
     }
     // The shared/saved hunter can only be applied once its option exists (options
@@ -94,14 +68,54 @@ async function loadHunters() {
   } catch (_) {}
 }
 
-for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to', 'f-direct']) {
-  const el = document.getElementById(id)
-  el.addEventListener('change', () => window.__refresh && window.__refresh())
-  if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())
-  // datetime-local only opens the native picker via its tiny calendar icon;
-  // call showPicker() on focus so a click anywhere on the field opens it.
-  if ((id === 'f-from' || id === 'f-to') && typeof el.showPicker === 'function') {
-    el.addEventListener('focus', () => { try { el.showPicker() } catch (_) {} })
+// All DOM wiring below is guarded so this module can be imported under Vitest
+// (no document/window) to unit-test the pure helpers above; in a browser
+// `document` always exists, so behaviour is unchanged.
+if (typeof document !== 'undefined') {
+  // Packet-type toggle chips: none active = all types (no filter).
+  const typesHost = document.getElementById('f-types')
+  for (const t of FILTER_PACKET_TYPES) {
+    const b = document.createElement('button')
+    b.type = 'button'; b.className = 'f-chip'; b.dataset.type = t.value; b.textContent = t.label
+    b.addEventListener('click', () => {
+      b.classList.toggle('active')
+      save()
+      if (window.__refresh) window.__refresh()
+    })
+    typesHost.appendChild(b)
   }
+
+  // getters/setter used by currentFilters and the urlstate registration (map.js).
+  window.currentTypes = () =>
+    [...typesHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.type).join(',')
+  window.setTypes = (v) => {
+    const want = new Set(String(v || '').split(',').filter(Boolean))
+    for (const b of typesHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.type))
+  }
+
+  defaultToday()
+
+  window.__resetFilters = resetFilters
+
+  window.currentFilters = () => ({
+    hunter: document.getElementById('f-hunter').value,
+    sender: document.getElementById('f-sender').value.trim(),
+    from: localToUTC(document.getElementById('f-from').value),
+    to: localToUTC(document.getElementById('f-to').value),
+    types: window.currentTypes(),
+    // direct-only = zero-hop (#138 semantics); empty string drops the param
+    hops: document.getElementById('f-direct').checked ? '0' : '',
+  })
+
+  for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to', 'f-direct']) {
+    const el = document.getElementById(id)
+    el.addEventListener('change', () => window.__refresh && window.__refresh())
+    if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())
+    // datetime-local only opens the native picker via its tiny calendar icon;
+    // call showPicker() on focus so a click anywhere on the field opens it.
+    if ((id === 'f-from' || id === 'f-to') && typeof el.showPicker === 'function') {
+      el.addEventListener('focus', () => { try { el.showPicker() } catch (_) {} })
+    }
+  }
+  loadHunters()
 }
-loadHunters()
