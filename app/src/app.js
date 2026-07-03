@@ -836,6 +836,47 @@ function buildSettingsSheet() {
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
 
+  let accFormMode = null // 'login' | 'register'
+
+  function openAccForm(mode) {
+    accFormMode = mode
+    el('ss-acc-form').hidden = false
+    el('ss-acc-email').hidden = mode !== 'register'
+    el('ss-acc-remember-row').hidden = mode !== 'login'
+    el('ss-acc-msg').hidden = true
+    el('ss-acc-username').value = ''
+    el('ss-acc-password').value = ''
+    el('ss-acc-email').value = ''
+  }
+  function closeAccForm() { el('ss-acc-form').hidden = true; accFormMode = null }
+  function accMsg(text, ok) {
+    const m = el('ss-acc-msg'); m.textContent = text; m.hidden = false
+    m.classList.toggle('ok', !!ok)
+  }
+
+  el('ss-acc-login').addEventListener('click', () => openAccForm('login'))
+  el('ss-acc-cancel').addEventListener('click', closeAccForm)
+
+  function maybeOfferLink() {} // replaced in Task 8
+
+  el('ss-acc-form').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const username = el('ss-acc-username').value.trim()
+    const password = el('ss-acc-password').value
+
+    if (accFormMode === 'login') {
+      const remember = el('ss-acc-remember').checked
+      const r = await postAuth('/api/auth/login', buildLoginBody({ username, password, remember }))
+      if (r.ok) { closeAccForm(); await refreshAccount(); maybeOfferLink() }
+      else if (r.status === 401) accMsg('Wrong username or password.')
+      else if (r.status === 403) accMsg('This account is disabled.')
+      else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
+      else accMsg('Login failed — check your connection.')
+      return
+    }
+    // register branch added in Task 7
+  })
+
   refreshAccount()
 }
 
