@@ -728,6 +728,27 @@ function buildSettingsSheet() {
         <button id="ss-conn-btn" class="ss-connect">Connect</button>
         <button id="ss-mqtt-pause-btn" class="ss-disconnect">Pause MQTT</button>
       </div>
+      <div class="ss-account-section">
+        <h3>Account</h3>
+        <p id="ss-account-status" class="ss-acc-status">Not logged in</p>
+        <div class="ss-acc-actions">
+          <button id="ss-acc-register" type="button">Register</button>
+          <button id="ss-acc-login" type="button">Login</button>
+          <button id="ss-acc-link" type="button" hidden>Link this companion</button>
+          <button id="ss-acc-logout" type="button" hidden>Logout</button>
+        </div>
+        <form id="ss-acc-form" class="ss-acc-form" hidden>
+          <input id="ss-acc-username" type="text" placeholder="Username" autocomplete="username" />
+          <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" autocomplete="current-password" />
+          <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" autocomplete="email" hidden />
+          <label id="ss-acc-remember-row" hidden><input id="ss-acc-remember" type="checkbox" /> Remember me</label>
+          <div class="ss-acc-form-actions">
+            <button id="ss-acc-submit" type="submit">Submit</button>
+            <button id="ss-acc-cancel" type="button">Cancel</button>
+          </div>
+        </form>
+        <p id="ss-acc-msg" class="ss-acc-msg" hidden></p>
+      </div>
       <div class="ss-radio-section">
         <h3>Radio</h3>
         <label class="ss-radio-row" id="ss-row-atten">

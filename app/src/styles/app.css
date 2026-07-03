@@ -149,6 +149,21 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #ss-mqtt-pause-btn { margin-left: 8px; }
 .ss-disconnect:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed;
   opacity: 0.45; }
+.ss-account-section { margin-top: 1rem; }
+.ss-account-section h3 { margin: 0 0 .4rem; }
+.ss-acc-status { color: var(--ch-muted); margin: 0 0 .5rem; }
+.ss-acc-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.ss-acc-actions button { flex: 1 1 auto; }
+.ss-acc-form { display: flex; flex-direction: column; gap: .5rem; margin-top: .6rem; }
+.ss-acc-form input[type="text"],
+.ss-acc-form input[type="password"],
+.ss-acc-form input[type="email"] {
+  background: transparent; color: var(--ch-text);
+  border: 1px solid var(--ch-border); border-radius: 6px; padding: .5rem;
+}
+.ss-acc-form-actions { display: flex; gap: .4rem; }
+.ss-acc-msg { margin: .5rem 0 0; color: var(--ch-sig-hot); }
+.ss-acc-msg.ok { color: var(--ch-sig-cool); }
 .ss-radio-section { margin-top: 16px; }
 .ss-radio-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--ch-text); }
 .ss-radio-row select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ch-muted);
