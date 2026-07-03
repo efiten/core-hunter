@@ -13,8 +13,11 @@ import (
 	"github.com/efiten/core-hunter/server/internal/store"
 )
 
-// Mailer is a placeholder until Task 15 defines the real interface.
-type Mailer interface{}
+// Mailer sends account emails (set-password invites and password resets).
+type Mailer interface {
+	SendSetPassword(to, token string) error
+	SendReset(to, token string) error
+}
 
 const CookieName = "ch_session"
 
@@ -296,6 +299,79 @@ func (h *AuthAPI) LinkCompanion(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Store.AddAudit(a.UserID, "link_companion", pk, clientIP(r), "")
 	writeMe(w, h.authForUser(a.UserID))
+}
+
+func newResetToken() (raw, hash string, err error) {
+	raw, err = auth.NewSessionToken()
+	if err != nil {
+		return "", "", err
+	}
+	return raw, auth.HashToken(raw), nil
+}
+
+func (h *AuthAPI) ResetRequest(w http.ResponseWriter, r *http.Request) {
+	if !h.Limiter.Allow(clientIP(r), time.Now()) {
+		writeErr(w, 429, "rate_limited")
+		return
+	}
+	var in struct {
+		Identifier string `json:"identifier"`
+	}
+	json.NewDecoder(r.Body).Decode(&in)
+	// resolve by username or email
+	u, _ := h.Store.UserByUsername(in.Identifier)
+	if u == nil {
+		u, _ = h.Store.UserByEmail(in.Identifier)
+	}
+	if u != nil && u.Email != "" && h.Mailer != nil {
+		raw, hash, err := newResetToken()
+		if err == nil {
+			exp := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+			if h.Store.CreateToken(hash, u.ID, "reset", exp) == nil {
+				h.Mailer.SendReset(u.Email, raw)
+				h.Store.AddAudit(u.ID, "reset_request", u.Username, clientIP(r), "")
+			}
+		}
+	}
+	w.WriteHeader(204) // always, to avoid user enumeration
+}
+
+func (h *AuthAPI) Reset(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+		writeErr(w, 400, "invalid_token")
+		return
+	}
+	if !auth.ValidPassword(in.NewPassword) {
+		writeErr(w, 400, "password_too_short")
+		return
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	hash := auth.HashToken(in.Token)
+	// accept either purpose (reset OR set_password) on the same consume path
+	tok, _ := h.Store.ConsumeToken(hash, "reset", now, now)
+	if tok == nil {
+		tok, _ = h.Store.ConsumeToken(hash, "set_password", now, now)
+	}
+	if tok == nil {
+		writeErr(w, 400, "invalid_token")
+		return
+	}
+	pwHash, err := auth.HashPassword(in.NewPassword)
+	if err != nil {
+		writeErr(w, 500, "hash_error")
+		return
+	}
+	h.Store.SetPassword(tok.UserID, pwHash)
+	// a set-password token also activates a pending invited account
+	if u, _ := h.Store.UserByID(tok.UserID); u != nil && u.Status == "pending" {
+		h.Store.SetRoleStatus(u.ID, u.Role, "active")
+	}
+	h.Store.AddAudit(tok.UserID, "password_reset", "", clientIP(r), "")
+	w.WriteHeader(204)
 }
 
 func (h *AuthAPI) Logout(w http.ResponseWriter, r *http.Request) {

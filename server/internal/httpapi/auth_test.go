@@ -131,6 +131,70 @@ func TestLoginLogout(t *testing.T) {
 	}
 }
 
+type fakeMailer struct{ lastTo, lastToken, kind string }
+
+func (f *fakeMailer) SendSetPassword(to, token string) error {
+	f.lastTo, f.lastToken, f.kind = to, token, "set"
+	return nil
+}
+func (f *fakeMailer) SendReset(to, token string) error {
+	f.lastTo, f.lastToken, f.kind = to, token, "reset"
+	return nil
+}
+
+func TestResetFlow(t *testing.T) {
+	h, st := newAuthAPI(t)
+	defer st.Close()
+	fm := &fakeMailer{}
+	h.Mailer = fm
+	h.BaseURL = "https://map.mesh-hunter.eu"
+	hash, _ := auth.HashPassword("oldpassword1")
+	uid, _ := st.CreateUser("alice", "a@x.eu", hash, "hunter", "active")
+	_ = uid
+
+	// request always 204, and a reset mail is sent because the email exists
+	w := httptest.NewRecorder()
+	h.ResetRequest(w, httptest.NewRequest("POST", "/api/auth/reset-request",
+		strings.NewReader(`{"identifier":"a@x.eu"}`)))
+	if w.Code != 204 || fm.kind != "reset" || fm.lastToken == "" {
+		t.Fatalf("reset-request: code=%d mail=%+v", w.Code, fm)
+	}
+	// unknown identifier still 204, no crash
+	w2 := httptest.NewRecorder()
+	h.ResetRequest(w2, httptest.NewRequest("POST", "/api/auth/reset-request",
+		strings.NewReader(`{"identifier":"nobody"}`)))
+	if w2.Code != 204 {
+		t.Fatalf("unknown reset-request must be 204, got %d", w2.Code)
+	}
+	// consume the token
+	w3 := httptest.NewRecorder()
+	h.Reset(w3, httptest.NewRequest("POST", "/api/auth/reset",
+		strings.NewReader(`{"token":"`+fm.lastToken+`","new_password":"brandnewpass"}`)))
+	if w3.Code != 204 {
+		t.Fatalf("reset should be 204, got %d %s", w3.Code, w3.Body)
+	}
+	u, _ := st.UserByUsername("alice")
+	if !auth.CheckPassword(u.PasswordHash, "brandnewpass") {
+		t.Fatal("password not changed by reset")
+	}
+	// token cannot be reused
+	w4 := httptest.NewRecorder()
+	h.Reset(w4, httptest.NewRequest("POST", "/api/auth/reset",
+		strings.NewReader(`{"token":"`+fm.lastToken+`","new_password":"anotherpass1"}`)))
+	if w4.Code != 400 {
+		t.Fatalf("reused token should be 400, got %d", w4.Code)
+	}
+	// short new password
+	h.ResetRequest(httptest.NewRecorder(), httptest.NewRequest("POST", "/api/auth/reset-request",
+		strings.NewReader(`{"identifier":"a@x.eu"}`)))
+	w5 := httptest.NewRecorder()
+	h.Reset(w5, httptest.NewRequest("POST", "/api/auth/reset",
+		strings.NewReader(`{"token":"`+fm.lastToken+`","new_password":"short"}`)))
+	if w5.Code != 400 {
+		t.Fatalf("short password should be 400, got %d", w5.Code)
+	}
+}
+
 func TestLinkCompanionRequiresAuth(t *testing.T) {
 	h, st := newAuthAPI(t)
 	defer st.Close()
