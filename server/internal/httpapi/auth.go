@@ -366,9 +366,12 @@ func (h *AuthAPI) Reset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.Store.SetPassword(tok.UserID, pwHash)
-	// a set-password token also activates a pending invited account
-	if u, _ := h.Store.UserByID(tok.UserID); u != nil && u.Status == "pending" {
-		h.Store.SetRoleStatus(u.ID, u.Role, "active")
+	// only a set_password token activates a pending invited account; a
+	// reset-purpose token must never flip status on its own
+	if tok.Purpose == "set_password" {
+		if u, _ := h.Store.UserByID(tok.UserID); u != nil && u.Status == "pending" {
+			h.Store.SetRoleStatus(u.ID, u.Role, "active")
+		}
 	}
 	h.Store.AddAudit(tok.UserID, "password_reset", "", clientIP(r), "")
 	w.WriteHeader(204)
