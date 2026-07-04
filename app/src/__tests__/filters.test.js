@@ -44,6 +44,9 @@ describe('isFilterActive', () => {
   it('the default filter has direct-only off', () => {
     expect(DEFAULT_FILTER.directOnly).toBe(false)
   })
+  it('the default plot window is 30 minutes', () => {
+    expect(DEFAULT_FILTER.windowMs).toBe(1800000)
+  })
   it('turning direct-only on is active', () => {
     expect(isFilterActive({ ...DEFAULT_FILTER, directOnly: true })).toBe(true)
   })

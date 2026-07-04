@@ -1,7 +1,7 @@
 // The app's out-of-the-box filter — the baseline the active-indicator compares
 // against. Kept here as the single source of truth so app.js and isFilterActive
 // can never drift apart.
-export const DEFAULT_FILTER = { sender: null, types: null, windowMs: 600000, directOnly: false }
+export const DEFAULT_FILTER = { sender: null, types: null, windowMs: 1800000, directOnly: false }
 
 // isFilterActive reports whether the current filter differs from DEFAULT_FILTER,
 // i.e. the user has narrowed something. Drives the filter button's active state.
