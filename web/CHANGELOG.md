@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.1](https://github.com/efiten/core-hunter/compare/web-v1.0.0...web-v1.0.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* **web:** only load Matomo on production hosts (not localhost/CI) ([1c70a7a](https://github.com/efiten/core-hunter/commit/1c70a7a85145bc688c2e21dc27d19dd457cb8294))
+
+
+### Miscellaneous Chores
+
+* add cookieless Matomo analytics to landing/map/app ([9b06bad](https://github.com/efiten/core-hunter/commit/9b06bad91e7fa8f3ce3de16f14c4dd04b23d6e36))
+
 ## [1.0.0](https://github.com/efiten/core-hunter/compare/web-v0.6.0...web-v1.0.0) (2026-07-04)
 
 
