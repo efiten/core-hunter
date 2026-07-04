@@ -33,6 +33,18 @@ export function rssiWeight(rssi) {
   return 10 ** ((clamped - RSSI_CAP) / 10)
 }
 
+// Map reception records to locate() input points, dropping any without GPS
+// coordinates. The caller passes an already-filtered record set (sender / type
+// / window / ignore), so locate estimates over exactly what the map plots.
+export function toLocatePoints(records) {
+  const points = []
+  for (const r of records) {
+    if (r.lat == null || r.lon == null) continue
+    points.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+  }
+  return points
+}
+
 // RSSI-weighted centroid of [{lat,lon,rssi}]. null when total weight is 0.
 export function weightedCentroid(points) {
   let sw = 0, slat = 0, slon = 0

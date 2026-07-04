@@ -143,12 +143,21 @@ function setDot(id, on) {
   else d.classList.remove('on')
 }
 
-// Light the filter button's badge when the view is narrowed — either the filter
+// Light the filter pill's badge when the view is narrowed — either the filter
 // differs from the default or the ignore-list (also a display filter) is
-// non-empty. Closed-sheet signal; called wherever state.filter or state.ignore
-// changes.
-function refreshFilterIndicator() {
-  el('filter-btn').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
+// non-empty. Also re-arms the locate readout glance (resetLocateFade) so the
+// estimate re-shows whenever the user changes what they're looking at. Called
+// wherever state.filter or state.ignore changes.
+function refreshFilterState() {
+  el('filter-pill').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
+  resetLocateFade()
+}
+
+// Reflect the filter dropdown's open state on the pill (aria-expanded drives
+// the caret rotation + a11y). Called from the document click handler, which
+// fires after every open/close path since all of them are click-driven.
+function syncFilterPill() {
+  el('filter-pill').setAttribute('aria-expanded', String(!el('filter-sheet').hidden))
 }
 
 // Light the settings button's badge when a setting differs from default
@@ -589,11 +598,11 @@ function buildFilterSheet() {
   const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
   syncDirectRow(); syncWindowRow()
 
-  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterIndicator() })
+  chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
-    syncWindowRow(); refreshFilterIndicator()
+    syncWindowRow(); refreshFilterState()
   })
 
   // Type chips — the "All" chip (default) means no type filter. Picking a
@@ -622,7 +631,7 @@ function buildFilterSheet() {
     } else {
       state.filter.types = new Set(selected)
     }
-    refreshFilterIndicator()
+    refreshFilterState()
   })
 
   renderIgnoreList(el('ss-ignore-list'))
@@ -630,7 +639,7 @@ function buildFilterSheet() {
     state.ignore.clear()
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
-    refreshFilterIndicator()
+    refreshFilterState()
     drawOnce()
   })
 
@@ -695,7 +704,7 @@ function renderIgnoreList(listEl) {
       state.ignore.delete(key)
       saveIgnore(state.ignore)
       renderIgnoreList(listEl)
-      refreshFilterIndicator()
+      refreshFilterState()
       drawOnce()
     })
     row.appendChild(label)
@@ -936,15 +945,13 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   if (e.detail && e.detail.id) {
     chip.textContent = '⌖ ' + String(e.detail.id).slice(0, 12)
     chip.classList.add('active')
-    resetLocateFade()
   } else {
-    chip.textContent = 'No target'
+    chip.textContent = 'Select target'
     chip.classList.remove('active')
   }
   const clearBtn = el('ts-clear')
   if (clearBtn) clearBtn.hidden = !state.filter.sender
-  el('locate-toggle-btn').hidden = !state.filter.sender
-  refreshFilterIndicator()
+  refreshFilterState()
 })
 
 // ---------------------------------------------------------------------------
@@ -957,7 +964,7 @@ document.addEventListener('hunt:ignore-sender', (e) => {
   if (state.ignore.has(key)) state.ignore.delete(key)
   else state.ignore.add(key)
   saveIgnore(state.ignore)
-  refreshFilterIndicator()
+  refreshFilterState()
   drawOnce() // redraw now — don't wait up to 1s for the next render tick
 })
 
@@ -1054,7 +1061,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (state.map) state.map.setLocateVisible(locateVisible)
   })
 
-  el('filter-btn').addEventListener('click', () => {
+  el('filter-pill').addEventListener('click', () => {
     const sheet = el('filter-sheet')
     sheet.hidden = !sheet.hidden
     if (!sheet.hidden) {
@@ -1093,7 +1100,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // by the time this bubbles to document, so excluding the toggle here stops
   // it from immediately re-closing what it just opened).
   const dismissableSheets = [
-    { sheet: el('filter-sheet'), toggle: el('filter-btn') },
+    { sheet: el('filter-sheet'), toggle: el('filter-pill') },
     { sheet: el('settings-sheet'), toggle: el('settings-btn') },
     { sheet: el('target-sheet'), toggle: el('target-chip') },
   ]
@@ -1107,6 +1114,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (sheet.contains(e.target) || toggle.contains(e.target)) continue
       sheet.hidden = true
     }
+    syncFilterPill()
   })
 
   // Retry location — re-starts the GPS watch (e.g. after the user grants the
@@ -1119,7 +1127,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
 
   // Reflect the initial filter state on the button (inactive at default)
-  refreshFilterIndicator()
+  refreshFilterState()
   // Reflect persisted attenuator/manual-fix state on the settings button
   refreshSettingsIndicator()
   refreshSplash()

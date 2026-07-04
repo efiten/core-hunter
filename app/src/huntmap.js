@@ -1,7 +1,7 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade } from './signal.js'
 import { getConfig } from './config.js'
-import { locate } from './locate.js'
+import { locate, toLocatePoints } from './locate.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
@@ -170,21 +170,22 @@ export function createHuntMap(containerId) {
     draw()
   }
 
-  // Single-hunter "locate": when a sender is isolated, estimate its position
-  // from this hunter's own receptions of it (RSSI-weighted centroid + density
-  // heatmap, same pure algorithm as the multi-hunter web version — see
-  // locate.js). No API/DB read here, just whatever this hunter has walked past.
+  // "Locate": estimate a transmitter's position from this hunter's own
+  // receptions (RSSI-weighted centroid + density heatmap, same pure algorithm
+  // as the multi-hunter web version — see locate.js). Runs over the already-
+  // filtered record set the map plots, so it answers "where does the traffic
+  // I'm currently looking at come from" — a selected target or any narrowing
+  // filter (packet-type, window, …). No API/DB read here, just what this hunter
+  // has walked past.
   function drawLocate(records) {
     locateLayer.clearLayers()
-    if (!lastIsolatedId) { if (onLocateCb) onLocateCb(null); return }
-    const points = records
-      .filter((r) => r.sender_id === lastIsolatedId && r.lat != null && r.lon != null)
-      .map((r) => ({ lat: r.lat, lon: r.lon, rssi: r.rssi }))
+    const points = toLocatePoints(records)
     // Always compute — the FAB toggle (setLocateVisible) only hides the
     // rendered overlay/readout, so the estimate is instantly available with
-    // no recompute lag whenever the user switches it back on.
-    const res = locate(points)
-    if (!locateVisible) { if (onLocateCb) onLocateCb(null); return }
+    // no recompute lag whenever the user switches it back on. No points yet
+    // (nothing plotted) → no readout rather than a meaningless "0 points".
+    const res = points.length ? locate(points) : null
+    if (!locateVisible || !res) { if (onLocateCb) onLocateCb(null); return }
     if (res.heatmap) heatmapOverlay(res.heatmap).addTo(locateLayer)
     if (res.centroid) {
       L.marker([res.centroid.lat, res.centroid.lon], {

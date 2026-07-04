@@ -1,5 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { haversineM, rssiWeight, weightedCentroid } from '../locate.js'
+import { haversineM, rssiWeight, weightedCentroid, toLocatePoints } from '../locate.js'
+
+describe('toLocatePoints', () => {
+  it('maps records to {lat,lon,rssi} and drops those missing coordinates', () => {
+    const recs = [
+      { lat: 51, lon: 4, rssi: -70 },
+      { lat: null, lon: 4, rssi: -80 },
+      { lat: 52, lon: undefined, rssi: -90 },
+      { lat: 53, lon: 5, rssi: -60 },
+    ]
+    expect(toLocatePoints(recs)).toEqual([
+      { lat: 51, lon: 4, rssi: -70 },
+      { lat: 53, lon: 5, rssi: -60 },
+    ])
+  })
+  it('is empty for an empty input', () => {
+    expect(toLocatePoints([])).toEqual([])
+  })
+})
 
 describe('haversineM', () => {
   it('is ~0 for identical points', () => {

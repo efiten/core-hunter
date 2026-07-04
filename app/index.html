@@ -18,7 +18,18 @@
 <body>
   <div id="map"></div>
   <header id="topbar">
-    <span id="target-chip">No target</span>
+    <div id="topbar-left">
+      <span id="target-chip">Select target</span>
+      <button id="filter-pill" aria-label="Filters" aria-expanded="false">
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="2,3 18,3 12,11 12,18 8,16 8,11"/>
+        </svg>
+        <span class="filter-pill-label">Filters</span>
+        <svg class="filter-pill-caret" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 8l4 4 4-4"/>
+        </svg>
+      </button>
+    </div>
     <div id="topbar-right">
       <span id="status-dots">
         <i id="dot-ble"></i><span class="dot-label">BLE</span>
@@ -53,11 +64,6 @@
     </div>
   </section>
   <button id="layer-toggle" aria-label="Toggle layers"></button>
-  <button id="filter-btn" aria-label="Filters">
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
-      <polygon points="2,3 18,3 12,11 12,18 8,16 8,11"/>
-    </svg>
-  </button>
   <button id="discover-btn" aria-label="Discover" disabled>
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
       <circle cx="10" cy="10" r="1.6" fill="currentColor" stroke="none"/>
@@ -68,7 +74,7 @@
     </svg>
   </button>
   <button id="recenter-btn" aria-label="Compass mode"></button>
-  <button id="locate-toggle-btn" class="active" aria-label="Toggle locate overlay" hidden>
+  <button id="locate-toggle-btn" class="active" aria-label="Toggle locate overlay">
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
       <circle cx="10" cy="10" r="7"/>
       <circle cx="10" cy="10" r="3.2"/>
