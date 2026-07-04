@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/efiten/core-hunter/compare/server-v1.0.0...server-v1.0.1) (2026-07-04)
+
+
+### Build System
+
+* **server:** build image with golang:1.26-alpine (go.mod requires go 1.25) ([e3d081b](https://github.com/efiten/core-hunter/commit/e3d081b301802f3f63f215262b2ccfff201569e4))
+
 ## [1.0.0](https://github.com/efiten/core-hunter/compare/server-v0.6.0...server-v1.0.0) (2026-07-04)
 
 

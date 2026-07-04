@@ -3,4 +3,4 @@
 // x-release-please-version annotation below); do not edit it by hand.
 package version
 
-const Version = "1.0.0" // x-release-please-version
+const Version = "1.0.1" // x-release-please-version

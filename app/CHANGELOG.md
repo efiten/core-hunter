@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0](https://github.com/efiten/core-hunter/compare/app-v1.0.0...app-v1.1.0) (2026-07-04)
+
+
+### Features
+
+* **app:** compass FAB icon previews the next state, not the current one ([63f6671](https://github.com/efiten/core-hunter/commit/63f6671b37045c223b498d71cf6fece916f6a84b))
+* **app:** draw the hunter's own session route trail on the map ([cd8f0e3](https://github.com/efiten/core-hunter/commit/cd8f0e3eb3b7e73a4eceda9b81ef64888518c82c))
+* **app:** topbar redesign — Select-target chip, filter dropdown, locate over the filtered set ([#128](https://github.com/efiten/core-hunter/issues/128)) ([5f62978](https://github.com/efiten/core-hunter/commit/5f62978db5b71984f3a90d0a2f64673868dceec0))
+
 ## [1.0.0](https://github.com/efiten/core-hunter/compare/app-v0.14.1...app-v1.0.0) (2026-07-04)
 
 
