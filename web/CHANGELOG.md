@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/efiten/core-hunter/compare/web-v0.6.0...web-v1.0.0) (2026-07-04)
+
+
+### Features
+
+* **web:** login, role-aware map, admin page, and mesh-hunter.eu landing (v1.0) ([1be0c58](https://github.com/efiten/core-hunter/commit/1be0c58f8acfebe7603d685f1750ea71d44f9ab3))
+
 ## [0.6.0](https://github.com/efiten/core-hunter/compare/web-v0.5.0...web-v0.6.0) (2026-07-03)
 
 

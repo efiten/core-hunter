@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/efiten/core-hunter/compare/app-v0.14.1...app-v1.0.0) (2026-07-04)
+
+
+### Features
+
+* **app:** in-app register/login and companion linking (v1.0) ([00514a9](https://github.com/efiten/core-hunter/commit/00514a9314d6a21c7bae4ad92631483c63821396))
+
 ## [0.14.1](https://github.com/efiten/core-hunter/compare/app-v0.14.0...app-v0.14.1) (2026-07-03)
 
 

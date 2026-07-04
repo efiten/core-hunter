@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/efiten/core-hunter/compare/server-v0.6.0...server-v1.0.0) (2026-07-04)
+
+
+### Features
+
+* **server:** user management, roles, and guest data degradation (v1.0) ([a3a9c8a](https://github.com/efiten/core-hunter/commit/a3a9c8a05d9f09e99d23655b213dd91f0459670e))
+
 ## [0.6.0](https://github.com/efiten/core-hunter/compare/server-v0.5.0...server-v0.6.0) (2026-07-03)
 
 
