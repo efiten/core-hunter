@@ -19,26 +19,31 @@
   <div id="map"></div>
   <header id="topbar">
     <div id="topbar-left">
-      <span id="target-chip">Select target</span>
-      <button id="filter-pill" aria-label="Filters" aria-expanded="false">
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
-          <polygon points="2,3 18,3 12,11 12,18 8,16 8,11"/>
-        </svg>
-        <span class="filter-pill-label">Filters</span>
-        <svg class="filter-pill-caret" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M6 8l4 4 4-4"/>
-        </svg>
-      </button>
+      <div id="topbar-controls" role="group" aria-label="Target, filters and locate">
+        <button id="target-chip" aria-haspopup="true" aria-expanded="false">Select target</button>
+        <button id="filter-pill" aria-label="Filters" aria-haspopup="true" aria-expanded="false">
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="2,3 18,3 12,11 12,18 8,16 8,11"/>
+          </svg>
+          <span class="filter-pill-label">Filters</span>
+          <svg class="filter-pill-caret" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 8l4 4 4-4"/>
+          </svg>
+        </button>
+        <label id="locate-seg">
+          <input type="checkbox" id="locate-checkbox" />
+          <span>Locate</span>
+        </label>
+      </div>
     </div>
     <div id="topbar-right">
-      <span id="status-dots">
-        <i id="dot-ble"></i><span class="dot-label">BLE</span>
-        <i id="dot-mqtt"></i><span class="dot-label">MQTT</span>
+      <span id="status-dots" role="img" aria-label="Connection status">
+        <i id="dot-ble" title="BLE"></i>
+        <i id="dot-mqtt" title="MQTT"></i>
       </span>
-      <button id="settings-btn" class="topbar-btn" aria-label="Settings">
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-          <circle cx="10" cy="10" r="3"/>
-          <path d="M10 2v2.4M10 15.6V18M18 10h-2.4M4.4 10H2M15.5 4.5l-1.7 1.7M6.2 13.8l-1.7 1.7M15.5 15.5l-1.7-1.7M6.2 6.2L4.5 4.5"/>
+      <button id="settings-btn" class="topbar-btn" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M3 6h14M3 10h14M3 14h14"/>
         </svg>
       </button>
     </div>
@@ -74,13 +79,6 @@
     </svg>
   </button>
   <button id="recenter-btn" aria-label="Compass mode"></button>
-  <button id="locate-toggle-btn" class="active" aria-label="Toggle locate overlay">
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-      <circle cx="10" cy="10" r="7"/>
-      <circle cx="10" cy="10" r="3.2"/>
-      <circle cx="10" cy="10" r="0.9" fill="currentColor" stroke="none"/>
-    </svg>
-  </button>
   <aside id="filter-sheet" hidden></aside>
   <aside id="settings-sheet" hidden></aside>
   <aside id="target-sheet" hidden></aside>

@@ -153,11 +153,12 @@ function refreshFilterState() {
   resetLocateFade()
 }
 
-// Reflect the filter dropdown's open state on the pill (aria-expanded drives
-// the caret rotation + a11y). Called from the document click handler, which
-// fires after every open/close path since all of them are click-driven.
-function syncFilterPill() {
+// Reflect the topbar popovers' open state on their triggers (aria-expanded
+// drives the filter caret rotation + a11y). Called from the document click
+// handler, which fires after every open/close path since all are click-driven.
+function syncPopoverTriggers() {
   el('filter-pill').setAttribute('aria-expanded', String(!el('filter-sheet').hidden))
+  el('target-chip').setAttribute('aria-expanded', String(!el('target-sheet').hidden))
 }
 
 // Light the settings button's badge when a setting differs from default
@@ -1050,15 +1051,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
   if (state.map) state.map.onLocate(updateLocateInfo)
 
-  // Locate overlay toggle — visible only while a sender is isolated (see the
-  // hunt:isolate-sender handler above). Defaults on; hiding it only hides the
-  // rendered heatmap/markers/info-box, the estimate itself keeps computing.
-  let locateVisible = true
-  el('locate-toggle-btn').classList.add('active')
-  el('locate-toggle-btn').addEventListener('click', () => {
-    locateVisible = !locateVisible
-    el('locate-toggle-btn').classList.toggle('active', locateVisible)
-    if (state.map) state.map.setLocateVisible(locateVisible)
+  // Locate overlay toggle — a styled checkbox in the topbar controls. Unchecked
+  // by default (overlay off); ticking it shows the heatmap/markers/readout over
+  // the filtered set. The estimate keeps computing regardless (see huntmap
+  // drawLocate), so switching it on is instant.
+  const locateCb = el('locate-checkbox')
+  locateCb.checked = false
+  if (state.map) state.map.setLocateVisible(false)
+  locateCb.addEventListener('change', () => {
+    if (state.map) state.map.setLocateVisible(locateCb.checked)
   })
 
   el('filter-pill').addEventListener('click', () => {
@@ -1114,7 +1115,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       if (sheet.contains(e.target) || toggle.contains(e.target)) continue
       sheet.hidden = true
     }
-    syncFilterPill()
+    syncPopoverTriggers()
   })
 
   // Retry location — re-starts the GPS watch (e.g. after the user grants the
