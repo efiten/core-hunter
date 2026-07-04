@@ -2,6 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
+import { appendTrailPoint } from './trail.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
@@ -100,14 +101,22 @@ export function createHuntMap(containerId) {
     light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
   }
   let base = null
+  let trailLayer = null
   function applyBasemap() {
     const which = cssVar('--ch-basemap') || 'dark'
     if (base) map.removeLayer(base)
     // CARTO's raster basemaps serve native tiles up to z20; maxZoom was capped
     // at 19, one level short of what the tiles actually support.
     base = L.tileLayer(TILES[which] || TILES.dark, { maxZoom: 20 }).addTo(map)
+    // Re-theme the route trail on light/dark switch (applyBasemap runs then).
+    if (trailLayer) trailLayer.setStyle({ color: cssVar('--ch-muted') })
   }
   applyBasemap()
+  // Session route trail (#148): the hunter's own GPS track. Added first so it
+  // sits at the bottom of the overlays — visually subordinate to the signal
+  // points/hex. It is the HUNTER's path, not the target's (position disclaimer).
+  trailLayer = L.polyline([], { color: cssVar('--ch-muted'), weight: 3, opacity: 0.5, interactive: false }).addTo(map)
+  let trail = []
   // Layer add-order is z-order (later = on top) — hex first so individual
   // points always render above it and stay clickable in 'both' mode, and
   // locate's overlay/markers last so they sit on top of everything.
@@ -268,6 +277,9 @@ export function createHuntMap(containerId) {
   function onMarkerFocus(cb) { onMarkerFocusCb = cb }
   function setPosition(lat, lon) {
     lastPos = [lat, lon]
+    // Grow the session route trail; only redraw when a point is actually added.
+    const nextTrail = appendTrailPoint(trail, lat, lon)
+    if (nextTrail !== trail) { trail = nextTrail; trailLayer.setLatLngs(trail) }
     here = here || L.circleMarker([lat, lon], { radius: 6, color: cssVar('--ch-accent'), weight: 2 }).addTo(map)
     here.setLatLng([lat, lon])
     if (follow) {
