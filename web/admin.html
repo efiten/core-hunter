@@ -17,6 +17,22 @@
     const acss = document.createElement('link'); acss.rel = 'stylesheet'; acss.href = 'admin.css' + v; document.head.appendChild(acss)
     const s = document.createElement('script'); s.type = 'module'; s.src = 'admin.js' + v; document.body.appendChild(s)
   </script>
+    <!-- Matomo (self-hosted, cookieless) -->
+    <script>
+      var _paq = window._paq = window._paq || [];
+      _paq.push(['disableCookies']);
+      _paq.push(['setDomains', ['*.mesh-hunter.eu']]);
+      _paq.push(['trackPageView']);
+      _paq.push(['enableLinkTracking']);
+      (function() {
+        var u="https://analytics.fiten.eu/";
+        _paq.push(['setTrackerUrl', u+'matomo.php']);
+        _paq.push(['setSiteId', '10']);
+        var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+        g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+      })();
+    </script>
+    <!-- End Matomo Code -->
 </head>
 <body>
   <header class="admin-head">
