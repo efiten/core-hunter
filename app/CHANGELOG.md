@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.0](https://github.com/efiten/core-hunter/compare/app-v1.1.1...app-v1.2.0) (2026-07-11)
+
+
+### Features
+
+* **app:** Mesh-Hunter onboarding splash + display-name rename ([#202](https://github.com/efiten/core-hunter/issues/202)) ([c1d75c1](https://github.com/efiten/core-hunter/commit/c1d75c19ae85b32d0ded6aff687a0878864aaa9e))
+* **app:** migrate the map to MapLibre GL — 2D parity ([#147](https://github.com/efiten/core-hunter/issues/147) phase 1) ([#214](https://github.com/efiten/core-hunter/issues/214)) ([cb05ab3](https://github.com/efiten/core-hunter/commit/cb05ab3dd7c929d87415037608a529516d597693))
+* **app:** multi-select targets + byte-prefix in the target list ([#206](https://github.com/efiten/core-hunter/issues/206)) ([742252a](https://github.com/efiten/core-hunter/commit/742252acd99f4006225c0548afc096ee2ba1f7a0))
+* **app:** new Mesh-Hunter app icon (hex · reticle · thermal signal) ([#205](https://github.com/efiten/core-hunter/issues/205)) ([1f23045](https://github.com/efiten/core-hunter/commit/1f23045e194070fc5beaf69f94f769b8f95719c5))
+* **app:** settings as a full page with Settings / About tabs ([#207](https://github.com/efiten/core-hunter/issues/207)) ([76f549d](https://github.com/efiten/core-hunter/commit/76f549d7dc8036f782cc06b57831d85816244058))
+
 ## [1.1.1](https://github.com/efiten/core-hunter/compare/app-v1.1.0...app-v1.1.1) (2026-07-04)
 
 

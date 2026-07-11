@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/efiten/core-hunter/compare/web-v1.0.1...web-v1.1.0) (2026-07-11)
+
+
+### Features
+
+* **app:** Mesh-Hunter onboarding splash + display-name rename ([#202](https://github.com/efiten/core-hunter/issues/202)) ([c1d75c1](https://github.com/efiten/core-hunter/commit/c1d75c19ae85b32d0ded6aff687a0878864aaa9e))
+
 ## [1.0.1](https://github.com/efiten/core-hunter/compare/web-v1.0.0...web-v1.0.1) (2026-07-04)
 
 
