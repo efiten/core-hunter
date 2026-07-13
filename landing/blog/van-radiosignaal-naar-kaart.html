@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="nl" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Van radiosignaal naar kaart: node-hunting met Mesh-Hunter — Mesh-Hunter</title>
+  <meta name="description" content="Van een naam in je contactenlijst naar een plek op de kaart: hoe je met Mesh-Hunter een MeshCore-node live lokaliseert terwijl je rijdt." />
+  <link rel="stylesheet" href="/style.css" />
+    <!-- Matomo (self-hosted, cookieless; production hosts only) -->
+    <script>
+      if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {
+        var _paq = window._paq = window._paq || [];
+        _paq.push(['disableCookies']);
+        _paq.push(['setDomains', ['*.mesh-hunter.eu']]);
+        _paq.push(['trackPageView']);
+        _paq.push(['enableLinkTracking']);
+        (function() {
+          var u="https://analytics.fiten.eu/";
+          _paq.push(['setTrackerUrl', u+'matomo.php']);
+          _paq.push(['setSiteId', '10']);
+          var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+          g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+      }
+    </script>
+    <!-- End Matomo Code -->
+</head>
+<body>
+  <header class="lp-top">
+    <a class="lp-brand" href="/" style="color:inherit;text-decoration:none">Mesh-Hunter</a>
+    <nav class="lp-nav">
+      <a href="https://map.mesh-hunter.eu">Map</a>
+      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+      <a href="/blog/" class="active">Blog</a>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
+    </nav>
+  </header>
+
+  <main class="lp-main">
+    <a class="blog-back" href="/blog/">← Blog</a>
+    <div class="blog-head">
+      <h1>Van radiosignaal naar kaart: node-hunting met Mesh-Hunter</h1>
+      <p class="blog-meta">13 juli 2026</p>
+    </div>
+
+    <article class="blog-article">
+      <p>Elke MeshCore-node staat ergens. Op een dak, in een boom, achter een dakkapel of op een vergeten schoorsteen. Op je scherm zie je alleen een naam. Mesh-Hunter helpt je te ontdekken waar die node zich in de echte wereld bevindt.</p>
+
+      <h2>Van een naam naar een plek op de kaart</h2>
+      <p>Je ziet hem al weken in je contactenlijst staan. Elke avond komt hij voorbij. Een onbekende repeater, een mysterieuze companion of die ene node die voortdurend vage adverts verstuurt. Er is alleen één probleem: niemand weet waar hij fysiek staat. Soms is de aanleiding nog dringender, zoals een hardnekkige zender die een publiek kanaal volspamt en de mesh verstoort. Dan wil je niet alleen weten <em>dat</em> hij er is, maar vooral <em>waar</em>.</p>
+      <p>Daar is Mesh-Hunter voor ontworpen. Een MeshCore-mesh is bewust decentraal en anoniem ingericht: nodes maken zichzelf optioneel kenbaar via een advert, berichten vinden automatisch hun weg via verschillende repeaters, en nergens hoeft centraal te worden geregistreerd waar een apparaat staat. Dat is fantastisch voor de privacy en robuustheid van het netwerk, maar een flinke uitdaging als je een specifieke zender wilt lokaliseren. Het protocol vertelt je dat de node bestaat, maar laat je in het duister tasten over de locatie.</p>
+      <p>Tot nu toe was dit via 'path-walking' hooguit grofweg naar een bepaalde regio te herleiden. Door de paden van gerelayde pakketten te analyseren kon je achterhalen welke repeaters een bericht hadden doorgegeven, om zo een globale regio te schatten. Maar dat betekende dat je thuis achter een bureau data zat te spellen, terwijl je eigenlijk op pad wilde gaan, het signaal achterna.</p>
+      <p>Mesh-Hunter draait dit proces om: geen ingewikkelde reconstructie achteraf, maar live meten en lokaliseren terwijl je rijdt.</p>
+
+      <h2>De jacht op het signaal</h2>
+      <p>Natuurlijk is het opsporen van een probleem-node een belangrijk scenario. Maar node-hunting is minstens zo interessant als sport of nuttige netwerkanalyse. Het ontdekken van een onbekende repeater helpt je om de mesh beter te begrijpen: staat hij op een hoge watertoren of gewoon bij iemand op de zolderkamer? Die kennis bepaalt direct waar jij een volgende repeater het beste kunt plaatsen om het netwerk optimaal uit te breiden. Het is een moderne vorm van de klassieke radio-foxhunt, met een mesh-netwerk als interactief speelveld.</p>
+      <p>Bovendien draagt elke jacht bij aan het grotere geheel. Alle meetgegevens die je onderweg verzamelt, kun je live doorsturen naar een gedeelde coverage-map. Wanneer meerdere hunters dit doen, ontstaat er een gedetailleerd en actueel beeld van de netwerkdekking. Zelfs als er niemand actief aan het jagen is, laat deze kaart precies zien waar de mesh ijzersterk is en waar nog blinde vlekken zitten.</p>
+
+      <h2>De logica van zero-hop ontvangst</h2>
+      <p>Bij het traceren van een zender is er maar één type signaal dat er echt toe doet: de <strong>rechtstreekse</strong> ontvangst, oftewel een zero-hop pakket. Zodra een datapakket namelijk één keer is gerelayde door een andere repeater, vertelt de signaalsterkte (RSSI) en de signaal-ruisverhouding (SNR) alleen nog iets over de afstand tot die laatste repeater, en niets meer over de oorspronkelijke zender. Daarom filtert Mesh-Hunter resoluut alle ruis weg en gebruikt uitsluitend zero-hop ontvangsten.</p>
+      <p>Elke keer dat je zo'n rechtstreeks signaal opvangt, koppelt de software de exacte signaalsterkte aan de GPS-positie van je eigen telefoon op dat moment. Dit datapunt wordt direct toegevoegd aan een visuele heatmap. Belangrijk om te weten: deze kaart toont dus niet meteen waar het doel zich bevindt, maar waar <em>jij</em> reed toen je het signaal oppikte en hoe krachtig het daar binnenkwam. Hoe meer metingen je verzamelt vanuit verschillende richtingen, hoe duidelijker de waarschijnlijke locatie van de node wordt.</p>
+      <p>Het is een volledig passieve vorm van radiolocatie. Mesh-Hunter gebruikt geen GPS-data van andere gebruikers en vraagt geen locatiegegevens op uit het netwerk. De uiteindelijke locatie op de kaart ontstaat puur en alleen als logisch gevolg van jouw eigen radiometingen in het veld.</p>
+
+      <h2>In de praktijk</h2>
+      <p>Mesh-Hunter draait als webapp in de browser en installeert als Progressive Web App (PWA) op je beginscherm. Je hebt een MeshCore-node met companion-firmware nodig die via Bluetooth aan je telefoon is gekoppeld, en verder niets bijzonders: Chrome op Android werkt feilloos, en op iOS is de Bluefy-browser de gangbare route omdat Safari geen Web Bluetooth ondersteunt.</p>
+      <p>Openen. Koppelen. Rijden.</p>
+      <p>Vanaf dat moment verschijnt elke directe ontvangst live op de kaart, vergezeld van een teller en een signaalmeter in beeld. Zo hoor en zie je direct of je warm of koud wordt, zonder dat je continu naar het scherm hoeft te staren. Wil je gericht op één specifieke node jagen? Dan selecteer je die als doelwit en filtert de app alle andere weergaven weg. Voor extra comfort onderweg is er een kompasmodus die de kaart automatisch meedraait met je rijrichting.</p>
+      <p>Zwijgzame repeaters kun je bovendien actief wakker maken. Een Discover-verzoek vraagt nodes in de directe omgeving om zich even te melden. Wie dat wil, kan dit proces tijdens het rijden automatisch laten herhalen. Hier hoort wel een belangrijke kanttekening bij: zendtijd is een gedeeld goed. LoRa-frequenties hebben een beperkte duty cycle en alles wat jij de ether in slingert, houdt het kanaal bezet voor anderen. Mesh-Hunter houdt de frequentie van deze verzoeken daarom bewust laag en zendt alleen als het echt moet. Luisteren is gratis, zenden is dat nooit helemaal.</p>
+      <p>Een account aanmaken is optioneel. Zonder account jaag je volledig lokaal op je eigen apparaat. Met een account worden je ontvangsten anoniem gedeeld met <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a>, waar de metingen van alle actieve hunters samenkomen tot één grote, dynamische kaart.</p>
+
+      <h2>Een jacht van begin tot eind</h2>
+      <p>Neem het scenario waarmee dit project begon: een node die avond na avond een publiek kanaal volspamt.</p>
+      <p>De eerste stap begint nog thuis aan het bureau. Uit de weinige gerelayde pakketten en de paden die ze hebben afgelegd, volgt een globaal vermoeden: de zender bevindt zich waarschijnlijk ergens binnen een straal van een paar kilometer in een specifieke woonwijk. Preciezer wordt het online niet, maar dat hoeft ook niet. Dit vermoeden bepaalt puur je startpunt.</p>
+      <p>Je stapt de auto in, klikt de companion in de dashboardhouder en opent Mesh-Hunter met de spammer als ingesteld doelwit. De eerste kilometers blijft de kaart leeg; alle signalen die je opvangt zijn gerelayed en worden dus genegeerd. Maar dan, net na het inrijden van de ingeschatte regio, volgt de eerste directe ontvangst. Zwak, diep in het blauw op de heatmap, maar het is een rechtstreeks signaal. De node is vanaf hier te horen.</p>
+      <p>Vanaf dat moment begint het strategische spel van straten uitkammen en metingen verzamelen. Elke straat die je inrijdt voegt nieuwe datapunten toe, en langzaam maar zeker tekent zich een patroon af op je scherm. Richting het noorden kleurt de heatmap steeds warmer, terwijl de signalen ten westen van het kanaal direct afkoelen. De kaart functioneert niet als een pijl die blind naar één huis wijst; het is een gradiënt van radiopropagatie waar jij de logische lijnen van volgt. Na een half uur intensief rondrijden is het zoekgebied gekrompen van een kilometersgrote cirkel naar een compacte buurt van slechts twee straten, waar elke ontvangst fel oranje en met maximale sterkte binnenkomt.</p>
+      <p>Daar houdt de software op. De laatste meters zijn mensenwerk. Een specifieke antenne op een schoorsteen herkennen, zien welke flat nét boven de boomgrens uitsteekt, of ontdekken dat een repeater simpelweg achter een zolderraam hangt. Mesh-Hunter brengt je tot aan de voordeur; wat je daarna met die kennis doet, bepaal je zelf. Voor de spammer uit dit verhaal betekende het dat een ongrijpbaar netwerkprobleem eindelijk een fysiek adres kreeg — en daarmee een snelle, constructieve oplossing.</p>
+      <p>Of je nu een onbekende repeater wilt vinden om je eigen mesh-bereik te optimaliseren, of gewoon nieuwsgierig bent welk gezicht er achter die mysterieuze node schuilgaat: Mesh-Hunter maakt van een abstract radiosignaal een tastbare zoektocht. Letterlijk.</p>
+
+      <h2>Extra context en links</h2>
+      <p>Ben je nieuw binnen de MeshCore-community of wil je de techniek induiken? De Nederlandstalige community heeft uitstekend instapmateriaal beschikbaar:</p>
+      <ul>
+        <li><strong><a href="https://meshcore.io">MeshCore</a></strong>: Het mesh-netwerkproject waar dit allemaal om draait.</li>
+        <li><strong>MeshWiki</strong>: De centrale Nederlandstalige community-wiki boordevol documentatie.</li>
+        <li><strong>Telegram-groep</strong>: Praat mee en stel je vragen in de <a href="https://t.me/meshcorenet">MeshCore Telegram-community</a>.</li>
+        <li><strong>Signal-groep</strong>: Sluit je aan bij de discussie via de <a href="https://signal.group/#CjQKIIJLehe8kHzF9vhsFSdETrxAv0j0BAx-7cznbo8I3ornEhD7KGtNPWT4ZMP7hLP5beaD">MeshCore Signal-groep</a>.</li>
+        <li><strong>Meereco</strong>: Biedt een heldere introductie in MeshCore en praktische tips voor beginners.</li>
+        <li><strong>Mesh-up</strong>: Beantwoordt uitgebreid de vraag: "Wat is MeshCore?".</li>
+        <li><strong>MeshAcademy</strong>: Een complete cursusreeks om het protocol van beginner tot expert te doorgronden.</li>
+        <li><strong>DutchMeshCore observers</strong>: Live meekijken met het actuele pakketverkeer in de Nederlandse mesh.</li>
+        <li><strong><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a></strong>: Het mesh-observatorium waar Mesh-Hunter op voortbouwt.</li>
+      </ul>
+      <p>Zelf de ether in? De <strong><a href="https://rx.mesh-hunter.eu">RX-webapp</a></strong> en de <strong><a href="https://map.mesh-hunter.eu">gedeelde kaart</a></strong> staan voor je klaar om de reis van naam naar kaart zelf te ervaren.</p>
+    </article>
+
+    <a class="blog-back" href="/blog/">← Terug naar de blog</a>
+  </main>
+
+  <footer class="lp-foot">
+    <span>Mesh-Hunter</span>
+  </footer>
+
+  <script>
+    (function () {
+      var KEY = 'ch-theme';
+      var root = document.documentElement;
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      var btn = document.getElementById('lp-theme');
+      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
+      sync();
+      btn.addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mesh-Hunter — MeshCore node-hunting toolkit</title>
+  <meta name="description" content="Mesh-Hunter is a MeshCore node-hunting toolkit: drive around with the RX webapp and receptions land on a shared coverage map." />
+  <link rel="stylesheet" href="style.css" />
+    <!-- Matomo (self-hosted, cookieless; production hosts only) -->
+    <script>
+      if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {
+        var _paq = window._paq = window._paq || [];
+        _paq.push(['disableCookies']);
+        _paq.push(['setDomains', ['*.mesh-hunter.eu']]);
+        _paq.push(['trackPageView']);
+        _paq.push(['enableLinkTracking']);
+        (function() {
+          var u="https://analytics.fiten.eu/";
+          _paq.push(['setTrackerUrl', u+'matomo.php']);
+          _paq.push(['setSiteId', '10']);
+          var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+          g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+      }
+    </script>
+    <!-- End Matomo Code -->
+</head>
+<body>
+  <header class="lp-top">
+    <span class="lp-brand">Mesh-Hunter</span>
+    <nav class="lp-nav">
+      <a href="https://map.mesh-hunter.eu">Map</a>
+      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+      <a href="/blog/">Blog</a>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
+    </nav>
+  </header>
+
+  <main class="lp-main">
+    <section class="lp-hero">
+      <h1>Mesh-Hunter</h1>
+      <p class="lp-lead">A MeshCore node-hunting toolkit. Drive around with the RX webapp, and every
+        reception lands on a shared coverage map — so you can home in on a node in the field.</p>
+      <div class="lp-cta">
+        <a class="lp-btn lp-btn-primary" href="https://map.mesh-hunter.eu">Open the map</a>
+        <a class="lp-btn" href="https://rx.mesh-hunter.eu">Open the RX webapp</a>
+      </div>
+    </section>
+
+    <section class="lp-card lp-blogcard">
+      <p class="blog-meta">Uit de blog · 13 juli 2026</p>
+      <h2><a href="/blog/van-radiosignaal-naar-kaart.html">Van radiosignaal naar kaart: node-hunting met Mesh-Hunter</a></h2>
+      <p>Elke MeshCore-node staat ergens. Op je scherm zie je alleen een naam — Mesh-Hunter helpt je
+        ontdekken waar die node fysiek staat, live terwijl je rijdt.</p>
+      <p><a href="/blog/van-radiosignaal-naar-kaart.html">Lees het verhaal →</a></p>
+    </section>
+
+    <section class="lp-card">
+      <h2>The map</h2>
+      <p>The map at <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a> shows where MeshCore
+        nodes have been heard. Without logging in you see recent, coarse coverage. Registered hunters
+        see their own receptions in full detail; verified members see everything.</p>
+      <p><a href="https://map.mesh-hunter.eu">Log in on the map →</a></p>
+    </section>
+
+    <section class="lp-card">
+      <h2>The RX webapp</h2>
+      <p>The RX webapp at <a href="https://rx.mesh-hunter.eu">rx.mesh-hunter.eu</a> turns a phone into
+        a reception logger: Web Bluetooth to a MeshCore companion radio, plus the phone's GPS. Every
+        packet it hears is timestamped, located, and published to the shared map.</p>
+      <p>It installs as a PWA — open it on your phone and add it to your home screen. Register inside
+        the app to link your companion device and unlock your own data on the map.</p>
+    </section>
+
+    <section class="lp-card">
+      <h2>Related projects</h2>
+      <ul class="lp-links">
+        <li><a href="https://meshcore.io">MeshCore</a> — the mesh networking project this tool is built for.</li>
+        <li><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a> — the mesh observatory Mesh-Hunter builds on.</li>
+      </ul>
+    </section>
+
+    <section class="lp-card">
+      <h2>About &amp; access</h2>
+      <p>Mesh-Hunter is run by amateur-radio operators. Coverage is inferred from radio measurements
+        via mesh topology — not from GPS tracking of any target node.</p>
+      <p>Verification to a member account (full map access) is granted by the admins. Register in the
+        RX webapp to get a hunter account; ask an admin for member verification.</p>
+    </section>
+  </main>
+
+  <footer class="lp-foot">
+    <span>Mesh-Hunter</span>
+  </footer>
+
+  <script>
+    (function () {
+      var KEY = 'ch-theme';
+      var root = document.documentElement;
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      var btn = document.getElementById('lp-theme');
+      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
+      sync();
+      btn.addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>

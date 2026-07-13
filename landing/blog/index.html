@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="nl" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Blog — Mesh-Hunter</title>
+  <meta name="description" content="Verhalen en achtergrond over node-hunting met Mesh-Hunter." />
+  <link rel="stylesheet" href="/style.css" />
+    <!-- Matomo (self-hosted, cookieless; production hosts only) -->
+    <script>
+      if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {
+        var _paq = window._paq = window._paq || [];
+        _paq.push(['disableCookies']);
+        _paq.push(['setDomains', ['*.mesh-hunter.eu']]);
+        _paq.push(['trackPageView']);
+        _paq.push(['enableLinkTracking']);
+        (function() {
+          var u="https://analytics.fiten.eu/";
+          _paq.push(['setTrackerUrl', u+'matomo.php']);
+          _paq.push(['setSiteId', '10']);
+          var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+          g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+      }
+    </script>
+    <!-- End Matomo Code -->
+</head>
+<body>
+  <header class="lp-top">
+    <a class="lp-brand" href="/" style="color:inherit;text-decoration:none">Mesh-Hunter</a>
+    <nav class="lp-nav">
+      <a href="https://map.mesh-hunter.eu">Map</a>
+      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+      <a href="/blog/" class="active">Blog</a>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
+    </nav>
+  </header>
+
+  <main class="lp-main">
+    <section class="lp-hero">
+      <h1>Blog</h1>
+      <p class="lp-lead">Verhalen en achtergrond over node-hunting met Mesh-Hunter.</p>
+    </section>
+
+    <ul class="blog-list">
+      <li>
+        <a class="lp-card" href="/blog/van-radiosignaal-naar-kaart.html">
+          <p class="blog-meta">13 juli 2026</p>
+          <h2>Van radiosignaal naar kaart: node-hunting met Mesh-Hunter</h2>
+          <p class="blog-teaser">Elke MeshCore-node staat ergens. Op je scherm zie je alleen een naam —
+            Mesh-Hunter helpt je ontdekken waar die node fysiek staat, live terwijl je rijdt.</p>
+        </a>
+      </li>
+    </ul>
+  </main>
+
+  <footer class="lp-foot">
+    <span>Mesh-Hunter</span>
+  </footer>
+
+  <script>
+    (function () {
+      var KEY = 'ch-theme';
+      var root = document.documentElement;
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      var btn = document.getElementById('lp-theme');
+      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
+      sync();
+      btn.addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>
