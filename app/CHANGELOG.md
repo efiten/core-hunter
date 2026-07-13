@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/efiten/core-hunter/compare/app-v1.3.0...app-v1.3.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **app:** stop the blank map and 3D freeze; drop terrain from 3D ([#147](https://github.com/efiten/core-hunter/issues/147)) ([#247](https://github.com/efiten/core-hunter/issues/247)) ([0bc7a25](https://github.com/efiten/core-hunter/commit/0bc7a25e678bb649901bec446ab6894f64c1f225))
+
 ## [1.3.0](https://github.com/efiten/core-hunter/compare/app-v1.2.0...app-v1.3.0) (2026-07-13)
 
 
