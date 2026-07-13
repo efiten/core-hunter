@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/efiten/core-hunter/compare/web-v1.1.0...web-v1.2.0) (2026-07-13)
+
+
+### Features
+
+* **web:** expand #f-hunter to a multi-row listbox on focus ([#244](https://github.com/efiten/core-hunter/issues/244)) ([30ea9b0](https://github.com/efiten/core-hunter/commit/30ea9b04b0dd3c52971540b5adbced4ccffba412))
+
+
+### Bug Fixes
+
+* **app,web:** locate disclaimer, glossary, and copy parity ([#174](https://github.com/efiten/core-hunter/issues/174)) ([#227](https://github.com/efiten/core-hunter/issues/227)) ([41e1456](https://github.com/efiten/core-hunter/commit/41e1456eaf886350f534c91f7c0eb174010a4f14))
+* **web:** fit the map to today's data on load instead of a Belgium-ish default ([#222](https://github.com/efiten/core-hunter/issues/222)) ([4ea1bb1](https://github.com/efiten/core-hunter/commit/4ea1bb1eaf51602cd6e94890596add3c88ef1fb0)), closes [#218](https://github.com/efiten/core-hunter/issues/218)
+* **web:** stop persisting from/to date filter in localStorage ([#221](https://github.com/efiten/core-hunter/issues/221)) ([5bc0d30](https://github.com/efiten/core-hunter/commit/5bc0d3070a54eef3f488855502726e8cabad9107)), closes [#217](https://github.com/efiten/core-hunter/issues/217)
+
 ## [1.1.0](https://github.com/efiten/core-hunter/compare/web-v1.0.1...web-v1.1.0) (2026-07-11)
 
 

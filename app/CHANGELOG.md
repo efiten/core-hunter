@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.3.0](https://github.com/efiten/core-hunter/compare/app-v1.2.0...app-v1.3.0) (2026-07-13)
+
+
+### Features
+
+* **app:** 3D mode — 2D/3D FAB, extruded hex bars, buildings, terrain ([#147](https://github.com/efiten/core-hunter/issues/147)) ([#228](https://github.com/efiten/core-hunter/issues/228)) ([75fb92e](https://github.com/efiten/core-hunter/commit/75fb92e3134145ec01dc7801f251838ef5d6d089))
+* **app:** auto-discover toggle with pulse feedback and repeater trace-ping ([#241](https://github.com/efiten/core-hunter/issues/241)) ([83dea99](https://github.com/efiten/core-hunter/commit/83dea99805738f4fc46cd65df9fbce8f95f80ccf))
+* **app:** GPS course as a third compass-mode heading source (driving mode) ([#245](https://github.com/efiten/core-hunter/issues/245)) ([6c09b26](https://github.com/efiten/core-hunter/commit/6c09b2617fb7824fa11b92037f867f2104f1e0e0))
+
+
+### Bug Fixes
+
+* **app,web:** locate disclaimer, glossary, and copy parity ([#174](https://github.com/efiten/core-hunter/issues/174)) ([#227](https://github.com/efiten/core-hunter/issues/227)) ([41e1456](https://github.com/efiten/core-hunter/commit/41e1456eaf886350f534c91f7c0eb174010a4f14))
+* **app:** clarify login/register submit action, keep it above the keyboard ([#239](https://github.com/efiten/core-hunter/issues/239)) ([0255490](https://github.com/efiten/core-hunter/commit/0255490ac8863903ea4bac6e17d08b863dec60f1))
+* **app:** lighter help-overlay backdrop, click-outside dismiss, splash tagline, anchored tooltips ([#220](https://github.com/efiten/core-hunter/issues/220)) ([addd30a](https://github.com/efiten/core-hunter/commit/addd30aa15ff1971759abcdcc7c671f1c6ea652c)), closes [#216](https://github.com/efiten/core-hunter/issues/216)
+* **app:** stop follow-mode recenter from cancelling an active pinch-zoom ([#243](https://github.com/efiten/core-hunter/issues/243)) ([d92cd28](https://github.com/efiten/core-hunter/commit/d92cd2803b67790e55b91746325ee86b374940fe))
+* **app:** two-line target rows to fix id/RSSI overlap and improve name legibility ([#219](https://github.com/efiten/core-hunter/issues/219)) ([d800486](https://github.com/efiten/core-hunter/commit/d80048641f894ac0409a295d68799c37ce194d21)), closes [#215](https://github.com/efiten/core-hunter/issues/215)
+
+
+### Styles
+
+* **app:** standardize glossary and copy wording ([#174](https://github.com/efiten/core-hunter/issues/174)) ([#226](https://github.com/efiten/core-hunter/issues/226)) ([8c57469](https://github.com/efiten/core-hunter/commit/8c57469f7bc402bb8330d2a3300c28e4a919a793))
+
 ## [1.2.0](https://github.com/efiten/core-hunter/compare/app-v1.1.1...app-v1.2.0) (2026-07-11)
 
 
