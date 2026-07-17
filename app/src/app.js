@@ -1322,8 +1322,9 @@ function toggle3D() {
 const sound = createSoundEngine()
 
 // Icon shows the CURRENT mode, same convention as the layer/2D-3D FABs:
-// slashed speaker (off), speaker + one wave (rxtx — pings/tx only), speaker +
-// two waves (full — soundbed + generative music + pings/tx).
+// slashed speaker (off), speaker + one wave (rxtx — pings/tx only), music
+// note (full — soundbed + generative music + pings/tx; a radio-station icon
+// is a planned addition once #256 lands).
 const SOUND_SPEAKER = '<path d="M4 8h3l4-3v10l-4-3H4z"/>'
 const SOUND_ICONS = {
   off: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
@@ -1333,7 +1334,7 @@ const SOUND_ICONS = {
     ${SOUND_SPEAKER}<path d="M13.5 7.5a4.2 4.2 0 0 1 0 5"/>
   </svg>`,
   full: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
-    ${SOUND_SPEAKER}<path d="M13.5 7.5a4.2 4.2 0 0 1 0 5"/><path d="M15.5 5.5a7 7 0 0 1 0 9"/>
+    <path d="M7 15.5V5l9-1.5V14"/><circle cx="5" cy="15.5" r="2"/><circle cx="14" cy="14" r="2"/>
   </svg>`,
 }
 const SOUND_LABELS = {
