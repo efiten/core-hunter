@@ -46,5 +46,5 @@ export const SPLASH_BASICS = [
 export const SPLASH_CALLOUTS = {
   controls: 'Select repeaters or senders and filter for traffic type. Use Locate to estimate the origin position.',
   menu: 'Settings and connection. Register your companion to contribute to the shared coverage map.',
-  fabs: 'Compass mode · toggle auto-discover — pings selected repeaters too · hex or points · 2D/3D view',
+  fabs: 'Compass mode · toggle auto-discover — pings selected repeaters too · hex or points · 2D/3D view · sound pings',
 }
