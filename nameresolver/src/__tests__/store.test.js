@@ -23,6 +23,25 @@ describe('openStore', () => {
     s.close()
   })
 
+  it('allWithPosition returns only nodes that have both lat and lon', () => {
+    const s = openStore(':memory:')
+    s.upsert({ pubkey: 'aabbccdd', name: 'Positioned', lat: 51.2, lon: 4.4 })
+    s.upsert({ pubkey: 'aabbeeff', name: 'No position', lat: null, lon: null })
+    s.upsert({ pubkey: 'aabb1122', name: 'Lat only', lat: 51.3, lon: null })
+    s.upsert({ pubkey: 'aabb3344', name: 'Lon only', lat: null, lon: 4.5 })
+    expect(s.allWithPosition()).toEqual([
+      { pubkey: 'aabbccdd', name: 'Positioned', lat: 51.2, lon: 4.4 },
+    ])
+    s.close()
+  })
+
+  it('allWithPosition is empty when nothing has a position', () => {
+    const s = openStore(':memory:')
+    s.upsert({ pubkey: 'aabbccdd', name: 'One', lat: null, lon: null })
+    expect(s.allWithPosition()).toEqual([])
+    s.close()
+  })
+
   it('resolvePrefix returns unique, ambiguous, and miss correctly', () => {
     const s = openStore(':memory:')
     s.upsert({ pubkey: 'aabbccdd', name: 'One', lat: null, lon: null })

@@ -21,6 +21,15 @@ export function resolvePrefixResponse(store, rawPrefix) {
   return { status: 200, json }
 }
 
+// positionsResponse serves every node that has a known position in one
+// payload. Bulk by design: a map layer needs the whole positioned set to
+// filter client-side, and per-node lookups would violate the "no per-packet
+// API calls from the frontend" rule (AGENTS.md §7).
+export function positionsResponse(store) {
+  const nodes = store.allWithPosition()
+  return { status: 200, json: { count: nodes.length, nodes } }
+}
+
 // createServer wires the resolve endpoint + a healthz liveness probe.
 export function createServer(store) {
   return http.createServer((req, res) => {
@@ -33,6 +42,12 @@ export function createServer(store) {
     if (req.method === 'GET' && url.pathname === '/api/nodes/count') {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ count: store.count() }))
+      return
+    }
+    if (req.method === 'GET' && url.pathname === '/api/nodes/positions') {
+      const { status, json } = positionsResponse(store)
+      res.writeHead(status, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(json))
       return
     }
     if (req.method === 'GET' && url.pathname === '/api/nodes/resolve') {
