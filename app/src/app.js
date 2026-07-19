@@ -1290,6 +1290,53 @@ function toggle3D() {
 }
 
 // ---------------------------------------------------------------------------
+// Node-position layer (#197)
+// ---------------------------------------------------------------------------
+
+// Registry nodes that know their own position, fetched once per session and
+// filtered to the viewport client-side (AGENTS.md §7: no per-packet API calls).
+// The bulk endpoint only exists on our own nameresolver — third-party CoreScope
+// resolvers implement the resolve contract but not this — so a 404 or a network
+// error just means that resolver contributes nothing.
+let nodePosOn = false, nodePosLoaded = false
+
+async function loadNodePositions() {
+  if (nodePosLoaded) return
+  const cfg = getConfig()
+  const resolvers = (cfg && cfg.resolvers) || []
+  const byPubkey = new Map()
+  for (const r of resolvers) {
+    try {
+      const url = r.url.replace(/\/resolve$/, '/positions')
+      const res = await fetch(url)
+      if (!res.ok) continue
+      const j = await res.json()
+      for (const n of j.nodes || []) {
+        if (n && n.pubkey) byPubkey.set(String(n.pubkey).toLowerCase(), n)
+      }
+    } catch (_) {
+      // resolver unreachable or has no bulk endpoint — skip it
+    }
+  }
+  nodePosLoaded = true
+  if (state.map) state.map.setNodePositions([...byPubkey.values()])
+}
+
+async function toggleNodePositions() {
+  nodePosOn = !nodePosOn
+  const btn = el('nodepos-toggle')
+  btn.classList.toggle('on', nodePosOn)
+  btn.setAttribute('aria-pressed', String(nodePosOn))
+  // §7: this layer implies node locations, so the disclaimer is on screen for
+  // as long as the layer is — a popup-only note would not satisfy it.
+  const note = el('nodepos-note')
+  note.textContent = SPLASH_DISCLAIMER
+  note.hidden = !nodePosOn
+  if (nodePosOn) await loadNodePositions()
+  if (state.map) state.map.setNodeLayerVisible(nodePosOn)
+}
+
+// ---------------------------------------------------------------------------
 // Compass mode (map follow toggle) — pwa only
 // ---------------------------------------------------------------------------
 
@@ -1509,6 +1556,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   update3DIcon()
   el('mode3d-toggle').addEventListener('click', toggle3D)
+  el('nodepos-toggle').addEventListener('click', () => { toggleNodePositions().catch(() => {}) })
 
   // Compass button — always visible; cycles static → follow (north up) →
   // follow + device heading → follow + GPS course/driving mode (#242). See

@@ -6,7 +6,9 @@
 // relayed via the name resolver. It is operator-self-reported, so a gap between
 // it and our estimate is called "drift", never "error": it does not imply our
 // estimate is the wrong one.
-import { haversineM } from './locate.js'
+import { haversineM, dedupeSpatial, rejectOutliers, weightedCentroid, geometryStats } from './locate.js'
+
+const M_PER_DEG_LAT = 111320
 
 // Below this the two positions are treated as agreeing, and no circle is drawn.
 export const TIGHT_DRIFT_M = 100
@@ -78,4 +80,51 @@ export function driftPresentation({ advertised, estimate }) {
     circle: { kind: 'drift', radiusM: driftM },
     outsideCircle: false,
   }
+}
+
+// groupSenderPoints buckets located receptions by sender so each node can be
+// estimated independently. Receptions without a sender or a GPS fix carry no
+// location information and are dropped.
+export function groupSenderPoints(records) {
+  const out = new Map()
+  if (!Array.isArray(records)) return out
+  for (const r of records) {
+    if (r.sender_id == null) continue
+    if (!isCoord(r.lat) || !isCoord(r.lon)) continue
+    const key = String(r.sender_id).toLowerCase()
+    if (!out.has(key)) out.set(key, [])
+    out.get(key).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+  }
+  return out
+}
+
+// estimateFor is locate() without the density grid: the layer needs a centroid
+// and geometry stats per node, and densityGrid is O(cols*rows*points) — far too
+// expensive to run for every node in view on every render tick. Same dedupe,
+// outlier rejection and <3-inlier rule as locate(), so an estimate here agrees
+// with the one Locate shows for the same sender.
+export function estimateFor(points) {
+  const { inliers } = rejectOutliers(dedupeSpatial(points || []))
+  if (inliers.length < 3) return null
+  const centroid = weightedCentroid(inliers)
+  if (!centroid) return null
+  return { centroid, stats: geometryStats(inliers, centroid), n: inliers.length }
+}
+
+// circleRing approximates a metre-radius circle as a closed ring of [lon, lat]
+// pairs. MapLibre's circle layer sizes in screen pixels, so a ground-distance
+// circle has to be drawn as a polygon that scales with the map instead.
+export function circleRing(centre, radiusM, steps = 48) {
+  if (!centre || !(radiusM > 0)) return []
+  const mPerDegLon = M_PER_DEG_LAT * Math.cos((centre.lat * Math.PI) / 180)
+  const ring = []
+  for (let i = 0; i < steps; i++) {
+    const a = (i / steps) * 2 * Math.PI
+    ring.push([
+      centre.lon + (radiusM * Math.cos(a)) / mPerDegLon,
+      centre.lat + (radiusM * Math.sin(a)) / M_PER_DEG_LAT,
+    ])
+  }
+  ring.push(ring[0])
+  return ring
 }

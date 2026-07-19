@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
+import { haversineM } from '../locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
 // A bounds box around Antwerp-ish coordinates.
@@ -103,5 +104,69 @@ describe('driftPresentation — how a node with both positions is drawn (#197)',
 
   it('reports nothing to draw when neither position exists', () => {
     expect(driftPresentation({ advertised: null, estimate: null })).toEqual({ kind: 'none' })
+  })
+})
+
+describe('groupSenderPoints', () => {
+  const rec = (o) => ({ sender_id: 'aa', lat: 51.2, lon: 4.4, rssi: -70, ...o })
+
+  it('groups located receptions by lowercased sender id', () => {
+    const g = groupSenderPoints([
+      rec({ sender_id: 'AA', rssi: -60 }),
+      rec({ sender_id: 'aa', rssi: -70 }),
+      rec({ sender_id: 'bb' }),
+    ])
+    expect(g.get('aa')).toHaveLength(2)
+    expect(g.get('bb')).toHaveLength(1)
+  })
+  it('drops receptions without a sender or without a GPS fix', () => {
+    const g = groupSenderPoints([
+      rec({ sender_id: null }),
+      rec({ sender_id: 'cc', lat: null }),
+      rec({ sender_id: 'dd' }),
+    ])
+    expect([...g.keys()]).toEqual(['dd'])
+  })
+  it('returns an empty map for missing input', () => {
+    expect(groupSenderPoints(null).size).toBe(0)
+  })
+})
+
+describe('estimateFor', () => {
+  // A small spread of points around a centre, enough to survive the <3 rule.
+  const spread = [
+    { lat: 51.200, lon: 4.400, rssi: -60 },
+    { lat: 51.202, lon: 4.402, rssi: -70 },
+    { lat: 51.198, lon: 4.398, rssi: -80 },
+    { lat: 51.201, lon: 4.397, rssi: -75 },
+  ]
+
+  it('returns a centroid and geometry stats', () => {
+    const est = estimateFor(spread)
+    expect(est.centroid.lat).toBeCloseTo(51.2, 1)
+    expect(est.stats.searchRadiusM).toBeGreaterThan(0)
+    expect(est.stats.encirclement).toBeGreaterThan(0)
+    expect(est.n).toBeGreaterThanOrEqual(3)
+  })
+  it('returns null below 3 inliers, matching locate()', () => {
+    expect(estimateFor(spread.slice(0, 2))).toBeNull()
+    expect(estimateFor([])).toBeNull()
+  })
+})
+
+describe('circleRing', () => {
+  it('produces a closed ring of lon/lat pairs', () => {
+    const ring = circleRing({ lat: 51.2, lon: 4.4 }, 500, 8)
+    expect(ring).toHaveLength(9)               // steps + repeated first point
+    expect(ring[0]).toEqual(ring[ring.length - 1])
+  })
+  it('places every vertex at approximately the requested radius', () => {
+    const centre = { lat: 51.2, lon: 4.4 }
+    for (const [lon, lat] of circleRing(centre, 500, 12)) {
+      expect(haversineM(centre, { lat, lon })).toBeCloseTo(500, -1)
+    }
+  })
+  it('returns an empty ring for a non-positive radius', () => {
+    expect(circleRing({ lat: 51.2, lon: 4.4 }, 0, 8)).toEqual([])
   })
 })
