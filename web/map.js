@@ -576,9 +576,14 @@ async function drawNodePositions() {
     // and Locate draws the centroid properly. Only advertised positions are new.
     if (p.kind === 'none' || p.kind === 'estimate-only') continue
     const color = cssVar(driftColorVar(p))
-    const html = nodePosPopup(cachedName(id), id, p, est)
+    const name = cachedName(id)
+    const html = nodePosPopup(name, id, p, est)
+    // The name rides on the map next to the ▲, not just in the popup: the
+    // layer is opt-in, so it can afford the labels while it is on. Only the ▲
+    // is labelled — the ● is the same node.
+    const label = `<span class="np-label">${esc(name || id.slice(0, 6))}</span>`
     L.marker([advertised.lat, advertised.lon], {
-      icon: L.divIcon({ className: 'np-advert-icon', html: `<div class="np-advert" style="color:${color}">▲</div>`, iconSize: [14, 16] }),
+      icon: L.divIcon({ className: 'np-advert-icon', html: `<div class="np-advert" style="color:${color}">▲${label}</div>`, iconSize: [14, 16] }),
     }).bindPopup(html).addTo(nodePosLayer)
     if (!est || !est.centroid) continue
     L.circleMarker([est.centroid.lat, est.centroid.lon], { radius: 5, color, weight: 2, fillColor: color, fillOpacity: 0.9 })

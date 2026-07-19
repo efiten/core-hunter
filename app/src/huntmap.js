@@ -268,16 +268,22 @@ export function createHuntMap(containerId) {
     return cssVar('--ch-muted')
   }
 
-  function nodeMarkerEl(cls, glyph) {
+  // The name rides alongside the ▲ rather than only inside the popup: this
+  // layer is opt-in, so the map can afford the labels while it is on. The
+  // label is absolutely positioned so it never shifts the glyph off the
+  // coordinate the marker is anchored to.
+  function nodeMarkerEl(cls, glyph, label) {
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
     const el = document.createElement('div')
-    el.innerHTML = `<div class="${cls}">${glyph}</div>`
+    const name = label ? `<span class="np-label">${esc(label)}</span>` : ''
+    el.innerHTML = `<div class="${cls}">${glyph}${name}</div>`
     return el
   }
 
   // A Marker built from a custom element does not toggle its popup on tap by
   // itself, so wire the click explicitly.
-  function addNodeMarker(cls, glyph, lngLat, popup) {
-    const el = nodeMarkerEl(cls, glyph)
+  function addNodeMarker(cls, glyph, lngLat, popup, label) {
+    const el = nodeMarkerEl(cls, glyph, label)
     const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
     el.addEventListener('click', (e) => { e.stopPropagation(); marker.togglePopup() })
     nodeMarkers.push(marker)
@@ -306,7 +312,9 @@ export function createHuntMap(containerId) {
       const p = driftPresentation({ advertised: n, estimate: est })
       if (p.kind === 'none') continue
       const color = driftColor(p)
-      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est))
+      // Only the ▲ is labelled — the ● belongs to the same node, so naming
+      // both would just double the text for one target.
+      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), n.name || n.pubkey)
       if (!est || !est.centroid) continue
       addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], nodePopup(n, p, est))
       lines.push({ type: 'Feature', properties: { color },

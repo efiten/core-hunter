@@ -62,8 +62,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* Node-position layer (#197): ▲ = the node's own advertised position, ● = our
    RSSI estimate. The estimate deliberately reuses .lc-centroid's look so it
    reads as the same kind of thing Locate already draws. */
-.np-advert { font-size: 14px; line-height: 16px; text-align: center; color: var(--ch-text);
+.np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; color: var(--ch-text);
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); cursor: pointer; }
+/* Absolute so the label never shifts the ▲ off its anchored coordinate. The
+   layer is opt-in, so names are shown on the map while it is on (#197). */
+.np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+  margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
+  color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
 .np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg);
   background: var(--ch-sig-hot); cursor: pointer; }
 .np-muted { color: var(--ch-muted); }

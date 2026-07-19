@@ -46,7 +46,11 @@ test('checking it draws the advertised marker, reflects in the URL, and shows th
   await page.check('#f-nodepos')
 
   // Exactly one marker per node — concurrent redraws must not leave duplicates.
-  await expect(page.locator('.np-advert')).toHaveCount(1)
+  // The marker only appears after two sequential round-trips (points, then the
+  // resolve that supplies the advertised position), so allow for both.
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  // The name is on the map, not only in the popup: the layer is opt-in.
+  await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
   // §7: the disclaimer is on screen for as long as the layer is drawn.
   await expect(page.locator('#nodepos-note')).toBeVisible()
   await expect(page.locator('#nodepos-note')).toContainText('not GPS tracking')
