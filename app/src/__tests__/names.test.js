@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { orderResolvers, resolvableKey, isFullPubkey, isResolvableId, cachedName } from '../names.js'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { orderResolvers, resolvableKey, isFullPubkey, isResolvableId, cachedName, cachedPosition, resolveName } from '../names.js'
+import { setConfig } from '../config.js'
 
 const PUBKEY = 'ab'.repeat(32) // 64 hex chars
 
@@ -89,5 +90,48 @@ describe('orderResolvers — pure ordering helper', () => {
     const ordered = orderResolvers(resolvers, 7)
     expect(ordered).not.toBe(resolvers)
     expect(resolvers[0]).toBe(R_SF8) // original unchanged
+  })
+})
+
+// Registry positions (#197): the resolver already returns lat/lon on a unique
+// hit; these cover retaining them instead of discarding them. Each test uses a
+// distinct key because the module-level cache persists across tests.
+describe('cachedPosition — registry positions retained from a resolve', () => {
+  const RESOLVER = { sf: 7, url: 'https://r.example.com/resolve' }
+  afterEach(() => { vi.unstubAllGlobals(); setConfig(null) })
+
+  const stubFetch = (json) => vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => json })))
+
+  it('is undefined for a key that has not been resolved', () => {
+    expect(cachedPosition('c0ffee01')).toBeUndefined()
+  })
+
+  it('retains lat/lon from a unique hit, alongside the name', async () => {
+    setConfig({ resolvers: [RESOLVER] })
+    stubFetch({ prefix: 'c0ffee02', pubkey: 'c0ffee02', name: 'Repeater-Zuid', ambiguous: false, lat: 51.2, lon: 4.4 })
+    expect(await resolveName('c0ffee02')).toBe('Repeater-Zuid')
+    expect(cachedPosition('c0ffee02')).toEqual({ lat: 51.2, lon: 4.4 })
+    expect(cachedName('c0ffee02')).toBe('Repeater-Zuid')
+  })
+
+  it('caches null when the hit carries no position', async () => {
+    setConfig({ resolvers: [RESOLVER] })
+    stubFetch({ prefix: 'c0ffee03', pubkey: 'c0ffee03', name: 'No-Position', ambiguous: false })
+    expect(await resolveName('c0ffee03')).toBe('No-Position')
+    expect(cachedPosition('c0ffee03')).toBeNull()
+  })
+
+  it('caches null position for an ambiguous prefix', async () => {
+    setConfig({ resolvers: [RESOLVER] })
+    stubFetch({ prefix: 'c0ffee04', ambiguous: true })
+    expect(await resolveName('c0ffee04')).toBe('')
+    expect(cachedPosition('c0ffee04')).toBeNull()
+  })
+
+  it('treats a partial position (lat only) as no position', async () => {
+    setConfig({ resolvers: [RESOLVER] })
+    stubFetch({ prefix: 'c0ffee05', pubkey: 'c0ffee05', name: 'Half', ambiguous: false, lat: 51.2 })
+    await resolveName('c0ffee05')
+    expect(cachedPosition('c0ffee05')).toBeNull()
   })
 })

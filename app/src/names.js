@@ -8,7 +8,18 @@
 // not-found → '' (caller shows the prefix).
 import { getConfig } from './config.js';
 
-const cache = new Map(); // key (lowercase hex) -> name | ''
+// key (lowercase hex) -> { name: string|'', pos: {lat, lon} | null }.
+// The resolver returns the node's self-advertised position alongside the name
+// on a unique hit (#197); both are cached together so a resolved key is fetched
+// at most once regardless of which of the two the caller wants.
+const cache = new Map();
+
+// positionOf extracts a usable position from a resolver response. Both
+// coordinates must be present and numeric — a half-position is no position.
+function positionOf(j) {
+  if (!j || typeof j.lat !== 'number' || typeof j.lon !== 'number') return null;
+  return { lat: j.lat, lon: j.lon };
+}
 
 // A full MeshCore public key is 32 bytes = 64 lowercase-hex chars.
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i;
@@ -38,7 +49,16 @@ export function resolvableKey(rec) {
 // call from a render loop; pair with a fire-and-forget resolveName() for misses.
 export function cachedName(key) {
   const k = String(key).toLowerCase();
-  return cache.has(k) ? cache.get(k) : undefined;
+  return cache.has(k) ? cache.get(k).name : undefined;
+}
+
+// cachedPosition returns the node's self-advertised position for a key:
+// {lat, lon} when the registry had one, null when it resolved without a
+// position, undefined when the key has not been resolved yet. Same
+// synchronous, render-loop-safe contract as cachedName.
+export function cachedPosition(key) {
+  const k = String(key).toLowerCase();
+  return cache.has(k) ? cache.get(k).pos : undefined;
 }
 
 // orderResolvers returns a new array with resolvers whose sf matches
@@ -69,7 +89,7 @@ export async function resolveName(key, companionSf /* = undefined */) {
   if (resolvers.length === 0) return '';
 
   const k = key.toLowerCase();
-  if (cache.has(k)) return cache.get(k);
+  if (cache.has(k)) return cache.get(k).name;
 
   const ordered = orderResolvers(resolvers, companionSf);
 
@@ -84,7 +104,7 @@ export async function resolveName(key, companionSf /* = undefined */) {
       const j = await r.json();
       const name = !j.ambiguous && j.name ? j.name : '';
       if (name) {
-        cache.set(k, name);
+        cache.set(k, { name, pos: j.ambiguous ? null : positionOf(j) });
         return name;
       }
       // ambiguous or not found — try next resolver
@@ -96,6 +116,6 @@ export async function resolveName(key, companionSf /* = undefined */) {
 
   // All resolvers responded (or errored). Only cache '' if there were no
   // network errors (i.e. every resolver definitively had no unique name).
-  if (!anyNetworkError) cache.set(k, '');
+  if (!anyNetworkError) cache.set(k, { name: '', pos: null });
   return '';
 }
