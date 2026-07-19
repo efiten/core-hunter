@@ -5,7 +5,18 @@
 // hashes (2 hex) are ambiguous and skipped.
 import { API_BASE } from './config.js'
 
-const cache = new Map() // key (lowercase hex) -> name | ''
+// key (lowercase hex) -> { name: string|null, pos: {lat, lon} | null }.
+// The resolve proxy returns the node's self-advertised position alongside the
+// name (#197) — but only for members: server-side it strips lat/lon below that
+// role (httpapi/resolve.go), so a guest simply never gets a position here.
+const cache = new Map()
+
+// positionOf extracts a usable position from a resolve response. Both
+// coordinates must be present and numeric — a half-position is no position.
+function positionOf(j) {
+  if (!j || typeof j.lat !== 'number' || typeof j.lon !== 'number') return null
+  return { lat: j.lat, lon: j.lon }
+}
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i
 // 2..32 bytes: discover 8-byte prefixes, advert pubkeys, AND CoreScope 2-byte
 // relay path-prefixes (all resolve uniquely via CoreScope). 1-byte hashes (2 hex)
@@ -19,7 +30,15 @@ export function isResolvableId(id) { return typeof id === 'string' && RESOLVABLE
 // looked up. Synchronous — use it while rendering.
 export function cachedName(key) {
   const k = String(key).toLowerCase()
-  return cache.has(k) ? cache.get(k) : undefined
+  return cache.has(k) ? cache.get(k).name : undefined
+}
+
+// cachedPosition: the node's self-advertised position ({lat, lon}), null when
+// it resolved without one (or the viewer's role is below member), undefined
+// when not yet looked up. Same synchronous contract as cachedName.
+export function cachedPosition(key) {
+  const k = String(key).toLowerCase()
+  return cache.has(k) ? cache.get(k).pos : undefined
 }
 
 // Test-only seam: clears the resolved-name cache between specs.
@@ -30,16 +49,17 @@ export function _resetNameCache() { cache.clear() }
 // errors leave the id unresolved (uncached) so it retries on a later draw.
 export async function resolveName(key) {
   const k = String(key).toLowerCase()
-  if (cache.has(k)) return cache.get(k)
+  if (cache.has(k)) return cache.get(k).name
 
   let name = null
+  let pos = null
   try {
     const r = await fetch(`${API_BASE}/api/resolve?prefix=${encodeURIComponent(k)}`, { credentials: 'same-origin' })
     if (r.ok) {
       const j = await r.json()
-      if (j && j.name && !j.ambiguous) name = j.name
+      if (j && j.name && !j.ambiguous) { name = j.name; pos = positionOf(j) }
     }
-    cache.set(k, name)
+    cache.set(k, { name, pos })
   } catch {
     // transient — leave uncached so it retries on a later draw
   }

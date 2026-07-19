@@ -68,6 +68,9 @@
       <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
       <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
     </span>
+    <span class="np-layer-toggle">
+      <label class="cs-cb"><input type="checkbox" id="f-nodepos" /> Node positions</label>
+    </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
     <button id="auth-btn" class="bar-btn">Log in</button>
@@ -77,6 +80,7 @@
     <span id="ch-version"></span>
   </header>
   <div id="locate-info" hidden></div>
+  <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>
   <div id="login-modal" class="lc-modal" hidden>
     <form id="login-form" class="lc-card">
       <h4>Log in</h4>

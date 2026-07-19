@@ -1,7 +1,8 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
+import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
+import { groupSenderPoints, estimateFor, driftPresentation, circleRing } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
@@ -39,6 +40,7 @@ const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
+const nodePosLayer = L.layerGroup().addTo(map)
 let locateActive = false
 let locateTimer = null
 // Whether the "?" legend in the Locate info box is expanded. Persisted across
@@ -132,6 +134,17 @@ function applyObserverGate() {
   const show = canSeeObserverPoints(currentRole)
   const toggle = document.querySelector('.cs-layer-toggle')
   if (toggle) toggle.hidden = !show
+  // Node positions ride the same member gate: the resolve proxy strips lat/lon
+  // below member, so the layer could only ever be empty for a guest — hide the
+  // control rather than offering a toggle that does nothing.
+  const npToggle = document.querySelector('.np-layer-toggle')
+  if (npToggle) npToggle.hidden = !show
+  if (!show) {
+    nodePosCb.checked = false
+    nodePosLayer.clearLayers()
+    const note = document.getElementById('nodepos-note')
+    if (note) note.hidden = true
+  }
   if (!show) {
     clearObserverLayers()
   } else {
@@ -172,6 +185,7 @@ export function refresh() {
     if (locateActive) return // focus mode: keep the non-relevant layers hidden
     if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
+    drawNodePositions()   // follows the same filter/bbox set as the points
   }, 250)
 }
 
@@ -500,6 +514,86 @@ async function drawObserverPoints(src, layer, ring) {
   }
 }
 
+// --- Node-position layer (#197) ---------------------------------------------
+// Draws each sender's self-advertised position (▲) against our RSSI estimate
+// (●), with the gap between them as drift. Positions come from the same
+// same-origin resolve proxy the names already use — which strips lat/lon below
+// the member role server-side, so a guest simply gets no positions and the
+// layer stays empty. Unlike the app (which bulk-fetches the whole registry),
+// web only covers senders present in the current filter set; registry-wide
+// coverage would need a bulk proxy endpoint on the Go server.
+const nodePosCb = document.getElementById('f-nodepos')
+
+// Colour states the rule that produced them, never a verdict on which position
+// is "right": the advertised one is operator-self-reported and can be stale.
+function driftColorVar(p) {
+  if (p.kind === 'tight') return '--ch-accent'
+  if (p.kind === 'drifted' && p.outsideCircle) return '--ch-accent-2'
+  return '--ch-muted'
+}
+
+function nodePosPopup(name, id, p, est) {
+  const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
+  const drift = p.driftM != null ? `<br>drift ${Math.round(p.driftM)} m · ${est ? est.n : 0} points` : ''
+  const circle = p.circle
+    ? `<br>${p.circle.kind === 'search'
+        ? `search radius ~${Math.round(p.circle.radiusM)} m`
+        : 'one-sided — radius not trusted'}`
+    : ''
+  return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}`
+    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
+}
+
+// Generation token: a draw can be re-entered while its /api/points fetch is in
+// flight (the checkbox, a refresh, and the name-resolution redraw all trigger
+// one). Without this the later pass clears the layer and both then add their
+// markers, leaving duplicates behind.
+let nodePosGen = 0
+
+async function drawNodePositions() {
+  const gen = ++nodePosGen
+  nodePosLayer.clearLayers()
+  const note = document.getElementById('nodepos-note')
+  if (note) note.hidden = !nodePosCb.checked
+  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole)) return
+  const { points } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  // A newer draw started (or the layer was switched off) while we were waiting.
+  if (gen !== nodePosGen || !nodePosCb.checked) return
+  const bySender = groupSenderPoints(points)
+
+  // Resolve any sender we have not looked up yet, then redraw once — same
+  // fill-only, at-most-once-per-key pattern the name lookups already use.
+  const unresolved = [...bySender.keys()].filter((k) => isResolvableId(k) && cachedPosition(k) === undefined)
+  if (unresolved.length) {
+    Promise.all(unresolved.map((k) => resolveName(k))).then(() => { if (nodePosCb.checked) drawNodePositions() })
+  }
+
+  for (const [id, pts] of bySender) {
+    const advertised = cachedPosition(id) || null
+    const est = estimateFor(pts)
+    const p = driftPresentation({ advertised, estimate: est })
+    // estimate-only adds nothing here: the points themselves already show it,
+    // and Locate draws the centroid properly. Only advertised positions are new.
+    if (p.kind === 'none' || p.kind === 'estimate-only') continue
+    const color = cssVar(driftColorVar(p))
+    const html = nodePosPopup(cachedName(id), id, p, est)
+    L.marker([advertised.lat, advertised.lon], {
+      icon: L.divIcon({ className: 'np-advert-icon', html: `<div class="np-advert" style="color:${color}">▲</div>`, iconSize: [14, 16] }),
+    }).bindPopup(html).addTo(nodePosLayer)
+    if (!est || !est.centroid) continue
+    L.circleMarker([est.centroid.lat, est.centroid.lon], { radius: 5, color, weight: 2, fillColor: color, fillOpacity: 0.9 })
+      .bindPopup(html).addTo(nodePosLayer)
+    L.polyline([[advertised.lat, advertised.lon], [est.centroid.lat, est.centroid.lon]], { color, weight: 1.5, opacity: 0.9 })
+      .addTo(nodePosLayer)
+    if (p.circle) {
+      const ring = circleRing(est.centroid, p.circle.radiusM).map(([lon, lat]) => [lat, lon])
+      if (ring.length) L.polyline(ring, { color, weight: 1.2, opacity: 0.8, dashArray: p.circle.kind === 'search' ? '4 4' : '1 3' }).addTo(nodePosLayer)
+    }
+  }
+}
+
+nodePosCb.addEventListener('change', () => { drawNodePositions() })
+
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
 const csCbForSrc = (src) => (src === 'advert' ? csAdvertCb : csRelayCb)
@@ -575,6 +669,7 @@ urlstate.bindControl('to', 'f-to', { urlOnly: true })
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
+urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 const wantLocate = urlstate.initial('locate', '') === '1'
 let locateRestored = false // wantLocate fires at most once, see applyRole() below
