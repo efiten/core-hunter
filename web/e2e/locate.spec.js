@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 // A small spread of synthetic receptions around (51, 4): one strong, several weak,
 // all > 10 m apart (so dedupe keeps them) and < 20 km (so none are rejected).

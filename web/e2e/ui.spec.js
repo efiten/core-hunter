@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, mapSettled } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -238,6 +238,8 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
   await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
 
   // Canvas-rendered point: click the map center where the fixture marker sits.
+  // Only once the view has settled — a click during fitBounds' animation misses.
+  await mapSettled(page)
   await expect(async () => {
     const box = await page.locator('#map').boundingBox()
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
@@ -264,6 +266,7 @@ test('CoreScope relays checkbox (off by default) draws observer points with reso
   await expect(page.locator('#cs-relays')).not.toBeChecked() // off by default
   await page.check('#cs-relays')
 
+  await mapSettled(page)
   await expect(async () => {
     await page.locator('path.leaflet-interactive').first().click({ force: true })
     await expect(page.locator('.leaflet-popup-content')).toContainText('relay BE-HSS-DinX', { timeout: 1000 })
@@ -294,6 +297,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   await page.check('#cs-relays')
 
   const locateReq = page.waitForRequest((r) => r.url().includes('/observer-points') && r.url().includes('heard_key=1d6f'))
+  await mapSettled(page)
   await expect(async () => {
     await page.locator('path.leaflet-interactive').first().click({ force: true })
     await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })

@@ -549,13 +549,22 @@ function nodePosPopup(name, id, p, est) {
 // one). Without this the later pass clears the layer and both then add their
 // markers, leaving duplicates behind.
 let nodePosGen = 0
+// Signature of what is currently drawn. Rebuilding the layer destroys every
+// marker, which silently closes any popup the user has open — and this layer
+// redraws on each refresh (pan, zoom, filter change, the name-resolution
+// pass), so an unguarded rebuild can yank a popup away mid-read. Skip the
+// rebuild when the rendered content is identical, mirroring targetlist.js's
+// _lastSig guard in the app.
+let nodePosSig = null
 
 async function drawNodePositions() {
   const gen = ++nodePosGen
-  nodePosLayer.clearLayers()
   const note = document.getElementById('nodepos-note')
   if (note) note.hidden = !nodePosCb.checked
-  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole)) return
+  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole)) {
+    nodePosLayer.clearLayers(); nodePosSig = null
+    return
+  }
   const { points } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
   // A newer draw started (or the layer was switched off) while we were waiting.
   if (gen !== nodePosGen || !nodePosCb.checked) return
@@ -568,6 +577,8 @@ async function drawNodePositions() {
     Promise.all(unresolved.map((k) => resolveName(k))).then(() => { if (nodePosCb.checked) drawNodePositions() })
   }
 
+  // Resolve everything first so the signature covers the whole rendered set.
+  const draw = []
   for (const [id, pts] of bySender) {
     const advertised = cachedPosition(id) || null
     const est = estimateFor(pts)
@@ -575,8 +586,18 @@ async function drawNodePositions() {
     // estimate-only adds nothing here: the points themselves already show it,
     // and Locate draws the centroid properly. Only advertised positions are new.
     if (p.kind === 'none' || p.kind === 'estimate-only') continue
+    draw.push({ id, advertised, est, p, name: cachedName(id) })
+  }
+
+  const sig = draw.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
+    Math.round(d.p.circle ? d.p.circle.radiusM : -1),
+    d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+  if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
+  nodePosSig = sig
+  nodePosLayer.clearLayers()
+
+  for (const { id, advertised, est, p, name } of draw) {
     const color = cssVar(driftColorVar(p))
-    const name = cachedName(id)
     const html = nodePosPopup(name, id, p, est)
     // The name rides on the map next to the ▲, not just in the popup: the
     // layer is opt-in, so it can afford the labels while it is on. Only the ▲
