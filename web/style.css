@@ -53,6 +53,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    expanded Locate legend can grow to ~480px and overlap this box's top-right
    corner at the real 1280x720 test viewport, and floating info panels/modals
    should always win a stacking tie over a background ticker. */
+/* top: 52px is only the pre-JS fallback -- map.js's setMapTop() overrides it to
+   the bar's actual offsetHeight + 4px on load and on resize, the same
+   mechanism #map itself already used for a wrapped/taller bar. */
 #rx-log { position: fixed; top: 52px; right: 0; width: 214px; z-index: 620;
   padding: 0 10px;
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }

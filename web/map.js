@@ -82,7 +82,16 @@ const MODES = ['points', 'hex', 'both']
 let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
 const bar = document.getElementById('bar')
 document.getElementById('layer-toggle').textContent = mode
-const setMapTop = () => { document.getElementById('map').style.top = bar.offsetHeight + 'px'; map.invalidateSize() }
+// #rx-log (#224) shares this: it also sits below the bar, and a wrapped bar
+// (more filter chips than fit on one line, or a narrow viewport) grows taller
+// than any fixed offset would assume -- keep both in sync with the bar's
+// actual rendered height, not a guessed constant.
+const setMapTop = () => {
+  document.getElementById('map').style.top = bar.offsetHeight + 'px'
+  const rxLog = document.getElementById('rx-log')
+  if (rxLog) rxLog.style.top = (bar.offsetHeight + 4) + 'px'
+  map.invalidateSize()
+}
 setMapTop()
 window.addEventListener('resize', setMapTop)
 
