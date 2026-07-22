@@ -57,7 +57,15 @@
 <body>
   <header id="bar">
     <select id="f-hunter" multiple title="All hunters if none selected"></select>
-    <input id="f-sender" type="text" placeholder="sender id (prefix)" />
+    <span class="sp-wrap">
+      <input id="f-sender" type="text" placeholder="sender id (prefix)" />
+      <button id="sp-toggle" type="button" title="Pick from heard senders" aria-expanded="false">▾</button>
+      <div id="sender-picker" class="tl-panel" hidden>
+        <div class="tl-pinned-label">Top</div>
+        <div id="tp-pinned" class="tl-list tl-pinned"></div>
+        <ul id="tp-list" class="tl-list"></ul>
+      </div>
+    </span>
     <label>from <input id="f-from" type="datetime-local" /></label>
     <label>to <input id="f-to" type="datetime-local" /></label>
     <span id="f-types"></span>

@@ -7,6 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
+import { createTargetPicker, parseSenderField, senderQueryParam, matchesSenderIds } from './targetpicker.js'
 
 let currentRole = 'guest'
 
@@ -39,6 +40,10 @@ const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
+// Target-list picker (#223), created near the end of this file once its DOM
+// exists; drawPoints() feeds it on every redraw, guarded since it's still
+// null during the handful of calls that can happen before that point.
+let targetPicker = null
 let locateActive = false
 let locateTimer = null
 // Whether the "?" legend in the Locate info box is expanded. Persisted across
@@ -72,17 +77,36 @@ window.addEventListener('resize', setMapTop)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
+// applyFilterParams sets every active filter on `p`, except `sender` gets
+// special handling (#223): the target-list picker reuses the same field/URL
+// state as the pre-existing free-text prefix search, so a comma-joined
+// multi-id pick and a single leading-prefix search share one string. The
+// server only does a single leading-prefix LIKE match
+// (server/internal/store/query.go) -- it cannot OR multiple exact ids, so a
+// multi-select is dropped here (senderQueryParam returns '') and applied
+// client-side instead, via matchesSenderIds, once points are fetched.
+function applyFilterParams(p, f) {
+  for (const [k, v] of Object.entries(f)) {
+    if (!v) continue
+    if (k === 'sender') { const q = senderQueryParam(v); if (q) p.set(k, q); continue }
+    p.set(k, v)
+  }
+}
+
 function qs() {
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
-  const f = (window.currentFilters && window.currentFilters()) || {}
-  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  applyFilterParams(p, (window.currentFilters && window.currentFilters()) || {})
   return p.toString()
 }
 
 async function drawPoints() {
   pointLayer.clearLayers()
-  const { points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  const { points: fetched, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  // Multi-id pick (#223): the server already returned the broader hunter/
+  // time/type/hops-filtered set (sender was dropped from the request above);
+  // narrow it here to the exact ids picked from the target list.
+  const points = fetched.filter(senderFilterFn())
   const unresolved = new Set()
   for (const pt of points) {
     if (!pt.sender_label && isResolvableId(pt.sender_id) && cachedName(pt.sender_id) === undefined) {
@@ -98,6 +122,12 @@ async function drawPoints() {
       .addTo(pointLayer)
   }
   document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
+  // Target picker (#223) draws from the BROADER, pre-sender-narrowing set --
+  // it needs to offer every sender in the current hunter/time/type/hops
+  // window to pick from, not just whichever is already picked. Same bbox-
+  // scoped limitation as snapToLatestPoints (#218): only senders present in
+  // the currently panned-into view are listed, called out in the issue itself.
+  if (targetPicker) targetPicker.render(fetched, Date.now())
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
@@ -106,6 +136,13 @@ async function drawPoints() {
   }
 }
 
+// Known scope limit (#223): a multi-sender pick does not restrict the
+// heatmap. /api/heatmap aggregates server-side into grid cells, so there is
+// no per-point result left to filter afterward the way drawPoints() does --
+// hex/both mode with 2+ senders picked shows every sender in the current
+// hunter/time/type/hops window, same as no sender filter at all. A single
+// pick (or the plain text field) is unaffected, since that still reaches the
+// server as a real `sender=` prefix.
 async function drawHex() {
   hexLayer.clearLayers()
   const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`); const fc = await r.json()
@@ -204,9 +241,17 @@ window.__mapCenter = () => map.getCenter() // test hook
 // no-sender Locate path (#176).
 function filtersQs() {
   const p = new URLSearchParams()
-  const f = (window.currentFilters && window.currentFilters()) || {}
-  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  applyFilterParams(p, (window.currentFilters && window.currentFilters()) || {})
   return p.toString()
+}
+
+// senderFilterFn returns a predicate narrowing an already-fetched point set
+// to a multi-id pick (#223); a no-op (everything passes) otherwise, since a
+// plain prefix search already reached the server via applyFilterParams.
+function senderFilterFn() {
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  const parsed = parseSenderField(f.sender || '')
+  return parsed.mode === 'ids' ? (pt) => matchesSenderIds(pt, parsed.ids) : () => true
 }
 
 // Snap the map to the selected hunter(s) (#195).
@@ -223,7 +268,7 @@ async function snapToHunter() {
     fetched = await fetchPointsPaged(filtersQs(), { maxTotal: 25000 })
   } catch (_) { return }
   if (hunterMarker) { map.removeLayer(hunterMarker); hunterMarker = null }
-  const points = fetched.points
+  const points = fetched.points.filter(senderFilterFn()) // #223 multi-id pick
   if (!points.length) return
   map.fitBounds(points.map((p) => [p.lat, p.lon]))
   if (n === 1) {
@@ -248,7 +293,8 @@ async function snapToLatestPoints() {
   try {
     fetched = await fetchPointsPaged(filtersQs(), { maxTotal: 25000 })
   } catch (_) { return }
-  if (fetched.points.length) map.fitBounds(fetched.points.map((p) => [p.lat, p.lon]))
+  const points = fetched.points.filter(senderFilterFn()) // #223 multi-id pick
+  if (points.length) map.fitBounds(points.map((p) => [p.lat, p.lon]))
 }
 window.__snapToLatestPoints = snapToLatestPoints // test hook
 
@@ -592,6 +638,38 @@ if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
 if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
 if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 refresh()
+
+// Target-list picker (#223): a small dropdown beside #f-sender, matching
+// the existing #f-hunter multi-select's "toggle button reveals a panel"
+// shape rather than app's full sheet -- web's top bar keeps every control
+// inline (#225 decision), so this stays a compact popover, not a sheet.
+const spToggle = document.getElementById('sp-toggle')
+const senderPicker = document.getElementById('sender-picker')
+targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
+  pinnedEl: document.getElementById('tp-pinned'),
+})
+function openSenderPicker() {
+  senderPicker.hidden = false
+  spToggle.setAttribute('aria-expanded', 'true')
+  targetPicker.reset() // back to page 1; the next redraw below repopulates
+  refresh()
+}
+function closeSenderPicker() {
+  senderPicker.hidden = true
+  spToggle.setAttribute('aria-expanded', 'false')
+}
+spToggle.addEventListener('click', () => (senderPicker.hidden ? openSenderPicker() : closeSenderPicker()))
+// Capture phase, not bubble: a row click's own handler (onToggle -> render)
+// replaces the clicked button via listEl.replaceChildren() synchronously, so
+// by the time a bubble-phase document listener would run, e.target is
+// already detached and closest('.sp-wrap') wrongly returns null, closing the
+// picker after every pick. Capture runs before that mutation happens.
+document.addEventListener('click', (e) => {
+  if (senderPicker.hidden) return
+  if (e.target.closest('.sp-wrap')) return
+  closeSenderPicker()
+}, true)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !senderPicker.hidden) closeSenderPicker() })
 
 // Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
 // role-dependent UI (guest notice + Tasks 5/9 gating) whenever it changes.
