@@ -124,13 +124,9 @@ async function drawPoints() {
   }
 }
 
-// Known scope limit (#223): a multi-sender pick does not restrict the
-// heatmap. /api/heatmap aggregates server-side into grid cells, so there is
-// no per-point result left to filter afterward the way drawPoints() does --
-// hex/both mode with 2+ senders picked shows every sender in the current
-// hunter/time/type/hops window, same as no sender filter at all. A single
-// pick (or the plain text field) is unaffected, since that still reaches the
-// server as a real `sender=` prefix.
+// A multi-sender pick restricts the heatmap too (#223): the sender filter is
+// applied server-side in SQL, so it lands before the grid-cell aggregation
+// rather than needing per-point rows the client no longer sees.
 async function drawHex() {
   hexLayer.clearLayers()
   const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`); const fc = await r.json()
