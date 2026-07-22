@@ -58,8 +58,30 @@
   <header id="bar">
     <select id="f-hunter" multiple title="All hunters if none selected"></select>
     <input id="f-sender" type="text" placeholder="sender id (prefix)" />
-    <label>from <input id="f-from" type="datetime-local" /></label>
-    <label>to <input id="f-to" type="datetime-local" /></label>
+    <!-- #285: f-from/f-to stay the state carriers (urlstate binds them, and
+         they now hold either an absolute datetime-local string or a relative
+         token like "now-6h"), but are no longer the UI -- the picker below
+         writes them. Hidden rather than removed so every existing binding,
+         listener and deep link keeps working unchanged. -->
+    <input id="f-from" type="hidden" />
+    <input id="f-to" type="hidden" />
+    <span class="tr-wrap">
+      <button id="tr-toggle" type="button" aria-expanded="false" title="Change the time range">
+        <span aria-hidden="true">&#128339;</span> <span id="tr-label">Today</span>
+      </button>
+      <div id="time-picker" class="tr-panel" hidden>
+        <div class="tr-cols">
+          <div class="tr-abs">
+            <div class="tr-head">Absolute time range</div>
+            <label class="tr-field">From <input id="tr-from" type="datetime-local" /></label>
+            <label class="tr-field">To <input id="tr-to" type="datetime-local" /></label>
+            <div class="tr-actions"><button id="tr-apply" type="button" class="tr-primary">Apply time range</button></div>
+            <button id="tr-copy" type="button" class="tr-copy" title="Copy a link with this range frozen to fixed timestamps">Copy absolute link</button>
+          </div>
+          <ul id="tr-quick" class="tr-quick"></ul>
+        </div>
+      </div>
+    </span>
     <span id="f-types"></span>
     <label class="cs-cb"><input type="checkbox" id="f-direct" /> Direct only</label>
     <button id="layer-toggle">points</button>
