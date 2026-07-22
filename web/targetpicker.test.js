@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dedupeSenders, senderList, topSenders, targetParts, relTime,
-  parseSenderField, senderQueryParam, matchesSenderIds, toggleSenderId,
+  parseSenderField, toggleSenderId,
 } from './targetpicker.js'
 
 const pt = (o) => ({ lat: 51, lon: 4, rssi: -80, rx_at: '2026-07-22T10:00:00Z', ...o })
@@ -83,8 +83,9 @@ describe('relTime — ported from app/src/feed.js (not shared: web\'s data model
 describe('parseSenderField — disambiguates #f-sender\'s reused value (#223)', () => {
   // Decision: the picker and the free-text prefix field share the SAME
   // `sender` param/URL state (Kasper, 2026-07-22) rather than a separate one.
-  // A comma means "exact-id multi-select from the picker"; anything else is
-  // the pre-existing single leading-prefix search, unchanged.
+  // A comma means "exact-id selection from the picker"; anything else is the
+  // pre-existing single leading-prefix search, unchanged. The server applies
+  // the same rule (server/internal/httpapi/api.go's filterFrom).
   it('empty value -> no filter', () => {
     expect(parseSenderField('')).toEqual({ mode: 'none' })
   })
@@ -97,60 +98,37 @@ describe('parseSenderField — disambiguates #f-sender\'s reused value (#223)', 
   it('trims whitespace and drops empty entries around commas', () => {
     expect(parseSenderField(' aa11 , ,bb22 ')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
   })
-})
-
-describe('senderQueryParam — what actually goes to the server\'s sender= param', () => {
-  // The server only does a single leading-prefix LIKE match
-  // (server/internal/store/query.go) -- it cannot OR multiple exact ids. A
-  // multi-select must NOT be forwarded there (it would prefix-match the
-  // literal joined string and return nothing); the ids-mode filtering
-  // happens client-side instead (matchesSenderIds), after a broader fetch.
-  it('passes a plain prefix through unchanged', () => {
-    expect(senderQueryParam('aa11')).toBe('aa11')
-  })
-  it('is empty for a multi-id selection (filtered client-side instead)', () => {
-    expect(senderQueryParam('aa11,bb22')).toBe('')
-  })
-  it('is empty when there is no filter', () => {
-    expect(senderQueryParam('')).toBe('')
+  // The trailing comma is what makes a ONE-id pick survive a reload/share as a
+  // pick rather than degrading into a prefix search -- the two are otherwise
+  // the same string. Ugly in the URL, but honest and lossless.
+  it('a single id with a trailing comma -> a one-element exact set, not a prefix', () => {
+    expect(parseSenderField('aa11,')).toEqual({ mode: 'ids', ids: ['aa11'] })
   })
 })
 
-describe('matchesSenderIds — client-side exact-id filter for the multi-select case', () => {
-  it('matches case-insensitively', () => {
-    expect(matchesSenderIds(pt({ sender_id: 'AA11' }), ['aa11', 'bb22'])).toBe(true)
-    expect(matchesSenderIds(pt({ sender_id: 'cc33' }), ['aa11', 'bb22'])).toBe(false)
+describe('toggleSenderId — toggles one id, always emitting the ids-mode form', () => {
+  // Output always contains a comma (trailing for a single id), so the result
+  // is unambiguously a picker selection -- both on reload and to the server.
+  it('adds an id to an empty selection, with a trailing comma', () => {
+    expect(toggleSenderId('', 'aa11')).toBe('aa11,')
   })
-  it('never matches a row with no sender_id', () => {
-    expect(matchesSenderIds(pt({ sender_id: null }), ['aa11'])).toBe(false)
+  it('adds a second id, becoming a plain comma-list', () => {
+    expect(toggleSenderId('aa11,', 'bb22')).toBe('aa11,bb22')
   })
-})
-
-describe('toggleSenderId — toggles one id within an already-ids-mode selection', () => {
-  // Operates on a comma-joined ids representation ONLY -- it is not
-  // responsible for deciding whether the picker's live selection should be
-  // seeded from a bare (possibly-prefix) field value in the first place.
-  // The DOM component owns that decision once, at creation/reload time (see
-  // createTargetPicker): a comma present -> seed the ids Set from it; no
-  // comma -> the picker starts with an empty selection instead of guessing
-  // whether a bare value was a typed prefix or an earlier single pick (the
-  // two are genuinely indistinguishable as one string -- a known, documented
-  // round-trip limitation of reusing one field for both, #223). Every click
-  // thereafter toggles within that already-unambiguous in-memory Set, so
-  // accumulation across multiple clicks in one session always works.
-  it('adds an id to an empty selection', () => {
-    expect(toggleSenderId('', 'aa11')).toBe('aa11')
-  })
-  it('adds a second id, becoming a comma-list', () => {
-    expect(toggleSenderId('aa11', 'bb22')).toBe('aa11,bb22')
-  })
-  it('removes an id already selected', () => {
-    expect(toggleSenderId('aa11,bb22', 'aa11')).toBe('bb22')
+  it('removes an id, dropping back to the trailing-comma single form', () => {
+    expect(toggleSenderId('aa11,bb22', 'bb22')).toBe('aa11,')
   })
   it('removing the last id clears the selection entirely', () => {
-    expect(toggleSenderId('aa11', 'aa11')).toBe('')
+    expect(toggleSenderId('aa11,', 'aa11')).toBe('')
   })
   it('is case-insensitive when checking membership', () => {
-    expect(toggleSenderId('AA11', 'aa11')).toBe('')
+    expect(toggleSenderId('AA11,', 'aa11')).toBe('')
+  })
+  // Round-trip: whatever toggleSenderId emits must parse back to the same ids.
+  it('emits a value parseSenderField reads back as the same id set', () => {
+    const one = toggleSenderId('', 'aa11')
+    expect(parseSenderField(one)).toEqual({ mode: 'ids', ids: ['aa11'] })
+    const two = toggleSenderId(one, 'bb22')
+    expect(parseSenderField(two)).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
   })
 })

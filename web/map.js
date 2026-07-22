@@ -7,7 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createTargetPicker, parseSenderField, senderQueryParam, matchesSenderIds } from './targetpicker.js'
+import { createTargetPicker } from './targetpicker.js'
 
 let currentRole = 'guest'
 
@@ -44,6 +44,11 @@ const csRelayLayer = L.layerGroup().addTo(map)
 // exists; drawPoints() feeds it on every redraw, guarded since it's still
 // null during the handful of calls that can happen before that point.
 let targetPicker = null
+// Declared here rather than at the wiring site below: refreshPickerCandidates()
+// (called from drawPoints) reads it, and a `const` further down would be in its
+// temporal dead zone -- reading it would throw rather than fall through the
+// null guard if a redraw ever lands before module eval reaches the wiring.
+let senderPicker = null
 let locateActive = false
 let locateTimer = null
 // Whether the "?" legend in the Locate info box is expanded. Persisted across
@@ -77,36 +82,24 @@ window.addEventListener('resize', setMapTop)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
-// applyFilterParams sets every active filter on `p`, except `sender` gets
-// special handling (#223): the target-list picker reuses the same field/URL
-// state as the pre-existing free-text prefix search, so a comma-joined
-// multi-id pick and a single leading-prefix search share one string. The
-// server only does a single leading-prefix LIKE match
-// (server/internal/store/query.go) -- it cannot OR multiple exact ids, so a
-// multi-select is dropped here (senderQueryParam returns '') and applied
-// client-side instead, via matchesSenderIds, once points are fetched.
-function applyFilterParams(p, f) {
-  for (const [k, v] of Object.entries(f)) {
-    if (!v) continue
-    if (k === 'sender') { const q = senderQueryParam(v); if (q) p.set(k, q); continue }
-    p.set(k, v)
-  }
-}
-
+// The `sender` param carries both filters the viewer supports (#223): a
+// comma-less value is the free-text leading-prefix search, anything with a
+// comma is the target-list picker's exact multi-id selection. The server
+// distinguishes them and applies either as a real SQL condition
+// (server/internal/httpapi/api.go's filterFrom), so this stays a plain
+// pass-through -- no client-side narrowing, and hex/heatmap honours a
+// multi-sender pick exactly like the point layer does.
 function qs() {
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
-  applyFilterParams(p, (window.currentFilters && window.currentFilters()) || {})
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
   return p.toString()
 }
 
 async function drawPoints() {
   pointLayer.clearLayers()
-  const { points: fetched, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
-  // Multi-id pick (#223): the server already returned the broader hunter/
-  // time/type/hops-filtered set (sender was dropped from the request above);
-  // narrow it here to the exact ids picked from the target list.
-  const points = fetched.filter(senderFilterFn())
+  const { points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
   const unresolved = new Set()
   for (const pt of points) {
     if (!pt.sender_label && isResolvableId(pt.sender_id) && cachedName(pt.sender_id) === undefined) {
@@ -122,12 +115,7 @@ async function drawPoints() {
       .addTo(pointLayer)
   }
   document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
-  // Target picker (#223) draws from the BROADER, pre-sender-narrowing set --
-  // it needs to offer every sender in the current hunter/time/type/hops
-  // window to pick from, not just whichever is already picked. Same bbox-
-  // scoped limitation as snapToLatestPoints (#218): only senders present in
-  // the currently panned-into view are listed, called out in the issue itself.
-  if (targetPicker) targetPicker.render(fetched, Date.now())
+  refreshPickerCandidates() // #223 -- its own sender-less query, see below
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
@@ -241,17 +229,32 @@ window.__mapCenter = () => map.getCenter() // test hook
 // no-sender Locate path (#176).
 function filtersQs() {
   const p = new URLSearchParams()
-  applyFilterParams(p, (window.currentFilters && window.currentFilters()) || {})
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
   return p.toString()
 }
 
-// senderFilterFn returns a predicate narrowing an already-fetched point set
-// to a multi-id pick (#223); a no-op (everything passes) otherwise, since a
-// plain prefix search already reached the server via applyFilterParams.
-function senderFilterFn() {
+// The target picker (#223) needs the sender-UNfiltered candidate set: it must
+// offer every sender in the current hunter/time/type/hops window to pick from,
+// not just the ones already picked. Now that the server applies the sender
+// filter for real, drawPoints()'s result set is already narrowed -- feeding
+// that to the picker would shrink the list to the current selection and make
+// picking a second sender impossible. So the picker runs its own query with
+// `sender` dropped. Bbox-scoped like the map itself, the same limitation
+// snapToLatestPoints (#218) has and the issue anticipated.
+//
+// Only fetched while the panel is actually open -- an extra request on every
+// redraw would be pure waste for a control that is closed almost all the time.
+async function refreshPickerCandidates() {
+  if (!targetPicker || !senderPicker || senderPicker.hidden) return
+  const b = map.getBounds()
+  const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
   const f = (window.currentFilters && window.currentFilters()) || {}
-  const parsed = parseSenderField(f.sender || '')
-  return parsed.mode === 'ids' ? (pt) => matchesSenderIds(pt, parsed.ids) : () => true
+  for (const [k, v] of Object.entries(f)) if (v && k !== 'sender') p.set(k, v)
+  try {
+    const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
+    targetPicker.render(points, Date.now())
+  } catch (_) { /* keep the last good list; retried on the next redraw */ }
 }
 
 // Snap the map to the selected hunter(s) (#195).
@@ -268,7 +271,7 @@ async function snapToHunter() {
     fetched = await fetchPointsPaged(filtersQs(), { maxTotal: 25000 })
   } catch (_) { return }
   if (hunterMarker) { map.removeLayer(hunterMarker); hunterMarker = null }
-  const points = fetched.points.filter(senderFilterFn()) // #223 multi-id pick
+  const points = fetched.points
   if (!points.length) return
   map.fitBounds(points.map((p) => [p.lat, p.lon]))
   if (n === 1) {
@@ -293,8 +296,7 @@ async function snapToLatestPoints() {
   try {
     fetched = await fetchPointsPaged(filtersQs(), { maxTotal: 25000 })
   } catch (_) { return }
-  const points = fetched.points.filter(senderFilterFn()) // #223 multi-id pick
-  if (points.length) map.fitBounds(points.map((p) => [p.lat, p.lon]))
+  if (fetched.points.length) map.fitBounds(fetched.points.map((p) => [p.lat, p.lon]))
 }
 window.__snapToLatestPoints = snapToLatestPoints // test hook
 
@@ -644,7 +646,7 @@ refresh()
 // shape rather than app's full sheet -- web's top bar keeps every control
 // inline (#225 decision), so this stays a compact popover, not a sheet.
 const spToggle = document.getElementById('sp-toggle')
-const senderPicker = document.getElementById('sender-picker')
+senderPicker = document.getElementById('sender-picker')
 targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
   pinnedEl: document.getElementById('tp-pinned'),
 })

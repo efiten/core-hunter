@@ -83,36 +83,25 @@ export function parseSenderField(value) {
   return { mode: 'prefix', prefix: v }
 }
 
-// senderQueryParam is what actually goes to the server's sender= param. The
-// server only does a single leading-prefix LIKE match
-// (server/internal/store/query.go) -- it cannot OR multiple exact ids. A
-// multi-select must NOT be forwarded there (it would prefix-match the
-// literal joined string and return nothing); ids-mode filtering happens
-// client-side instead, via matchesSenderIds, after a broader fetch.
-export function senderQueryParam(value) {
-  const parsed = parseSenderField(value)
-  return parsed.mode === 'prefix' ? parsed.prefix : ''
+// idsToField renders an id set back into the shared #f-sender value. A single
+// id gets a TRAILING COMMA so it stays unambiguously a picker selection rather
+// than decaying into a leading-prefix search on reload/share -- "aa11" and
+// "aa11" are the same string otherwise. The server applies the same rule
+// (server/internal/httpapi/api.go's filterFrom).
+function idsToField(ids) {
+  if (!ids.length) return ''
+  return ids.length === 1 ? `${ids[0]},` : ids.join(',')
 }
 
-// matchesSenderIds — client-side exact-id filter for the multi-select case.
-export function matchesSenderIds(pt, ids) {
-  if (pt.sender_id == null) return false
-  return ids.includes(String(pt.sender_id).toLowerCase())
-}
-
-// toggleSenderId toggles one id within an already-ids-mode comma-joined
-// selection. It is not responsible for deciding whether a bare field value
-// should seed the picker's selection in the first place -- that decision
-// (comma present -> seed from it; no comma -> start empty rather than guess
-// whether a bare value was a typed prefix or an earlier single pick, which
-// are genuinely indistinguishable as one string) belongs to the DOM
-// component, once, at creation/reload time. See createTargetPicker.
+// toggleSenderId toggles one id within an ids-mode selection, always emitting
+// the canonical ids-mode form (see idsToField), so its output round-trips
+// through parseSenderField unchanged.
 export function toggleSenderId(currentIdsCsv, id) {
   const ids = currentIdsCsv ? currentIdsCsv.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : []
   const key = String(id).toLowerCase()
   const i = ids.indexOf(key)
   if (i >= 0) ids.splice(i, 1); else ids.push(key)
-  return ids.join(',')
+  return idsToField(ids)
 }
 
 // ---------------------------------------------------------------------------
@@ -168,35 +157,30 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl } = {}) {
   let _lastSig = null
   let _lastPinnedSig = null
 
-  // The picker's own live selection. Session-persistent (a plain Set, not
-  // re-derived from the field string on every call) so multiple clicks
-  // accumulate correctly -- a single previously-picked id, once written back
-  // as a bare comma-less value, is indistinguishable from a typed prefix
-  // (#223's own "distinctly from a manually-typed prefix" concern), so
-  // re-parsing on every render would silently drop it back to empty after
-  // exactly one click. Resynced from the field only when something ELSE
-  // changed it (Clear, manual typing, a urlstate/shared-link restore) --
-  // detected by comparing the field's current value against what this Set
-  // would itself produce, rather than a set/echo flag around our own writes.
-  let selectedIds = new Set()
-
-  function resyncIfExternallyChanged() {
-    const mine = [...selectedIds].join(',')
-    if (input.value === mine) return
+  // The field IS the selection -- no shadow copy to keep in sync. That works
+  // because the ids-mode form always carries a comma (trailing one for a
+  // single id, see idsToField), so the field value is unambiguous in every
+  // state: '' none, 'aa11' a typed prefix, 'aa11,' one picked id, 'aa11,bb22'
+  // several. Clear, manual typing and shared-link restores are therefore
+  // picked up for free, with no resync logic.
+  const currentIds = () => {
     const parsed = parseSenderField(input.value)
-    selectedIds = new Set(parsed.mode === 'ids' ? parsed.ids : [])
+    return new Set(parsed.mode === 'ids' ? parsed.ids : [])
   }
 
   function onToggle(id) {
-    input.value = toggleSenderId([...selectedIds].join(','), id)
-    selectedIds = new Set(input.value ? input.value.split(',') : [])
+    const parsed = parseSenderField(input.value)
+    // A typed prefix is replaced, not merged: a leading-prefix search and an
+    // exact-id pick are different match kinds, so silently combining them
+    // would be surprising. Picking always starts a clean id selection.
+    input.value = toggleSenderId(parsed.mode === 'ids' ? parsed.ids.join(',') : '', id)
     input.dispatchEvent(new Event('input', { bubbles: true }))
     render(lastPoints, Date.now())
   }
 
   function render(points, nowMs) {
     lastPoints = points || []
-    resyncIfExternallyChanged()
+    const selectedIds = currentIds()
     const selKey = [...selectedIds].sort().join(',')
 
     if (pinnedEl) {

@@ -22,37 +22,63 @@ test('opening the picker lists senders from the currently loaded points', async 
   await expect(page.locator('#tp-list')).toContainText('Charlie')
 })
 
-test('picking two senders writes a comma-joined id list to #f-sender and reaches the API on neither request (client-side filtered)', async ({ page }) => {
+test('a picked selection is sent to the server as a real sender= filter', async ({ page }) => {
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
   await page.goto('/?mode=points')
   await page.click('#sp-toggle')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
+  // One pick -> trailing comma, so it stays an exact-id selection rather than
+  // decaying into a prefix search (the server reads the comma the same way).
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
-  await expect(page.locator('#f-sender')).toHaveValue('aa11bb22')
+  await expect(page.locator('#f-sender')).toHaveValue('aa11bb22,')
+  await expect.poll(() => urls.some((u) => /sender=aa11bb22(%2C|,)(&|$)/.test(u))).toBe(true)
 
   await page.locator('#tp-list .tl-row', { hasText: 'Charlie' }).click()
-  // Order isn't guaranteed (a Set, not a sorted list) -- assert membership.
   const value = await page.locator('#f-sender').inputValue()
-  expect(value.split(',').sort()).toEqual(['aa11bb22', 'cc33dd44'])
-
-  // The multi-id value must never be forwarded to the server's sender= param
-  // (it can only do a single leading-prefix LIKE match) -- assert no request
-  // after both picks carries the comma-joined value.
-  await expect.poll(() => urls.some((u) => u.includes('sender=aa11bb22%2Ccc33dd44') || u.includes('sender=aa11bb22,cc33dd44'))).toBe(false)
+  expect(value.split(',').filter(Boolean).sort()).toEqual(['aa11bb22', 'cc33dd44'])
+  // The multi-id value now DOES reach the server -- it applies it as a real
+  // SQL IN filter, so the client no longer post-filters anything.
+  await expect.poll(() => urls.some((u) => /sender=aa11bb22(%2C|,)cc33dd44/.test(u))).toBe(true)
 })
 
-test('picking both senders narrows the map to exactly those two points', async ({ page }) => {
-  const C = { ...A, sender_id: 'ee55ff66', sender_label: 'Echo', rx_at: '2026-07-22T15:00:00Z' }
-  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B, C] } }))
+test('the picker keeps listing every candidate sender after one is picked', async ({ page }) => {
+  // Regression guard: the picker's candidate query must drop `sender`. With
+  // the server now applying the filter for real, feeding it the map's own
+  // (already narrowed) result set would shrink the list to the current
+  // selection and make picking a second sender impossible.
+  await page.route('**/api/points*', (r) => {
+    const sender = new URL(r.request().url()).searchParams.get('sender')
+    const all = [A, B]
+    const ids = (sender || '').split(',').filter(Boolean).map((s) => s.toLowerCase())
+    const points = ids.length ? all.filter((p) => ids.includes(p.sender_id.toLowerCase())) : all
+    return r.fulfill({ json: { points } })
+  })
   await page.goto('/?mode=points')
   await page.click('#sp-toggle')
-  await expect(page.locator('#tp-list .tl-row')).toHaveCount(3, { timeout: 10000 })
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
+  await expect(page.locator('#f-sender')).toHaveValue('aa11bb22,')
+  // Both rows still offered, and the unpicked one is still clickable.
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2)
   await page.locator('#tp-list .tl-row', { hasText: 'Charlie' }).click()
-  await expect(page.locator('#status')).toHaveText('2 points', { timeout: 10000 })
+  const value = await page.locator('#f-sender').inputValue()
+  expect(value.split(',').filter(Boolean).sort()).toEqual(['aa11bb22', 'cc33dd44'])
+})
+
+test('a single pick survives a reload as a pick, not a prefix search', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
+  await page.goto('/?mode=points&sender=aa11bb22,')
+  await page.click('#sp-toggle')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'true')
+  // ...whereas a comma-less value is still a plain prefix search: not a pick.
+  await page.goto('/?mode=points&sender=aa11bb22')
+  await page.click('#sp-toggle')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('a picked row shows checked state, and unpicking it restores the plain count', async ({ page }) => {
