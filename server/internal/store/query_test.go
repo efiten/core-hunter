@@ -52,6 +52,47 @@ func TestQueryPointsMultipleHunters(t *testing.T) {
 	if len(one) != 1 || one[0].HunterPubkey != "h2" { t.Fatalf("single-element slice must behave like exact match: %+v", one) }
 }
 
+// TestQueryPointsMultipleSenders: Senders with 2+ ids matches an exact IN-set
+// (#223), mirroring Hunter's #196 shape. Distinct from Sender, which stays a
+// single leading-prefix LIKE — the target-list picker selects whole ids, so
+// prefix semantics would over-match (picking 'aa' must not also match 'aab').
+func TestQueryPointsMultipleSenders(t *testing.T) {
+	st := seed(t); defer st.Close()
+	got, _, err := st.QueryPoints(Filter{Senders: []string{"aa", "bb"}, Limit: 100})
+	if err != nil { t.Fatalf("query: %v", err) }
+	if len(got) != 3 { t.Fatalf("multi-sender filter wrong: got %d, want 3 (2x aa + 1x bb)", len(got)) }
+	for _, p := range got {
+		if p.SenderID != "aa" && p.SenderID != "bb" { t.Fatalf("unexpected sender leaked: %+v", p) }
+	}
+	one, _, _ := st.QueryPoints(Filter{Senders: []string{"cc"}, Limit: 100})
+	if len(one) != 1 || one[0].SenderID != "cc" { t.Fatalf("single-element slice must behave like exact match: %+v", one) }
+}
+
+// Senders is exact, not prefix: a picked id must never pull in longer ids that
+// merely start with it. Sender (the free-text field) keeps prefix behaviour.
+func TestQueryPointsSendersIsExactNotPrefix(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil { t.Fatalf("open: %v", err) }
+	defer st.Close()
+	for _, r := range []Reception{
+		{HunterPubkey: "h1", RxAt: "2026-06-30T10:00:00Z", RSSI: -70, Raw: "00", IsDirect: true, Lat: 51, Lon: 4, SenderID: "aa", PacketType: "Advert"},
+		{HunterPubkey: "h1", RxAt: "2026-06-30T10:01:00Z", RSSI: -70, Raw: "00", IsDirect: true, Lat: 51, Lon: 4, SenderID: "aabb", PacketType: "Advert"},
+	} {
+		if err := st.Insert(r); err != nil { t.Fatalf("insert: %v", err) }
+	}
+	exact, _, _ := st.QueryPoints(Filter{Senders: []string{"aa"}, Limit: 100})
+	if len(exact) != 1 || exact[0].SenderID != "aa" { t.Fatalf("Senders must be exact: %+v", exact) }
+	prefix, _, _ := st.QueryPoints(Filter{Sender: "aa", Limit: 100})
+	if len(prefix) != 2 { t.Fatalf("Sender must stay a prefix match: %+v", prefix) }
+}
+
+// Case-insensitive, matching how Sender and the ignore-list already behave.
+func TestQueryPointsSendersCaseInsensitive(t *testing.T) {
+	st := seed(t); defer st.Close()
+	got, _, _ := st.QueryPoints(Filter{Senders: []string{"AA"}, Limit: 100})
+	if len(got) != 2 { t.Fatalf("Senders must be case-insensitive: got %d, want 2", len(got)) }
+}
+
 func TestQueryPointsPacketTypeFilter(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil { t.Fatalf("open: %v", err) }

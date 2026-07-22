@@ -28,7 +28,20 @@ func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
 
 func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	q := r.URL.Query()
-	f := store.Filter{From: q.Get("from"), To: q.Get("to"), Sender: q.Get("sender")}
+	f := store.Filter{From: q.Get("from"), To: q.Get("to")}
+	// ?sender= carries two different filters, distinguished by a comma (#223):
+	// a comma-less value is the free-text leading-prefix search; anything with
+	// a comma is the target-list picker's exact multi-id selection (SQL IN).
+	// A ONE-id selection is written with a trailing comma ("aaaa,") so it stays
+	// distinguishable from a typed prefix — the web viewer deliberately reuses
+	// a single field/URL param for both.
+	if s := strings.TrimSpace(q.Get("sender")); strings.Contains(s, ",") {
+		for _, id := range strings.Split(s, ",") {
+			if id = strings.TrimSpace(id); id != "" { f.Senders = append(f.Senders, id) }
+		}
+	} else {
+		f.Sender = q.Get("sender")
+	}
 	// ?hunter=a,b,c filters to any of a comma-separated set of hunter_pubkeys /
 	// pseudonym tokens (#196); a single value keeps today's exact-match behaviour.
 	if hs := strings.TrimSpace(q.Get("hunter")); hs != "" {

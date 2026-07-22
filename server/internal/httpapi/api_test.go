@@ -50,6 +50,36 @@ func TestFilterFromHunterCommaSeparated(t *testing.T) {
 	if len(f.Hunter) != 0 { t.Fatalf("absent hunter must not filter: %+v", f.Hunter) }
 }
 
+// ?sender=a,b is the target-list picker's exact multi-id selection (#223);
+// a single comma-less value keeps the existing leading-prefix behaviour.
+// A trailing comma is what makes a ONE-id picker selection distinguishable
+// from a typed prefix — the web viewer reuses one field for both.
+func TestFilterFromSenderCommaSeparated(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa,%20bbbb", nil)
+	f := filterFrom(r, nil)
+	if len(f.Senders) != 2 || f.Senders[0] != "aaaa" || f.Senders[1] != "bbbb" {
+		t.Fatalf("comma-separated sender not parsed: %+v", f.Senders)
+	}
+	if f.Sender != "" { t.Fatalf("multi-id selection must not also set the prefix Sender: %q", f.Sender) }
+
+	// Trailing comma → a one-element EXACT set, not a prefix.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa,", nil)
+	f = filterFrom(r, nil)
+	if len(f.Senders) != 1 || f.Senders[0] != "aaaa" { t.Fatalf("trailing-comma single id not parsed as a set: %+v", f.Senders) }
+	if f.Sender != "" { t.Fatalf("trailing-comma form must not set the prefix Sender: %q", f.Sender) }
+
+	// No comma → unchanged prefix search.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa", nil)
+	f = filterFrom(r, nil)
+	if f.Sender != "aaaa" { t.Fatalf("plain sender must stay a prefix: %q", f.Sender) }
+	if len(f.Senders) != 0 { t.Fatalf("plain sender must not set Senders: %+v", f.Senders) }
+
+	// Absent → no filter of either kind.
+	r = httptest.NewRequest(http.MethodGet, "/api/points", nil)
+	f = filterFrom(r, nil)
+	if f.Sender != "" || len(f.Senders) != 0 { t.Fatalf("absent sender must not filter: %q %+v", f.Sender, f.Senders) }
+}
+
 func TestVersionEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, nil, nil, nil, nil)
