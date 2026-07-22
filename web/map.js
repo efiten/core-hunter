@@ -7,6 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
+import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, CAP as RX_CAP } from './receptionticker.js'
 
 let currentRole = 'guest'
 
@@ -39,6 +40,21 @@ const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
+// Reception ticker (#224) two-way sync support: a distinct, non-interactive
+// highlight ring for whatever reception is on the ticker's playhead. The
+// ticker's own onActiveChange callback already carries the full point (lat/
+// lon included, since it comes straight from the ticker's own fetch), so no
+// separate lookup table is needed here — only a marker click needs a key,
+// computed inline via receptionKey (the API returns no row id to key on).
+const rxHighlightLayer = L.layerGroup().addTo(map)
+let rxTicker = null
+function setRxHighlight(rec) {
+  rxHighlightLayer.clearLayers()
+  if (!rec) return
+  L.circleMarker([rec.lat, rec.lon], {
+    renderer: ptCanvas, radius: 9, weight: 2, color: cssVar('--ch-accent'), fill: false, interactive: false,
+  }).addTo(rxHighlightLayer)
+}
 let locateActive = false
 let locateTimer = null
 // Whether the "?" legend in the Locate info box is expanded. Persisted across
@@ -93,9 +109,13 @@ async function drawPoints() {
     const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
     const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
     const tier = rssiTier(pt.rssi)
-    L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
+    const marker = L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}`)
       .addTo(pointLayer)
+    // Reception ticker two-way sync (#224): clicking a marker scrolls the
+    // ticker to the matching line, keyed by receptionKey since /api/points
+    // rows carry no stable id.
+    marker.on('click', () => { if (rxTicker) rxTicker.focusRecord(receptionKey(pt)) })
   }
   document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
@@ -172,6 +192,7 @@ export function refresh() {
     if (locateActive) return // focus mode: keep the non-relevant layers hidden
     if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
+    if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
 }
 
@@ -197,6 +218,7 @@ map.on('moveend zoomend', () => { urlstate.save(); refresh() })
 window.__refresh = refresh
 window.__mapZoom = () => map.getZoom() // test hook
 window.__mapCenter = () => map.getCenter() // test hook
+window.__mapProject = (lat, lon) => map.latLngToContainerPoint([lat, lon]) // test hook
 
 // Bbox-less query carrying every active filter (hunter/sender/time/types/hops)
 // as-is -- for anything that needs the full matching dataset rather than
@@ -207,6 +229,22 @@ function filtersQs() {
   const f = (window.currentFilters && window.currentFilters()) || {}
   for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
   return p.toString()
+}
+
+// Single newest-first page for the reception ticker (#224) -- the server
+// already orders /api/points by rx_at DESC (server/internal/store/query.go),
+// so limit=CAP&offset=0 is exactly "the newest CAP receptions", no pagination
+// loop needed (unlike fetchPointsPaged, built for the much larger point-layer
+// fetch).
+async function fetchTickerPage(mode) {
+  const filters = tickerFilters((window.currentFilters && window.currentFilters()) || {}, mode)
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v)
+  p.set('limit', String(RX_CAP)); p.set('offset', '0')
+  const r = await fetch(`${API_BASE}/api/points?${p.toString()}`)
+  if (!r.ok) throw new Error(`points ${r.status}`)
+  const d = await r.json()
+  return d.points || []
 }
 
 // Snap the map to the selected hunter(s) (#195).
@@ -592,6 +630,24 @@ if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
 if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
 if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 refresh()
+
+// Reception ticker (#224) -- created once, available to every role (the
+// server already applies guest/member windowing to /api/points itself, same
+// as the map's own point layer). Wired both ways: onActiveChange highlights
+// the corresponding map point; drawPoints() (above) wires the reverse,
+// marker-click -> focusRecord.
+rxTicker = createReceptionTicker('rx-log', {
+  fetchFiltered: () => fetchTickerPage('filtered'),
+  fetchAll: () => fetchTickerPage('all'),
+  shouldPoll: () => isLiveWindow((window.currentFilters && window.currentFilters().to) || '', Date.now()),
+  onActiveChange: setRxHighlight,
+})
+window.__rxTicker = rxTicker // test hook
+window.__rxHighlightCount = () => rxHighlightLayer.getLayers().length // test hook
+window.__rxHighlightLatLng = () => { // test hook
+  const layers = rxHighlightLayer.getLayers()
+  return layers.length ? layers[0].getLatLng() : null
+}
 
 // Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
 // role-dependent UI (guest notice + Tasks 5/9 gating) whenever it changes.
