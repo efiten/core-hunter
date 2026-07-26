@@ -91,7 +91,7 @@ export function createSoundEngine() {
   if (!AC) return { setMode() {}, ping() {}, txBlip() {}, destroy() {} }
 
   let ctx = null, mode = 'off', bed = null, lastPingAt = 0
-  let master = null, genTimers = [], genGain = null
+  let master = null, genTimers = [], genGain = null, activeOscs = []
 
   // Created lazily from the FAB tap (a user gesture, which Web Audio requires).
   // If the context comes back suspended anyway (persisted mode restored at boot,
@@ -122,12 +122,23 @@ export function createSoundEngine() {
       wet.gain.value = REVERB_WET
       master.connect(wet).connect(convolver).connect(ctx.destination)
     }
-    if (ctx.state === 'suspended') {
+    const states = ['suspended', 'interrupted']
+    if (states.includes(ctx.state)) {
       ctx.resume().catch(() => {})
       const once = () => { ctx.resume().catch(() => {}); document.removeEventListener('pointerdown', once) }
       document.addEventListener('pointerdown', once)
     }
     return ctx
+  }
+
+  function resumeOnVisibility() {
+    const handler = () => {
+      if (document.hidden) return
+      if (ctx && ['suspended', 'interrupted'].includes(ctx.state)) {
+        ctx.resume().catch(() => {})
+      }
+    }
+    document.addEventListener('visibilitychange', handler)
   }
 
   // Looped noise buffer; `pink` (Paul Kellet approximation) for airy layers,
@@ -226,17 +237,22 @@ export function createSoundEngine() {
       osc.connect(og).connect(out)
       osc.start(t)
       osc.stop(t + dur + 0.1)
+      activeOscs.push(osc)
     }
   }
 
   function startMusic() {
     if (genTimers.length) return
     const c = ensureCtx()
+    resumeOnVisibility()
     if (!genGain) { genGain = c.createGain(); genGain.gain.value = MUSIC_GAIN; genGain.connect(master) }
     GEN_NOTES.forEach((f, i) => {
       const pan = -0.6 + (i / (GEN_NOTES.length - 1)) * 1.2
       const period = (GEN_PERIODS[i] / MUSIC_DENSITY) * 1000
-      const fire = () => genNote(f, pan)
+      const fire = () => {
+        // Only fire if context is running (not suspended/interrupted)
+        if (ctx && !['suspended', 'interrupted'].includes(ctx.state)) genNote(f, pan)
+      }
       // random phase start so every session begins differently
       const t0 = setTimeout(() => { fire(); genTimers.push(setInterval(fire, period)) }, Math.random() * period)
       genTimers.push(t0)
@@ -246,6 +262,12 @@ export function createSoundEngine() {
   function stopMusic() {
     for (const t of genTimers) { clearTimeout(t); clearInterval(t) }
     genTimers = []
+    // Stop all active oscillators immediately
+    const t = ctx?.currentTime ?? 0
+    for (const osc of activeOscs) {
+      try { osc.stop(t) } catch (_) {}
+    }
+    activeOscs = []
   }
 
   function setMode(m) {
