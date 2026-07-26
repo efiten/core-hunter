@@ -82,6 +82,42 @@ export function driftPresentation({ advertised, estimate }) {
   }
 }
 
+// senderIdMatches checks if a sender_id (from a reception) matches a pubkey
+// (from registry position). Full advert_pubkey must match exactly (64-hex).
+// Discover pubkey prefix matches if it's a prefix of the full key. Relay,
+// direct_hash, and channel_name do not match registry nodes.
+export function senderIdMatches(senderId, senderKind, nodePubkey) {
+  if (!senderId || !nodePubkey) return false
+  const id = String(senderId).toLowerCase()
+  const key = String(nodePubkey).toLowerCase()
+
+  if (senderKind === 'advert_pubkey') {
+    // Full pubkey from an advert — must match exactly
+    return id === key
+  } else if (senderKind === 'discover_pubkey') {
+    // Discover reply pubkey prefix — matches if it's a prefix of the node's full key
+    return key.startsWith(id) && id.length >= 4  // >= 2 bytes (4 hex)
+  }
+  // relay, direct_hash, channel_name don't match registry nodes
+  return false
+}
+
+// groupSenderPointsForNode finds all reception points for a node by matching
+// on sender_id and sender_kind against the node's pubkey. Handles partial
+// prefix matches for discover_pubkey, exact matches for advert_pubkey.
+export function groupSenderPointsForNode(records, nodePubkey) {
+  const points = []
+  if (!Array.isArray(records) || !nodePubkey) return points
+  for (const r of records) {
+    if (r.sender_id == null) continue
+    if (!isCoord(r.lat) || !isCoord(r.lon)) continue
+    if (senderIdMatches(r.sender_id, r.sender_kind, nodePubkey)) {
+      points.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+    }
+  }
+  return points
+}
+
 // groupSenderPoints buckets located receptions by sender so each node can be
 // estimated independently. Receptions without a sender or a GPS fix carry no
 // location information and are dropped.

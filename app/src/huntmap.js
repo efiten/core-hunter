@@ -2,7 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
-import { nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing } from './nodelayer.js'
+import { nodesInView, driftPresentation, groupSenderPoints, groupSenderPointsForNode, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 
@@ -304,14 +304,15 @@ export function createHuntMap(containerId) {
 
     const b = map.getBounds()
     const bounds = { minLat: b.getSouth(), maxLat: b.getNorth(), minLon: b.getWest(), maxLon: b.getEast() }
-    const bySender = groupSenderPoints(records)
     const draw = []
 
     // Registry nodes in view: advertised position, plus our estimate when we
-    // have heard them enough to produce one.
+    // have heard them enough to produce one. Match sender_id (from receptions)
+    // against node pubkey: exact match for advert_pubkey, prefix match for
+    // discover_pubkey, no match for relay/direct_hash/channel_name (#197/#272).
     for (const n of nodesInView(nodePositions, bounds)) {
-      const key = String(n.pubkey || '').toLowerCase()
-      const est = bySender.has(key) ? estimateFor(bySender.get(key)) : null
+      const pts = groupSenderPointsForNode(records, n.pubkey)
+      const est = pts.length ? estimateFor(pts) : null
       const p = driftPresentation({ advertised: n, estimate: est })
       if (p.kind === 'none') continue
       draw.push({ n, est, p })
