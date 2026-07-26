@@ -40,56 +40,113 @@
     <a class="blog-back" href="/blog/">← Blog</a>
     <div class="blog-head">
       <h1>Van radiosignaal naar kaart: node-hunting met Mesh-Hunter</h1>
-      <p class="blog-meta">13 juli 2026</p>
+      <p class="blog-meta">13 juli 2026 · <a href="/blog/from-signal-to-map.html" lang="en" hreflang="en">Read in English</a></p>
     </div>
 
     <article class="blog-article">
-      <p>Elke MeshCore-node staat ergens. Op een dak, in een boom, achter een dakkapel of op een vergeten schoorsteen. Op je scherm zie je alleen een naam. Mesh-Hunter helpt je te ontdekken waar die node zich in de echte wereld bevindt.</p>
+      <p>Elke MeshCore-antenne staat ergens. Op een dak, in een boom, aan een lantaarnpaal, op een
+        schuurzolder… Mesh-Hunter helpt je uitzoeken waar dat precies is.</p>
 
-      <h2>Van een naam naar een plek op de kaart</h2>
-      <p>Je ziet hem al weken in je contactenlijst staan. Elke avond komt hij voorbij. Een onbekende repeater, een mysterieuze companion of die ene node die voortdurend vage adverts verstuurt. Er is alleen één probleem: niemand weet waar hij fysiek staat. Soms is de aanleiding nog dringender, zoals een hardnekkige zender die een publiek kanaal volspamt en de mesh verstoort. Dan wil je niet alleen weten <em>dat</em> hij er is, maar vooral <em>waar</em>.</p>
-      <p>Daar is Mesh-Hunter voor ontworpen. Een MeshCore-mesh is bewust decentraal en anoniem ingericht: nodes maken zichzelf optioneel kenbaar via een advert, berichten vinden automatisch hun weg via verschillende repeaters, en nergens hoeft centraal te worden geregistreerd waar een apparaat staat. Dat is fantastisch voor de privacy en robuustheid van het netwerk, maar een flinke uitdaging als je een specifieke zender wilt lokaliseren. Het protocol vertelt je dat de node bestaat, maar laat je in het duister tasten over de locatie.</p>
-      <p>Tot nu toe was dit via 'path-walking' hooguit grofweg naar een bepaalde regio te herleiden. Door de paden van gerelayde pakketten te analyseren kon je achterhalen welke repeaters een bericht hadden doorgegeven, om zo een globale regio te schatten. Maar dat betekende dat je thuis achter een bureau data zat te spellen, terwijl je eigenlijk op pad wilde gaan, het signaal achterna.</p>
-      <p>Mesh-Hunter draait dit proces om: geen ingewikkelde reconstructie achteraf, maar live meten en lokaliseren terwijl je rijdt.</p>
+      <h2>Voor welk probleem</h2>
+      <p>Elke MeshCore-gebruiker kent het rijtje in zijn contactenlijst. Een paar vertrouwde
+        repeaters, wat companions van bekenden, en daartussen een paar raadsels. Die ene node die
+        elke nacht adverts stuurt maar waarvan niemand weet waar hij hangt. De repeater die je wél
+        hoort maar die nergens op een kaart staat. Of, vervelender: een node die een publiek kanaal
+        volspamt en waarvan je wél wilt weten waar die precies zit.</p>
+      <p>Daar is Mesh-Hunter voor. Een MeshCore-mesh is bewust decentraal: nodes maken zichzelf
+        optioneel kenbaar met een advert, berichten vinden vanzelf hun weg via verschillende
+        repeaters, en niemand hoeft ergens te registreren waar een apparaat staat. Prima voor het
+        netwerk, lastig als je een specifieke zender wil vinden. Het protocol vertelt je
+        <em>dat</em> een node bestaat en hoe je hem kunt bereiken, maar niet <em>waar</em> hij is.</p>
+      <p>Tot nu toe was dit alleen via "path-walking" naar ongeveer een regio terug te herleiden. In
+        het onderzoek naar zo'n kanaal-spammer werd de globale locatie afgeleid uit de paden van
+        gerelayde pakketten: welke repeaters hebben dit doorgestuurd, en wat zegt dat over de bron?
+        Je zit thuis paden te analyseren terwijl je eigenlijk in de auto wil zitten, richting het
+        signaal.</p>
+      <p>Mesh-Hunter draait dat om: geen reconstructie achteraf, maar live meten terwijl je rijdt.</p>
 
-      <h2>De jacht op het signaal</h2>
-      <p>Natuurlijk is het opsporen van een probleem-node een belangrijk scenario. Maar node-hunting is minstens zo interessant als sport of nuttige netwerkanalyse. Het ontdekken van een onbekende repeater helpt je om de mesh beter te begrijpen: staat hij op een hoge watertoren of gewoon bij iemand op de zolderkamer? Die kennis bepaalt direct waar jij een volgende repeater het beste kunt plaatsen om het netwerk optimaal uit te breiden. Het is een moderne vorm van de klassieke radio-foxhunt, met een mesh-netwerk als interactief speelveld.</p>
-      <p>Bovendien draagt elke jacht bij aan het grotere geheel. Alle meetgegevens die je onderweg verzamelt, kun je live doorsturen naar een gedeelde coverage-map. Wanneer meerdere hunters dit doen, ontstaat er een gedetailleerd en actueel beeld van de netwerkdekking. Zelfs als er niemand actief aan het jagen is, laat deze kaart precies zien waar de mesh ijzersterk is en waar nog blinde vlekken zitten.</p>
+      <h2>Waarom dit handig is</h2>
+      <p>Het voor de hand liggende scenario is de probleem-node: een zender die zich misdraagt en die
+        je alleen het zwijgen kunt opleggen als je weet waar hij staat.</p>
+      <p>Maar het is ook gewoon leuk om op speurtocht of foxhunt te gaan: je wil weten of die
+        onbekende repeater op een watertoren staat of bij iemand op zolder, want dat bepaalt waar
+        jouw volgende repeater het beste kan hangen. Je bent benieuwd wie er achter die node met die
+        rare naam zit en wil eens gedag zeggen. Direction-finding is zo oud als de amateurradio
+        zelf; vossenjacht, maar dan met een mesh-netwerk als speelveld.</p>
+      <p>Alles wat je onderweg hoort, kan (als je dat wil) naar een gedeelde coverage-map. Meerdere
+        hunters samen bouwen zo een beeld op van waar welke nodes te horen zijn en hoe sterk. Ook
+        als niemand actief aan het jagen is, is dat beeld waardevol: het laat zien waar de mesh
+        dekking heeft en waar de gaten zitten.</p>
 
-      <h2>De logica van zero-hop ontvangst</h2>
-      <p>Bij het traceren van een zender is er maar één type signaal dat er echt toe doet: de <strong>rechtstreekse</strong> ontvangst, oftewel een zero-hop pakket. Zodra een datapakket namelijk één keer is gerelayde door een andere repeater, vertelt de signaalsterkte (RSSI) en de signaal-ruisverhouding (SNR) alleen nog iets over de afstand tot die laatste repeater, en niets meer over de oorspronkelijke zender. Daarom filtert Mesh-Hunter resoluut alle ruis weg en gebruikt uitsluitend zero-hop ontvangsten.</p>
-      <p>Elke keer dat je zo'n rechtstreeks signaal opvangt, koppelt de software de exacte signaalsterkte aan de GPS-positie van je eigen telefoon op dat moment. Dit datapunt wordt direct toegevoegd aan een visuele heatmap. Belangrijk om te weten: deze kaart toont dus niet meteen waar het doel zich bevindt, maar waar <em>jij</em> reed toen je het signaal oppikte en hoe krachtig het daar binnenkwam. Hoe meer metingen je verzamelt vanuit verschillende richtingen, hoe duidelijker de waarschijnlijke locatie van de node wordt.</p>
-      <p>Het is een volledig passieve vorm van radiolocatie. Mesh-Hunter gebruikt geen GPS-data van andere gebruikers en vraagt geen locatiegegevens op uit het netwerk. De uiteindelijke locatie op de kaart ontstaat puur en alleen als logisch gevolg van jouw eigen radiometingen in het veld.</p>
+      <h2>Hoe het werkt</h2>
+      <p>Bij het jagen telt maar één soort ontvangst: wat je <strong>rechtstreeks</strong> hoort, dus
+        zero-hop. Alleen dan zegt de signaalsterkte (RSSI, en de signaal-ruisverhouding SNR) iets
+        over de afstand tot de zender zelf. Mesh-Hunter legt elke directe ontvangst vast met
+        signaalsterkte en de GPS-positie van je telefoon op dat moment, en die meting verschijnt als
+        punt op een warmtekaart.</p>
+      <p>De kaart toont dus niet waar het doel is, maar waar <em>jij</em> was toen je het hoorde en
+        hoe sterk het binnenkwam. De positie van het doel is een afleiding uit radiometingen, geen
+        GPS-tracking van andermans apparaat. Je meet wat een zender zelf de ether in stuurt, meer
+        niet.</p>
 
       <h2>In de praktijk</h2>
-      <p>Mesh-Hunter draait als webapp in de browser en installeert als Progressive Web App (PWA) op je beginscherm. Je hebt een MeshCore-node met companion-firmware nodig die via Bluetooth aan je telefoon is gekoppeld, en verder niets bijzonders: Chrome op Android werkt feilloos, en op iOS is de Bluefy-browser de gangbare route omdat Safari geen Web Bluetooth ondersteunt.</p>
-      <p>Openen. Koppelen. Rijden.</p>
-      <p>Vanaf dat moment verschijnt elke directe ontvangst live op de kaart, vergezeld van een teller en een signaalmeter in beeld. Zo hoor en zie je direct of je warm of koud wordt, zonder dat je continu naar het scherm hoeft te staren. Wil je gericht op één specifieke node jagen? Dan selecteer je die als doelwit en filtert de app alle andere weergaven weg. Voor extra comfort onderweg is er een kompasmodus die de kaart automatisch meedraait met je rijrichting.</p>
-      <p>Zwijgzame repeaters kun je bovendien actief wakker maken. Een Discover-verzoek vraagt nodes in de directe omgeving om zich even te melden. Wie dat wil, kan dit proces tijdens het rijden automatisch laten herhalen. Hier hoort wel een belangrijke kanttekening bij: zendtijd is een gedeeld goed. LoRa-frequenties hebben een beperkte duty cycle en alles wat jij de ether in slingert, houdt het kanaal bezet voor anderen. Mesh-Hunter houdt de frequentie van deze verzoeken daarom bewust laag en zendt alleen als het echt moet. Luisteren is gratis, zenden is dat nooit helemaal.</p>
-      <p>Een account aanmaken is optioneel. Zonder account jaag je volledig lokaal op je eigen apparaat. Met een account worden je ontvangsten anoniem gedeeld met <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a>, waar de metingen van alle actieve hunters samenkomen tot één grote, dynamische kaart.</p>
+      <p>Mesh-Hunter draait als webapp in de browser en installeert als PWA op je beginscherm. Je
+        hebt een MeshCore-node met companion-firmware nodig die via Bluetooth aan je telefoon hangt,
+        en verder niets bijzonders: Chrome op Android werkt, op iOS is Bluefy de gangbare route omdat
+        Safari geen Web Bluetooth spreekt.</p>
+      <p>Openen, koppelen, rijden. Elke directe ontvangst verschijnt live op de kaart, met een teller
+        en signaalmeter in beeld zodat je ook zonder naar de kaart te staren hoort of je warm of koud
+        wordt. Wil je op één specifieke node jagen, dan selecteer je die als doelwit en filtert de
+        weergave op precies die zender. Voor onderweg is er een kompasmodus die de kaart meedraait
+        met je rijrichting.</p>
+      <p>Zwijgzame repeaters kun je wakker maken. Een Discover-verzoek vraagt nodes in de directe
+        omgeving zich even te melden, en wie wil kan dat automatisch laten herhalen tijdens het
+        rijden. Daar hoort een kanttekening bij: zendtijd is een gedeeld goed. LoRa-frequenties
+        hebben een beperkte duty cycle en alles wat jij de ether in stuurt, kan een ander niet
+        gebruiken. Mesh-Hunter houdt de frequentie daarom bewust laag en verstuurt alleen iets als
+        jij daarom vraagt. Luisteren is gratis, zenden is dat nooit helemaal.</p>
+      <p>Een account is optioneel, maar koppel je bij "settings" aan je companion. Met een account
+        heb je toegang tot <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a>, waar de
+        metingen van meerdere hunters samenkomen.</p>
 
       <h2>Een jacht van begin tot eind</h2>
-      <p>Neem het scenario waarmee dit project begon: een node die avond na avond een publiek kanaal volspamt.</p>
-      <p>De eerste stap begint nog thuis aan het bureau. Uit de weinige gerelayde pakketten en de paden die ze hebben afgelegd, volgt een globaal vermoeden: de zender bevindt zich waarschijnlijk ergens binnen een straal van een paar kilometer in een specifieke woonwijk. Preciezer wordt het online niet, maar dat hoeft ook niet. Dit vermoeden bepaalt puur je startpunt.</p>
-      <p>Je stapt de auto in, klikt de companion in de dashboardhouder en opent Mesh-Hunter met de spammer als ingesteld doelwit. De eerste kilometers blijft de kaart leeg; alle signalen die je opvangt zijn gerelayed en worden dus genegeerd. Maar dan, net na het inrijden van de ingeschatte regio, volgt de eerste directe ontvangst. Zwak, diep in het blauw op de heatmap, maar het is een rechtstreeks signaal. De node is vanaf hier te horen.</p>
-      <p>Vanaf dat moment begint het strategische spel van straten uitkammen en metingen verzamelen. Elke straat die je inrijdt voegt nieuwe datapunten toe, en langzaam maar zeker tekent zich een patroon af op je scherm. Richting het noorden kleurt de heatmap steeds warmer, terwijl de signalen ten westen van het kanaal direct afkoelen. De kaart functioneert niet als een pijl die blind naar één huis wijst; het is een gradiënt van radiopropagatie waar jij de logische lijnen van volgt. Na een half uur intensief rondrijden is het zoekgebied gekrompen van een kilometersgrote cirkel naar een compacte buurt van slechts twee straten, waar elke ontvangst fel oranje en met maximale sterkte binnenkomt.</p>
-      <p>Daar houdt de software op. De laatste meters zijn mensenwerk. Een specifieke antenne op een schoorsteen herkennen, zien welke flat nét boven de boomgrens uitsteekt, of ontdekken dat een repeater simpelweg achter een zolderraam hangt. Mesh-Hunter brengt je tot aan de voordeur; wat je daarna met die kennis doet, bepaal je zelf. Voor de spammer uit dit verhaal betekende het dat een ongrijpbaar netwerkprobleem eindelijk een fysiek adres kreeg — en daarmee een snelle, constructieve oplossing.</p>
-      <p>Of je nu een onbekende repeater wilt vinden om je eigen mesh-bereik te optimaliseren, of gewoon nieuwsgierig bent welk gezicht er achter die mysterieuze node schuilgaat: Mesh-Hunter maakt van een abstract radiosignaal een tastbare zoektocht. Letterlijk.</p>
+      <p>Neem het scenario waarmee dit project begon: een node die avond na avond een publiek kanaal
+        volspamt.</p>
+      <p>De eerste stap gebeurt nog thuis. Uit de gerelayde pakketten en hun paden komt een globaal
+        vermoeden: ergens in die regio, waarschijnlijk binnen een cirkel van een paar kilometer.
+        Preciezer wordt het niet vanachter een bureau, maar dat hoeft ook niet.</p>
+      <p>Dan de auto in, companion aan het dashboard, Mesh-Hunter open met de spammer als doelwit. De
+        eerste kilometers blijft de kaart leeg: alles wat binnenkomt is gerelayed en telt dus niet.
+        We zijn op zoek naar zero-hop verkeer, en niet naar de dichtstbijzijnde repeater. Tot er,
+        ergens langs een provinciale weg, een eerste directe ontvangst binnenkomt. Zwak, diep in het
+        blauw, maar direct: de zender is vanaf hier te horen.</p>
+      <p>Vanaf dat punt is het een kwestie van rondjes rijden en de kaart laten volstromen. Elke
+        straat voegt punten toe en langzaam tekent zich een patroon af: naar het noorden wordt het
+        warmer, ten westen van het kanaal koelt het af. De warmtekaart wijst niet als een pijl naar
+        één huis; het is een gradiënt, en jij bent de naald die hem volgt. Na een half uur is het
+        zoekgebied geen cirkel van kilometers meer, maar een buurt van een paar straten waar elke
+        ontvangst fel oranje binnenkomt.</p>
+      <p>Daar houdt de techniek op en begint het inschattingsvermogen. De laatste stap is vaak
+        verrassend analoog: een antenne op een dak herkennen, weten dat die ene straat hoog ligt, of
+        gewoon aanbellen. Voor de spamsituatie uit dit verhaal betekent het dat een boot-loop van een
+        gekoppelde Home Assistant-integratie kan worden opgelost, en dus een oplossing voor de mesh.</p>
 
       <h2>Extra context en links</h2>
-      <p>Ben je nieuw binnen de MeshCore-community of wil je de techniek induiken? De Nederlandstalige community heeft uitstekend instapmateriaal beschikbaar:</p>
+      <p>Nieuw met MeshCore, of zin om dieper te graven? De Nederlandstalige community heeft
+        uitstekend instapmateriaal:</p>
       <ul>
-        <li><strong><a href="https://meshcore.io">MeshCore</a></strong>: Het mesh-netwerkproject waar dit allemaal om draait.</li>
-        <li><strong>MeshWiki</strong>: De centrale Nederlandstalige community-wiki boordevol documentatie.</li>
-        <li><strong>Telegram-groep</strong>: Praat mee en stel je vragen in de <a href="https://t.me/meshcorenet">MeshCore Telegram-community</a>.</li>
-        <li><strong>Signal-groep</strong>: Sluit je aan bij de discussie via de <a href="https://signal.group/#CjQKIIJLehe8kHzF9vhsFSdETrxAv0j0BAx-7cznbo8I3ornEhD7KGtNPWT4ZMP7hLP5beaD">MeshCore Signal-groep</a>.</li>
-        <li><strong>Meereco</strong>: Biedt een heldere introductie in MeshCore en praktische tips voor beginners.</li>
-        <li><strong>Mesh-up</strong>: Beantwoordt uitgebreid de vraag: "Wat is MeshCore?".</li>
-        <li><strong>MeshAcademy</strong>: Een complete cursusreeks om het protocol van beginner tot expert te doorgronden.</li>
-        <li><strong>DutchMeshCore observers</strong>: Live meekijken met het actuele pakketverkeer in de Nederlandse mesh.</li>
-        <li><strong><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a></strong>: Het mesh-observatorium waar Mesh-Hunter op voortbouwt.</li>
+        <li><strong><a href="https://meshcore.io">MeshCore</a></strong>: het mesh-netwerkproject waar dit allemaal om draait.</li>
+        <li><strong><a href="https://meshwiki.nl">MeshWiki</a></strong>: de centrale Nederlandstalige community-wiki over MeshCore.</li>
+        <li><strong>Telegram-groep</strong>: praat mee en stel je vragen in de <a href="https://t.me/meshcorenet">MeshCore Telegram-community</a>.</li>
+        <li><strong>Signal-groep</strong>: sluit je aan bij de discussie via de <a href="https://signal.group/#CjQKIIJLehe8kHzF9vhsFSdETrxAv0j0BAx-7cznbo8I3ornEhD7KGtNPWT4ZMP7hLP5beaD">MeshCore Signal-groep</a>.</li>
+        <li><strong>Meereco</strong>: een heldere <a href="https://meereco.nl/communicatie/introductie-meshcore/">introductie in MeshCore</a> en <a href="https://meereco.nl/communicatie/meshcore-tips-voor-beginners/">tips voor beginners</a>.</li>
+        <li><strong><a href="https://www.mesh-up.nl/wat-is-meshcore/">Mesh-up</a></strong>: beantwoordt uitgebreid de vraag "Wat is MeshCore?".</li>
+        <li><strong><a href="https://drenthenoodnetwerk.nl/MeshAcademy/">MeshAcademy</a></strong>: een cursusreeks van beginner tot expert.</li>
+        <li><strong><a href="https://observers.dutchmeshcore.nl/">DutchMeshCore observers</a></strong>: live meekijken met het pakketverkeer in de Nederlandse mesh.</li>
+        <li><strong><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a></strong>: het mesh-observatorium waar Mesh-Hunter op voortbouwt.</li>
       </ul>
-      <p>Zelf de ether in? De <strong><a href="https://rx.mesh-hunter.eu">RX-webapp</a></strong> en de <strong><a href="https://map.mesh-hunter.eu">gedeelde kaart</a></strong> staan voor je klaar om de reis van naam naar kaart zelf te ervaren.</p>
+      <p>Zelf aan de slag? Open de <strong><a href="https://rx.mesh-hunter.eu">RX-webapp</a></strong>
+        en de <strong><a href="https://map.mesh-hunter.eu">gedeelde kaart</a></strong>.</p>
     </article>
 
     <a class="blog-back" href="/blog/">← Terug naar de blog</a>

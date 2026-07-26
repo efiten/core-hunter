@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>From radio signal to map: node-hunting with Mesh-Hunter — Mesh-Hunter</title>
+  <meta name="description" content="From a name in your contact list to a spot on the map: how Mesh-Hunter locates a MeshCore node live, while you drive." />
+  <link rel="stylesheet" href="/style.css" />
+    <!-- Matomo (self-hosted, cookieless; production hosts only) -->
+    <script>
+      if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {
+        var _paq = window._paq = window._paq || [];
+        _paq.push(['disableCookies']);
+        _paq.push(['setDomains', ['*.mesh-hunter.eu']]);
+        _paq.push(['trackPageView']);
+        _paq.push(['enableLinkTracking']);
+        (function() {
+          var u="https://analytics.fiten.eu/";
+          _paq.push(['setTrackerUrl', u+'matomo.php']);
+          _paq.push(['setSiteId', '10']);
+          var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+          g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+      }
+    </script>
+    <!-- End Matomo Code -->
+</head>
+<body>
+  <header class="lp-top">
+    <a class="lp-brand" href="/" style="color:inherit;text-decoration:none">Mesh-Hunter</a>
+    <nav class="lp-nav">
+      <a href="https://map.mesh-hunter.eu">Map</a>
+      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+      <a href="/blog/" class="active">Blog</a>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
+    </nav>
+  </header>
+
+  <main class="lp-main">
+    <a class="blog-back" href="/blog/">← Blog</a>
+    <div class="blog-head">
+      <h1>From radio signal to map: node-hunting with Mesh-Hunter</h1>
+      <p class="blog-meta">13 July 2026 · <a href="/blog/van-radiosignaal-naar-kaart.html" lang="nl" hreflang="nl">Lees in het Nederlands</a></p>
+    </div>
+
+    <article class="blog-article">
+      <p>Every MeshCore antenna is somewhere. On a rooftop, up a tree, on a lamppost, in a shed
+        loft… Mesh-Hunter helps you work out where, exactly.</p>
+
+      <h2>The problem</h2>
+      <p>Every MeshCore user knows the list in their contacts. A few trusted repeaters, some
+        companions belonging to people you know, and scattered between them a couple of mysteries.
+        The node that sends adverts every night without anyone knowing where it hangs. The repeater
+        you can hear perfectly well but that appears on no map. Or, more annoyingly: a node flooding
+        a public channel that you would really like to pin down.</p>
+      <p>That is what Mesh-Hunter is for. A MeshCore mesh is decentralised by design: nodes announce
+        themselves with an advert if they choose to, messages find their own way through various
+        repeaters, and nobody has to register anywhere where a device lives. Great for the network,
+        awkward when you want to find one specific transmitter. The protocol tells you
+        <em>that</em> a node exists and how to reach it, but not <em>where</em> it is.</p>
+      <p>Until now, the best you could do was narrow it down to roughly a region by "path-walking".
+        In the investigation into one such channel flooder, a rough location was derived from the
+        paths of relayed packets: which repeaters forwarded this, and what does that say about the
+        source? You end up analysing paths at your desk when you would rather be in the car, driving
+        toward the signal.</p>
+      <p>Mesh-Hunter turns that around: no reconstruction afterwards, but live measurement while you
+        drive.</p>
+
+      <h2>Why this is useful</h2>
+      <p>The obvious scenario is the problem node: a transmitter misbehaving badly enough that the
+        only way to silence it is to know where it stands.</p>
+      <p>But it is also simply fun to go on a hunt, a fox hunt: you want to know whether that
+        unfamiliar repeater sits on a water tower or in somebody's attic, because that decides where
+        your own next repeater should best go. You are curious who is behind the node with the odd
+        name and fancy saying hello. Direction-finding is as old as amateur radio itself; a fox
+        hunt, with a mesh network as the playing field.</p>
+      <p>Everything you hear along the way can, if you choose, feed a shared coverage map. Several
+        hunters together build up a picture of where nodes can be heard and how strongly. Even when
+        nobody is actively hunting, that picture is valuable: it shows where the mesh has coverage
+        and where the gaps are.</p>
+
+      <h2>How it works</h2>
+      <p>When hunting, only one kind of reception counts: what you hear <strong>directly</strong>, so
+        zero-hop. Only then does the signal strength (RSSI, along with the signal-to-noise ratio
+        SNR) say anything about your distance to the transmitter itself. Mesh-Hunter records every
+        direct reception with its signal strength and your phone's GPS position at that moment, and
+        that measurement appears as a point on a heat-map.</p>
+      <p>So the map does not show where the target is, but where <em>you</em> were when you heard it
+        and how strongly it came in. The target's position is an inference from radio measurements,
+        not GPS tracking of someone else's device. You measure what a transmitter itself puts on the
+        air, nothing more.</p>
+
+      <h2>In practice</h2>
+      <p>Mesh-Hunter runs as a webapp in the browser and installs as a PWA on your home screen. You
+        need a MeshCore node running companion firmware, connected to your phone over Bluetooth, and
+        nothing else out of the ordinary: Chrome on Android works, and on iOS the usual route is
+        Bluefy, since Safari does not speak Web Bluetooth.</p>
+      <p>Open, pair, drive. Every direct reception appears live on the map, with a counter and signal
+        meter on screen so you can tell whether you are getting warmer or colder without staring at
+        the map. Hunting one specific node? Select it as the target and the view filters down to
+        exactly that transmitter. For the road there is a compass mode that rotates the map with your
+        direction of travel.</p>
+      <p>Silent repeaters can be woken up. A Discover request asks nodes in the immediate area to
+        briefly announce themselves, and you can have that repeat automatically while driving. One
+        caveat: airtime is a shared resource. LoRa frequencies have a limited duty cycle, and
+        everything you put on the air is something someone else cannot. Mesh-Hunter deliberately
+        keeps the rate low and only transmits when you ask it to. Listening is free; transmitting
+        never quite is.</p>
+      <p>An account is optional, but you link it to your companion under "settings". With an account
+        you get access to <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a>, where
+        measurements from multiple hunters come together.</p>
+
+      <h2>A hunt from start to finish</h2>
+      <p>Take the scenario this project started with: a node flooding a public channel, evening after
+        evening.</p>
+      <p>The first step still happens at home. From the relayed packets and their paths comes a rough
+        suspicion: somewhere in that region, probably within a circle a few kilometres across. It
+        will not get more precise from behind a desk, but it does not need to.</p>
+      <p>Then into the car, companion on the dashboard, Mesh-Hunter open with the flooder set as
+        target. For the first few kilometres the map stays empty: everything coming in is relayed and
+        so does not count. We are after zero-hop traffic, not the nearest repeater. Until, somewhere
+        along a provincial road, a first direct reception comes in. Weak, deep in the blue, but
+        direct: from here, the transmitter can be heard.</p>
+      <p>From that point on it is a matter of driving loops and letting the map fill in. Every street
+        adds points and slowly a pattern takes shape: warmer to the north, cooling off west of the
+        canal. The heat-map does not point like an arrow at one house; it is a gradient, and you are
+        the needle following it. Half an hour later the search area is no longer a circle of
+        kilometres, but a neighbourhood of a few streets where every reception comes in bright
+        orange.</p>
+      <p>That is where the technology stops and judgement takes over. The last step is often
+        surprisingly analogue: recognising an antenna on a roof, knowing that one street sits on high
+        ground, or simply ringing a doorbell. For the spam situation in this story, it meant that a
+        boot loop on a connected Home Assistant integration could be fixed, and so a fix for the mesh.</p>
+
+      <h2>Further context and links</h2>
+      <p>New to MeshCore, or keen to dig into the technology? The community has excellent starting
+        material, much of it in Dutch:</p>
+      <ul>
+        <li><strong><a href="https://meshcore.io">MeshCore</a></strong>: the mesh networking project this all revolves around.</li>
+        <li><strong><a href="https://nodakmesh.org/blog/meshcore-how-it-works-guide">MeshCore: how it works</a></strong>: a thorough English-language guide by NoDak Mesh.</li>
+        <li><strong><a href="https://meshwiki.nl">MeshWiki</a></strong>: the central Dutch community wiki on MeshCore.</li>
+        <li><strong>Telegram group</strong>: join the discussion in the <a href="https://t.me/meshcorenet">MeshCore Telegram community</a>.</li>
+        <li><strong>Signal group</strong>: chat along via the <a href="https://signal.group/#CjQKIIJLehe8kHzF9vhsFSdETrxAv0j0BAx-7cznbo8I3ornEhD7KGtNPWT4ZMP7hLP5beaD">MeshCore Signal group</a>.</li>
+        <li><strong>Meereco</strong>: a clear <a href="https://meereco.nl/communicatie/introductie-meshcore/">introduction to MeshCore</a> and <a href="https://meereco.nl/communicatie/meshcore-tips-voor-beginners/">beginner tips</a> (Dutch).</li>
+        <li><strong><a href="https://drenthenoodnetwerk.nl/MeshAcademy/">MeshAcademy</a></strong>: a course series from beginner to expert (Dutch).</li>
+        <li><strong><a href="https://observers.dutchmeshcore.nl/">DutchMeshCore observers</a></strong>: live packet traffic in the Dutch mesh.</li>
+        <li><strong><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a></strong>: the mesh observatory Mesh-Hunter builds on.</li>
+      </ul>
+      <p>Ready to try it yourself? Open the
+        <strong><a href="https://rx.mesh-hunter.eu">RX webapp</a></strong> and the
+        <strong><a href="https://map.mesh-hunter.eu">shared map</a></strong>.</p>
+    </article>
+
+    <a class="blog-back" href="/blog/">← Back to the blog</a>
+  </main>
+
+  <footer class="lp-foot">
+    <span>Mesh-Hunter</span>
+  </footer>
+
+  <script>
+    (function () {
+      var KEY = 'ch-theme';
+      var root = document.documentElement;
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      var btn = document.getElementById('lp-theme');
+      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
+      sync();
+      btn.addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>
