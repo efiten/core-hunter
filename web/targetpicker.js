@@ -175,7 +175,9 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl } = {}) {
     // A typed prefix is replaced, not merged: a leading-prefix search and an
     // exact-id pick are different match kinds, so silently combining them
     // would be surprising. Picking always starts a clean id selection.
-    input.value = toggleSenderId(parsed.mode === 'ids' ? parsed.ids.join(',') : '', id)
+    // Pass the current field value if it's already in ids mode; otherwise start fresh.
+    // toggleSenderId handles the semicolon-delimited format correctly (#288 blocker 3).
+    input.value = toggleSenderId(parsed.mode === 'ids' ? input.value : '', id)
     input.dispatchEvent(new Event('input', { bubbles: true }))
     render(lastPoints, Date.now())
   }
