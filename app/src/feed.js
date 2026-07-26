@@ -36,17 +36,11 @@ function mergePrefixGroups(entries) {
   for (let i = 0; i < entries.length; i++) {
     const [idI, recI] = entries[i]
     if (!HEX_PREFIX_KINDS.has(recI.sender_kind)) continue
-    const isFullI = idI.length === 64   // Full 64-hex pubkey vs prefix
     for (let j = i + 1; j < entries.length; j++) {
       const [idJ, recJ] = entries[j]
       if (!HEX_PREFIX_KINDS.has(recJ.sender_kind)) continue
       if (!isPrefixCompatible(idI.toLowerCase(), idJ.toLowerCase())) continue
       if (!sameResolvedName(recI.sender_label, recJ.sender_label)) continue
-      // Guard: don't merge two full pubkeys (different nodes by definition)
-      // or force prefix to attach only to longer id (#268 safety guard)
-      const isFullJ = idJ.length === 64
-      if (isFullI && isFullJ) continue   // Two different full pubkeys, never merge
-      if (idI.length === idJ.length) continue   // Same length, require name+prefix only
       union(i, j)
     }
   }
