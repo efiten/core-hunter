@@ -62,6 +62,7 @@ export function createHuntMap(containerId) {
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
   let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
+  let nodePosGen = 0, nodePosSig = null   // generation counter + signature guard to prevent popup flicker
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false, locateMarkers = []
@@ -291,18 +292,20 @@ export function createHuntMap(containerId) {
 
   // Recomputed per tick: the visible node set follows the viewport, and each
   // node's estimate follows whatever receptions are currently plotted.
+  // Signature guards (like web/map.js) prevent popup flicker on every 1Hz render.
   function drawNodeLayer(records) {
-    nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
     if (!map.getSource('nodedrift')) return
     if (!nodeLayerOn) {
       map.getSource('nodedrift').setData(EMPTY)
       map.getSource('nodecircle').setData(EMPTY)
+      nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
       return
     }
+
     const b = map.getBounds()
     const bounds = { minLat: b.getSouth(), maxLat: b.getNorth(), minLon: b.getWest(), maxLon: b.getEast() }
     const bySender = groupSenderPoints(records)
-    const lines = [], circles = []
+    const draw = []
 
     // Registry nodes in view: advertised position, plus our estimate when we
     // have heard them enough to produce one.
@@ -311,6 +314,20 @@ export function createHuntMap(containerId) {
       const est = bySender.has(key) ? estimateFor(bySender.get(key)) : null
       const p = driftPresentation({ advertised: n, estimate: est })
       if (p.kind === 'none') continue
+      draw.push({ n, est, p })
+    }
+
+    // Compute signature of what would be drawn — if unchanged, skip rebuild to preserve open popups
+    const sig = draw.map((d) => [d.n.pubkey, d.n.lat, d.n.lon, d.p.kind, Math.round(d.p.driftM ?? -1),
+      Math.round(d.p.circle ? d.p.circle.radiusM : -1),
+      d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+    if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
+    nodePosSig = sig
+
+    const lines = [], circles = []
+    nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
+
+    for (const { n, est, p } of draw) {
       const color = driftColor(p)
       // Only the ▲ is labelled — the ● belongs to the same node, so naming
       // both would just double the text for one target.

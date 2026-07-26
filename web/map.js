@@ -425,7 +425,7 @@ function activateLocate() {
   locateActive = true
   locateBtn.classList.add('on')
   // focus mode: hide every non-relevant layer so only the located node shows
-  pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers(); nodePosLayer.clearLayers()
   urlstate.save()
   drawLocate()
   locateTimer = setInterval(drawLocate, 5000)
