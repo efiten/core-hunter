@@ -7,7 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl } from './timerange.js'
+import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken } from './timerange.js'
 
 let currentRole = 'guest'
 
@@ -42,6 +42,7 @@ const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
 let locateActive = false
 let locateTimer = null
+let timeRangeTimer = null
 // Whether the "?" legend in the Locate info box is expanded. Persisted across
 // the box's 5 s re-renders so a poll doesn't collapse it under the user.
 let legendOpen = false
@@ -152,6 +153,12 @@ function applyRole(me) {
   notice.textContent = msg || ''
   notice.title = msg ? 'Guests & hunters see: last 24 h, max 500 recent points, ~1 km positions, anonymised hunters. Members see full data.' : ''
   notice.hidden = !msg
+  // Hide quick ranges that exceed the guest 24h cap for guest/hunter roles
+  const isGuest = currentRole === 'guest' || currentRole === 'hunter'
+  for (const [label, li] of Object.entries(quickRangeElements)) {
+    const exceedsGuestCap = ['Last 2 days', 'Last 7 days', 'Last 30 days'].includes(label)
+    li.hidden = isGuest && exceedsGuestCap
+  }
   applyLocateGate()
   applyObserverGate()
   refresh()
@@ -561,6 +568,18 @@ function syncTimeUi() {
   trToEl.value = t ? trLocalInput(Date.parse(t)) : ''
 }
 
+// Start/stop the timer to re-resolve relative ranges so they follow "now".
+// Runs every 10s while a relative range is active to keep token-based windows rolling.
+function updateTimeRangeTimer() {
+  const isRelative = isTimeToken(fFrom.value) || isTimeToken(fTo.value)
+  if (isRelative && !timeRangeTimer) {
+    timeRangeTimer = setInterval(() => { syncTimeUi() }, 10000)
+  } else if (!isRelative && timeRangeTimer) {
+    clearInterval(timeRangeTimer)
+    timeRangeTimer = null
+  }
+}
+
 // Write a range into the carriers and fire the same 'change' every other
 // filter fires, so urlstate.save(), refresh() and the CS-layer/Locate hooks
 // all run exactly as they do for a hand-edited field.
@@ -570,8 +589,14 @@ function applyRange(from, to) {
   fTo.dispatchEvent(new Event('change', { bubbles: true }))
   urlstate.save()
   syncTimeUi()
+  updateTimeRangeTimer()
 }
 
+// Update timer when filters change (including manual edits to absolute fields).
+fFrom.addEventListener('change', updateTimeRangeTimer)
+fTo.addEventListener('change', updateTimeRangeTimer)
+
+const quickRangeElements = {}
 for (const q of QUICK_RANGES) {
   const li = document.createElement('li')
   li.className = 'tr-item'; li.dataset.label = q.label
@@ -579,11 +604,18 @@ for (const q of QUICK_RANGES) {
   b.type = 'button'; b.textContent = q.label
   b.addEventListener('click', () => { applyRange(q.from, q.to); closeTimePicker() })
   li.appendChild(b)
+  quickRangeElements[q.label] = li
   trQuick.appendChild(li)
 }
 
 document.getElementById('tr-apply').addEventListener('click', () => {
-  applyRange(trFromEl.value, trToEl.value) // absolute values, stored verbatim
+  // Convert datetime-local fields back to resolved ISO UTC to preserve the exact
+  // instant across DST transitions (avoid ambiguous-local-time round-trip via
+  // Date.parse). #289 blocker 4.
+  const now = Date.now()
+  const fromIso = trFromEl.value ? new Date(Date.parse(trFromEl.value)).toISOString() : ''
+  const toIso = trToEl.value ? new Date(Date.parse(trToEl.value)).toISOString() : ''
+  applyRange(fromIso, toIso)
   closeTimePicker()
 })
 

@@ -40,6 +40,7 @@ export function isTimeToken(v) {
 //   now-6h   six hours ago
 //   now/d    start of today, in LOCAL time -- "Today" means the user's calendar
 //            day, not a UTC one
+// Clamps result to valid Date range to prevent RangeError on toISOString().
 export function resolveToken(v, nowMs) {
   const s = String(v || '').trim()
   if (s === 'now') return nowMs
@@ -49,7 +50,11 @@ export function resolveToken(v, nowMs) {
   }
   const m = REL_RE.exec(s)
   if (!m) return null
-  return nowMs - Number(m[1]) * UNIT_MS[m[2]]
+  const result = nowMs - Number(m[1]) * UNIT_MS[m[2]]
+  // Clamp to valid Date range: roughly ±285 million years from 1970
+  const minDate = -8.64e15
+  const maxDate = 8.64e15
+  return Math.max(minDate, Math.min(maxDate, result))
 }
 
 // resolveTimeValue renders a stored from/to value as the ISO-UTC string the
