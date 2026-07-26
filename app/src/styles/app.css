@@ -128,11 +128,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* #257: shifted 80px down from the original 192/246/300/354 — the stack sat
    in a stretch of dead space above the HUD (measured ~107px clear on a
    375x812 viewport at the old offsets), closer than the thumb zone wants.
-   80px keeps ~27px clearance above #hud (which is bottom-anchored itself, so
-   this margin holds across device heights) while closing most of the gap. */
-#layer-toggle { bottom: 112px; } #discover-btn { bottom: 166px; }
-#recenter-btn { bottom: 220px; }
-#mode3d-toggle { bottom: 274px; }
+   Anchored to env(safe-area-inset-bottom) so the stack tracks the HUD's
+   own inset-based positioning — clearance stays consistent across device heights
+   (notched, regular, landscape, portrait) without brittle pixel math. */
+#layer-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 112px); }
+#discover-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 166px); }
+#recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 220px); }
+#mode3d-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 274px); }
 #layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg { pointer-events: none; }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
 
