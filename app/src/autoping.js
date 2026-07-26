@@ -17,11 +17,11 @@ export function shouldAutoFire({ lastFireAt, lastLat, lastLon, now, lat, lon, in
   return haversineM({ lat: lastLat, lon: lastLon }, { lat, lon }) >= moveThresholdM
 }
 
-// Target repeater trace-pings can't all fire in the same tick — space them
-// out so the radio sends one at a time. The companion radio is half-duplex
-// (one transmission at a time), and autoPingTick's discover broadcast fires
-// synchronously right before these — so the FIRST trace-ping must not also
-// land at delayMs 0, or it collides with the broadcast (#253).
+// Target repeater trace-pings are spaced so the radio's send queue drains one
+// packet per slot, allowing the discover result to return before the first
+// trace-ping. The firmware already ensures one transmission at a time and gives
+// the discover broadcast priority, so collision isn't reachable — the stagger
+// is for proper ordering and queue management.
 export const STAGGER_MS = 1500
 
 export function staggerTargets(ids) {
