@@ -36,6 +36,7 @@ import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
+import { fabRingSvg } from './fabring.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
@@ -1253,7 +1254,8 @@ const LAYER_ICONS = {
 
 function updateLayerIcon() {
   const mode = LAYER_MODES[layerIdx]
-  el('layer-toggle').innerHTML = LAYER_ICONS[mode]
+  // Ring shows the cycle position (#259) — 3 states, filled up through layerIdx.
+  el('layer-toggle').innerHTML = fabRingSvg(layerIdx, LAYER_MODES.length) + LAYER_ICONS[mode]
   el('layer-toggle').setAttribute('aria-label', `Toggle layers (${mode})`)
 }
 
@@ -1323,10 +1325,18 @@ const COMPASS_LABELS = {
   static: 'Resume following (compass mode)',
 }
 
+// Cycle order for the progress ring (#259) — tap destinations only. Static is
+// unreachable via tap (only via map pan/rotate), so it's not in this cycle.
+// nextCompassState cycles: following → heading → driving → following.
+const COMPASS_CYCLE = ['following', 'heading', 'driving']
+
 let compassState = { follow: true, source: null }
 function updateCompassIcon() {
   // Icon = the state a tap produces (preview); label = the action from here.
-  el('recenter-btn').innerHTML = COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
+  // Ring = the CURRENT state's position (not the preview), so the two don't
+  // contradict each other at a glance.
+  const currentIdx = COMPASS_CYCLE.indexOf(compassGlyph(compassState))
+  el('recenter-btn').innerHTML = fabRingSvg(currentIdx, COMPASS_CYCLE.length) + COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
   el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[compassGlyph(compassState)])
 }
 

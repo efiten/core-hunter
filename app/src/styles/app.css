@@ -138,6 +138,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg { pointer-events: none; }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
 
+/* Segmented progress ring (#259) — an absolutely-positioned overlay so it sits
+   behind the flex-centered icon without disturbing that layout; fabring.js
+   generates the segment circles per FAB (layer-toggle: 3 states, recenter-btn:
+   4 states). Plain on/off toggles (mode3d-toggle, discover-btn) get none. */
+.fab-ring { position: absolute; inset: 0; pointer-events: none; }
+.fab-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+
 /* Auto-discover FAB states (#232, #233): steady color shows on/off + whether
    selected targets include a repeater (auto-target is reactive, not a
    separate tap state — see toggleAutoPing/updateDiscoverBtnVisual). */
