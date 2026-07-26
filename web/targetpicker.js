@@ -70,34 +70,36 @@ export function relTime(rxAt, nowMs) {
 
 // parseSenderField disambiguates the reused #f-sender value (#223 decision:
 // the picker and the existing free-text prefix search share one field/param
-// rather than a separate one). A comma means "exact-id multi-select from the
-// picker"; anything else is the pre-existing single leading-prefix search,
-// unchanged.
+// rather than a separate one). A trailing delimiter (`;`) means "exact-id
+// multi-select from the picker"; anything else is the pre-existing single
+// leading-prefix search, unchanged. Uses `;` instead of `,` since sender_id
+// can contain commas for channel_name senders (#288 blocker 3).
 export function parseSenderField(value) {
   const v = (value || '').trim()
   if (!v) return { mode: 'none' }
-  if (v.includes(',')) {
-    const ids = v.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+  if (v.includes(';')) {
+    const ids = v.split(';').map((s) => s.trim().toLowerCase()).filter(Boolean)
     return { mode: 'ids', ids }
   }
   return { mode: 'prefix', prefix: v }
 }
 
 // idsToField renders an id set back into the shared #f-sender value. A single
-// id gets a TRAILING COMMA so it stays unambiguously a picker selection rather
-// than decaying into a leading-prefix search on reload/share -- "aa11" and
-// "aa11" are the same string otherwise. The server applies the same rule
-// (server/internal/httpapi/api.go's filterFrom).
+// id gets a TRAILING SEMICOLON so it stays unambiguously a picker selection
+// rather than decaying into a leading-prefix search on reload/share -- "aa11"
+// and "aa11" are the same string otherwise. Uses `;` instead of `,` since
+// sender_id can contain commas (#288 blocker 3). The server applies the same
+// rule (server/internal/httpapi/api.go's filterFrom).
 function idsToField(ids) {
   if (!ids.length) return ''
-  return ids.length === 1 ? `${ids[0]},` : ids.join(',')
+  return ids.length === 1 ? `${ids[0]};` : ids.join(';')
 }
 
 // toggleSenderId toggles one id within an ids-mode selection, always emitting
 // the canonical ids-mode form (see idsToField), so its output round-trips
 // through parseSenderField unchanged.
 export function toggleSenderId(currentIdsCsv, id) {
-  const ids = currentIdsCsv ? currentIdsCsv.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean) : []
+  const ids = currentIdsCsv ? currentIdsCsv.split(';').map((s) => s.trim().toLowerCase()).filter(Boolean) : []
   const key = String(id).toLowerCase()
   const i = ids.indexOf(key)
   if (i >= 0) ids.splice(i, 1); else ids.push(key)
@@ -108,7 +110,7 @@ export function toggleSenderId(currentIdsCsv, id) {
 // DOM component
 // ---------------------------------------------------------------------------
 
-const PAGE_SIZE = 6
+const PAGE_SIZE = 12
 const PINNED_COUNT = 3
 
 function row(rec, nowMs, selectedIds, onToggle) {

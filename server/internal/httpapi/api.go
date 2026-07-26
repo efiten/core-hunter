@@ -29,14 +29,15 @@ func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
 func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{From: q.Get("from"), To: q.Get("to")}
-	// ?sender= carries two different filters, distinguished by a comma (#223):
-	// a comma-less value is the free-text leading-prefix search; anything with
-	// a comma is the target-list picker's exact multi-id selection (SQL IN).
-	// A ONE-id selection is written with a trailing comma ("aaaa,") so it stays
+	// ?sender= carries two different filters, distinguished by a semicolon (#223):
+	// a semicolon-less value is the free-text leading-prefix search; anything with
+	// a semicolon is the target-list picker's exact multi-id selection (SQL IN).
+	// A ONE-id selection is written with a trailing semicolon ("aaaa;") so it stays
 	// distinguishable from a typed prefix — the web viewer deliberately reuses
-	// a single field/URL param for both.
-	if s := strings.TrimSpace(q.Get("sender")); strings.Contains(s, ",") {
-		for _, id := range strings.Split(s, ",") {
+	// a single field/URL param for both. Uses semicolon instead of comma since
+	// sender_id can contain commas for channel_name senders (#288 blocker 3).
+	if s := strings.TrimSpace(q.Get("sender")); strings.Contains(s, ";") {
+		for _, id := range strings.Split(s, ";") {
 			if id = strings.TrimSpace(id); id != "" { f.Senders = append(f.Senders, id) }
 		}
 	} else {

@@ -115,7 +115,6 @@ async function drawPoints() {
       .addTo(pointLayer)
   }
   document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
-  refreshPickerCandidates() // #223 -- its own sender-less query, see below
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
@@ -193,6 +192,8 @@ export function refresh() {
     if (locateActive) return // focus mode: keep the non-relevant layers hidden
     if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
+    // Picker works in all modes, not just points mode (#288 blocker 1)
+    refreshPickerCandidates()
   }, 250)
 }
 
@@ -241,14 +242,26 @@ function filtersQs() {
 //
 // Only fetched while the panel is actually open -- an extra request on every
 // redraw would be pure waste for a control that is closed almost all the time.
+let cachedCandidatePoints = []
+let cachedCandidatureSig = null
 async function refreshPickerCandidates() {
   if (!targetPicker || !senderPicker || senderPicker.hidden) return
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
   const f = (window.currentFilters && window.currentFilters()) || {}
+  // Build signature excluding sender filter, so cached results remain valid across
+  // sender selection changes (#288 blocker 4).
+  const sig = [...Object.entries(f).filter(([k]) => k !== 'sender').map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
+  if (sig === cachedCandidatureSig) {
+    // Filter unchanged, just re-render with current selection state
+    targetPicker.render(cachedCandidatePoints, Date.now())
+    return
+  }
   for (const [k, v] of Object.entries(f)) if (v && k !== 'sender') p.set(k, v)
   try {
     const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
+    cachedCandidatePoints = points
+    cachedCandidatureSig = sig
     targetPicker.render(points, Date.now())
   } catch (_) { /* keep the last good list; retried on the next redraw */ }
 }
