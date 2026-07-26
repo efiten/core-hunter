@@ -3,12 +3,17 @@
   --ch-bg:#0b0e14; --ch-text:#e6edf3; --ch-muted:#9aa;
   --ch-surface:rgba(18,23,33,0.92); --ch-input-bg:#11161f; --ch-border:#2a3340;
   --ch-sig-hot:#ff453a; --ch-sig-warm:#ff9f0a; --ch-sig-mid:#ffd60a; --ch-sig-cool:#40c8ff; --ch-sig-cold:#5e7bff; --ch-sig-none:#5b6675;
+  /* UI selection accent (#225) -- same values as app/src/styles/tokens.css.
+     Previously undefined here, so the active-filter state borrowed a signal-tier
+     color (--ch-sig-cool) meant for RSSI/SNR display, not UI selection. */
+  --ch-accent:#38e0a6; --ch-accent-2:#ffb020;
 }
 /* ---- LIGHT theme ---- */
 [data-theme="light"] {
   --ch-bg:#f4f1ea; --ch-text:#1b2430; --ch-muted:#5a6675;
   --ch-surface:rgba(255,252,245,0.92); --ch-input-bg:#fffcf5; --ch-border:#cfc8b8;
   --ch-sig-hot:#d11f1f; --ch-sig-warm:#e07000; --ch-sig-mid:#c79100; --ch-sig-cool:#1577c0; --ch-sig-cold:#3a44b8; --ch-sig-none:#9aa3ad;
+  --ch-accent:#0e9f7e; --ch-accent-2:#b4530a;
 }
 * { box-sizing: border-box; }
 html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
@@ -25,12 +30,18 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #f-hunter { height:28px; min-width:120px; }
 #f-hunter.expanded { height:auto; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
+/* Checked state highlights the label, mirroring app's .fs-row.active pattern
+   for its own direct-only row (#225) -- .active is toggled by filters.js. */
+.cs-cb.active { color:var(--ch-accent); }
 .cs-layer-toggle { display:inline-flex; gap:8px; }
 .cs-layer-toggle[hidden] { display:none; }
-/* Packet-type toggle chips (parity with the app's filter sheet, #142) */
+/* Packet-type toggle chips -- data/semantics parity with the app's filter
+   sheet chips already existed (#142); this brings the visual language in line
+   too (#225): full pill shape and the actual accent color instead of a
+   signal-tier color borrowed for lack of one. */
 #f-types { display:inline-flex; gap:4px; flex-wrap:wrap; }
-#bar .f-chip { font-size:12px; padding:3px 8px; border-radius:12px; color:var(--ch-muted); }
-#bar .f-chip.active { color:var(--ch-bg); background:var(--ch-sig-cool); border-color:var(--ch-sig-cool); }
+#bar .f-chip { font-size:12px; padding:3px 8px; border-radius:999px; border-color:var(--ch-muted); color:var(--ch-muted); }
+#bar .f-chip.active { color:var(--ch-bg); background:var(--ch-accent); border-color:var(--ch-accent); }
 .guest-notice { color: var(--ch-muted); font-size: .85em; }
 .guest-notice[hidden] { display: none; }
 .lc-warn { color: var(--ch-sig-warm); }
