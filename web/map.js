@@ -570,10 +570,11 @@ function syncTimeUi() {
 
 // Start/stop the timer to re-resolve relative ranges so they follow "now".
 // Runs every 10s while a relative range is active to keep token-based windows rolling.
+// Also refreshes the data so the map shows the current rolling window (#289 blocker 2).
 function updateTimeRangeTimer() {
   const isRelative = isTimeToken(fFrom.value) || isTimeToken(fTo.value)
   if (isRelative && !timeRangeTimer) {
-    timeRangeTimer = setInterval(() => { syncTimeUi() }, 10000)
+    timeRangeTimer = setInterval(() => { syncTimeUi(); refresh() }, 10000)
   } else if (!isRelative && timeRangeTimer) {
     clearInterval(timeRangeTimer)
     timeRangeTimer = null
