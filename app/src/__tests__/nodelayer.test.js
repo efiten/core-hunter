@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNode, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
 import { haversineM } from '../locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -104,6 +104,87 @@ describe('driftPresentation — how a node with both positions is drawn (#197)',
 
   it('reports nothing to draw when neither position exists', () => {
     expect(driftPresentation({ advertised: null, estimate: null })).toEqual({ kind: 'none' })
+  })
+})
+
+describe('senderIdMatches (#272 blocker 1)', () => {
+  const fullPubkey = 'aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011'
+
+  it('matches advert_pubkey exactly (full 64-hex)', () => {
+    expect(senderIdMatches(fullPubkey, 'advert_pubkey', fullPubkey)).toBe(true)
+    expect(senderIdMatches('aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011', 'advert_pubkey', fullPubkey)).toBe(true)
+  })
+  it('rejects advert_pubkey with wrong full key', () => {
+    expect(senderIdMatches('1111111111111111111111111111111111111111111111111111111111111111', 'advert_pubkey', fullPubkey)).toBe(false)
+  })
+  it('matches discover_pubkey as a prefix (>= 2 bytes / 4 hex)', () => {
+    expect(senderIdMatches('aabbccdd', 'discover_pubkey', fullPubkey)).toBe(true)
+    expect(senderIdMatches('aabb', 'discover_pubkey', fullPubkey)).toBe(true)
+  })
+  it('rejects discover_pubkey prefix shorter than 4 hex (< 2 bytes)', () => {
+    expect(senderIdMatches('aa', 'discover_pubkey', fullPubkey)).toBe(false)
+  })
+  it('rejects discover_pubkey that does not match the key prefix', () => {
+    expect(senderIdMatches('bbccddee', 'discover_pubkey', fullPubkey)).toBe(false)
+  })
+  it('ignores relay (path prefix) — never matches registry nodes', () => {
+    expect(senderIdMatches('aabbccdd', 'relay', fullPubkey)).toBe(false)
+    expect(senderIdMatches('aabb', 'relay', fullPubkey)).toBe(false)
+  })
+  it('ignores direct_hash — never matches registry nodes', () => {
+    expect(senderIdMatches('abcd', 'direct_hash', fullPubkey)).toBe(false)
+  })
+  it('ignores channel_name — never matches registry nodes', () => {
+    expect(senderIdMatches('some-channel', 'channel_name', fullPubkey)).toBe(false)
+  })
+  it('handles case-insensitive matching', () => {
+    expect(senderIdMatches('AABBCCDD', 'discover_pubkey', fullPubkey)).toBe(true)
+    expect(senderIdMatches(fullPubkey.toUpperCase(), 'advert_pubkey', fullPubkey)).toBe(true)
+  })
+})
+
+describe('groupSenderPointsForNode', () => {
+  const fullPubkey = 'aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011'
+  const rec = (o) => ({ sender_id: 'aa', sender_kind: 'advert_pubkey', lat: 51.2, lon: 4.4, rssi: -70, ...o })
+
+  it('finds receptions matching node pubkey by advert_pubkey (exact match)', () => {
+    const recs = [
+      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey' }),
+      rec({ sender_id: 'other', sender_kind: 'advert_pubkey' }),
+    ]
+    const pts = groupSenderPointsForNode(recs, fullPubkey)
+    expect(pts).toHaveLength(1)
+    expect(pts[0].rssi).toBe(-70)
+  })
+  it('finds receptions matching node pubkey by discover_pubkey (prefix match)', () => {
+    const recs = [
+      rec({ sender_id: 'aabbccdd', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: 'aabb', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: 'bbccddee', sender_kind: 'discover_pubkey' }),
+    ]
+    const pts = groupSenderPointsForNode(recs, fullPubkey)
+    expect(pts).toHaveLength(2)  // first two match as prefixes
+  })
+  it('ignores relay and direct_hash kinds', () => {
+    const recs = [
+      rec({ sender_id: 'aabbccdd', sender_kind: 'relay' }),
+      rec({ sender_id: 'aabb', sender_kind: 'direct_hash' }),
+    ]
+    const pts = groupSenderPointsForNode(recs, fullPubkey)
+    expect(pts).toHaveLength(0)
+  })
+  it('drops receptions without a GPS fix', () => {
+    const recs = [
+      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey', lat: 51.2, lon: 4.4 }),
+      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey', lat: null, lon: 4.4 }),
+      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey', lat: 51.2, lon: null }),
+    ]
+    const pts = groupSenderPointsForNode(recs, fullPubkey)
+    expect(pts).toHaveLength(1)
+  })
+  it('returns an empty array for missing input', () => {
+    expect(groupSenderPointsForNode(null, fullPubkey)).toEqual([])
+    expect(groupSenderPointsForNode([], null)).toEqual([])
   })
 })
 
