@@ -118,7 +118,7 @@ const state = {
   lastRows: [],
   // Auto-ping (#233): toggled by the Discover FAB. lastLat/lastLon track the
   // position at the last fire, for the movement half of the fire gate.
-  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null },
+  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [] },
 }
 
 // ---------------------------------------------------------------------------
@@ -495,11 +495,12 @@ function sendDiscover() {
 // One byte-prefix hash per hop, same convention as Discover's
 // DISCOVER_PREFIX_ONLY — first byte of the target's pubkey/id.
 function sendTracePing(id) {
-  if (!state.connected || !state.transport) return
+  if (!state.connected || !state.transport) return false
   const hashByte = parseInt(String(id).slice(0, 2), 16)
-  if (Number.isNaN(hashByte)) return
+  if (Number.isNaN(hashByte)) return false
   const tag = crypto.getRandomValues(new Uint32Array(1))[0]
   state.transport.send(buildTracePathFrame(tag, 0, [hashByte])).catch(() => {})
+  return true
 }
 
 // Brief pulse feedback (#232) on the Discover FAB every time a ping actually
@@ -546,20 +547,33 @@ function autoPingTick() {
     now,
     lat: fix ? fix.lat : null,
     lon: fix ? fix.lon : null,
+    // Skip this cycle while the previous one is still draining (#253) — see
+    // shouldAutoFire. Each timer removes its own handle below, so the length
+    // is the count still queued rather than a running total.
+    pendingTargets: state.autoPing.pendingPings.length,
   })
   if (!fire) return
   state.autoPing.lastFireAt = now
   if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
   sendDiscover()
   pulseDiscoverBtn()
+  // Each staggered trace-ping is also a real transmission — pulse the FAB for
+  // it too, but only if the ping actually succeeds (#254).
   for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
-    setTimeout(() => sendTracePing(id), delayMs)
+    const handle = setTimeout(() => {
+      const i = state.autoPing.pendingPings.indexOf(handle)
+      if (i !== -1) state.autoPing.pendingPings.splice(i, 1)
+      if (sendTracePing(id)) pulseDiscoverBtn()
+    }, delayMs)
+    state.autoPing.pendingPings.push(handle)
   }
 }
 
 function stopAutoPing() {
   state.autoPing.enabled = false
   if (state.autoPing.timer) { clearInterval(state.autoPing.timer); state.autoPing.timer = null }
+  for (const handle of state.autoPing.pendingPings) clearTimeout(handle)
+  state.autoPing.pendingPings = []
   updateDiscoverBtnVisual()
 }
 
