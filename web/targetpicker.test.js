@@ -83,46 +83,47 @@ describe('relTime — ported from app/src/feed.js (not shared: web\'s data model
 describe('parseSenderField — disambiguates #f-sender\'s reused value (#223)', () => {
   // Decision: the picker and the free-text prefix field share the SAME
   // `sender` param/URL state (Kasper, 2026-07-22) rather than a separate one.
-  // A comma means "exact-id selection from the picker"; anything else is the
+  // A semicolon means "exact-id selection from the picker"; anything else is the
   // pre-existing single leading-prefix search, unchanged. The server applies
-  // the same rule (server/internal/httpapi/api.go's filterFrom).
+  // the same rule (server/internal/httpapi/api.go's filterFrom). Uses semicolon
+  // instead of comma since sender_id can contain commas for channel_name senders.
   it('empty value -> no filter', () => {
     expect(parseSenderField('')).toEqual({ mode: 'none' })
   })
-  it('a single value with no comma -> prefix search (unchanged existing behaviour)', () => {
+  it('a single value with no semicolon -> prefix search (unchanged existing behaviour)', () => {
     expect(parseSenderField('aa11')).toEqual({ mode: 'prefix', prefix: 'aa11' })
   })
-  it('a comma-separated value -> exact-id set, lowercased', () => {
-    expect(parseSenderField('AA11,bb22')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
+  it('a semicolon-separated value -> exact-id set, lowercased', () => {
+    expect(parseSenderField('AA11;bb22')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
   })
-  it('trims whitespace and drops empty entries around commas', () => {
-    expect(parseSenderField(' aa11 , ,bb22 ')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
+  it('trims whitespace and drops empty entries around semicolons', () => {
+    expect(parseSenderField(' aa11 ; ;bb22 ')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
   })
-  // The trailing comma is what makes a ONE-id pick survive a reload/share as a
+  // The trailing semicolon is what makes a ONE-id pick survive a reload/share as a
   // pick rather than degrading into a prefix search -- the two are otherwise
   // the same string. Ugly in the URL, but honest and lossless.
-  it('a single id with a trailing comma -> a one-element exact set, not a prefix', () => {
-    expect(parseSenderField('aa11,')).toEqual({ mode: 'ids', ids: ['aa11'] })
+  it('a single id with a trailing semicolon -> a one-element exact set, not a prefix', () => {
+    expect(parseSenderField('aa11;')).toEqual({ mode: 'ids', ids: ['aa11'] })
   })
 })
 
 describe('toggleSenderId — toggles one id, always emitting the ids-mode form', () => {
-  // Output always contains a comma (trailing for a single id), so the result
+  // Output always contains a semicolon (trailing for a single id), so the result
   // is unambiguously a picker selection -- both on reload and to the server.
-  it('adds an id to an empty selection, with a trailing comma', () => {
-    expect(toggleSenderId('', 'aa11')).toBe('aa11,')
+  it('adds an id to an empty selection, with a trailing semicolon', () => {
+    expect(toggleSenderId('', 'aa11')).toBe('aa11;')
   })
-  it('adds a second id, becoming a plain comma-list', () => {
-    expect(toggleSenderId('aa11,', 'bb22')).toBe('aa11,bb22')
+  it('adds a second id, becoming a plain semicolon-list', () => {
+    expect(toggleSenderId('aa11;', 'bb22')).toBe('aa11;bb22')
   })
-  it('removes an id, dropping back to the trailing-comma single form', () => {
-    expect(toggleSenderId('aa11,bb22', 'bb22')).toBe('aa11,')
+  it('removes an id, dropping back to the trailing-semicolon single form', () => {
+    expect(toggleSenderId('aa11;bb22', 'bb22')).toBe('aa11;')
   })
   it('removing the last id clears the selection entirely', () => {
-    expect(toggleSenderId('aa11,', 'aa11')).toBe('')
+    expect(toggleSenderId('aa11;', 'aa11')).toBe('')
   })
   it('is case-insensitive when checking membership', () => {
-    expect(toggleSenderId('AA11,', 'aa11')).toBe('')
+    expect(toggleSenderId('AA11;', 'aa11')).toBe('')
   })
   // Round-trip: whatever toggleSenderId emits must parse back to the same ids.
   it('emits a value parseSenderField reads back as the same id set', () => {

@@ -50,25 +50,26 @@ func TestFilterFromHunterCommaSeparated(t *testing.T) {
 	if len(f.Hunter) != 0 { t.Fatalf("absent hunter must not filter: %+v", f.Hunter) }
 }
 
-// ?sender=a,b is the target-list picker's exact multi-id selection (#223);
-// a single comma-less value keeps the existing leading-prefix behaviour.
-// A trailing comma is what makes a ONE-id picker selection distinguishable
+// ?sender=a;b is the target-list picker's exact multi-id selection (#223);
+// a single semicolon-less value keeps the existing leading-prefix behaviour.
+// A trailing semicolon is what makes a ONE-id picker selection distinguishable
 // from a typed prefix — the web viewer reuses one field for both.
+// Uses semicolon instead of comma since sender_id can contain commas (#288 blocker 3).
 func TestFilterFromSenderCommaSeparated(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa,%20bbbb", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa%3B%20bbbb", nil)
 	f := filterFrom(r, nil)
 	if len(f.Senders) != 2 || f.Senders[0] != "aaaa" || f.Senders[1] != "bbbb" {
-		t.Fatalf("comma-separated sender not parsed: %+v", f.Senders)
+		t.Fatalf("semicolon-separated sender not parsed: %+v", f.Senders)
 	}
 	if f.Sender != "" { t.Fatalf("multi-id selection must not also set the prefix Sender: %q", f.Sender) }
 
-	// Trailing comma → a one-element EXACT set, not a prefix.
-	r = httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa,", nil)
+	// Trailing semicolon → a one-element EXACT set, not a prefix.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa%3B", nil)
 	f = filterFrom(r, nil)
-	if len(f.Senders) != 1 || f.Senders[0] != "aaaa" { t.Fatalf("trailing-comma single id not parsed as a set: %+v", f.Senders) }
-	if f.Sender != "" { t.Fatalf("trailing-comma form must not set the prefix Sender: %q", f.Sender) }
+	if len(f.Senders) != 1 || f.Senders[0] != "aaaa" { t.Fatalf("trailing-semicolon single id not parsed as a set: %+v", f.Senders) }
+	if f.Sender != "" { t.Fatalf("trailing-semicolon form must not set the prefix Sender: %q", f.Sender) }
 
-	// No comma → unchanged prefix search.
+	// No semicolon → unchanged prefix search.
 	r = httptest.NewRequest(http.MethodGet, "/api/points?sender=aaaa", nil)
 	f = filterFrom(r, nil)
 	if f.Sender != "aaaa" { t.Fatalf("plain sender must stay a prefix: %q", f.Sender) }
