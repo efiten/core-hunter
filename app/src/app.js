@@ -1311,9 +1311,10 @@ const COMPASS_LABELS = {
   static: 'Resume following (compass mode)',
 }
 
-// Cycle order for the progress ring (#259) — matches nextCompassState's
-// static → following → heading → driving → static advance.
-const COMPASS_CYCLE = ['static', 'following', 'heading', 'driving']
+// Cycle order for the progress ring (#259) — tap destinations only. Static is
+// unreachable via tap (only via map pan/rotate), so it's not in this cycle.
+// nextCompassState cycles: following → heading → driving → following.
+const COMPASS_CYCLE = ['following', 'heading', 'driving']
 
 let compassState = { follow: true, source: null }
 function updateCompassIcon() {
