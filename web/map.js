@@ -580,7 +580,10 @@ async function drawNodePositions() {
   // Resolve everything first so the signature covers the whole rendered set.
   const draw = []
   for (const [id, pts] of bySender) {
-    const advertised = cachedPosition(id) || null
+    // Only use cached position for full pubkeys (#272 blocker 4): a 2-byte
+    // relay prefix could resolve to the wrong node if there are collisions
+    // in the upstream resolver. Partial prefixes are ambiguous by design.
+    const advertised = (isFullPubkey(id) ? cachedPosition(id) : null) || null
     const est = estimateFor(pts)
     const p = driftPresentation({ advertised, estimate: est })
     // estimate-only adds nothing here: the points themselves already show it,
@@ -589,14 +592,26 @@ async function drawNodePositions() {
     draw.push({ id, advertised, est, p, name: cachedName(id) })
   }
 
-  const sig = draw.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
+  // Dedupe by advertised position: the same node can appear under multiple
+  // sender IDs (full 64-hex advert + 2-byte relay prefix), creating overlapping
+  // ▲ markers. Keep only the first occurrence of each position (#272 blocker 5).
+  const seenPositions = new Set()
+  const deduped = draw.filter((d) => {
+    if (!d.advertised) return true  // no position — can't dedupe
+    const posKey = `${d.advertised.lat.toFixed(5)},${d.advertised.lon.toFixed(5)}`
+    if (seenPositions.has(posKey)) return false
+    seenPositions.add(posKey)
+    return true
+  })
+
+  const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),
     d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
   if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
   nodePosSig = sig
   nodePosLayer.clearLayers()
 
-  for (const { id, advertised, est, p, name } of draw) {
+  for (const { id, advertised, est, p, name } of deduped) {
     const color = cssVar(driftColorVar(p))
     const html = nodePosPopup(name, id, p, est)
     // The name rides on the map next to the ▲, not just in the popup: the
