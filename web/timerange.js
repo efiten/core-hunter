@@ -71,6 +71,33 @@ export function resolveTimeValue(v, nowMs) {
   return Number.isNaN(t) ? '' : new Date(t).toISOString()
 }
 
+// toLocalInput renders an instant as the naive local `YYYY-MM-DDTHH:MM` a
+// datetime-local input expects. This is LOSSY by nature: the string carries no
+// zone, so on the DST fall-back night both passes through 02:30 render
+// identically and the instant can no longer be recovered from it. Pair every
+// render with boundFromField below rather than re-parsing the string.
+export function toLocalInput(ms) {
+  const d = new Date(ms), p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+// boundFromField reads an absolute field back to ISO-UTC without losing the
+// occurrence toLocalInput dropped (#289).
+//
+// `rendered` is what syncTimeUi last wrote: { value, iso }. When the field
+// still holds exactly that string the user did not touch it, so the honest
+// answer is the instant we rendered FROM — not whatever re-parsing that string
+// happens to yield. Re-parsing is correct only for a value the user typed,
+// where the wall-clock reading is the intent and picking the first occurrence
+// of an ambiguous hour is as good an answer as any.
+export function boundFromField(fieldValue, rendered) {
+  const s = String(fieldValue || '').trim()
+  if (!s) return ''
+  if (rendered && rendered.iso && s === rendered.value) return rendered.iso
+  const t = Date.parse(s)
+  return Number.isNaN(t) ? '' : new Date(t).toISOString()
+}
+
 // The quick-range list, in display order. `from`/`to` are stored verbatim into
 // the from/to state, so picking one writes tokens, not resolved timestamps.
 export const QUICK_RANGES = [

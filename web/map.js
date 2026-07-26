@@ -7,7 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken } from './timerange.js'
+import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField } from './timerange.js'
 
 let currentRole = 'guest'
 
@@ -554,18 +554,28 @@ const fTo = document.getElementById('f-to')
 // the token's *resolved* instant: opening the panel on "Last 6 hours" pre-fills
 // the concrete window it currently means, and editing from there naturally
 // converts the range to absolute.
-const trLocalInput = (ms) => {
-  const d = new Date(ms), p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
-}
+// What syncTimeUi last wrote into each absolute field, as { value, iso }. The
+// displayed string is a lossy rendering of the instant (see toLocalInput), so
+// the instant is kept alongside it and boundFromField reuses it when the field
+// comes back untouched.
+const trRendered = { from: null, to: null }
+
 function syncTimeUi() {
   const now = Date.now()
   trLabelEl.textContent = rangeLabel(fFrom.value, fTo.value, now)
   const active = matchQuickRange(fFrom.value, fTo.value)
   for (const li of trQuick.children) li.classList.toggle('active', !!active && li.dataset.label === active.label)
   const f = resolveTimeValue(fFrom.value, now), t = resolveTimeValue(fTo.value, now)
-  trFromEl.value = f ? trLocalInput(Date.parse(f)) : ''
-  trToEl.value = t ? trLocalInput(Date.parse(t)) : ''
+  // Don't overwrite a field the user is typing in. The relative-range tick
+  // (#289 blocker 2) runs every 10 s, and without this it would wipe a
+  // half-entered value out from under them while the panel is open.
+  const writeField = (elm, iso, slot) => {
+    if (document.activeElement === elm) return
+    elm.value = iso ? toLocalInput(Date.parse(iso)) : ''
+    trRendered[slot] = iso ? { value: elm.value, iso } : null
+  }
+  writeField(trFromEl, f, 'from')
+  writeField(trToEl, t, 'to')
 }
 
 // Start/stop the timer to re-resolve relative ranges so they follow "now".
@@ -610,13 +620,12 @@ for (const q of QUICK_RANGES) {
 }
 
 document.getElementById('tr-apply').addEventListener('click', () => {
-  // Convert datetime-local fields back to resolved ISO UTC to preserve the exact
-  // instant across DST transitions (avoid ambiguous-local-time round-trip via
-  // Date.parse). #289 blocker 4.
-  const now = Date.now()
-  const fromIso = trFromEl.value ? new Date(Date.parse(trFromEl.value)).toISOString() : ''
-  const toIso = trToEl.value ? new Date(Date.parse(trToEl.value)).toISOString() : ''
-  applyRange(fromIso, toIso)
+  // Read the fields back through boundFromField so an untouched field keeps the
+  // instant it was rendered from (#289 blocker 4). Re-parsing the displayed
+  // string cannot do this: on the DST fall-back night it always resolves to the
+  // first pass through the ambiguous hour, so Apply with no edits moved the
+  // window an hour into the past.
+  applyRange(boundFromField(trFromEl.value, trRendered.from), boundFromField(trToEl.value, trRendered.to))
   closeTimePicker()
 })
 
