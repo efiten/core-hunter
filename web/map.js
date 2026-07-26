@@ -459,6 +459,7 @@ function activateLocate() {
   locateBtn.classList.add('on')
   // focus mode: hide every non-relevant layer so only the located node shows
   pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  rxHighlightLayer.clearLayers() // suppress ticker rings in focus mode (#287 blocker 3)
   urlstate.save()
   drawLocate()
   locateTimer = setInterval(drawLocate, 5000)

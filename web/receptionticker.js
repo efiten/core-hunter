@@ -82,15 +82,13 @@ export function tickerFilters(filters, mode) {
 }
 
 // isLiveWindow gates the ticker's recurring poll: re-fetching a fixed
-// historical range every 5s would just re-fetch identical data. Compares UTC
-// calendar dates (not local) so the check is deterministic regardless of the
-// runner's timezone; the ticker still gets an initial fetch and a fetch on
-// every filter change (see createReceptionTicker) regardless of this check —
-// only the automatic interval is skipped for a non-"now" range.
+// historical range every 5s would just re-fetch identical data. Returns true
+// if `to` is at least "now", i.e., a rolling window that should keep polling.
+// This avoids the UTC-vs-local-midnight mismatch that broke calendar-date
+// comparison (#287 blocker 1).
 export function isLiveWindow(toIso, nowMs) {
   if (!toIso) return true
-  const day = (ms) => new Date(ms).toISOString().slice(0, 10)
-  return day(Date.parse(toIso)) === day(nowMs)
+  return Date.parse(toIso) >= nowMs
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -138,8 +136,15 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   const maxScroll = () => Math.max(0, (view.length - 1) * LINE_H)
   const atBottom = () => list.scrollTop >= maxScroll() - 2
 
+  let _lastSig = null
   function rebuild() {
     view = rxView(filtered, all, mode, CAP)
+    // Signature of current view state: if unchanged, skip rebuild to avoid
+    // teleporting a scrolled reader (#287 blocker 5).
+    const sig = view.map(key).join('|') + '#' + mode
+    if (sig === _lastSig) { paint(); return }
+    _lastSig = sig
+
     const filteredIds = new Set(filtered.map(key))
     countEl.textContent = view.length + ' rx'
     tgEl.innerHTML = mode === 'filtered'
