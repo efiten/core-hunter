@@ -41,13 +41,14 @@ const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
 // Target-list picker (#223), created near the end of this file once its DOM
-// exists; drawPoints() feeds it on every redraw, guarded since it's still
-// null during the handful of calls that can happen before that point.
+// exists; refreshPickerCandidates() (called from refresh()) feeds it on every
+// redraw in all modes, guarded since it's still null during the handful of
+// calls that can happen before that point.
 let targetPicker = null
 // Declared here rather than at the wiring site below: refreshPickerCandidates()
-// (called from drawPoints) reads it, and a `const` further down would be in its
-// temporal dead zone -- reading it would throw rather than fall through the
-// null guard if a redraw ever lands before module eval reaches the wiring.
+// reads it, and a `const` further down would be in its temporal dead zone --
+// reading it would throw rather than fall through the null guard if a redraw
+// ever lands before module eval reaches the wiring.
 let senderPicker = null
 let locateActive = false
 let locateTimer = null
