@@ -9,9 +9,9 @@ const TARGET_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey'
 // and must never be prefix-merged with the others.
 const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
 
-function isPrefixCompatible(a, b) {
-  return a.length > 0 && b.length > 0 && (a.startsWith(b) || b.startsWith(a))
-}
+// A full MeshCore pubkey is 32 bytes = 64 hex. Only an advert carries one
+// (meshpacket.js); discover and relay ids are shorter prefixes of that space.
+const FULL_PUBKEY = /^[0-9a-f]{64}$/
 
 // Two rows only merge once a resolved name is present on both sides and it
 // matches — an unresolved (null) label never counts as a match, and a shared
@@ -22,37 +22,53 @@ function sameResolvedName(a, b) {
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase()
 }
 
-// mergePrefixGroups clusters the per-exact-id rows that name the same
-// physical node — same resolved name, and one id is a hex-prefix of the
-// other (#267) — into a single row per cluster, keeping the most recent
-// reception as the row's display record. `merged_ids` carries every id in
-// the cluster (lowercased) so a target-list selection can catch receptions
-// tagged with any prefix variant, not just the one currently shown.
+// mergePrefixGroups clusters the per-exact-id rows that name the same physical
+// node into a single row, keeping the most recent reception as the display
+// record. `merged_ids` carries every id in the cluster (lowercased) so a
+// target-list selection catches receptions tagged with any prefix variant.
+//
+// Anchored, never transitive (#268). "id A is a prefix of id B" is NOT a
+// transitive relation, so it must not be closed over: a 2-byte relay id can be
+// a prefix of two different full pubkeys, and a connected-components pass would
+// then place both of those nodes in one cluster. Selecting that row feeds two
+// physically separate transmitters to Locate as a single target, which for a
+// direction-finding tool is the wrong answer in the worst possible place.
+//
+// So each prefix attaches to at most ONE anchor — a full 64-hex pubkey with a
+// matching resolved name — and a prefix that matches two or more anchors stays
+// on its own row. Ambiguity is evidence against merging, not for it; that is
+// the same meaning the name resolver's own `ambiguous` flag carries. Anchors
+// never merge with each other: two distinct full pubkeys are two nodes by
+// definition. The pass is O(n·k) in anchors rather than O(n²).
 function mergePrefixGroups(entries) {
-  const parent = entries.map((_, i) => i)
-  function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i] } return i }
-  function union(i, j) { const ri = find(i); const rj = find(j); if (ri !== rj) parent[ri] = rj }
+  const anchors = []      // indices of full-pubkey rows
+  const attached = new Map()  // anchor index -> [entry indices]
+  const solo = []         // indices that stand alone
 
-  for (let i = 0; i < entries.length; i++) {
-    const [idI, recI] = entries[i]
-    if (!HEX_PREFIX_KINDS.has(recI.sender_kind)) continue
-    for (let j = i + 1; j < entries.length; j++) {
-      const [idJ, recJ] = entries[j]
-      if (!HEX_PREFIX_KINDS.has(recJ.sender_kind)) continue
-      if (!isPrefixCompatible(idI.toLowerCase(), idJ.toLowerCase())) continue
-      if (!sameResolvedName(recI.sender_label, recJ.sender_label)) continue
-      union(i, j)
+  // Seed every anchor before the attach pass, so a prefix that appears earlier
+  // in the input than its anchor still finds a bucket (order independence).
+  entries.forEach(([id, rec], i) => {
+    if (HEX_PREFIX_KINDS.has(rec.sender_kind) && FULL_PUBKEY.test(id.toLowerCase())) {
+      anchors.push(i)
+      attached.set(i, [i])
     }
-  }
+  })
 
-  const clusters = new Map()
-  for (let i = 0; i < entries.length; i++) {
-    const root = find(i)
-    if (!clusters.has(root)) clusters.set(root, [])
-    clusters.get(root).push(entries[i])
-  }
+  entries.forEach(([id, rec], i) => {
+    if (attached.has(i)) return   // an anchor never attaches to another anchor
+    const lower = id.toLowerCase()
+    if (!HEX_PREFIX_KINDS.has(rec.sender_kind)) { solo.push(i); return }
+    const matches = anchors.filter((a) => {
+      const [anchorId, anchorRec] = entries[a]
+      return anchorId.toLowerCase().startsWith(lower) && sameResolvedName(rec.sender_label, anchorRec.sender_label)
+    })
+    if (matches.length === 1) attached.get(matches[0]).push(i)
+    else solo.push(i)   // 0 anchors, or ambiguous across 2+
+  })
 
-  return [...clusters.values()].map((group) => {
+  const groups = [...attached.values(), ...solo.map((i) => [i])]
+  return groups.map((idxs) => {
+    const group = idxs.map((i) => entries[i])
     const merged_ids = group.map(([id]) => id.toLowerCase()).sort()
     const [, best] = group.reduce((a, b) => (Date.parse(b[1].rx_at) > Date.parse(a[1].rx_at) ? b : a))
     return { ...best, merged_ids }
@@ -137,9 +153,20 @@ export function selectedRepeaterIds(records, selectedIds) {
     const prev = bySender.get(id)
     if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
   }
-  return [...bySender.entries()]
-    .filter(([, r]) => r.sender_role === 'Repeater' || r.sender_kind === 'relay')
-    .map(([id]) => id)
+  // A trace-ping addresses the node by the first byte of its id (sendTracePing
+  // sends id.slice(0, 2)), so every prefix variant of one merged node yields
+  // the byte-identical frame. Emitting all of them would spend 2-3x the airtime
+  // on duplicate transmissions, against a duty-cycle budget sized for one
+  // (#268). Collapse on the byte actually transmitted, keeping the longest id
+  // as the representative so the caller still has the most specific form.
+  const byFrame = new Map()
+  for (const [id, r] of bySender) {
+    if (!(r.sender_role === 'Repeater' || r.sender_kind === 'relay')) continue
+    const frame = id.slice(0, 2)
+    const prev = byFrame.get(frame)
+    if (!prev || id.length > prev.length) byFrame.set(frame, id)
+  }
+  return [...byFrame.values()]
 }
 
 export function relTime(rxAt, nowMs) {

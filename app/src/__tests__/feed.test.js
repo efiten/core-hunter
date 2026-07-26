@@ -3,6 +3,10 @@ import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds } fro
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
+// A real advert carries the full 32-byte pubkey (meshpacket.js), so merge
+// anchors are 64 hex. pk() builds a distinct one from a short head.
+const pk = (head) => head + '0'.repeat(64 - head.length)
+
 describe('senderList', () => {
   it('keeps channel_name + advert_pubkey + discover_pubkey + relay kinds, drops the rest', () => {
     const out = senderList([
@@ -49,20 +53,90 @@ describe('senderList', () => {
   })
 })
 
+// #268: prefix compatibility is not transitive, so it must never be closed over.
+// A short relay id can be a prefix of two different full pubkeys; treating that
+// as evidence merges two physically distinct nodes into one target, and Locate
+// then trilaterates RSSI samples from both transmitters as if they were one.
+// The rule is: a prefix attaches to at most ONE full-pubkey anchor, and a prefix
+// matching two or more anchors is evidence AGAINST merging, not for it — the
+// same meaning the resolver's own `ambiguous` flag carries.
+describe('dedupeSenders never closes over a non-transitive relation (#268)', () => {
+  const A = pk('a1b2c3d4')   // node A
+  const B = pk('a1b2ffff')   // node B — shares the first 2 bytes with A
+  const shared = { sender_label: 'Repeater-Zuid' }
+
+  it('does not merge two distinct full pubkeys bridged by one short relay id', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared, rx_at: '2026-06-29T10:00:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared, rx_at: '2026-06-29T10:01:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: B, ...shared, rx_at: '2026-06-29T10:02:00Z' }),
+    ], {})
+    const cluster = out.find((r) => r.merged_ids.includes(A))
+    expect(cluster.merged_ids).not.toContain(B)
+  })
+
+  it('leaves an ambiguous prefix on its own row rather than guessing an anchor', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: B, ...shared }),
+    ], {})
+    expect(out).toHaveLength(3)
+    expect(out.find((r) => r.merged_ids.includes('a1b2')).merged_ids).toEqual(['a1b2'])
+  })
+
+  it('still merges a prefix into its anchor when exactly one anchor matches', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(out).toHaveLength(1)
+    expect(out[0].merged_ids).toEqual(['a1b2', A])
+  })
+
+  it('never merges two prefixes with no full-pubkey anchor between them', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c3', ...shared }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3'])
+  })
+
+  it('produces the same clusters regardless of input order', () => {
+    const rows = [
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: B, ...shared }),
+    ]
+    const key = (out) => out.map((r) => r.merged_ids.join('+')).sort()
+    expect(key(senderList([...rows].reverse(), {}))).toEqual(key(senderList(rows, {})))
+  })
+
+  it('never lets a direct_hash reach the merge at all', () => {
+    // 1-byte path hashes have a 256-way collision space — excluded by kind,
+    // which is what bounds the blast radius of everything above.
+    const out = senderList([
+      rec({ sender_kind: 'direct_hash', sender_id: 'a1', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual([A].sort())
+  })
+})
+
 describe('dedupeSenders prefix-aware merging (#267)', () => {
   it('merges advert/discover/relay rows for the same node when ids are prefix-compatible and the resolved name matches', () => {
     const out = senderList([
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4e5f6', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:00:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4e5f6'), sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:00:00Z' }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c3', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:05:00Z' }),
       rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:02:00Z' }),
     ], {})
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ sender_id: 'a1b2c3', rx_at: '2026-06-29T10:05:00Z' })
-    expect(out[0].merged_ids).toEqual(['a1b2', 'a1b2c3', 'a1b2c3d4e5f6'])
+    expect(out[0].merged_ids).toEqual(['a1b2', 'a1b2c3', pk('a1b2c3d4e5f6')])
   })
   it('treats prefix compatibility case-insensitively', () => {
     const out = senderList([
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'A1B2C3D4', sender_label: 'Node' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('A1B2C3D4'), sender_label: 'Node' }),
       rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Node' }),
     ], {})
     expect(out).toHaveLength(1)
@@ -102,7 +176,7 @@ describe('dedupeSenders prefix-aware merging (#267)', () => {
   it('merges the same physical node in the recency/RSSI ranking too', () => {
     const now = Date.parse('2026-06-29T10:05:00Z')
     const out = topSenders([
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4', sender_label: 'Repeater-Zuid', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Repeater-Zuid', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rssi: -80, rx_at: '2026-06-29T10:00:00Z' }),
     ], { count: 3, nowMs: now })
     expect(out).toHaveLength(1)
@@ -129,6 +203,30 @@ describe('topSenders', () => {
     ], { ignore: new Set(['b']), count: 3, nowMs: now })
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ sender_id: 'A', rssi: -60 })
+  })
+})
+
+// #268 blocker 3: a trace-ping addresses a node by the first byte of its id
+// (sendTracePing uses id.slice(0, 2)), so every variant in a merged cluster
+// produces the byte-identical frame. Selecting one merged row must not cost
+// 2-3x the airtime — the duty-cycle budget in autoping.js is sized for one.
+describe('selectedRepeaterIds collapses variants that transmit identically (#268)', () => {
+  const A = pk('a1b2c3d4')
+  const rows = [
+    { sender_kind: 'relay', sender_id: 'a1b2', rx_at: '2026-06-29T10:00:00Z' },
+    { sender_kind: 'relay', sender_id: 'a1b2c3', rx_at: '2026-06-29T10:01:00Z' },
+    { sender_kind: 'advert_pubkey', sender_role: 'Repeater', sender_id: A, rx_at: '2026-06-29T10:02:00Z' },
+  ]
+
+  it('emits one id per distinct trace-ping frame', () => {
+    const out = selectedRepeaterIds(rows, new Set(['a1b2', 'a1b2c3', A.toLowerCase()]))
+    expect(out).toHaveLength(1)
+  })
+
+  it('still emits one id per genuinely different target', () => {
+    const other = [{ sender_kind: 'relay', sender_id: 'ff00', rx_at: '2026-06-29T10:00:00Z' }]
+    const out = selectedRepeaterIds([...rows, ...other], new Set(['a1b2', 'ff00']))
+    expect(out.sort()).toEqual(['a1b2', 'ff00'])
   })
 })
 
