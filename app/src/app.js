@@ -547,6 +547,10 @@ function autoPingTick() {
     now,
     lat: fix ? fix.lat : null,
     lon: fix ? fix.lon : null,
+    // Skip this cycle while the previous one is still draining (#253) — see
+    // shouldAutoFire. Each timer removes its own handle below, so the length
+    // is the count still queued rather than a running total.
+    pendingTargets: state.autoPing.pendingPings.length,
   })
   if (!fire) return
   state.autoPing.lastFireAt = now
@@ -557,6 +561,8 @@ function autoPingTick() {
   // it too, but only if the ping actually succeeds (#254).
   for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
     const handle = setTimeout(() => {
+      const i = state.autoPing.pendingPings.indexOf(handle)
+      if (i !== -1) state.autoPing.pendingPings.splice(i, 1)
       if (sendTracePing(id)) pulseDiscoverBtn()
     }, delayMs)
     state.autoPing.pendingPings.push(handle)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { shouldAutoFire, INTERVAL_MS, MOVE_THRESHOLD_M, staggerTargets, STAGGER_MS } from '../autoping.js'
+import { shouldAutoFire, INTERVAL_MS, MOVE_THRESHOLD_M, staggerTargets, STAGGER_MS, cycleSpanMs } from '../autoping.js'
 
 const BASE = { lastFireAt: null, lastLat: null, lastLon: null, now: 0, lat: 51.0, lon: 3.7 }
 
@@ -50,5 +50,43 @@ describe('staggerTargets', () => {
   })
   it('defaults STAGGER_MS to 1500', () => {
     expect(STAGGER_MS).toBe(1500)
+  })
+})
+
+// #253/#254: a cycle's trace-pings span targetCount * STAGGER_MS. With enough
+// targets that span exceeds INTERVAL_MS, so the next cycle's discover broadcast
+// lands between the previous cycle's traces. Two chains then interleave at
+// arbitrary phase, which is what pressures the companion's 16-slot send queue —
+// and queueOutbound drops silently on overflow. The fire gate must refuse to
+// start a cycle while its predecessor is still transmitting.
+describe('cycle overlap', () => {
+  it('reports the wall-clock span a cycle occupies', () => {
+    expect(cycleSpanMs(0)).toBe(0)
+    expect(cycleSpanMs(3)).toBe(3 * STAGGER_MS)
+  })
+
+  it('a 7-target cycle outlasts the fire interval', () => {
+    // 7 * 1500 = 10500 > 10000 — reachable on the stationary interval alone.
+    expect(cycleSpanMs(7)).toBeGreaterThan(INTERVAL_MS)
+  })
+
+  it('does not fire while the previous cycle still has pending trace-pings', () => {
+    const opts = { ...BASE, lastFireAt: 0, lastLat: 51.0, lastLon: 3.7, now: INTERVAL_MS, pendingTargets: 2 }
+    expect(shouldAutoFire(opts)).toBe(false)
+  })
+
+  it('does not let the movement gate bypass a still-draining cycle', () => {
+    // 50m of movement at speed fires early — the exact path that overlaps.
+    const opts = { ...BASE, lastFireAt: 0, lastLat: 51.0, lastLon: 3.7, now: 1000, lat: 51.00045, lon: 3.7, pendingTargets: 3 }
+    expect(shouldAutoFire(opts)).toBe(false)
+  })
+
+  it('fires again once the previous cycle has drained', () => {
+    const opts = { ...BASE, lastFireAt: 0, lastLat: 51.0, lastLon: 3.7, now: INTERVAL_MS, pendingTargets: 0 }
+    expect(shouldAutoFire(opts)).toBe(true)
+  })
+
+  it('treats an absent pendingTargets as drained, so the gate is opt-in', () => {
+    expect(shouldAutoFire({ ...BASE, lastFireAt: 0, now: INTERVAL_MS })).toBe(true)
   })
 })
