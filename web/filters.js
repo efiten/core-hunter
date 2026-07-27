@@ -1,6 +1,7 @@
 import { API_BASE } from './config.js'
 import { save } from './urlstate.js'
 import { FILTER_PACKET_TYPES } from './packettypes.js'
+import { resolveTimeValue } from './timerange.js'
 
 // Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
 // (server-issued "Hunter <N>" pseudonym), members+ get the real name; unnamed
@@ -17,7 +18,9 @@ export function hunterListboxSize(optionCount) {
   return Math.min(Math.max(optionCount, 2), 8)
 }
 
-const localToUTC = (v) => (v ? new Date(v).toISOString() : '') // datetime-local is local time → ISO UTC
+// from/to hold either an absolute datetime-local string or a relative token
+// ("now-6h") since #285 -- resolveTimeValue handles both, and is the one place
+// either becomes the ISO-UTC the API expects.
 
 // Format a Date as a local-time `YYYY-MM-DDTHH:MM` string for datetime-local inputs.
 const toLocalInput = (d) => {
@@ -118,8 +121,8 @@ if (typeof document !== 'undefined') {
   window.currentFilters = () => ({
     hunter: window.currentHunters(),
     sender: document.getElementById('f-sender').value.trim(),
-    from: localToUTC(document.getElementById('f-from').value),
-    to: localToUTC(document.getElementById('f-to').value),
+    from: resolveTimeValue(document.getElementById('f-from').value, Date.now()),
+    to: resolveTimeValue(document.getElementById('f-to').value, Date.now()),
     types: window.currentTypes(),
     // direct-only = zero-hop (#138 semantics); empty string drops the param
     hops: document.getElementById('f-direct').checked ? '0' : '',
@@ -147,11 +150,9 @@ if (typeof document !== 'undefined') {
     const el = document.getElementById(id)
     el.addEventListener('change', () => window.__refresh && window.__refresh())
     if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())
-    // datetime-local only opens the native picker via its tiny calendar icon;
-    // call showPicker() on focus so a click anywhere on the field opens it.
-    if ((id === 'f-from' || id === 'f-to') && typeof el.showPicker === 'function') {
-      el.addEventListener('focus', () => { try { el.showPicker() } catch (_) {} })
-    }
+    // The old focus->showPicker() shim is gone with #285: f-from/f-to are
+    // hidden state carriers now, and the two datetime-local fields that
+    // replaced them live inside the time-picker panel (map.js wires those).
   }
   loadHunters()
 }
