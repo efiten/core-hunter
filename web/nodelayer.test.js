@@ -46,6 +46,11 @@ describe('driftPresentation — how a node with both positions is drawn (#197)',
     expect(driftPresentation({ advertised, estimate: null })).toEqual({ kind: 'advertised-only' })
   })
 
+  // Load-bearing beyond this file (#272): map.js skips 'estimate-only', and
+  // gates cachedPosition on isFullPubkey, so an id that is not a full pubkey
+  // gets advertised = null and never reaches the drawn set. That is what makes
+  // every drawn entry a distinct node, and why no coordinate dedupe is needed
+  // — or wanted, since it would hide two repeaters sharing one mast.
   it('is estimate-only when the node never advertised a position', () => {
     const estimate = { centroid: { lat: 51.2, lon: 4.4 }, stats: { searchRadiusM: 100, encirclement: 1 } }
     expect(driftPresentation({ advertised: null, estimate })).toEqual({ kind: 'estimate-only' })

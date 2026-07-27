@@ -592,17 +592,19 @@ async function drawNodePositions() {
     draw.push({ id, advertised, est, p, name: cachedName(id) })
   }
 
-  // Dedupe by advertised position: the same node can appear under multiple
-  // sender IDs (full 64-hex advert + 2-byte relay prefix), creating overlapping
-  // ▲ markers. Keep only the first occurrence of each position (#272 blocker 5).
-  const seenPositions = new Set()
-  const deduped = draw.filter((d) => {
-    if (!d.advertised) return true  // no position — can't dedupe
-    const posKey = `${d.advertised.lat.toFixed(5)},${d.advertised.lon.toFixed(5)}`
-    if (seenPositions.has(posKey)) return false
-    seenPositions.add(posKey)
-    return true
-  })
+  // No dedupe pass here, deliberately (#272 blocker 5). The duplicate it would
+  // target — one node drawing two overlapping markers under a full pubkey and
+  // a relay prefix — cannot occur once blocker 4's gate is in place: a
+  // non-full-pubkey id gets advertised = null, driftPresentation then returns
+  // 'estimate-only', and the loop above skips it. So every entry that reaches
+  // here is a distinct full pubkey, and two distinct full pubkeys are two
+  // physically distinct nodes by definition.
+  //
+  // Deduping on coordinates would therefore only ever fire on genuinely
+  // different nodes that happen to share a position — two repeaters on one
+  // mast, which is ordinary in a mesh — and would silently hide one of them.
+  // If a dedupe is ever needed it must key on identity, never on coordinates.
+  const deduped = draw
 
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),
