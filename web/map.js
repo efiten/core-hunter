@@ -83,18 +83,25 @@ window.addEventListener('resize', setMapTop)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
-// The `sender` param carries both filters the viewer supports (#223): a
-// comma-less value is the free-text leading-prefix search, anything with a
-// comma is the target-list picker's exact multi-id selection. The server
-// distinguishes them and applies either as a real SQL condition
-// (server/internal/httpapi/api.go's filterFrom), so this stays a plain
-// pass-through -- no client-side narrowing, and hex/heatmap honours a
-// multi-sender pick exactly like the point layer does.
+// The two sender filters travel on two params (#223): `sender` is the
+// free-text leading-prefix search, `senders` (repeated) is the target-list
+// picker's exact multi-id selection. Separate params rather than one
+// delimiter-joined value, because sender_id is arbitrary operator text for
+// channel_name senders and no delimiter is safe to overload (#288). The server
+// applies either as a real SQL condition (filterFrom in
+// server/internal/httpapi/api.go), so this stays a plain pass-through -- no
+// client-side narrowing, and hex/heatmap honours a multi-sender pick exactly
+// like the point layer does.
 function qs() {
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
   const f = (window.currentFilters && window.currentFilters()) || {}
-  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  for (const [k, v] of Object.entries(f)) {
+    // senderPairs is already [key, value][] and may repeat a key (#223), so it
+    // appends rather than sets -- URLSearchParams.set would keep only the last.
+    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
   return p.toString()
 }
 
@@ -228,7 +235,12 @@ window.__mapCenter = () => map.getCenter() // test hook
 function filtersQs() {
   const p = new URLSearchParams()
   const f = (window.currentFilters && window.currentFilters()) || {}
-  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  for (const [k, v] of Object.entries(f)) {
+    // senderPairs is already [key, value][] and may repeat a key (#223), so it
+    // appends rather than sets -- URLSearchParams.set would keep only the last.
+    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
   return p.toString()
 }
 

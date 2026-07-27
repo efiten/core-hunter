@@ -98,6 +98,19 @@ function idsToField(ids) {
 // toggleSenderId toggles one id within an ids-mode selection, always emitting
 // the canonical ids-mode form (see idsToField), so its output round-trips
 // through parseSenderField unchanged.
+// senderParams maps a parsed sender field onto the query params that carry it.
+// The two filters travel on two separate params (#223): exact picks as a
+// REPEATED ?senders=, a typed prefix as ?sender=. Nothing is delimiter-joined
+// on the wire, so an id may contain any character — which matters because
+// sender_id is the decrypted display name for channel_name senders, i.e.
+// arbitrary operator text (#288).
+export function senderParams(parsed) {
+  if (!parsed) return []
+  if (parsed.mode === 'ids') return (parsed.ids || []).map((id) => ['senders', id])
+  if (parsed.mode === 'prefix' && parsed.prefix) return [['sender', parsed.prefix]]
+  return []
+}
+
 export function toggleSenderId(currentIdsCsv, id) {
   const ids = currentIdsCsv ? currentIdsCsv.split(';').map((s) => s.trim().toLowerCase()).filter(Boolean) : []
   const key = String(id).toLowerCase()

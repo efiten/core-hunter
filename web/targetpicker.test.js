@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dedupeSenders, senderList, topSenders, targetParts, relTime,
-  parseSenderField, toggleSenderId,
+  parseSenderField, toggleSenderId, senderParams,
 } from './targetpicker.js'
 
 const pt = (o) => ({ lat: 51, lon: 4, rssi: -80, rx_at: '2026-07-22T10:00:00Z', ...o })
@@ -131,5 +131,29 @@ describe('toggleSenderId — toggles one id, always emitting the ids-mode form',
     expect(parseSenderField(one)).toEqual({ mode: 'ids', ids: ['aa11'] })
     const two = toggleSenderId(one, 'bb22')
     expect(parseSenderField(two)).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
+  })
+})
+
+// #223/#288: the wire format. Exact picks go out as a repeated ?senders=
+// param and the prefix search keeps ?sender=, so no delimiter has to be
+// unreachable inside a sender_id. senderParams turns a parsed field into the
+// [key, value] pairs a URLSearchParams should carry.
+describe('senderParams — the two sender filters on two params (#223)', () => {
+  it('emits one senders= entry per exact pick', () => {
+    expect(senderParams({ mode: 'ids', ids: ['aaaa', 'bbbb'] }))
+      .toEqual([['senders', 'aaaa'], ['senders', 'bbbb']])
+  })
+  it('emits a single senders= for a one-id pick, with no delimiter trick', () => {
+    expect(senderParams({ mode: 'ids', ids: ['aaaa'] })).toEqual([['senders', 'aaaa']])
+  })
+  it('keeps punctuation in an id intact, which is the whole point', () => {
+    expect(senderParams({ mode: 'ids', ids: ['bob, k.'] })).toEqual([['senders', 'bob, k.']])
+  })
+  it('sends a typed prefix on sender=, never senders=', () => {
+    expect(senderParams({ mode: 'prefix', prefix: 'Bob, K.' })).toEqual([['sender', 'Bob, K.']])
+  })
+  it('emits nothing when no sender filter is active', () => {
+    expect(senderParams({ mode: 'none' })).toEqual([])
+    expect(senderParams({ mode: 'ids', ids: [] })).toEqual([])
   })
 })
