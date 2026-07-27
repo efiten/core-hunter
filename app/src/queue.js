@@ -76,7 +76,18 @@ function openDB() {
       if (!store.indexNames.contains('rx_at')) store.createIndex('rx_at', 'rx_at');
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'k' });
     };
-    req.onsuccess = () => resolve(req.result);
+    // An older tab still holding a v1 connection blocks this tab's v2 upgrade.
+    // Without this the promise never settles and every await on it — including
+    // the add() on the capture path — hangs, silently dropping receptions.
+    // Rejecting routes it into the callers' existing retry-next-cycle handling.
+    req.onblocked = () => reject(new Error('IndexedDB upgrade blocked by another tab'));
+    req.onsuccess = () => {
+      const db = req.result;
+      // Symmetrically: close on demand so this tab is not the one blocking a
+      // newer tab's upgrade.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
 }

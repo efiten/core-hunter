@@ -15,7 +15,7 @@ import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
 import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue, shouldContinueDraining, watermarkAfter } from './queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -68,6 +68,10 @@ function loadAttenuator() {
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
 }
+
+// Row cap for the surfaces that are not window-scoped (the receptions log's
+// "all" mode, the target list) — see docs/2026-07-22-retention-and-bounded-reads.md.
+const RECENT_CAP = 2000
 
 const state = {
   transport: null,
