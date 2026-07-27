@@ -3,6 +3,10 @@ import { test, expect } from '@playwright/test'
 // Time-range picker (#285).
 
 test.beforeEach(async ({ page }) => {
+  // from/to persist through urlstate, so a test that picks a quick range leaves
+  // the next one starting on that token instead of the absolute default — the
+  // label then reads "Today" where the default "00:00 → 23:59" is expected.
+  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
@@ -61,7 +65,11 @@ test('the absolute panel pre-fills from a token and Apply switches to an absolut
   await page.click('#tr-apply')
   await expect(page.locator('#time-picker')).toBeHidden()
   await expect(page.locator('#tr-label')).toHaveText('2026-07-20 08:00 → 2026-07-20 09:30')
-  await expect(page).toHaveURL(/from=2026-07-20T08%3A00/)
+  // Apply stores the resolved instant, so the URL carries UTC. Comparing against
+  // a literal would only hold on a UTC runner and fail in any other zone —
+  // derive the expected value the same way the browser does.
+  const expectedFrom = new Date('2026-07-20T08:00').toISOString()
+  await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe(expectedFrom)
 })
 
 test('copy absolute link freezes the range to timestamps', async ({ page, context }) => {

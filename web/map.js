@@ -566,11 +566,14 @@ function syncTimeUi() {
   const active = matchQuickRange(fFrom.value, fTo.value)
   for (const li of trQuick.children) li.classList.toggle('active', !!active && li.dataset.label === active.label)
   const f = resolveTimeValue(fFrom.value, now), t = resolveTimeValue(fTo.value, now)
-  // Don't overwrite a field the user is typing in. The relative-range tick
-  // (#289 blocker 2) runs every 10 s, and without this it would wipe a
-  // half-entered value out from under them while the panel is open.
+  // Don't rewrite the absolute fields while the panel is open. Skipping only the
+  // focused element is not enough: filling two datetime-local fields routinely
+  // takes longer than the 10 s relative-range tick, so the field you already
+  // finished gets reverted (and trRendered with it) while you type in the other,
+  // and Apply then submits a value you never chose. openTimePicker() re-syncs on
+  // every open, so nothing is stale when the panel is next shown.
+  if (!trPanel.hidden) return
   const writeField = (elm, iso, slot) => {
-    if (document.activeElement === elm) return
     elm.value = iso ? toLocalInput(Date.parse(iso)) : ''
     trRendered[slot] = iso ? { value: elm.value, iso } : null
   }
@@ -644,7 +647,9 @@ document.getElementById('tr-copy').addEventListener('click', async (e) => {
   setTimeout(() => { btn.textContent = 'Copy absolute link' }, 1500)
 })
 
-function openTimePicker() { trPanel.hidden = false; trToggle.setAttribute('aria-expanded', 'true'); syncTimeUi() }
+// Sync while still hidden: syncTimeUi() only writes the absolute fields when the
+// panel is closed, so the order matters — populate, then show.
+function openTimePicker() { syncTimeUi(); trPanel.hidden = false; trToggle.setAttribute('aria-expanded', 'true') }
 function closeTimePicker() { trPanel.hidden = true; trToggle.setAttribute('aria-expanded', 'false') }
 trToggle.addEventListener('click', () => (trPanel.hidden ? openTimePicker() : closeTimePicker()))
 // Capture phase, same reason as elsewhere: a quick-range click re-renders rows
@@ -667,6 +672,10 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   refresh()
   urlstate.save()
   syncTimeUi() // Clear rewrites from/to -> the picker label must follow (#285)
+  // ...and so must the tick: resetFilters() assigns .value directly, so coming
+  // from a relative range the timer would otherwise keep firing refresh() every
+  // 10 s against the static absolute default it just restored.
+  updateTimeRangeTimer()
 })
 
 // Hover the sender box to see the resolved node name (if known): resolve the
@@ -712,6 +721,11 @@ let locateRestored = false // wantLocate fires at most once, see applyRole() bel
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
+// urlstate applies from/to by assigning .value, which fires no change event, so
+// the listeners that normally arm the tick never run. Without this a shared
+// /?from=now-1h&to=now link — the whole point of storing tokens — renders the
+// label "Last 1 hour" and then freezes at load time.
+updateTimeRangeTimer()
 updateSenderTitle() // tooltip for a sender restored from the URL/storage
 
 // Restore state that a value alone does not trigger (checkbox draw, locate focus).
