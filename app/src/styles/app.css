@@ -125,11 +125,25 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-#layer-toggle { bottom: 192px; } #discover-btn { bottom: 246px; }
-#recenter-btn { bottom: 300px; }
-#mode3d-toggle { bottom: 354px; }
+/* #257: shifted 80px down from the original 192/246/300/354 — the stack sat
+   in a stretch of dead space above the HUD (measured ~107px clear on a
+   375x812 viewport at the old offsets), closer than the thumb zone wants.
+   Anchored to env(safe-area-inset-bottom) so the stack tracks the HUD's
+   own inset-based positioning — clearance stays consistent across device heights
+   (notched, regular, landscape, portrait) without brittle pixel math. */
+#layer-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 112px); }
+#discover-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 166px); }
+#recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 220px); }
+#mode3d-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 274px); }
 #layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg { pointer-events: none; }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
+
+/* Segmented progress ring (#259) — an absolutely-positioned overlay so it sits
+   behind the flex-centered icon without disturbing that layout; fabring.js
+   generates the segment circles per FAB (layer-toggle: 3 states, recenter-btn:
+   4 states). Plain on/off toggles (mode3d-toggle, discover-btn) get none. */
+.fab-ring { position: absolute; inset: 0; pointer-events: none; }
+.fab-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 
 /* Auto-discover FAB states (#232, #233): steady color shows on/off + whether
    selected targets include a repeater (auto-target is reactive, not a

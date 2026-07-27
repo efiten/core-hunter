@@ -94,6 +94,14 @@ if (typeof document !== 'undefined') {
     for (const b of typesHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.type))
   }
 
+  // Direct-only checkbox: highlight its label when checked, mirroring app's
+  // .fs-row.active pattern for the same control (#225 visual parity).
+  const directCb = document.getElementById('f-direct')
+  const directLabel = directCb.closest('label')
+  const syncDirectActive = () => directLabel.classList.toggle('active', directCb.checked)
+  directCb.addEventListener('change', syncDirectActive)
+  syncDirectActive()
+
   defaultToday()
 
   window.__resetFilters = resetFilters

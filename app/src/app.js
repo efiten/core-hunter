@@ -15,7 +15,7 @@ import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
 import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue } from './queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -36,6 +36,7 @@ import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
+import { fabRingSvg } from './fabring.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
@@ -68,6 +69,10 @@ function loadAttenuator() {
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
 }
+
+// Row cap for the surfaces that are not window-scoped (the receptions log's
+// "all" mode, the target list) — see docs/2026-07-22-retention-and-bounded-reads.md.
+const RECENT_CAP = 2000
 
 const state = {
   transport: null,
@@ -118,7 +123,7 @@ const state = {
   lastRows: [],
   // Auto-ping (#233): toggled by the Discover FAB. lastLat/lastLon track the
   // position at the last fire, for the movement half of the fire gate.
-  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null },
+  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [] },
 }
 
 // ---------------------------------------------------------------------------
@@ -411,13 +416,27 @@ function enrichNames(rows) {
 async function drawOnce() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
-    const rows = await state.queue.takeAll()
-    state.lastRows = rows
     const now = Date.now()
+    // The map shows the chosen window, so read exactly that (#230). A null
+    // windowMs means "no time filter", which retention now bounds at 7 days.
+    const windowMs = state.filter.windowMs ?? RETENTION_MS
+    const windowRows = await state.queue.since(new Date(now - windowMs).toISOString())
+    // The receptions log's "all" mode and the target list are not window-
+    // scoped. They get a row-bounded read instead of the whole store: the log
+    // caps at 200 rows and the list shows far fewer senders than RECENT_CAP
+    // covers, so this is indistinguishable in practice at any realistic size.
+    const rows = await state.queue.recent(RECENT_CAP)
+    state.lastRows = rows
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
+    // Enrich names on both the window and the recent rows to prevent mismatches
+    // in the log and target list (BLOCKER 1 fix for PR #283)
+    enrichNames(windowRows)
     enrichNames(rows)
+    // activeFilter() from #267 (selection expanded to every id variant of the
+    // node), applied to the windowed read from #230 — the map shows the chosen
+    // window, not the whole retained store.
     const fn = makeFilter({ ...activeFilter(), ignore: state.ignore })
-    const filteredRows = rows.filter((r) => fn(r, now))
+    const filteredRows = windowRows.filter((r) => fn(r, now))
     const selected = selectedSet()
     if (state.map) {
       state.map.render(filteredRows, selected)
@@ -440,9 +459,12 @@ async function renderTick() {
 // ---------------------------------------------------------------------------
 // Drain tick — publish pending rows to MQTT (~every 5 s)
 // ---------------------------------------------------------------------------
-// Dedup via state.published (in-memory Set of row ids).
-// Rows are NEVER removed from IndexedDB. If publish fails, the row stays
-// unpublished and will be retried on the next drain.
+// Dedup via a watermark persisted in IndexedDB: every row at or below it has
+// reached the broker. It survives a restart, so a relaunch no longer
+// re-publishes the whole store. If publish fails the watermark stops there and
+// the remaining rows are retried on the next drain.
+// Rows are removed from IndexedDB only by retention (pruneOnce), and only once
+// they are at or below the watermark — see docs/2026-07-22-retention-decision.md.
 
 // The actual publish pass, split out from drainLoop's timer-rescheduling so it
 // can also be called on demand (e.g. right after returning from background)
@@ -457,24 +479,55 @@ async function drainOnce() {
   if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
   draining = true
   try {
-    const rows = await state.queue.takeAll()
-    let n = 0
-    for (const r of rows) {
-      if (state.published.has(r.id)) continue
-      try {
-        await state.publisher.publish(state.rxPubkey, r, state.name)
-        state.published.add(r.id)
-        n++
-      } catch (_) {
-        // publish failed — leave for next drain
+    const startedAt = Date.now()
+    let watermark = await state.queue.getWatermark()
+    // Keep taking batches until the store is drained or the budget is spent
+    // (#230). One batch per tick would leave a 50k backlog over half an hour
+    // behind; see shouldContinueDraining.
+    for (;;) {
+      const rows = await state.queue.unpublishedFrom(watermark)
+      const outcomes = []
+      for (const r of rows) {
+        try {
+          await state.publisher.publish(state.rxPubkey, r, state.name)
+          outcomes.push({ id: r.id, ok: true })
+        } catch (_) {
+          // Publish failed. Stop here rather than skipping ahead — the rest is
+          // retried next cycle. How far the watermark may move is
+          // watermarkAfter's decision, not this loop's.
+          outcomes.push({ id: r.id, ok: false })
+          break
+        }
       }
+      const failed = outcomes.some((o) => !o.ok)
+      const last = watermarkAfter(watermark, outcomes)
+      if (last > watermark) {
+        await state.queue.setWatermark(last)
+        console.debug('[drain] published through id', last)
+        watermark = last
+      }
+      if (failed) break
+      if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
     }
-    if (n > 0) console.debug('[drain] published', n, 'record(s)')
+    await pruneOnce()
   } catch (_) {
     // queue read failed — retry next cycle
   } finally {
     draining = false
   }
+}
+
+// Retention (#230): drop receptions past RETENTION_MS, but only ones the broker
+// already has — "all receptions go to MQTT" outranks the age cap, so an offline
+// phone keeps everything until it drains. Hourly; the store only grows slowly.
+let lastPrune = 0
+async function pruneOnce() {
+  const now = Date.now()
+  if (now - lastPrune < 3600_000) return
+  lastPrune = now
+  const cutoff = new Date(now - RETENTION_MS).toISOString()
+  const removed = await state.queue.prune(cutoff, await state.queue.getWatermark())
+  if (removed > 0) console.debug('[prune] removed', removed, 'published record(s) past retention')
 }
 
 async function drainLoop() {
@@ -495,11 +548,12 @@ function sendDiscover() {
 // One byte-prefix hash per hop, same convention as Discover's
 // DISCOVER_PREFIX_ONLY — first byte of the target's pubkey/id.
 function sendTracePing(id) {
-  if (!state.connected || !state.transport) return
+  if (!state.connected || !state.transport) return false
   const hashByte = parseInt(String(id).slice(0, 2), 16)
-  if (Number.isNaN(hashByte)) return
+  if (Number.isNaN(hashByte)) return false
   const tag = crypto.getRandomValues(new Uint32Array(1))[0]
   state.transport.send(buildTracePathFrame(tag, 0, [hashByte])).catch(() => {})
+  return true
 }
 
 // Brief pulse feedback (#232) on the Discover FAB every time a ping actually
@@ -546,20 +600,33 @@ function autoPingTick() {
     now,
     lat: fix ? fix.lat : null,
     lon: fix ? fix.lon : null,
+    // Skip this cycle while the previous one is still draining (#253) — see
+    // shouldAutoFire. Each timer removes its own handle below, so the length
+    // is the count still queued rather than a running total.
+    pendingTargets: state.autoPing.pendingPings.length,
   })
   if (!fire) return
   state.autoPing.lastFireAt = now
   if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
   sendDiscover()
   pulseDiscoverBtn()
+  // Each staggered trace-ping is also a real transmission — pulse the FAB for
+  // it too, but only if the ping actually succeeds (#254).
   for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
-    setTimeout(() => sendTracePing(id), delayMs)
+    const handle = setTimeout(() => {
+      const i = state.autoPing.pendingPings.indexOf(handle)
+      if (i !== -1) state.autoPing.pendingPings.splice(i, 1)
+      if (sendTracePing(id)) pulseDiscoverBtn()
+    }, delayMs)
+    state.autoPing.pendingPings.push(handle)
   }
 }
 
 function stopAutoPing() {
   state.autoPing.enabled = false
   if (state.autoPing.timer) { clearInterval(state.autoPing.timer); state.autoPing.timer = null }
+  for (const handle of state.autoPing.pendingPings) clearTimeout(handle)
+  state.autoPing.pendingPings = []
   updateDiscoverBtnVisual()
 }
 
@@ -1239,7 +1306,8 @@ const LAYER_ICONS = {
 
 function updateLayerIcon() {
   const mode = LAYER_MODES[layerIdx]
-  el('layer-toggle').innerHTML = LAYER_ICONS[mode]
+  // Ring shows the cycle position (#259) — 3 states, filled up through layerIdx.
+  el('layer-toggle').innerHTML = fabRingSvg(layerIdx, LAYER_MODES.length) + LAYER_ICONS[mode]
   el('layer-toggle').setAttribute('aria-label', `Toggle layers (${mode})`)
 }
 
@@ -1309,10 +1377,18 @@ const COMPASS_LABELS = {
   static: 'Resume following (compass mode)',
 }
 
+// Cycle order for the progress ring (#259) — tap destinations only. Static is
+// unreachable via tap (only via map pan/rotate), so it's not in this cycle.
+// nextCompassState cycles: following → heading → driving → following.
+const COMPASS_CYCLE = ['following', 'heading', 'driving']
+
 let compassState = { follow: true, source: null }
 function updateCompassIcon() {
   // Icon = the state a tap produces (preview); label = the action from here.
-  el('recenter-btn').innerHTML = COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
+  // Ring = the CURRENT state's position (not the preview), so the two don't
+  // contradict each other at a glance.
+  const currentIdx = COMPASS_CYCLE.indexOf(compassGlyph(compassState))
+  el('recenter-btn').innerHTML = fabRingSvg(currentIdx, COMPASS_CYCLE.length) + COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
   el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[compassGlyph(compassState)])
 }
 
