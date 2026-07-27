@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { orderResolvers, resolvableKey, isFullPubkey, isResolvableId, cachedName } from '../names.js'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { orderResolvers, resolvableKey, isFullPubkey, isResolvableId, cachedName, resolveName } from '../names.js'
+import { setConfig } from '../config.js'
 
 const PUBKEY = 'ab'.repeat(32) // 64 hex chars
 
@@ -89,5 +90,65 @@ describe('orderResolvers — pure ordering helper', () => {
     const ordered = orderResolvers(resolvers, 7)
     expect(ordered).not.toBe(resolvers)
     expect(resolvers[0]).toBe(R_SF8) // original unchanged
+  })
+})
+
+// #230: drawOnce enriches two overlapping row sets per tick (the window rows
+// and the recent rows), so the same unresolved id is looked up twice in the
+// same tick. resolveName only consults the cache, and the cache is written
+// AFTER the fetch resolves — so both calls miss and both go to the network,
+// once per second, for every id that has no name yet. AGENTS.md is explicit
+// that name resolution is cached per pubkey and the frontend does not make
+// per-item API calls, so in-flight requests have to coalesce too.
+describe('resolveName coalesces concurrent lookups (#230)', () => {
+  const KEY = 'cd'.repeat(32)
+  let calls
+  let originalFetch
+
+  beforeEach(() => {
+    calls = []
+    originalFetch = globalThis.fetch
+    setConfig({ resolvers: [{ url: 'https://resolver.test/api', sf: 7 }] })
+  })
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    setConfig(null)
+  })
+
+  it('issues one request when the same key is asked for twice before it resolves', async () => {
+    let release
+    const gate = new Promise((r) => { release = r })
+    globalThis.fetch = (url) => {
+      calls.push(url)
+      return gate.then(() => ({ ok: true, json: async () => ({ name: 'Repeater-Zuid', ambiguous: false }) }))
+    }
+    const both = Promise.all([resolveName(KEY), resolveName(KEY)])
+    release()
+    const [a, b] = await both
+    expect(calls).toHaveLength(1)
+    expect(a).toBe('Repeater-Zuid')
+    expect(b).toBe('Repeater-Zuid')
+  })
+
+  it('still issues separate requests for different keys', async () => {
+    globalThis.fetch = (url) => {
+      calls.push(url)
+      return Promise.resolve({ ok: true, json: async () => ({ name: 'X', ambiguous: false }) })
+    }
+    await Promise.all([resolveName('aa'.repeat(32)), resolveName('bb'.repeat(32))])
+    expect(calls).toHaveLength(2)
+  })
+
+  it('does not wedge a key after a failed lookup — the next tick may retry', async () => {
+    // Own key: the module-level cache persists across tests by design.
+    const KEY2 = 'ef'.repeat(32)
+    globalThis.fetch = () => Promise.reject(new Error('offline'))
+    await resolveName(KEY2)
+    globalThis.fetch = (url) => {
+      calls.push(url)
+      return Promise.resolve({ ok: true, json: async () => ({ name: 'Later', ambiguous: false }) })
+    }
+    expect(await resolveName(KEY2)).toBe('Later')
+    expect(calls).toHaveLength(1)
   })
 })

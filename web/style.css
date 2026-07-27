@@ -77,6 +77,47 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .tr-item button:hover { background: color-mix(in srgb, var(--ch-text) 10%, transparent); }
 /* Active quick range: an accent rail on the left, as in the reference UI. */
 .tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
+/* ---- Reception ticker (#224) ----
+   Parity with app's Receptions log (app/src/receptionlog.js, #130): frameless,
+   log-style tail over the map (top-right). Newest at the bottom; a fixed
+   playhead lane (scroll-padding-top / LANE) that lines snap to like a
+   combination-lock dial. No background panel -- text-shadow carries legibility.
+   Ported CSS values as-is from app/src/styles/app.css for exact visual parity. */
+/* z-index 620: above #bar (600, so a wrapped/tall bar row can't steal its
+   clicks, see #224) but below #locate-info and .lc-modal (650/1000) -- an
+   expanded Locate legend can grow to ~480px and overlap this box's top-right
+   corner at the real 1280x720 test viewport, and floating info panels/modals
+   should always win a stacking tie over a background ticker. */
+/* top: 52px is only the pre-JS fallback -- map.js's setMapTop() overrides it to
+   the bar's actual offsetHeight + 4px on load and on resize, the same
+   mechanism #map itself already used for a wrapped/taller bar. */
+/* pointer-events:none on the container, re-enabled on .rx-hd/.rx-ln below: the
+   ticker is a transparent overlay on the map, so its box (and .rx-list's 180px
+   of empty padding) must not swallow drag/wheel before Leaflet sees them. */
+#rx-log { position: fixed; top: 52px; right: 0; width: 214px; z-index: 620;
+  padding: 0 10px; pointer-events: none;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.rx-hd { display: flex; align-items: center; justify-content: space-between;
+  font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
+  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
+.rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
+.rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
+/* height 200 = LANE(6)+1+3 rows @ 20px; scroll-padding-top = LANE*20 = 120 */
+.rx-list { height: 200px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+  scroll-snap-type: y mandatory; scroll-padding-top: 120px; padding: 120px 0 60px;
+  pointer-events: none; /* disable padding dead zone; re-enable on content (#287 blocker 4) */ }
+.rx-list::-webkit-scrollbar { display: none; }
+.rx-ln { display: flex; gap: 6px; height: 20px; line-height: 20px; white-space: nowrap; overflow: hidden;
+  cursor: pointer; scroll-snap-align: start; color: var(--ch-text); pointer-events: auto;
+  text-shadow: 0 1px 2px var(--ch-bg); content-visibility: auto; contain-intrinsic-size: 0 20px; }
+.rx-gt { width: 16px; flex: none; color: var(--ch-accent); font-weight: 700; }
+.rx-tm { width: 26px; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+.rx-rs { width: 32px; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rx-sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.rx-me { color: var(--ch-muted); }
+.rx-nm { color: var(--ch-muted); font-size: 10px; margin-left: 3px; }
+.rx-ln.act .rx-gt:before { content: '→'; }
+.rx-ln.act .rx-tm, .rx-ln.act .rx-rs, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
 .guest-notice { color: var(--ch-muted); font-size: .85em; }
 .guest-notice[hidden] { display: none; }
