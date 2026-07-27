@@ -430,11 +430,21 @@ window.__locateRender = (points, senderId = 'efef79') => { locateActive = true; 
 // receptions across all hunters, full timeframe — not viewport-limited).
 // Deliberately narrower than filtersQs(): when a sender is set, Locate keeps
 // today's exact behaviour (sender + time only), unchanged by #176.
-function locateQs(f) {
-  const p = new URLSearchParams({ sender: f.sender })
+function locateQs(f, sender) {
+  const p = new URLSearchParams({ sender })
   if (f.from) p.set('from', f.from)
   if (f.to) p.set('to', f.to)
   return p.toString()
+}
+
+// Locate estimates one node, so it needs a single sender id. #223 split the
+// two sender inputs into senderPairs (picked ids, or one typed prefix), so
+// derive it from there: exactly one pair means one node either way. A
+// multi-select has no single node to locate, so it falls through to the
+// filter-scoped path, the same as when no sender is set at all.
+function locateSender(f) {
+  const pairs = f.senderPairs || []
+  return pairs.length === 1 ? pairs[0][1] : ''
 }
 
 // Locate estimates over a selected sender, or -- when no sender is set --
@@ -442,12 +452,13 @@ function locateQs(f) {
 // app's filtered-record Locate (#176, follow-up to #128).
 async function drawLocate() {
   const f = (window.currentFilters && window.currentFilters()) || {}
+  const sender = locateSender(f)
   const box = document.getElementById('locate-info')
   let fetched
   try {
     // Full paged dataset: the solver input and the drawn dots are the same
     // array, so the centroid always sits within the visible cloud.
-    fetched = await fetchPointsPaged(f.sender ? locateQs(f) : filtersQs(), { maxTotal: 100000 })
+    fetched = await fetchPointsPaged(sender ? locateQs(f, sender) : filtersQs(), { maxTotal: 100000 })
   } catch (e) {
     if (locateActive) {
       box.hidden = false
@@ -458,11 +469,11 @@ async function drawLocate() {
   const points = toLocatePoints(fetched.points)
   // CoreScope observer-points are keyed on a single heard_key -- they only
   // make sense to merge in when locating one specific sender (#176).
-  if (f.sender) {
+  if (sender) {
     // When a CoreScope layer is shown, count that node's CoreScope sightings too —
     // resilient (a failed source just contributes nothing).
     const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
-    const hk = encodeURIComponent(f.sender)
+    const hk = encodeURIComponent(sender)
     const extra = []
     if (canSeeObserverPoints(currentRole)) {
       if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
@@ -473,7 +484,7 @@ async function drawLocate() {
       for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
     }
   }
-  renderLocate(points, f.sender)
+  renderLocate(points, sender)
 }
 
 const locateBtn = document.getElementById('locate-toggle')
@@ -603,6 +614,9 @@ for (const id of ['f-from', 'f-to']) {
 // leave Locate, then redraw + persist (empty values fall out of the URL).
 document.getElementById('clear-filters').addEventListener('click', () => {
   if (window.__resetFilters) window.__resetFilters()
+  // The pick lives in the picker, not in #f-sender, so resetFilters() cannot
+  // see it — without this the senders= filter survives Clear with no UI trace.
+  targetPicker.setSelected([])
   csAdvertCb.checked = false; csRelayCb.checked = false
   csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
   if (locateActive) deactivateLocate() // restores points/hex per mode
@@ -648,6 +662,11 @@ urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
+// Captured before load(): the picker is wired further down (it needs the DOM),
+// so 'senders' is not a registered field yet when load() normalizes the address
+// bar — and normalizing drops unregistered keys, taking a pasted ?senders= with
+// it. Same shape as wantLocate below, applied once the picker exists.
+const initialSenders = urlstate.initial('senders', '')
 const wantLocate = urlstate.initial('locate', '') === '1'
 let locateRestored = false // wantLocate fires at most once, see applyRole() below
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
@@ -685,6 +704,8 @@ window.selectedSenderIds = () => targetPicker.getSelected()
 urlstate.register({ key: 'senders',
   get: () => encodeSelection(targetPicker.getSelected()),
   set: (v) => targetPicker.setSelected(decodeSelection(v)) })
+// load() already ran, so apply the pre-load capture now that the field exists.
+if (initialSenders) targetPicker.setSelected(decodeSelection(initialSenders))
 function openSenderPicker() {
   senderPicker.hidden = false
   spToggle.setAttribute('aria-expanded', 'true')

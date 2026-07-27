@@ -3,6 +3,11 @@ import { test, expect } from '@playwright/test'
 // Target-list picker (#223) — browsable multi-select parity with app's target sheet.
 
 test.beforeEach(async ({ page }) => {
+  // The picker's selection is a persisted filter (urlstate -> localStorage), so
+  // a pick made in one navigation is restored on the next. Start every test from
+  // a clean store, otherwise assertions depend on whether save() happened to run
+  // before the following goto.
+  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
@@ -22,25 +27,24 @@ test('opening the picker lists senders from the currently loaded points', async 
   await expect(page.locator('#tp-list')).toContainText('Charlie')
 })
 
-test('a picked selection is sent to the server as a real sender= filter', async ({ page }) => {
+const sendersOf = (u) => new URL(u).searchParams.getAll('senders')
+
+test('a picked selection is sent to the server as repeated senders= params', async ({ page }) => {
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
   await page.goto('/?mode=points')
   await page.click('#sp-toggle')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
-  // One pick -> trailing comma, so it stays an exact-id selection rather than
-  // decaying into a prefix search (the server reads the comma the same way).
+  // One id per senders= param, so an id is never delimiter-joined and any
+  // punctuation in it survives verbatim. #f-sender is now purely the typed
+  // prefix box and holds no part of the selection.
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
-  await expect(page.locator('#f-sender')).toHaveValue('aa11bb22,')
-  await expect.poll(() => urls.some((u) => /sender=aa11bb22(%2C|,)(&|$)/.test(u))).toBe(true)
+  await expect(page.locator('#f-sender')).toHaveValue('')
+  await expect.poll(() => urls.some((u) => sendersOf(u).join() === 'aa11bb22')).toBe(true)
 
   await page.locator('#tp-list .tl-row', { hasText: 'Charlie' }).click()
-  const value = await page.locator('#f-sender').inputValue()
-  expect(value.split(',').filter(Boolean).sort()).toEqual(['aa11bb22', 'cc33dd44'])
-  // The multi-id value now DOES reach the server -- it applies it as a real
-  // SQL IN filter, so the client no longer post-filters anything.
-  await expect.poll(() => urls.some((u) => /sender=aa11bb22(%2C|,)cc33dd44/.test(u))).toBe(true)
+  await expect.poll(() => urls.some((u) => sendersOf(u).slice().sort().join() === 'aa11bb22,cc33dd44')).toBe(true)
 })
 
 test('the picker keeps listing every candidate sender after one is picked', async ({ page }) => {
@@ -49,9 +53,8 @@ test('the picker keeps listing every candidate sender after one is picked', asyn
   // (already narrowed) result set would shrink the list to the current
   // selection and make picking a second sender impossible.
   await page.route('**/api/points*', (r) => {
-    const sender = new URL(r.request().url()).searchParams.get('sender')
+    const ids = sendersOf(r.request().url()).map((s) => s.toLowerCase())
     const all = [A, B]
-    const ids = (sender || '').split(',').filter(Boolean).map((s) => s.toLowerCase())
     const points = ids.length ? all.filter((p) => ids.includes(p.sender_id.toLowerCase())) : all
     return r.fulfill({ json: { points } })
   })
@@ -60,25 +63,45 @@ test('the picker keeps listing every candidate sender after one is picked', asyn
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
-  await expect(page.locator('#f-sender')).toHaveValue('aa11bb22,')
+  await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'true')
   // Both rows still offered, and the unpicked one is still clickable.
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2)
   await page.locator('#tp-list .tl-row', { hasText: 'Charlie' }).click()
-  const value = await page.locator('#f-sender').inputValue()
-  expect(value.split(',').filter(Boolean).sort()).toEqual(['aa11bb22', 'cc33dd44'])
+  await expect(page.locator('#tp-list .tl-row', { hasText: 'Charlie' })).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('a single pick survives a reload as a pick, not a prefix search', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
-  await page.goto('/?mode=points&sender=aa11bb22,')
+  // The selection persists as JSON, since a sender_id is arbitrary operator
+  // text that cannot be delimiter-joined (#288).
+  await page.goto('/?mode=points&senders=' + encodeURIComponent('["aa11bb22"]'))
   await page.click('#sp-toggle')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'true')
-  // ...whereas a comma-less value is still a plain prefix search: not a pick.
+  // ...whereas the same id typed into the prefix box is a search, not a pick.
+  // Drop the stored selection first: it is a persisted filter, so it would
+  // otherwise be restored on the next load and mask what is being asserted.
+  await page.evaluate(() => localStorage.clear())
   await page.goto('/?mode=points&sender=aa11bb22')
   await page.click('#sp-toggle')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('Clear also clears the pick, not just the typed prefix', async ({ page }) => {
+  const urls = []
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
+  await page.goto('/?mode=points')
+  await page.click('#sp-toggle')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
+  await expect.poll(() => urls.some((u) => sendersOf(u).length === 1)).toBe(true)
+
+  urls.length = 0
+  await page.click('#clear-filters')
+  // The pick lives in the picker, not in #f-sender, so Clear has to reach it —
+  // otherwise the filter survives with no visible trace of why.
+  await expect.poll(() => urls.length > 0 && urls.every((u) => sendersOf(u).length === 0)).toBe(true)
 })
 
 test('a picked row shows checked state, and unpicking it restores the plain count', async ({ page }) => {
