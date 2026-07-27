@@ -4,6 +4,7 @@ import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
+import { layerVisibility } from './maplayers.js'
 import { squareRing } from './pointmarker.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -164,17 +165,22 @@ export function createHuntMap(containerId) {
     for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
+    // One decision for all four signal layers (#266) — see maplayers.js. Both
+    // this block and set3D() read it, so a style reload and a FAB tap can no
+    // longer disagree about what is on screen.
+    const vis = layerVisibility({ mode, mode3D })
+    const shown = (id) => (vis[id] ? 'visible' : 'none')
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
       paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': 0.5 } })
     if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
-      layout: { visibility: mode3D ? 'none' : 'visible' },
+      layout: { visibility: shown('hex') },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
     // 3D twin of 'hex': same source, extruded to 'height' (RSSI/SNR tier, #147).
     // fill-extrusion-opacity doesn't support data-driven expressions (unlike
     // fill-opacity on the flat layer), so it's a flat constant here — the tier
     // is still visible via colour + height.
     if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex',
-      layout: { visibility: mode3D ? 'visible' : 'none' },
+      layout: { visibility: shown('hex-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
         'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.85 } })
     // Buildings reuse the hosted style's own vector source (already fetched for
@@ -192,7 +198,7 @@ export function createHuntMap(containerId) {
       paint: { 'heatmap-weight': ['get', 'w'], 'heatmap-intensity': 1, 'heatmap-radius': 32, 'heatmap-opacity': 0.7,
         'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.2, cssVar('--ch-sig-mid'), 0.6, cssVar('--ch-sig-warm'), 1, cssVar('--ch-sig-hot')] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
-      layout: { visibility: mode3D ? 'none' : 'visible' },
+      layout: { visibility: shown('points') },
       paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'fop'],
         'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1, 'circle-stroke-opacity': ['get', 'op'] } })
     // 3D twin of 'points' (#250): a fill-extrusion pillar per reception, same
@@ -201,7 +207,7 @@ export function createHuntMap(containerId) {
     // Polygon footprints can't double as the flat layer's Point geometry, the
     // way hex/hex-3d share one source), same constant-opacity limitation.
     if (!map.getLayer('points-3d')) map.addLayer({ id: 'points-3d', type: 'fill-extrusion', source: 'points-3d',
-      layout: { visibility: mode3D ? 'visible' : 'none' },
+      layout: { visibility: shown('points-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
         'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.9 } })
     if (!map.getLayer('highlight')) map.addLayer({ id: 'highlight', type: 'circle', source: 'highlight',
@@ -263,9 +269,15 @@ export function createHuntMap(containerId) {
     syncSize()
     if (!map.getSource('points')) return   // style not ready yet
     const records = lastRecords, nowMs = Date.now()
-    map.getSource('hex').setData(mode !== 'points' ? buildHexFC(records) : EMPTY)
-    map.getSource('points').setData(mode !== 'hex' ? buildPointsFC(records, nowMs) : EMPTY)
-    map.getSource('points-3d').setData(mode !== 'hex' ? buildPoints3DFC(records) : EMPTY)
+    // Build only what a visible layer will read (#266). Previously all three
+    // were rebuilt and re-uploaded every 1 Hz tick regardless of mode, so one
+    // of the two point collections was always tessellated and shipped to the
+    // GPU for a layer set to visibility:none. hex and hex-3d share one source,
+    // so it is built when either is on.
+    const vis = layerVisibility({ mode, mode3D })
+    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records) : EMPTY)
+    map.getSource('points').setData(vis.points ? buildPointsFC(records, nowMs) : EMPTY)
+    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
@@ -323,17 +335,23 @@ export function createHuntMap(containerId) {
   function onFollowChange(cb) { onFollow = cb }
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
-  function setLayerMode(m) { mode = m; draw() }
+  // Applies the current layer decision to the live style. Both the layer-mode
+  // switch and the 3D toggle need it: in 3D the mode decides whether hex is
+  // drawn flat (under the pillars) or extruded (#266).
+  function applyLayerVisibility() {
+    const vis = layerVisibility({ mode, mode3D })
+    for (const id of ['hex', 'hex-3d', 'points', 'points-3d']) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
+    }
+  }
+  function setLayerMode(m) { mode = m; applyLayerVisibility(); draw() }
   // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex/points
   // layers for their extruded twins, and shows 3D buildings (#147 phase 2,
   // points added in #250).
   function set3D(v) {
     mode3D = !!v
     map.easeTo({ pitch: mode3D ? PITCH_3D : 0, duration: 500 })
-    if (map.getLayer('hex')) map.setLayoutProperty('hex', 'visibility', mode3D ? 'none' : 'visible')
-    if (map.getLayer('hex-3d')) map.setLayoutProperty('hex-3d', 'visibility', mode3D ? 'visible' : 'none')
-    if (map.getLayer('points')) map.setLayoutProperty('points', 'visibility', mode3D ? 'none' : 'visible')
-    if (map.getLayer('points-3d')) map.setLayoutProperty('points-3d', 'visibility', mode3D ? 'visible' : 'none')
+    applyLayerVisibility()
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
