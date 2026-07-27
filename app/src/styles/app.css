@@ -297,9 +297,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 
 body.onboarding #topbar,
-body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle { z-index: 560; }
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
+body.onboarding #nodepos-toggle { z-index: 560; }
 body.onboarding #topbar-controls, body.onboarding #settings-btn,
-body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle {
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
+body.onboarding #nodepos-toggle {
   box-shadow: 0 0 0 2px var(--ch-accent); }
 /* The "?" only re-opens onboarding, so it is redundant (and crowds the narrow
    topbar) while the overlay is already showing. */
