@@ -186,7 +186,17 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     // Signature of current view state: if unchanged, skip rebuild to avoid
     // teleporting a scrolled reader (#287 blocker 5).
     const sig = view.map(key).join('|') + '#' + mode
-    if (sig === _lastSig) { paint(); return }
+    if (sig === _lastSig) {
+      // Same rows, but they aged: refresh only the relative-time cells. Without
+      // this a quiet mesh freezes every row at the age it first rendered, which
+      // reads as "just received".
+      const els = list.children
+      for (let i = 0; i < els.length && i < view.length; i++) {
+        const tm = els[i].children[1]
+        if (tm) tm.textContent = relTime(view[i].rx_at, nowMs)
+      }
+      paint(); return
+    }
     _lastSig = sig
 
     const filteredIds = new Set(filtered.map(key))

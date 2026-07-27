@@ -50,7 +50,10 @@ const rxHighlightLayer = L.layerGroup().addTo(map)
 let rxTicker = null
 function setRxHighlight(rec) {
   rxHighlightLayer.clearLayers()
-  if (!rec) return
+  // Locate is a focus mode that hides every non-relevant layer; the ticker's own
+  // 5s poll keeps running, so without this it would paint an unrelated sender's
+  // ring back onto that view within one interval.
+  if (!rec || locateActive) return
   L.circleMarker([rec.lat, rec.lon], {
     renderer: ptCanvas, radius: 9, weight: 2, color: cssVar('--ch-accent'), fill: false, interactive: false,
   }).addTo(rxHighlightLayer)
