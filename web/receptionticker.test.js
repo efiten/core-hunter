@@ -110,13 +110,23 @@ describe('isLiveWindow — gates the recurring poll to a "now"-ish range (#224)'
   it('is live when `to` is empty (no upper bound)', () => {
     expect(isLiveWindow('', NOW)).toBe(true)
   })
-  it('is live when `to` falls on today (local calendar date)', () => {
+  it('is live when `to` is still ahead of now', () => {
     expect(isLiveWindow('2026-07-22T21:59:00.000Z', NOW)).toBe(true)
   })
-  it('is not live when `to` is a past date', () => {
+  it('is not live when `to` has already passed', () => {
     expect(isLiveWindow('2026-07-01T21:59:00.000Z', NOW)).toBe(false)
   })
-  it('is not live when `to` is a future date', () => {
-    expect(isLiveWindow('2026-08-01T21:59:00.000Z', NOW)).toBe(false)
+  // The gate is "does the window still include now", not "is `to` today".
+  // A `to` in the future keeps the window open, so new receptions land inside
+  // it and polling is what the user expects. The old assertion here (future =>
+  // not live) was an artefact of the UTC-calendar-day comparison that #287
+  // blocker 1 removed: it only looked false because a future date is a
+  // different day, which is the same reasoning that broke the first two hours
+  // of every local day for CEST and broke it all day for negative offsets.
+  it('is live when `to` is far in the future — the window still contains now', () => {
+    expect(isLiveWindow('2026-08-01T21:59:00.000Z', NOW)).toBe(true)
+  })
+  it('is live exactly at the boundary, so the gate does not flicker shut on equality', () => {
+    expect(isLiveWindow(new Date(NOW).toISOString(), NOW)).toBe(true)
   })
 })
