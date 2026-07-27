@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, receptionKey, tickerFilters, isLiveWindow, relTime } from './receptionticker.js'
+import { rxView, rxActiveIndex, rxFade, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing } from './receptionticker.js'
 
 // rxView/rxActiveIndex/rxFade are ported verbatim from app/src/receptionlog.js
 // (#238 explicitly excludes this file from the shared-core extraction, since
@@ -128,5 +128,79 @@ describe('isLiveWindow — gates the recurring poll to a "now"-ish range (#224)'
   })
   it('is live exactly at the boundary, so the gate does not flicker shut on equality', () => {
     expect(isLiveWindow(new Date(NOW).toISOString(), NOW)).toBe(true)
+  })
+})
+
+// #224 blocker 2: marker→ticker sync only existed for point markers, which are
+// drawn in 'points'/'both' — and the cold default is 'hex' (#141), so a
+// first-time visitor clicking the map got nothing. Hex cells are aggregates
+// from /api/heatmap and carry no individual receptions, so the cell has to be
+// matched against the receptions the ticker already holds.
+describe('pointInRing', () => {
+  // A hex ring as drawHex builds it: [lat, lon] pairs, closed.
+  const ring = [[51.0, 4.0], [51.0, 4.2], [51.1, 4.3], [51.2, 4.2], [51.2, 4.0], [51.1, 3.9], [51.0, 4.0]]
+
+  it('accepts a point well inside', () => {
+    expect(pointInRing(51.1, 4.1, ring)).toBe(true)
+  })
+  it('rejects a point well outside', () => {
+    expect(pointInRing(52.0, 4.1, ring)).toBe(false)
+    expect(pointInRing(51.1, 9.9, ring)).toBe(false)
+  })
+  it('rejects a point beyond a slanted edge, not just the bounding box', () => {
+    // Inside the bbox (lat 51.0-51.2, lon 3.9-4.3) but outside the hexagon.
+    expect(pointInRing(51.01, 4.28, ring)).toBe(false)
+  })
+  it('returns false for a missing or degenerate ring rather than throwing', () => {
+    expect(pointInRing(51.1, 4.1, [])).toBe(false)
+    expect(pointInRing(51.1, 4.1, [[51, 4], [51, 4]])).toBe(false)
+    expect(pointInRing(51.1, 4.1, null)).toBe(false)
+  })
+  it('returns false for a non-finite coordinate', () => {
+    expect(pointInRing(null, 4.1, ring)).toBe(false)
+    expect(pointInRing(51.1, undefined, ring)).toBe(false)
+  })
+})
+
+describe('newestInRing', () => {
+  const ring = [[51.0, 4.0], [51.0, 4.2], [51.1, 4.3], [51.2, 4.2], [51.2, 4.0], [51.1, 3.9], [51.0, 4.0]]
+  const rec = (o) => ({ lat: 51.1, lon: 4.1, rx_at: '2026-07-22T10:00:00Z', ...o })
+
+  it('picks the most recent reception inside the cell', () => {
+    // Newest, not strongest: focusRecord moves the ticker's playhead, and the
+    // ticker is ordered by time — jumping to an old strong line would scroll
+    // away from what the user is watching.
+    const out = newestInRing([
+      rec({ rx_at: '2026-07-22T10:00:00Z', rssi: -60 }),
+      rec({ rx_at: '2026-07-22T10:05:00Z', rssi: -95 }),
+      rec({ rx_at: '2026-07-22T10:02:00Z', rssi: -50 }),
+    ], ring)
+    expect(out.rx_at).toBe('2026-07-22T10:05:00Z')
+  })
+
+  it('ignores receptions outside the cell even when they are newer', () => {
+    const out = newestInRing([
+      rec({ rx_at: '2026-07-22T10:00:00Z' }),
+      rec({ lat: 52.0, lon: 4.1, rx_at: '2026-07-22T23:00:00Z' }),
+    ], ring)
+    expect(out.rx_at).toBe('2026-07-22T10:00:00Z')
+  })
+
+  it('returns null when the cell holds none of the loaded receptions', () => {
+    // Expected and common: the ticker caps at 200 recent rows, so a cell built
+    // from the full history often has nothing loaded. The caller must treat
+    // this as "no sync available", not as an error.
+    expect(newestInRing([rec({ lat: 52.0, lon: 9.0 })], ring)).toBeNull()
+    expect(newestInRing([], ring)).toBeNull()
+    expect(newestInRing(null, ring)).toBeNull()
+  })
+
+  it('skips rows with no usable position or timestamp', () => {
+    const out = newestInRing([
+      rec({ lat: null, rx_at: '2026-07-22T23:00:00Z' }),
+      rec({ rx_at: 'not-a-date' }),
+      rec({ rx_at: '2026-07-22T10:01:00Z' }),
+    ], ring)
+    expect(out.rx_at).toBe('2026-07-22T10:01:00Z')
   })
 })

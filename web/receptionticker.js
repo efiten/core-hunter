@@ -44,14 +44,6 @@ export function rxFade(d) {
   return Math.max(0, 1 - d / 3)
 }
 
-// receptionKey is a synthetic per-row identity. /api/points rows carry no
-// stable id (server/internal/store/query.go's Point struct has none) — unlike
-// app, whose rows are IndexedDB records with an autoincrement id. The
-// map<->ticker two-way sync needs a shared key so a marker and a ticker line
-// for the same underlying reception agree on identity; this composes one
-// from the fields the API does return. Two independent fetches of the same
-// row (e.g. the map's bbox-scoped query and the ticker's bbox-less one)
-// produce identical field values and therefore the same key.
 // relTime — ported from app/src/feed.js (not shared: #238 is scoped to
 // signal/locate/names only). Same behaviour, own copy per this file's own
 // "ported for parity, not shared" convention (see module docstring above).
@@ -63,6 +55,14 @@ export function relTime(rxAt, nowMs) {
   return Math.floor(s / 3600) + 'h'
 }
 
+// receptionKey is a synthetic per-row identity. /api/points rows carry no
+// stable id (server/internal/store/query.go's Point struct has none) — unlike
+// app, whose rows are IndexedDB records with an autoincrement id. The
+// map<->ticker two-way sync needs a shared key so a marker and a ticker line
+// for the same underlying reception agree on identity; this composes one
+// from the fields the API does return. Two independent fetches of the same
+// row (e.g. the map's bbox-scoped query and the ticker's bbox-less one)
+// produce identical field values and therefore the same key.
 export function receptionKey(r) {
   return `${r.rx_at}|${r.sender_id || ''}|${r.hunter_pubkey || ''}|${r.lat}|${r.lon}|${r.rssi}`
 }
@@ -98,6 +98,50 @@ function lineMeta(r) {
   return r.channel_name || packetTypeLabel(r.packet_type) || ''
 }
 
+// pointInRing: standard ray-casting test, on the [lat, lon] rings drawHex
+// already builds from the heatmap GeoJSON (lat as y, lon as x). Hex cells are
+// convex, so no winding subtleties apply. Plane geometry is fine at cell scale
+// — a cell is tens of metres across, where the spherical correction is far
+// below the precision anything here needs.
+export function pointInRing(lat, lon, ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return false
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [yi, xi] = ring[i]
+    const [yj, xj] = ring[j]
+    const straddles = (yi > lat) !== (yj > lat)
+    if (straddles && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+// newestInRing: which reception a click on a hex cell should send the ticker to.
+//
+// A heatmap cell is an aggregate — /api/heatmap returns best_rssi and a count,
+// never the rows behind them — so the cell is matched against the receptions
+// the ticker already holds. Newest rather than strongest: focusRecord moves the
+// ticker's playhead and the ticker is ordered by time, so jumping to an old
+// strong line would scroll away from what the user is watching.
+//
+// Returns null when the cell holds none of the loaded rows, which is ordinary
+// rather than exceptional: the ticker caps at CAP recent rows while a cell is
+// built from the whole filtered history. Callers treat null as "no sync
+// available" and leave the ticker alone.
+export function newestInRing(records, ring) {
+  let best = null
+  let bestAt = -Infinity
+  for (const r of records || []) {
+    if (!r || !Number.isFinite(r.lat) || !Number.isFinite(r.lon)) continue
+    const at = Date.parse(r.rx_at)
+    if (Number.isNaN(at) || at <= bestAt) continue
+    if (!pointInRing(r.lat, r.lon, ring)) continue
+    best = r
+    bestAt = at
+  }
+  return best
+}
+
 // ---------------------------------------------------------------------------
 // DOM component
 // ---------------------------------------------------------------------------
@@ -118,7 +162,7 @@ export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js
 // changes (map.js wires this to the map highlight).
 export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldPoll, onActiveChange } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { refetch() {}, focusRecord() {}, destroy() {} }
+  if (!root) return { refetch() {}, focusRecord() {}, records: () => [], destroy() {} }
   root.innerHTML = '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span></div><div class="rx-list" id="rx-list"></div>'
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')
@@ -222,5 +266,11 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   fetchAndRebuild()
   const timer = setInterval(() => { if (!shouldPoll || shouldPoll()) fetchAndRebuild() }, 5000)
 
-  return { refetch: fetchAndRebuild, focusRecord, destroy() { clearInterval(timer) } }
+  // The rows currently on screen, for callers that need to match something
+  // against them — a hex-cell click has no reception of its own to key on
+  // (#224), since /api/heatmap returns aggregates. Returns the active view, so
+  // it honours the filtered/all toggle the user actually has selected.
+  const records = () => view.slice()
+
+  return { refetch: fetchAndRebuild, focusRecord, records, destroy() { clearInterval(timer) } }
 }

@@ -7,7 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, CAP as RX_CAP } from './receptionticker.js'
+import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 
 let currentRole = 'guest'
 
@@ -141,9 +141,21 @@ async function drawHex() {
   for (const f of fc.features || []) {
     const ring = f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon])
     const tier = rssiTier(f.properties.best_rssi)
-    L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
+    const cell = L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindTooltip(`best RSSI ${esc(f.properties.best_rssi)} · ${f.properties.count} pts · ${(f.properties.hunters||[]).length} hunters`)
       .addTo(hexLayer)
+    // Ticker sync from hex mode (#224). The marker-click path only exists in
+    // 'points'/'both', and the cold default is 'hex' (#141), so without this a
+    // first-time visitor clicking the map got nothing. A cell is an aggregate
+    // with no reception of its own, so match it against the rows the ticker
+    // already holds; newestInRing returns null when it holds none of them
+    // (ordinary — it caps at CAP recent rows), and then the ticker is left as
+    // it is rather than jumped somewhere arbitrary.
+    cell.on('click', () => {
+      if (!rxTicker) return
+      const hit = newestInRing(rxTicker.records(), ring)
+      if (hit) rxTicker.focusRecord(receptionKey(hit))
+    })
   }
   document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
 }
