@@ -29,18 +29,22 @@ func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
 func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{From: q.Get("from"), To: q.Get("to")}
-	// ?sender= carries two different filters, distinguished by a semicolon (#223):
-	// a semicolon-less value is the free-text leading-prefix search; anything with
-	// a semicolon is the target-list picker's exact multi-id selection (SQL IN).
-	// A ONE-id selection is written with a trailing semicolon ("aaaa;") so it stays
-	// distinguishable from a typed prefix — the web viewer deliberately reuses
-	// a single field/URL param for both. Uses semicolon instead of comma since
-	// sender_id can contain commas for channel_name senders (#288 blocker 3).
-	if s := strings.TrimSpace(q.Get("sender")); strings.Contains(s, ";") {
-		for _, id := range strings.Split(s, ";") {
-			if id = strings.TrimSpace(id); id != "" { f.Senders = append(f.Senders, id) }
+	// Two distinct sender filters on two distinct params (#223):
+	//   ?senders=  repeated, the target-list picker's exact multi-id selection (SQL IN)
+	//   ?sender=   the free-text leading-prefix search
+	// They are separate params rather than one overloaded value because
+	// sender_id is not an opaque token: for channel_name senders it is the
+	// decrypted display name (meshpacket.js -> reception.go), i.e. arbitrary
+	// operator text. No delimiter is safe to overload — a name containing it
+	// splits into fragments and the exact match silently returns nothing, and
+	// it also stole punctuation from the prefix search. Repeating the param
+	// removes the delimiter, so an id can hold any character (#288).
+	for _, id := range q["senders"] {
+		if id = strings.TrimSpace(id); id != "" {
+			f.Senders = append(f.Senders, id)
 		}
-	} else {
+	}
+	if len(f.Senders) == 0 {
 		f.Sender = q.Get("sender")
 	}
 	// ?hunter=a,b,c filters to any of a comma-separated set of hunter_pubkeys /
