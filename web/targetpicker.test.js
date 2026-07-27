@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dedupeSenders, senderList, topSenders, targetParts, relTime,
-  parseSenderField, toggleSenderId, senderParams,
+  senderParams, encodeSelection, decodeSelection,
 } from './targetpicker.js'
 
 const pt = (o) => ({ lat: 51, lon: 4, rssi: -80, rx_at: '2026-07-22T10:00:00Z', ...o })
@@ -80,80 +80,57 @@ describe('relTime — ported from app/src/feed.js (not shared: web\'s data model
   })
 })
 
-describe('parseSenderField — disambiguates #f-sender\'s reused value (#223)', () => {
-  // Decision: the picker and the free-text prefix field share the SAME
-  // `sender` param/URL state (Kasper, 2026-07-22) rather than a separate one.
-  // A semicolon means "exact-id selection from the picker"; anything else is the
-  // pre-existing single leading-prefix search, unchanged. The server applies
-  // the same rule (server/internal/httpapi/api.go's filterFrom). Uses semicolon
-  // instead of comma since sender_id can contain commas for channel_name senders.
-  it('empty value -> no filter', () => {
-    expect(parseSenderField('')).toEqual({ mode: 'none' })
-  })
-  it('a single value with no semicolon -> prefix search (unchanged existing behaviour)', () => {
-    expect(parseSenderField('aa11')).toEqual({ mode: 'prefix', prefix: 'aa11' })
-  })
-  it('a semicolon-separated value -> exact-id set, lowercased', () => {
-    expect(parseSenderField('AA11;bb22')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
-  })
-  it('trims whitespace and drops empty entries around semicolons', () => {
-    expect(parseSenderField(' aa11 ; ;bb22 ')).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
-  })
-  // The trailing semicolon is what makes a ONE-id pick survive a reload/share as a
-  // pick rather than degrading into a prefix search -- the two are otherwise
-  // the same string. Ugly in the URL, but honest and lossless.
-  it('a single id with a trailing semicolon -> a one-element exact set, not a prefix', () => {
-    expect(parseSenderField('aa11;')).toEqual({ mode: 'ids', ids: ['aa11'] })
-  })
-})
-
-describe('toggleSenderId — toggles one id, always emitting the ids-mode form', () => {
-  // Output always contains a semicolon (trailing for a single id), so the result
-  // is unambiguously a picker selection -- both on reload and to the server.
-  it('adds an id to an empty selection, with a trailing semicolon', () => {
-    expect(toggleSenderId('', 'aa11')).toBe('aa11;')
-  })
-  it('adds a second id, becoming a plain semicolon-list', () => {
-    expect(toggleSenderId('aa11;', 'bb22')).toBe('aa11;bb22')
-  })
-  it('removes an id, dropping back to the trailing-semicolon single form', () => {
-    expect(toggleSenderId('aa11;bb22', 'bb22')).toBe('aa11;')
-  })
-  it('removing the last id clears the selection entirely', () => {
-    expect(toggleSenderId('aa11;', 'aa11')).toBe('')
-  })
-  it('is case-insensitive when checking membership', () => {
-    expect(toggleSenderId('AA11;', 'aa11')).toBe('')
-  })
-  // Round-trip: whatever toggleSenderId emits must parse back to the same ids.
-  it('emits a value parseSenderField reads back as the same id set', () => {
-    const one = toggleSenderId('', 'aa11')
-    expect(parseSenderField(one)).toEqual({ mode: 'ids', ids: ['aa11'] })
-    const two = toggleSenderId(one, 'bb22')
-    expect(parseSenderField(two)).toEqual({ mode: 'ids', ids: ['aa11', 'bb22'] })
-  })
-})
 
 // #223/#288: the wire format. Exact picks go out as a repeated ?senders=
 // param and the prefix search keeps ?sender=, so no delimiter has to be
 // unreachable inside a sender_id. senderParams turns a parsed field into the
 // [key, value] pairs a URLSearchParams should carry.
 describe('senderParams — the two sender filters on two params (#223)', () => {
-  it('emits one senders= entry per exact pick', () => {
-    expect(senderParams({ mode: 'ids', ids: ['aaaa', 'bbbb'] }))
+  it('emits one senders= entry per picked id', () => {
+    expect(senderParams({ ids: ['aaaa', 'bbbb'], prefix: '' }))
       .toEqual([['senders', 'aaaa'], ['senders', 'bbbb']])
   })
   it('emits a single senders= for a one-id pick, with no delimiter trick', () => {
-    expect(senderParams({ mode: 'ids', ids: ['aaaa'] })).toEqual([['senders', 'aaaa']])
+    expect(senderParams({ ids: ['aaaa'], prefix: '' })).toEqual([['senders', 'aaaa']])
   })
-  it('keeps punctuation in an id intact, which is the whole point', () => {
-    expect(senderParams({ mode: 'ids', ids: ['bob, k.'] })).toEqual([['senders', 'bob, k.']])
+  it('keeps punctuation in a picked id intact, which is the whole point', () => {
+    expect(senderParams({ ids: ['bob; k.'], prefix: '' })).toEqual([['senders', 'bob; k.']])
   })
   it('sends a typed prefix on sender=, never senders=', () => {
-    expect(senderParams({ mode: 'prefix', prefix: 'Bob, K.' })).toEqual([['sender', 'Bob, K.']])
+    expect(senderParams({ ids: [], prefix: 'Bob; K.' })).toEqual([['sender', 'Bob; K.']])
   })
-  it('emits nothing when no sender filter is active', () => {
-    expect(senderParams({ mode: 'none' })).toEqual([])
-    expect(senderParams({ mode: 'ids', ids: [] })).toEqual([])
+  it('lets a picked selection win over a stale typed prefix', () => {
+    // Picking and typing are different match kinds (exact vs leading-prefix);
+    // combining them silently would be surprising, so the pick wins.
+    expect(senderParams({ ids: ['aaaa'], prefix: 'bb' })).toEqual([['senders', 'aaaa']])
+  })
+  it('emits nothing when neither filter is active', () => {
+    expect(senderParams({ ids: [], prefix: '' })).toEqual([])
+    expect(senderParams({})).toEqual([])
+    expect(senderParams()).toEqual([])
+  })
+})
+
+// The picker's selection is its own state now, so it needs its own encoding
+// for the shareable URL and localStorage. A sender_id is arbitrary operator
+// text, so the encoding cannot be delimiter-joined either — JSON survives any
+// content, and a corrupt value degrades to "nothing selected" rather than
+// throwing during boot.
+describe('encodeSelection / decodeSelection (#288)', () => {
+  it('round-trips ids containing every delimiter we ever tried', () => {
+    const ids = ['bob, k.', 'ann;b', 'x"y', 'plain']
+    expect(decodeSelection(encodeSelection(ids))).toEqual(ids)
+  })
+  it('encodes an empty selection as an empty string, so the param drops out', () => {
+    expect(encodeSelection([])).toBe('')
+    expect(encodeSelection(null)).toBe('')
+  })
+  it('decodes junk to an empty selection instead of throwing', () => {
+    for (const junk of ['', 'not json', '{}', '[1,2]', 'null', undefined]) {
+      expect(decodeSelection(junk)).toEqual([])
+    }
+  })
+  it('drops non-string and blank entries from a decoded list', () => {
+    expect(decodeSelection('["aa", 3, "", "  ", "bb"]')).toEqual(['aa', 'bb'])
   })
 })

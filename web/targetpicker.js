@@ -68,55 +68,37 @@ export function relTime(rxAt, nowMs) {
   return Math.floor(s / 3600) + 'h'
 }
 
-// parseSenderField disambiguates the reused #f-sender value (#223 decision:
-// the picker and the existing free-text prefix search share one field/param
-// rather than a separate one). A trailing delimiter (`;`) means "exact-id
-// multi-select from the picker"; anything else is the pre-existing single
-// leading-prefix search, unchanged. Uses `;` instead of `,` since sender_id
-// can contain commas for channel_name senders (#288 blocker 3).
-export function parseSenderField(value) {
-  const v = (value || '').trim()
-  if (!v) return { mode: 'none' }
-  if (v.includes(';')) {
-    const ids = v.split(';').map((s) => s.trim().toLowerCase()).filter(Boolean)
-    return { mode: 'ids', ids }
-  }
-  return { mode: 'prefix', prefix: v }
-}
-
-// idsToField renders an id set back into the shared #f-sender value. A single
-// id gets a TRAILING SEMICOLON so it stays unambiguously a picker selection
-// rather than decaying into a leading-prefix search on reload/share -- "aa11"
-// and "aa11" are the same string otherwise. Uses `;` instead of `,` since
-// sender_id can contain commas (#288 blocker 3). The server applies the same
-// rule (server/internal/httpapi/api.go's filterFrom).
-function idsToField(ids) {
-  if (!ids.length) return ''
-  return ids.length === 1 ? `${ids[0]};` : ids.join(';')
-}
-
-// toggleSenderId toggles one id within an ids-mode selection, always emitting
-// the canonical ids-mode form (see idsToField), so its output round-trips
-// through parseSenderField unchanged.
-// senderParams maps a parsed sender field onto the query params that carry it.
-// The two filters travel on two separate params (#223): exact picks as a
-// REPEATED ?senders=, a typed prefix as ?sender=. Nothing is delimiter-joined
-// on the wire, so an id may contain any character — which matters because
+// senderParams maps the two independent sender inputs — the picker's selected
+// ids and the typed prefix — onto the query params that carry them (#223):
+// exact picks as a REPEATED ?senders=, a typed prefix as ?sender=. Nothing is
+// delimiter-joined, so an id may contain any character, which matters because
 // sender_id is the decrypted display name for channel_name senders, i.e.
 // arbitrary operator text (#288).
-export function senderParams(parsed) {
-  if (!parsed) return []
-  if (parsed.mode === 'ids') return (parsed.ids || []).map((id) => ['senders', id])
-  if (parsed.mode === 'prefix' && parsed.prefix) return [['sender', parsed.prefix]]
-  return []
+//
+// A selection wins over a typed prefix: they are different match kinds (exact
+// vs leading-prefix) and silently intersecting them would be surprising.
+export function senderParams({ ids, prefix } = {}) {
+  if (ids && ids.length) return ids.map((id) => ['senders', id])
+  const p = String(prefix || '').trim()
+  return p ? [['sender', p]] : []
 }
 
-export function toggleSenderId(currentIdsCsv, id) {
-  const ids = currentIdsCsv ? currentIdsCsv.split(';').map((s) => s.trim().toLowerCase()).filter(Boolean) : []
-  const key = String(id).toLowerCase()
-  const i = ids.indexOf(key)
-  if (i >= 0) ids.splice(i, 1); else ids.push(key)
-  return idsToField(ids)
+// The picker's selection is its own state, so it carries its own encoding for
+// the shareable URL and localStorage. It cannot be delimiter-joined for the
+// same reason the query params can't be, so it goes as JSON. A corrupt or
+// hand-edited value decodes to "nothing selected" rather than throwing during
+// boot — urlstate runs before the map is drawn, so a throw here is a blank page.
+export function encodeSelection(ids) {
+  return ids && ids.length ? JSON.stringify(ids) : ''
+}
+
+export function decodeSelection(raw) {
+  if (!raw) return []
+  try {
+    const v = JSON.parse(raw)
+    if (!Array.isArray(v)) return []
+    return v.filter((x) => typeof x === 'string' && x.trim())
+  } catch (_) { return [] }
 }
 
 // ---------------------------------------------------------------------------
@@ -159,46 +141,46 @@ function row(rec, nowMs, selectedIds, onToggle) {
   return li
 }
 
-// createTargetPicker builds the browsable multi-select dropdown for
-// `senderInputId` (#f-sender). The field stays the single source of truth
-// for both the typed prefix search (unchanged) and the picker's exact-id
-// selection (#223) -- picking from the list writes a comma-joined id list
-// back into it and dispatches 'input' so the existing urlstate binding and
-// filter-change wiring (filters.js) pick it up with no changes there.
-export function createTargetPicker(senderInputId, listEl, { pinnedEl } = {}) {
+// createTargetPicker builds the browsable multi-select dropdown.
+//
+// The picker owns its selection (#288). It used to write a delimiter-joined id
+// list back into #f-sender and treat that field as the single source of truth
+// for both filters at once. That cannot represent the data: sender_id is the
+// decrypted display name for channel_name senders, so it is arbitrary operator
+// text, and a node named "Bob; K." was indistinguishable from two nodes "Bob"
+// and "K." -- whichever delimiter was chosen. Picking a real sender could
+// therefore select something else entirely, or nothing.
+//
+// So #f-sender is the typed leading-prefix search and nothing else, and the
+// selection lives here as a Set. onChange fires whenever it moves, so map.js
+// can refresh and persist without this module knowing about either.
+export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange } = {}) {
   const input = document.getElementById(senderInputId)
+  const selected = new Set()
   let visible = PAGE_SIZE
   let lastPoints = []
   let _lastSig = null
   let _lastPinnedSig = null
 
-  // The field IS the selection -- no shadow copy to keep in sync. That works
-  // because the ids-mode form always carries a comma (trailing one for a
-  // single id, see idsToField), so the field value is unambiguous in every
-  // state: '' none, 'aa11' a typed prefix, 'aa11,' one picked id, 'aa11,bb22'
-  // several. Clear, manual typing and shared-link restores are therefore
-  // picked up for free, with no resync logic.
-  const currentIds = () => {
-    const parsed = parseSenderField(input.value)
-    return new Set(parsed.mode === 'ids' ? parsed.ids : [])
-  }
+  const currentIds = () => selected
 
   function onToggle(id) {
-    const parsed = parseSenderField(input.value)
-    // A typed prefix is replaced, not merged: a leading-prefix search and an
-    // exact-id pick are different match kinds, so silently combining them
-    // would be surprising. Picking always starts a clean id selection.
-    // Pass the current field value if it's already in ids mode; otherwise start fresh.
-    // toggleSenderId handles the semicolon-delimited format correctly (#288 blocker 3).
-    input.value = toggleSenderId(parsed.mode === 'ids' ? input.value : '', id)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    const key = String(id).toLowerCase()
+    if (selected.has(key)) selected.delete(key); else selected.add(key)
+    // A typed prefix and an exact pick are different match kinds, so picking
+    // clears the box rather than silently intersecting the two.
+    if (selected.size && input.value.trim()) {
+      input.value = ''
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    if (onChange) onChange()
     render(lastPoints, Date.now())
   }
 
   function render(points, nowMs) {
     lastPoints = points || []
     const selectedIds = currentIds()
-    const selKey = [...selectedIds].sort().join(',')
+    const selKey = JSON.stringify([...selectedIds].sort())
 
     if (pinnedEl) {
       const pinned = topSenders(lastPoints, { count: PINNED_COUNT, nowMs })
@@ -231,5 +213,14 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl } = {}) {
     render(lastPoints, Date.now())
   })
 
-  return { render, reset }
+  // Selection accessors for urlstate (map.js) and the clear-filters path.
+  const getSelected = () => [...selected]
+  function setSelected(ids) {
+    selected.clear()
+    for (const id of ids || []) if (typeof id === 'string' && id.trim()) selected.add(id.toLowerCase())
+    render(lastPoints, Date.now())
+  }
+
+  return {
+    getSelected, setSelected, render, reset }
 }

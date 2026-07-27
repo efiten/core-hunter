@@ -1,7 +1,7 @@
 import { API_BASE } from './config.js'
 import { save } from './urlstate.js'
 import { FILTER_PACKET_TYPES } from './packettypes.js'
-import { parseSenderField, senderParams } from './targetpicker.js'
+import { senderParams } from './targetpicker.js'
 
 // Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
 // (server-issued "Hunter <N>" pseudonym), members+ get the real name; unnamed
@@ -118,10 +118,14 @@ if (typeof document !== 'undefined') {
 
   window.currentFilters = () => ({
     hunter: window.currentHunters(),
-    // Exact picks and the typed prefix ride on separate params (#223) --
-    // senderParams returns the [key, value] pairs, so an id containing
-    // punctuation never has to survive a delimiter round-trip (#288).
-    senderPairs: senderParams(parseSenderField(document.getElementById('f-sender').value)),
+    // Two independent inputs on two params (#223): the picker's selection and
+    // the typed leading-prefix search. #f-sender no longer doubles as the
+    // selection store, so an id containing punctuation never has to survive a
+    // delimiter round-trip anywhere (#288).
+    senderPairs: senderParams({
+      ids: (window.selectedSenderIds && window.selectedSenderIds()) || [],
+      prefix: document.getElementById('f-sender').value,
+    }),
     from: localToUTC(document.getElementById('f-from').value),
     to: localToUTC(document.getElementById('f-to').value),
     types: window.currentTypes(),

@@ -7,7 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createTargetPicker } from './targetpicker.js'
+import { createTargetPicker, encodeSelection, decodeSelection } from './targetpicker.js'
 
 let currentRole = 'guest'
 
@@ -671,7 +671,18 @@ const spToggle = document.getElementById('sp-toggle')
 senderPicker = document.getElementById('sender-picker')
 targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
   pinnedEl: document.getElementById('tp-pinned'),
+  // The picker owns its selection now (#288), so the field's own input/urlstate
+  // wiring no longer carries it -- refresh and persist explicitly instead.
+  onChange: () => { urlstate.save(); refresh() },
 })
+// currentFilters (filters.js) reads the selection through this rather than
+// importing the picker, keeping the filter module free of DOM-component wiring.
+window.selectedSenderIds = () => targetPicker.getSelected()
+// Selection persists as JSON: a sender_id is arbitrary operator text, so the
+// stored form can no more be delimiter-joined than the query params can (#288).
+urlstate.register({ key: 'senders',
+  get: () => encodeSelection(targetPicker.getSelected()),
+  set: (v) => targetPicker.setSelected(decodeSelection(v)) })
 function openSenderPicker() {
   senderPicker.hidden = false
   spToggle.setAttribute('aria-expanded', 'true')
