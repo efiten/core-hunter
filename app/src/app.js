@@ -15,7 +15,7 @@ import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
 import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue } from './queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -85,6 +85,10 @@ function loadSoundMode() {
 function saveSoundMode(mode) {
   try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
 }
+
+// Row cap for the surfaces that are not window-scoped (the receptions log's
+// "all" mode, the target list) — see docs/2026-07-22-retention-and-bounded-reads.md.
+const RECENT_CAP = 2000
 
 const state = {
   transport: null,
@@ -434,13 +438,24 @@ function enrichNames(rows) {
 async function drawOnce() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
-    const rows = await state.queue.takeAll()
-    state.lastRows = rows
     const now = Date.now()
+    // The map shows the chosen window, so read exactly that (#230). A null
+    // windowMs means "no time filter", which retention now bounds at 7 days.
+    const windowMs = state.filter.windowMs ?? RETENTION_MS
+    const windowRows = await state.queue.since(new Date(now - windowMs).toISOString())
+    // The receptions log's "all" mode and the target list are not window-
+    // scoped. They get a row-bounded read instead of the whole store: the log
+    // caps at 200 rows and the list shows far fewer senders than RECENT_CAP
+    // covers, so this is indistinguishable in practice at any realistic size.
+    const rows = await state.queue.recent(RECENT_CAP)
+    state.lastRows = rows
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
+    // Enrich names on both the window and the recent rows to prevent mismatches
+    // in the log and target list (BLOCKER 1 fix for PR #283)
+    enrichNames(windowRows)
     enrichNames(rows)
     const fn = makeFilter({ ...state.filter, ignore: state.ignore })
-    const filteredRows = rows.filter((r) => fn(r, now))
+    const filteredRows = windowRows.filter((r) => fn(r, now))
     const selected = selectedSet()
     if (state.map) {
       state.map.render(filteredRows, selected)
@@ -463,9 +478,12 @@ async function renderTick() {
 // ---------------------------------------------------------------------------
 // Drain tick — publish pending rows to MQTT (~every 5 s)
 // ---------------------------------------------------------------------------
-// Dedup via state.published (in-memory Set of row ids).
-// Rows are NEVER removed from IndexedDB. If publish fails, the row stays
-// unpublished and will be retried on the next drain.
+// Dedup via a watermark persisted in IndexedDB: every row at or below it has
+// reached the broker. It survives a restart, so a relaunch no longer
+// re-publishes the whole store. If publish fails the watermark stops there and
+// the remaining rows are retried on the next drain.
+// Rows are removed from IndexedDB only by retention (pruneOnce), and only once
+// they are at or below the watermark — see docs/2026-07-22-retention-decision.md.
 
 // The actual publish pass, split out from drainLoop's timer-rescheduling so it
 // can also be called on demand (e.g. right after returning from background)
@@ -480,24 +498,55 @@ async function drainOnce() {
   if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
   draining = true
   try {
-    const rows = await state.queue.takeAll()
-    let n = 0
-    for (const r of rows) {
-      if (state.published.has(r.id)) continue
-      try {
-        await state.publisher.publish(state.rxPubkey, r, state.name)
-        state.published.add(r.id)
-        n++
-      } catch (_) {
-        // publish failed — leave for next drain
+    const startedAt = Date.now()
+    let watermark = await state.queue.getWatermark()
+    // Keep taking batches until the store is drained or the budget is spent
+    // (#230). One batch per tick would leave a 50k backlog over half an hour
+    // behind; see shouldContinueDraining.
+    for (;;) {
+      const rows = await state.queue.unpublishedFrom(watermark)
+      const outcomes = []
+      for (const r of rows) {
+        try {
+          await state.publisher.publish(state.rxPubkey, r, state.name)
+          outcomes.push({ id: r.id, ok: true })
+        } catch (_) {
+          // Publish failed. Stop here rather than skipping ahead — the rest is
+          // retried next cycle. How far the watermark may move is
+          // watermarkAfter's decision, not this loop's.
+          outcomes.push({ id: r.id, ok: false })
+          break
+        }
       }
+      const failed = outcomes.some((o) => !o.ok)
+      const last = watermarkAfter(watermark, outcomes)
+      if (last > watermark) {
+        await state.queue.setWatermark(last)
+        console.debug('[drain] published through id', last)
+        watermark = last
+      }
+      if (failed) break
+      if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
     }
-    if (n > 0) console.debug('[drain] published', n, 'record(s)')
+    await pruneOnce()
   } catch (_) {
     // queue read failed — retry next cycle
   } finally {
     draining = false
   }
+}
+
+// Retention (#230): drop receptions past RETENTION_MS, but only ones the broker
+// already has — "all receptions go to MQTT" outranks the age cap, so an offline
+// phone keeps everything until it drains. Hourly; the store only grows slowly.
+let lastPrune = 0
+async function pruneOnce() {
+  const now = Date.now()
+  if (now - lastPrune < 3600_000) return
+  lastPrune = now
+  const cutoff = new Date(now - RETENTION_MS).toISOString()
+  const removed = await state.queue.prune(cutoff, await state.queue.getWatermark())
+  if (removed > 0) console.debug('[prune] removed', removed, 'published record(s) past retention')
 }
 
 async function drainLoop() {
@@ -918,8 +967,8 @@ function buildTargetSheet() {
     pinnedEl: el('ts-pinned'),
     // Whole-row tap toggles this sender in the target set; the sheet stays open
     // so several can be picked in a row (#178).
-    onSelect: (id, label) => {
-      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, toggle: true } }))
+    onSelect: (id, label, ids) => {
+      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, ids, toggle: true } }))
     },
   })
 
@@ -1492,6 +1541,11 @@ function updateTargetChip() {
 // Target selection is a live union of sender ids (#178). detail = null clears;
 // { id, toggle:true } adds/removes one (the checkbox rows); { id } replaces the
 // whole selection with just that sender (a map popup's "Isolate sender").
+// A target-list row can represent several prefix-compatible id variants of
+// the same physical node (#267, decided 2026-07-18: multi-id selection) —
+// detail.ids carries that full group so toggling/selecting the row catches
+// receptions under any variant, not just the one currently displayed. Falls
+// back to the single id when a caller (e.g. the map popup) has no group.
 document.addEventListener('hunt:isolate-sender', (e) => {
   const d = e.detail
   const ids = new Set(state.filter.sender ? state.filter.sender.ids : [])
@@ -1500,8 +1554,14 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   } else {
     const key = String(d.id).toLowerCase()
     if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
-    if (d.toggle) { ids.has(key) ? ids.delete(key) : ids.add(key) }
-    else { ids.clear(); ids.add(key) }
+    const group = Array.isArray(d.ids) && d.ids.length ? d.ids.map((x) => String(x).toLowerCase()) : [key]
+    if (d.toggle) {
+      const anySelected = group.some((k) => ids.has(k))
+      group.forEach((k) => (anySelected ? ids.delete(k) : ids.add(k)))
+    } else {
+      ids.clear()
+      group.forEach((k) => ids.add(k))
+    }
   }
   state.filter.sender = ids.size ? { ids: [...ids] } : null
   updateTargetChip()

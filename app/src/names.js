@@ -9,6 +9,10 @@
 import { getConfig } from './config.js';
 
 const cache = new Map(); // key (lowercase hex) -> name | ''
+// Lookups still in flight, so concurrent callers for the same key share one
+// request instead of racing to the network. Entries live only until the
+// lookup settles; the cache above is what persists the answer.
+const inflight = new Map(); // key (lowercase hex) -> Promise<name | ''>
 
 // A full MeshCore public key is 32 bytes = 64 lowercase-hex chars.
 const FULL_PUBKEY = /^[0-9a-f]{64}$/i;
@@ -70,32 +74,47 @@ export async function resolveName(key, companionSf /* = undefined */) {
 
   const k = key.toLowerCase();
   if (cache.has(k)) return cache.get(k);
+  // The cache is only written once a lookup RESOLVES, so it cannot deduplicate
+  // callers that arrive while one is still in flight — and drawOnce enriches
+  // two overlapping row sets per 1 Hz tick, so every unresolved id was being
+  // fetched twice a second. Coalesce on the promise instead (#230). Cleared in
+  // `finally` so a failed lookup is retried on a later tick rather than wedged.
+  if (inflight.has(k)) return inflight.get(k);
 
   const ordered = orderResolvers(resolvers, companionSf);
 
-  let anyNetworkError = false;
-  for (const resolver of ordered) {
-    try {
-      const r = await fetch(resolver.url + '?prefix=' + encodeURIComponent(k));
-      if (!r.ok) {
-        // HTTP error from this resolver — treat as "no result", continue.
-        continue;
+  const lookup = (async () => {
+    let anyNetworkError = false;
+    for (const resolver of ordered) {
+      try {
+        const r = await fetch(resolver.url + '?prefix=' + encodeURIComponent(k));
+        if (!r.ok) {
+          // HTTP error from this resolver — treat as "no result", continue.
+          continue;
+        }
+        const j = await r.json();
+        const name = !j.ambiguous && j.name ? j.name : '';
+        if (name) {
+          cache.set(k, name);
+          return name;
+        }
+        // ambiguous or not found — try next resolver
+      } catch (e) {
+        // Transient network error — mark so we don't cache '' at the end.
+        anyNetworkError = true;
       }
-      const j = await r.json();
-      const name = !j.ambiguous && j.name ? j.name : '';
-      if (name) {
-        cache.set(k, name);
-        return name;
-      }
-      // ambiguous or not found — try next resolver
-    } catch (e) {
-      // Transient network error — mark so we don't cache '' at the end.
-      anyNetworkError = true;
     }
-  }
 
-  // All resolvers responded (or errored). Only cache '' if there were no
-  // network errors (i.e. every resolver definitively had no unique name).
-  if (!anyNetworkError) cache.set(k, '');
-  return '';
+    // All resolvers responded (or errored). Only cache '' if there were no
+    // network errors (i.e. every resolver definitively had no unique name).
+    if (!anyNetworkError) cache.set(k, '');
+    return '';
+  })();
+
+  inflight.set(k, lookup);
+  try {
+    return await lookup;
+  } finally {
+    inflight.delete(k);
+  }
 }
