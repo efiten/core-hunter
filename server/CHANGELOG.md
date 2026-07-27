@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/efiten/core-hunter/compare/server-v1.0.1...server-v1.1.0) (2026-07-27)
+
+
+### Features
+
+* **web,server:** browsable multi-select target-list picker ([#223](https://github.com/efiten/core-hunter/issues/223)) ([#288](https://github.com/efiten/core-hunter/issues/288)) ([184712b](https://github.com/efiten/core-hunter/commit/184712b101aa84a3aaf0b5adb2898c56f1daacef))
+
 ## [1.0.1](https://github.com/efiten/core-hunter/compare/server-v1.0.0...server-v1.0.1) (2026-07-04)
 
 
