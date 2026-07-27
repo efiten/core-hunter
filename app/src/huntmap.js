@@ -352,6 +352,10 @@ export function createHuntMap(containerId) {
     mode3D = !!v
     map.easeTo({ pitch: mode3D ? PITCH_3D : 0, duration: 500 })
     applyLayerVisibility()
+    // draw() as well, like setLayerMode: the hidden collection's source is left
+    // at EMPTY (that is the point of the per-tick build guard), so revealing it
+    // without repopulating shows nothing until the next 1 Hz tick.
+    draw()
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
