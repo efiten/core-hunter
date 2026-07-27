@@ -29,7 +29,7 @@ import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds } from './feed.js'
+import { selectedRepeaterIds, senderList, clusterKey, expandSelection } from './feed.js'
 import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
@@ -172,7 +172,7 @@ function setDot(id, on) {
 // estimate re-shows whenever the user changes what they're looking at. Called
 // wherever state.filter or state.ignore changes.
 function refreshFilterState() {
-  el('filter-pill').classList.toggle('active', isFilterActive(state.filter) || state.ignore.size > 0)
+  el('filter-pill').classList.toggle('active', isFilterActive(activeFilter()) || state.ignore.size > 0)
   resetLocateFade()
 }
 
@@ -416,7 +416,7 @@ async function drawOnce() {
     const now = Date.now()
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
     enrichNames(rows)
-    const fn = makeFilter({ ...state.filter, ignore: state.ignore })
+    const fn = makeFilter({ ...activeFilter(), ignore: state.ignore })
     const filteredRows = rows.filter((r) => fn(r, now))
     const selected = selectedSet()
     if (state.map) {
@@ -1372,15 +1372,40 @@ function cycleLayer() {
 
 // The current target selection as a Set of lowercased ids (or null when empty),
 // passed to the map + target list for membership highlighting (#178).
+// The ids to filter on right now, expanded from the selected NODE keys against
+// the current target-list clusters (#268). Re-derived rather than stored, so a
+// node heard under a new id variant after selection is still caught instead of
+// silently dropping out of the map and Locate.
+//
+// Memoised on the identity of the rows and the key list, both of which are
+// replaced wholesale rather than mutated (lastRows per tick, keys per
+// selection change). senderList runs the dedupe+merge pass, which is already
+// the most expensive thing on the render tick, so this must not add another
+// one per caller.
+let selCache = { rows: null, keys: null, set: null }
 function selectedSet() {
-  return state.filter.sender ? new Set(state.filter.sender.ids) : null
+  if (!state.filter.sender) return null
+  const keys = state.filter.sender.keys
+  if (selCache.rows === state.lastRows && selCache.keys === keys) return selCache.set
+  const set = expandSelection(keys, senderList(state.lastRows, { ignore: state.ignore }))
+  selCache = { rows: state.lastRows, keys, set }
+  return set
+}
+
+// state.filter carries selected node KEYS; makeFilter and isFilterActive work
+// on ids. Expand at that boundary so the pure filter module keeps one shape.
+function activeFilter() {
+  const sel = selectedSet()
+  return { ...state.filter, sender: sel && sel.size ? { ids: [...sel] } : null }
 }
 
 // Chip label reflects the target selection: none → prompt, one → the sender's
 // name, more → a count (#178).
 function updateTargetChip() {
   const chip = el('target-chip')
-  const ids = state.filter.sender ? state.filter.sender.ids : []
+  // Counts selected nodes, not their id variants — a merged row is one target,
+  // and counting ids made a single tap report "3 targets" (#268).
+  const ids = state.filter.sender ? state.filter.sender.keys : []
   if (ids.length === 0) {
     chip.textContent = 'Select target'
     chip.classList.remove('active')
@@ -1392,7 +1417,8 @@ function updateTargetChip() {
     : '⌖ ' + ids.length + ' targets'
 }
 
-// Target selection is a live union of sender ids (#178). detail = null clears;
+// Target selection is a set of NODE keys (#268; #178 originally stored raw
+// ids). detail = null clears;
 // { id, toggle:true } adds/removes one (the checkbox rows); { id } replaces the
 // whole selection with just that sender (a map popup's "Isolate sender").
 // A target-list row can represent several prefix-compatible id variants of
@@ -1402,22 +1428,24 @@ function updateTargetChip() {
 // back to the single id when a caller (e.g. the map popup) has no group.
 document.addEventListener('hunt:isolate-sender', (e) => {
   const d = e.detail
-  const ids = new Set(state.filter.sender ? state.filter.sender.ids : [])
+  const keys = new Set(state.filter.sender ? state.filter.sender.keys : [])
   if (!d) {
-    ids.clear()
+    keys.clear()
   } else {
-    const key = String(d.id).toLowerCase()
-    if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
-    const group = Array.isArray(d.ids) && d.ids.length ? d.ids.map((x) => String(x).toLowerCase()) : [key]
+    const id = String(d.id).toLowerCase()
+    if (d.label != null) state.senderLabels.set(id, d.label || String(d.id))
+    // One key per node, not one per id variant (#268): clusterKey resolves the
+    // group to its full-pubkey anchor where there is one, so the selection
+    // survives the cluster gaining or losing prefixes.
+    const key = clusterKey({ sender_id: id, merged_ids: Array.isArray(d.ids) && d.ids.length ? d.ids.map((x) => String(x).toLowerCase()) : [id] })
     if (d.toggle) {
-      const anySelected = group.some((k) => ids.has(k))
-      group.forEach((k) => (anySelected ? ids.delete(k) : ids.add(k)))
+      if (keys.has(key)) keys.delete(key); else keys.add(key)
     } else {
-      ids.clear()
-      group.forEach((k) => ids.add(k))
+      keys.clear()
+      keys.add(key)
     }
   }
-  state.filter.sender = ids.size ? { ids: [...ids] } : null
+  state.filter.sender = keys.size ? { keys: [...keys] } : null
   updateTargetChip()
   const clearBtn = el('ts-clear')
   if (clearBtn) clearBtn.hidden = !state.filter.sender

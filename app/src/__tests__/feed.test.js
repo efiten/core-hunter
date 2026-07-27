@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -298,5 +298,66 @@ describe('targetParts', () => {
   it('falls back to a dash when neither is present', () => {
     expect(targetParts({ sender_label: null, sender_id: null }))
       .toEqual({ primary: '—', secondary: '' })
+  })
+})
+
+// #267/#268 blocker 4: a selection captured at tap time is a snapshot of the
+// ids a node was known by THEN. When that node is later heard under a new
+// variant — its first DISCOVER_RESP prefix, say — those receptions fall
+// outside the stored set and vanish from the map and Locate, while the row
+// still renders checked. Silently dropping receptions for the node you are
+// actively hunting is the failure a user is least likely to notice, so the
+// selection has to name the NODE and be expanded to its current ids on use.
+describe('selection follows the node, not the ids it had at tap time (#268)', () => {
+  const A = pk('a1b2c3d4')
+  const shared = { sender_label: 'Repeater-Zuid' }
+
+  it('keys a merged cluster on its full-pubkey anchor', () => {
+    const row = { sender_id: 'a1b2', merged_ids: ['a1b2', A] }
+    expect(clusterKey(row)).toBe(A)
+  })
+
+  it('keys an unmerged row on its own id, lowercased', () => {
+    expect(clusterKey({ sender_id: 'A1B2', merged_ids: ['a1b2'] })).toBe('a1b2')
+    expect(clusterKey({ sender_id: 'Spammer', merged_ids: ['spammer'] })).toBe('spammer')
+  })
+
+  it('is stable as the cluster grows — the key does not change', () => {
+    const before = clusterKey({ sender_id: 'a1b2', merged_ids: ['a1b2', A] })
+    const after = clusterKey({ sender_id: 'a1b2', merged_ids: ['a1b2', 'a1b2c3d4e5f6', A] })
+    expect(after).toBe(before)
+  })
+
+  it('expands a selected key to every id the node currently answers to', () => {
+    const rows = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect([...expandSelection([A], rows)].sort()).toEqual(['a1b2', A].sort())
+  })
+
+  it('picks up a variant that appeared AFTER the selection was made', () => {
+    // The actual bug: tap the row when it is {a1b2, A}, then the node's first
+    // discover reply arrives as a longer prefix of the same pubkey. Under the
+    // old snapshot that reception was dropped; the key is unchanged, so it is
+    // caught now. The prefix has to be a real prefix of A to belong to it.
+    const discoverPrefix = A.slice(0, 16)
+    const later = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: discoverPrefix, ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(expandSelection([A], later).has(discoverPrefix)).toBe(true)
+  })
+
+  it('keeps a selected node selected even when it is not currently heard', () => {
+    // Nothing in the window matches, so there is no cluster to expand — the
+    // key must survive rather than the selection silently emptying.
+    expect([...expandSelection([A], [])]).toEqual([A])
+  })
+
+  it('expands nothing for an empty selection', () => {
+    expect(expandSelection([], []).size).toBe(0)
+    expect(expandSelection(null, []).size).toBe(0)
   })
 })

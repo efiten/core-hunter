@@ -137,6 +137,43 @@ export function targetParts(rec) {
   return { primary: `${prefix} (name not resolved)`, secondary: prefix }
 }
 
+// clusterKey names the NODE a target-list row stands for, stably across
+// changes to which ids it is currently known by (#268).
+//
+// A selection stored as the ids a row happened to carry at tap time is a
+// snapshot: when the node is later heard under a new variant — its first
+// DISCOVER_RESP prefix, say — that reception falls outside the stored set and
+// disappears from the map and Locate, while the row still renders checked.
+// Silently dropping receptions for the node being hunted is the failure a user
+// is least likely to notice.
+//
+// The full pubkey is the identity when the cluster has one, because that is
+// what anchors it (see mergePrefixGroups) and it cannot change as prefixes
+// come and go. A row with no anchor stands only for itself.
+export function clusterKey(rec) {
+  const ids = (rec && rec.merged_ids) || []
+  const anchor = ids.find((id) => FULL_PUBKEY.test(id))
+  if (anchor) return anchor
+  return String((rec && rec.sender_id) || '').toLowerCase()
+}
+
+// expandSelection turns selected node keys into the id set to filter on right
+// now, by re-deriving each node's current cluster from the rows in hand.
+//
+// A key with no matching cluster expands to itself: the node may simply not
+// have been heard in this window, and the selection must survive that rather
+// than silently emptying.
+export function expandSelection(keys, rows) {
+  const out = new Set()
+  for (const key of keys || []) {
+    const k = String(key).toLowerCase()
+    const cluster = (rows || []).find((r) => clusterKey(r) === k)
+    if (cluster) for (const id of cluster.merged_ids || []) out.add(id)
+    else out.add(k)
+  }
+  return out
+}
+
 // selectedRepeaterIds narrows a target selection down to the ids that behave
 // as repeaters, per the most recent record for each: either an Advert
 // explicitly reported DeviceRole Repeater (sender_role), or the id was only
