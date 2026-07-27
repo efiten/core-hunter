@@ -58,12 +58,18 @@ function mergePrefixGroups(entries) {
     if (attached.has(i)) return   // an anchor never attaches to another anchor
     const lower = id.toLowerCase()
     if (!HEX_PREFIX_KINDS.has(rec.sender_kind)) { solo.push(i); return }
-    const matches = anchors.filter((a) => {
-      const [anchorId, anchorRec] = entries[a]
-      return anchorId.toLowerCase().startsWith(lower) && sameResolvedName(rec.sender_label, anchorRec.sender_label)
-    })
-    if (matches.length === 1) attached.get(matches[0]).push(i)
-    else solo.push(i)   // 0 anchors, or ambiguous across 2+
+    // Count by prefix ALONE, then apply the name gate to the survivor. Folding
+    // sameResolvedName into the count makes the refusal name-conditioned, which
+    // defeats it in exactly the case it exists for: two anchors sharing a
+    // prefix under different names (say a1b2c3d4… "Zuid" and a1b2ffff… "Noord")
+    // leave a relay hop a1b2 matching only one of them, so it attaches — even
+    // though the hop is equally likely to have come from the other. The
+    // resolver cannot rescue that either: it answers unambiguously whenever it
+    // knows only one of the two.
+    const matches = anchors.filter((a) => entries[a][0].toLowerCase().startsWith(lower))
+    if (matches.length === 1 && sameResolvedName(rec.sender_label, entries[matches[0]][1].sender_label)) {
+      attached.get(matches[0]).push(i)
+    } else solo.push(i)   // 0 anchors, ambiguous across 2+, or the name disagrees
   })
 
   const groups = [...attached.values(), ...solo.map((i) => [i])]

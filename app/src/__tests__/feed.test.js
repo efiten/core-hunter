@@ -143,24 +143,38 @@ describe('dedupeSenders prefix-aware merging (#267)', () => {
   })
   it('does not merge rows with the same name when the ids are not prefix-compatible', () => {
     const out = senderList([
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'aabbcc', sender_label: 'Same-Name' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('aabbcc'), sender_label: 'Same-Name' }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'ffeedd', sender_label: 'Same-Name' }),
     ], {})
-    expect(out.map((r) => r.sender_id).sort()).toEqual(['aabbcc', 'ffeedd'])
+    expect(out.map((r) => r.sender_id).sort()).toEqual([pk('aabbcc'), 'ffeedd'].sort())
   })
   it('does not merge prefix-compatible ids before a name has resolved', () => {
     const out = senderList([
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4', sender_label: null }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: null }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: null }),
     ], {})
-    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3d4'])
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', pk('a1b2c3d4')].sort())
+  })
+  it('refuses a prefix that two anchors share, even under different names', () => {
+    // The refusal has to count by prefix alone. Gating the count on the name
+    // makes it collapse to one match here -- and the hop is equally likely to
+    // have come from the other node, so attaching it feeds one node's samples
+    // into the other's Locate estimate.
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Repeater-Zuid' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2ffff'), sender_label: 'Repeater-Noord' }),
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Repeater-Zuid' }),
+    ], {})
+    expect(out).toHaveLength(3)
+    const relay = out.find((r) => r.sender_id === 'a1b2')
+    expect(relay.merged_ids).toEqual(['a1b2'])
   })
   it('does not merge prefix-compatible ids with different resolved names', () => {
     const out = senderList([
-      rec({ sender_kind: 'advert_pubkey', sender_id: 'a1b2c3d4', sender_label: 'Node-One' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Node-One' }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Node-Two' }),
     ], {})
-    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3d4'])
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', pk('a1b2c3d4')].sort())
   })
   it('never merges channel_name rows, even when ids are prefix-compatible and names match', () => {
     const out = senderList([
