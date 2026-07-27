@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.0](https://github.com/efiten/core-hunter/compare/web-v1.2.1...web-v1.3.0) (2026-07-27)
+
+
+### Features
+
+* node-position layer — advertised positions vs. the RSSI estimate (app + web) ([#272](https://github.com/efiten/core-hunter/issues/272)) ([0c21df5](https://github.com/efiten/core-hunter/commit/0c21df553776034c9b461678d6ca16156d99f44f))
+* **web,server:** browsable multi-select target-list picker ([#223](https://github.com/efiten/core-hunter/issues/223)) ([#288](https://github.com/efiten/core-hunter/issues/288)) ([184712b](https://github.com/efiten/core-hunter/commit/184712b101aa84a3aaf0b5adb2898c56f1daacef))
+* **web:** add a live reception ticker, two-way synced with the map ([#224](https://github.com/efiten/core-hunter/issues/224)) ([#287](https://github.com/efiten/core-hunter/issues/287)) ([8165140](https://github.com/efiten/core-hunter/commit/8165140c99acf4db590997328eba243f62dea22c))
+* **web:** Grafana-style time-range picker with relative ranges ([#285](https://github.com/efiten/core-hunter/issues/285)) ([#289](https://github.com/efiten/core-hunter/issues/289)) ([3270463](https://github.com/efiten/core-hunter/commit/3270463a84a5f272c943436ea7ccf91386455fbe))
+
 ## [1.2.1](https://github.com/efiten/core-hunter/compare/web-v1.2.0...web-v1.2.1) (2026-07-26)
 
 

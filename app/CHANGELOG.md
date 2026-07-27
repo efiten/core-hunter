@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.0](https://github.com/efiten/core-hunter/compare/app-v1.4.0...app-v1.5.0) (2026-07-27)
+
+
+### Features
+
+* **app:** render points in 3D mode as raised pillar markers ([#250](https://github.com/efiten/core-hunter/issues/250)) ([#266](https://github.com/efiten/core-hunter/issues/266)) ([5d21696](https://github.com/efiten/core-hunter/commit/5d216961ace8e38b0859f8ef9c27654eb04a6207))
+* **app:** sound modes — rx/tx cues + generative ambient music ([#145](https://github.com/efiten/core-hunter/issues/145)) ([#261](https://github.com/efiten/core-hunter/issues/261)) ([c72022e](https://github.com/efiten/core-hunter/commit/c72022e3053dafd47c7d7d87694af5c05714e189))
+* node-position layer — advertised positions vs. the RSSI estimate (app + web) ([#272](https://github.com/efiten/core-hunter/issues/272)) ([0c21df5](https://github.com/efiten/core-hunter/commit/0c21df553776034c9b461678d6ca16156d99f44f))
+
+
+### Bug Fixes
+
+* **app:** bound queue reads, persist the publish watermark, add 7-day retention ([#230](https://github.com/efiten/core-hunter/issues/230)) ([#283](https://github.com/efiten/core-hunter/issues/283)) ([c1c92fc](https://github.com/efiten/core-hunter/commit/c1c92fc49f88a1a87a6c17a6885965a00180d922))
+* **app:** merge target-list rows for the same node across id prefixes ([#268](https://github.com/efiten/core-hunter/issues/268)) ([91e63c6](https://github.com/efiten/core-hunter/commit/91e63c64cbc7433e1828f31795c0ed8e83d8e166))
+
 ## [1.4.0](https://github.com/efiten/core-hunter/compare/app-v1.3.1...app-v1.4.0) (2026-07-26)
 
 

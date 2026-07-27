@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/efiten/core-hunter/compare/nameresolver-v1.0.0...nameresolver-v1.1.0) (2026-07-27)
+
+
+### Features
+
+* node-position layer — advertised positions vs. the RSSI estimate (app + web) ([#272](https://github.com/efiten/core-hunter/issues/272)) ([0c21df5](https://github.com/efiten/core-hunter/commit/0c21df553776034c9b461678d6ca16156d99f44f))
+
 ## 1.0.0 (2026-07-02)
 
 
