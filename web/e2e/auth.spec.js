@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 async function mockRole(page, me) {
   await page.route('**/api/auth/me', r => r.fulfill({ json: me }))

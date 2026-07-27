@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 test('non-admin is bounced from the admin page', async ({ page }) => {
   await page.route('**/api/auth/me', r => r.fulfill({ json: { role: 'member', username: 'm' } }))

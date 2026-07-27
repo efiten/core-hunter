@@ -59,6 +59,28 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .lc-strongest { font-size: 16px; line-height: 18px; text-align: center; color: var(--ch-sig-warm);
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
 
+/* Node-position layer (#197): ▲ = the node's own advertised position, ● = our
+   RSSI estimate. The estimate deliberately reuses .lc-centroid's look so it
+   reads as the same kind of thing Locate already draws. */
+.np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; color: var(--ch-text);
+  text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); cursor: pointer; }
+/* Absolute so the label never shifts the ▲ off its anchored coordinate. The
+   layer is opt-in, so names are shown on the map while it is on (#197). */
+.np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+  margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
+  color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
+.np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg);
+  background: var(--ch-sig-hot); cursor: pointer; }
+.np-muted { color: var(--ch-muted); }
+.np-caveat { font-size: 11px; }
+
+/* AGENTS.md §7: the layer implies node locations, so the disclaimer stays on
+   screen for as long as the layer is drawn — not only inside a tapped popup. */
+#nodepos-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 520;
+  padding: 7px 10px; border: 1px solid var(--ch-border); border-radius: 10px;
+  background: var(--ch-surface); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: var(--ch-muted); font-size: 11px; line-height: 1.45; pointer-events: none; }
+
 /* Shared toast stack (#199) — paused-banner and the first-connect hint share
    this slot so they stack instead of overlapping on narrow (mobile) viewports. */
 #toast-stack { position: fixed; top: 50px; left: 12px; right: 12px; z-index: 560;
@@ -120,7 +142,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
 /* ---- FABs ---- */
-#layer-toggle, #discover-btn, #recenter-btn, #mode3d-toggle, #sound-toggle { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #discover-btn, #recenter-btn, #mode3d-toggle, #sound-toggle, #nodepos-toggle { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -135,13 +157,19 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #discover-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 166px); }
 #recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 220px); }
 #mode3d-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 274px); }
+/* Next slot in the 54px stack (#197), anchored like the rest so the clearance
+   above #hud stays constant across devices — see #264. 328px is #sound-toggle
+   (#145), so this layer takes 382. */
+#nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 382px); }
+#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg, #sound-toggle svg, #nodepos-toggle svg { pointer-events: none; }
+/* On = the layer is drawing; same accent-ring idiom as the discover FAB. */
+#nodepos-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 /* Next slot in the 54px stack, anchored like the rest (#264). NOT the 408px
    this PR originally used: that was the 5th slot in the old unanchored
    192/246/300/354 numbering, and env + 408 put the top edge ~475px up, which
    is off-screen in landscape on a phone in a car mount (~430px viewport).
    At 328 the top edge is ~395px + inset, which fits. */
 #sound-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 328px); }
-#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg, #sound-toggle svg { pointer-events: none; }
 /* Sound FAB (#145): steady accent while a sound mode is on, same pattern as auto-discover. */
 #sound-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
@@ -278,9 +306,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 
 body.onboarding #topbar,
-body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle, body.onboarding #sound-toggle { z-index: 560; }
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
+body.onboarding #sound-toggle, body.onboarding #nodepos-toggle { z-index: 560; }
 body.onboarding #topbar-controls, body.onboarding #settings-btn,
-body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle, body.onboarding #sound-toggle {
+body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
+body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   box-shadow: 0 0 0 2px var(--ch-accent); }
 /* The "?" only re-opens onboarding, so it is redundant (and crowds the narrow
    topbar) while the overlay is already showing. */

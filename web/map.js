@@ -1,7 +1,8 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
+import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
+import { groupSenderPoints, estimateFor, driftPresentation, circleRing } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
@@ -52,6 +53,7 @@ let targetPicker = null
 // reading it would throw rather than fall through the null guard if a redraw
 // ever lands before module eval reaches the wiring.
 let senderPicker = null
+const nodePosLayer = L.layerGroup().addTo(map)
 // Reception ticker (#224) two-way sync support: a distinct, non-interactive
 // highlight ring for whatever reception is on the ticker's playhead. The
 // ticker's own onActiveChange callback already carries the full point (lat/
@@ -206,6 +208,17 @@ function applyObserverGate() {
   const show = canSeeObserverPoints(currentRole)
   const toggle = document.querySelector('.cs-layer-toggle')
   if (toggle) toggle.hidden = !show
+  // Node positions ride the same member gate: the resolve proxy strips lat/lon
+  // below member, so the layer could only ever be empty for a guest — hide the
+  // control rather than offering a toggle that does nothing.
+  const npToggle = document.querySelector('.np-layer-toggle')
+  if (npToggle) npToggle.hidden = !show
+  if (!show) {
+    nodePosCb.checked = false
+    nodePosLayer.clearLayers(); nodePosSig = null
+    const note = document.getElementById('nodepos-note')
+    if (note) note.hidden = true
+  }
   if (!show) {
     clearObserverLayers()
   } else {
@@ -254,6 +267,7 @@ export function refresh() {
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
+    drawNodePositions()   // follows the same filter/bbox set as the points
     if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
 }
@@ -568,8 +582,13 @@ function activateLocate() {
   if (locateActive) { drawLocate(); return }
   locateActive = true
   locateBtn.classList.add('on')
-  // focus mode: hide every non-relevant layer so only the located node shows
+  // focus mode: hide every non-relevant layer so only the located node shows.
+  // nodePosSig has to go with the layer it describes: leaving it set means the
+  // redraw after Locate recomputes the same signature, takes the early return,
+  // and never repopulates — the layer would stay empty for the rest of the
+  // session. One clear, one reset.
   pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  nodePosLayer.clearLayers(); nodePosSig = null
   rxHighlightLayer.clearLayers() // suppress ticker rings in focus mode (#287 blocker 3)
   urlstate.save()
   drawLocate()
@@ -658,6 +677,129 @@ async function drawObserverPoints(src, layer, ring) {
     })
   }
 }
+
+// --- Node-position layer (#197) ---------------------------------------------
+// Draws each sender's self-advertised position (▲) against our RSSI estimate
+// (●), with the gap between them as drift. Positions come from the same
+// same-origin resolve proxy the names already use — which strips lat/lon below
+// the member role server-side, so a guest simply gets no positions and the
+// layer stays empty. Unlike the app (which bulk-fetches the whole registry),
+// web only covers senders present in the current filter set; registry-wide
+// coverage would need a bulk proxy endpoint on the Go server.
+const nodePosCb = document.getElementById('f-nodepos')
+
+// Colour states the rule that produced them, never a verdict on which position
+// is "right": the advertised one is operator-self-reported and can be stale.
+function driftColorVar(p) {
+  if (p.kind === 'tight') return '--ch-accent'
+  if (p.kind === 'drifted' && p.outsideCircle) return '--ch-accent-2'
+  return '--ch-muted'
+}
+
+function nodePosPopup(name, id, p, est) {
+  const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
+  const drift = p.driftM != null ? `<br>drift ${Math.round(p.driftM)} m · ${est ? est.n : 0} points` : ''
+  const circle = p.circle
+    ? `<br>${p.circle.kind === 'search'
+        ? `search radius ~${Math.round(p.circle.radiusM)} m`
+        : 'one-sided — radius not trusted'}`
+    : ''
+  return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}`
+    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
+}
+
+// Generation token: a draw can be re-entered while its /api/points fetch is in
+// flight (the checkbox, a refresh, and the name-resolution redraw all trigger
+// one). Without this the later pass clears the layer and both then add their
+// markers, leaving duplicates behind.
+let nodePosGen = 0
+// Signature of what is currently drawn. Rebuilding the layer destroys every
+// marker, which silently closes any popup the user has open — and this layer
+// redraws on each refresh (pan, zoom, filter change, the name-resolution
+// pass), so an unguarded rebuild can yank a popup away mid-read. Skip the
+// rebuild when the rendered content is identical, mirroring targetlist.js's
+// _lastSig guard in the app.
+let nodePosSig = null
+
+async function drawNodePositions() {
+  const gen = ++nodePosGen
+  const note = document.getElementById('nodepos-note')
+  if (note) note.hidden = !nodePosCb.checked
+  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole)) {
+    nodePosLayer.clearLayers(); nodePosSig = null
+    return
+  }
+  const { points } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  // A newer draw started (or the layer was switched off) while we were waiting.
+  if (gen !== nodePosGen || !nodePosCb.checked) return
+  const bySender = groupSenderPoints(points)
+
+  // Resolve any sender we have not looked up yet, then redraw once — same
+  // fill-only, at-most-once-per-key pattern the name lookups already use.
+  const unresolved = [...bySender.keys()].filter((k) => isResolvableId(k) && cachedPosition(k) === undefined)
+  if (unresolved.length) {
+    Promise.all(unresolved.map((k) => resolveName(k))).then(() => { if (nodePosCb.checked) drawNodePositions() })
+  }
+
+  // Resolve everything first so the signature covers the whole rendered set.
+  const draw = []
+  for (const [id, pts] of bySender) {
+    // Only use cached position for full pubkeys (#272 blocker 4): a 2-byte
+    // relay prefix could resolve to the wrong node if there are collisions
+    // in the upstream resolver. Partial prefixes are ambiguous by design.
+    const advertised = (isFullPubkey(id) ? cachedPosition(id) : null) || null
+    const est = estimateFor(pts)
+    const p = driftPresentation({ advertised, estimate: est })
+    // estimate-only adds nothing here: the points themselves already show it,
+    // and Locate draws the centroid properly. Only advertised positions are new.
+    if (p.kind === 'none' || p.kind === 'estimate-only') continue
+    draw.push({ id, advertised, est, p, name: cachedName(id) })
+  }
+
+  // No dedupe pass here, deliberately (#272 blocker 5). The duplicate it would
+  // target — one node drawing two overlapping markers under a full pubkey and
+  // a relay prefix — cannot occur once blocker 4's gate is in place: a
+  // non-full-pubkey id gets advertised = null, driftPresentation then returns
+  // 'estimate-only', and the loop above skips it. So every entry that reaches
+  // here is a distinct full pubkey, and two distinct full pubkeys are two
+  // physically distinct nodes by definition.
+  //
+  // Deduping on coordinates would therefore only ever fire on genuinely
+  // different nodes that happen to share a position — two repeaters on one
+  // mast, which is ordinary in a mesh — and would silently hide one of them.
+  // If a dedupe is ever needed it must key on identity, never on coordinates.
+  const deduped = draw
+
+  const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
+    Math.round(d.p.circle ? d.p.circle.radiusM : -1),
+    d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+  if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
+  nodePosSig = sig
+  nodePosLayer.clearLayers()
+
+  for (const { id, advertised, est, p, name } of deduped) {
+    const color = cssVar(driftColorVar(p))
+    const html = nodePosPopup(name, id, p, est)
+    // The name rides on the map next to the ▲, not just in the popup: the
+    // layer is opt-in, so it can afford the labels while it is on. Only the ▲
+    // is labelled — the ● is the same node.
+    const label = `<span class="np-label">${esc(name || id.slice(0, 6))}</span>`
+    L.marker([advertised.lat, advertised.lon], {
+      icon: L.divIcon({ className: 'np-advert-icon', html: `<div class="np-advert" style="color:${color}">▲${label}</div>`, iconSize: [14, 16] }),
+    }).bindPopup(html).addTo(nodePosLayer)
+    if (!est || !est.centroid) continue
+    L.circleMarker([est.centroid.lat, est.centroid.lon], { radius: 5, color, weight: 2, fillColor: color, fillOpacity: 0.9 })
+      .bindPopup(html).addTo(nodePosLayer)
+    L.polyline([[advertised.lat, advertised.lon], [est.centroid.lat, est.centroid.lon]], { color, weight: 1.5, opacity: 0.9 })
+      .addTo(nodePosLayer)
+    if (p.circle) {
+      const ring = circleRing(est.centroid, p.circle.radiusM).map(([lon, lat]) => [lat, lon])
+      if (ring.length) L.polyline(ring, { color, weight: 1.2, opacity: 0.8, dashArray: p.circle.kind === 'search' ? '4 4' : '1 3' }).addTo(nodePosLayer)
+    }
+  }
+}
+
+nodePosCb.addEventListener('change', () => { drawNodePositions() })
 
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
@@ -869,6 +1011,7 @@ urlstate.bindControl('to', 'f-to', { urlOnly: true })
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
+urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
 // so 'senders' is not a registered field yet when load() normalizes the address

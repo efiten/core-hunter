@@ -18,6 +18,12 @@ export function openStore(dbPath) {
   // pubkey is validated hex upstream; the LIKE pattern is a bound parameter.
   const resolveStmt = db.prepare(`SELECT pubkey, name, lat, lon FROM nodes WHERE pubkey LIKE ? LIMIT 2`)
   const allStmt = db.prepare(`SELECT pubkey, name, lat, lon FROM nodes`)
+  // Only nodes that actually carry a position — a node is useless to a
+  // map layer without both coordinates, so the filter belongs in SQL rather
+  // than shipping null rows to every client.
+  const positionedStmt = db.prepare(
+    `SELECT pubkey, name, lat, lon FROM nodes WHERE lat IS NOT NULL AND lon IS NOT NULL`
+  )
   const countStmt = db.prepare(`SELECT COUNT(*) AS c FROM nodes`)
 
   return {
@@ -26,6 +32,9 @@ export function openStore(dbPath) {
     },
     resolvePrefix(prefix) {
       return resolveStmt.all(prefix + '%')
+    },
+    allWithPosition() {
+      return positionedStmt.all()
     },
     count() {
       return Number(countStmt.get().c)
