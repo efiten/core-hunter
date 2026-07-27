@@ -350,9 +350,16 @@ export function createHuntMap(containerId) {
   function nodePopup(n, p, est) {
     const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
     const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
+    // "no estimate" is not the same as "not heard" (#272). An advert or a
+    // discover reply names the node outright, so those receptions join to it
+    // and produce an estimate. A relayed packet measures the LAST HOP that
+    // re-broadcast to us — a valid measurement of that repeater, but carried on
+    // a 2-byte path prefix, which cannot be pinned to one registry node. So a
+    // node heard only that way has plenty of receptions and still no estimate
+    // here, and claiming it was never heard would be wrong.
     const drift = p.driftM != null
       ? `<br>drift ${Math.round(p.driftM)} m · ${est ? est.n : 0} points`
-      : '<br>not heard yet — no estimate'
+      : '<br>no estimate — no reception identifies this node directly'
     // The circle only claims accuracy when the sampling geometry earned it;
     // say which of the two is being drawn so the map is self-explaining.
     const circle = p.circle
