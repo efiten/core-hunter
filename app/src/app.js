@@ -37,6 +37,7 @@ import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALL
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
+import { SOUND_MODES, nextSoundMode, shouldPing, createSoundEngine } from './sound.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
@@ -70,6 +71,21 @@ function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
 }
 
+// Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
+// like the attenuator; unknown stored values fall back to off. Also migrates
+// the pre-#255 4-state values (a couple of days of dogfooding only, never
+// released) onto the collapsed 3-state set.
+const SOUND_MODE_MIGRATION = { ping: 'rxtx', ambient: 'full', music: 'full' }
+function loadSoundMode() {
+  const v = localStorage.getItem('core-hunter-sound')
+  if (SOUND_MODE_MIGRATION[v]) return SOUND_MODE_MIGRATION[v]
+  return SOUND_MODES.includes(v) ? v : 'off'
+}
+
+function saveSoundMode(mode) {
+  try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
+}
+
 // Row cap for the surfaces that are not window-scoped (the receptions log's
 // "all" mode, the target list) — see docs/2026-07-22-retention-and-bounded-reads.md.
 const RECENT_CAP = 2000
@@ -98,6 +114,7 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  soundMode: loadSoundMode(),
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
@@ -320,7 +337,7 @@ function positionCallouts() {
   if (controls) place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' })
   const menuBtn = el('settings-btn')
   if (menuBtn) place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' })
-  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn')].filter(Boolean)
+  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn'), el('mode3d-toggle'), el('sound-toggle')].filter(Boolean)
   if (fabs.length) place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' })
 }
 
@@ -388,6 +405,11 @@ async function processFrame(dv) {
   await state.queue.add(rec)
   state.lastPacketAt = Date.now()
   updateHud(rec)
+  // Sound (#145): a morse dit per DIRECT reception inside the active filter
+  // set — you hear exactly what the map plots, minus relayed traffic.
+  if (shouldPing(rec, state.soundMode, makeFilter({ ...state.filter, ignore: state.ignore }), Date.now())) {
+    sound.ping(rec.rssi, effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb))
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -607,13 +629,16 @@ function autoPingTick() {
   if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
   sendDiscover()
   pulseDiscoverBtn()
-  // Each staggered trace-ping is also a real transmission — pulse the FAB for
-  // it too, but only if the ping actually succeeds (#254).
+  sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
+  // Each staggered trace-ping is also a real transmission — pulse the FAB and
+  // sound the cue for it too, but only if the ping actually succeeds (#254).
+  // The tx cue follows the same rule as the pulse: it must mean "a frame went
+  // out", not "a timer fired", or it lies after a BLE drop.
   for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
     const handle = setTimeout(() => {
       const i = state.autoPing.pendingPings.indexOf(handle)
       if (i !== -1) state.autoPing.pendingPings.splice(i, 1)
-      if (sendTracePing(id)) pulseDiscoverBtn()
+      if (sendTracePing(id)) { pulseDiscoverBtn(); sound.txBlip('trace') }
     }, delayMs)
     state.autoPing.pendingPings.push(handle)
   }
@@ -1339,6 +1364,54 @@ function toggle3D() {
 }
 
 // ---------------------------------------------------------------------------
+// Sound modes (#145, collapsed to 3 states per #255) — off / rxtx / full,
+// cycled by the sound FAB
+// ---------------------------------------------------------------------------
+
+const sound = createSoundEngine()
+
+// Icon shows the CURRENT mode, same convention as the layer/2D-3D FABs:
+// slashed speaker (off), speaker + one wave (rxtx — pings/tx only), music
+// note (full — soundbed + generative music + pings/tx; a radio-station icon
+// is a planned addition once #256 lands).
+const SOUND_SPEAKER = '<path d="M4 8h3l4-3v10l-4-3H4z"/>'
+const SOUND_ICONS = {
+  off: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    ${SOUND_SPEAKER}<line x1="13.5" y1="7.5" x2="17.5" y2="12.5"/><line x1="17.5" y1="7.5" x2="13.5" y2="12.5"/>
+  </svg>`,
+  rxtx: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    ${SOUND_SPEAKER}<path d="M13.5 7.5a4.2 4.2 0 0 1 0 5"/>
+  </svg>`,
+  full: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    <path d="M7 15.5V5l9-1.5V14"/><circle cx="5" cy="15.5" r="2"/><circle cx="14" cy="14" r="2"/>
+  </svg>`,
+}
+const SOUND_LABELS = {
+  off: 'Toggle sound (off)',
+  rxtx: 'Toggle sound (reception + transmit cues only)',
+  full: 'Toggle sound (soundbed + music + reception/transmit cues)',
+}
+
+function updateSoundIcon() {
+  const btn = el('sound-toggle')
+  // Ring shows the cycle position (#259), same as the layer and compass FABs —
+  // off/rxtx/full is a 3-state cycle, which is exactly what fabring.js says
+  // earns one. Without it this FAB was the one multi-state control whose next
+  // tap you could not predict.
+  const idx = SOUND_MODES.indexOf(state.soundMode)
+  btn.innerHTML = fabRingSvg(idx, SOUND_MODES.length) + SOUND_ICONS[state.soundMode]
+  btn.setAttribute('aria-label', SOUND_LABELS[state.soundMode])
+  btn.classList.toggle('on', state.soundMode !== 'off')
+}
+
+function cycleSound() {
+  state.soundMode = nextSoundMode(state.soundMode)
+  saveSoundMode(state.soundMode)
+  sound.setMode(state.soundMode)   // the FAB tap is the user gesture Web Audio needs
+  updateSoundIcon()
+}
+
+// ---------------------------------------------------------------------------
 // Compass mode (map follow toggle) — pwa only
 // ---------------------------------------------------------------------------
 
@@ -1569,6 +1642,12 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   update3DIcon()
   el('mode3d-toggle').addEventListener('click', toggle3D)
+
+  // Sound FAB (#145). A persisted non-off mode is restored here; the engine
+  // resumes its (autoplay-suspended) context on the first tap anywhere.
+  updateSoundIcon()
+  el('sound-toggle').addEventListener('click', cycleSound)
+  if (state.soundMode !== 'off') sound.setMode(state.soundMode)
 
   // Compass button — always visible; cycles static → follow (north up) →
   // follow + device heading → follow + GPS course/driving mode (#242). See
