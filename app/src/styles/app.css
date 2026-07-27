@@ -142,7 +142,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
 /* ---- FABs ---- */
-#layer-toggle, #discover-btn, #recenter-btn, #mode3d-toggle, #nodepos-toggle { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #discover-btn, #recenter-btn, #mode3d-toggle, #sound-toggle, #nodepos-toggle { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -158,11 +158,20 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 220px); }
 #mode3d-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 274px); }
 /* Next slot in the 54px stack (#197), anchored like the rest so the clearance
-   above #hud stays constant across devices — see #264. */
-#nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 328px); }
-#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg, #nodepos-toggle svg { pointer-events: none; }
+   above #hud stays constant across devices — see #264. 328px is #sound-toggle
+   (#145), so this layer takes 382. */
+#nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 382px); }
+#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #mode3d-toggle svg, #sound-toggle svg, #nodepos-toggle svg { pointer-events: none; }
 /* On = the layer is drawing; same accent-ring idiom as the discover FAB. */
 #nodepos-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
+/* Next slot in the 54px stack, anchored like the rest (#264). NOT the 408px
+   this PR originally used: that was the 5th slot in the old unanchored
+   192/246/300/354 numbering, and env + 408 put the top edge ~475px up, which
+   is off-screen in landscape on a phone in a car mount (~430px viewport).
+   At 328 the top edge is ~395px + inset, which fits. */
+#sound-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 328px); }
+/* Sound FAB (#145): steady accent while a sound mode is on, same pattern as auto-discover. */
+#sound-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
 
 /* Segmented progress ring (#259) — an absolutely-positioned overlay so it sits
@@ -298,10 +307,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 body.onboarding #topbar,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
-body.onboarding #nodepos-toggle { z-index: 560; }
+body.onboarding #sound-toggle, body.onboarding #nodepos-toggle { z-index: 560; }
 body.onboarding #topbar-controls, body.onboarding #settings-btn,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
-body.onboarding #nodepos-toggle {
+body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   box-shadow: 0 0 0 2px var(--ch-accent); }
 /* The "?" only re-opens onboarding, so it is redundant (and crowds the narrow
    topbar) while the overlay is already showing. */
