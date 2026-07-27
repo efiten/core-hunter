@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.1](https://github.com/efiten/core-hunter/compare/web-v1.2.0...web-v1.2.1) (2026-07-26)
+
+
+### Bug Fixes
+
+* **web:** add favicons to all four web entry points ([#234](https://github.com/efiten/core-hunter/issues/234)) ([#263](https://github.com/efiten/core-hunter/issues/263)) ([2e39fb9](https://github.com/efiten/core-hunter/commit/2e39fb9afe9f9f61917820e89a80c591d8b49510))
+* **web:** match app's filter-chip visual language ([#225](https://github.com/efiten/core-hunter/issues/225)) ([#286](https://github.com/efiten/core-hunter/issues/286)) ([a7a41f4](https://github.com/efiten/core-hunter/commit/a7a41f407acd379a1b2977e827e3794ff86989fa))
+
+
+### Miscellaneous Chores
+
+* **web:** drop the unserved web/landing copy of the homepage ([#291](https://github.com/efiten/core-hunter/issues/291)) ([8c5f979](https://github.com/efiten/core-hunter/commit/8c5f979cf49d48ee2d018743ba40a455d3a4861b))
+
 ## [1.2.0](https://github.com/efiten/core-hunter/compare/web-v1.1.0...web-v1.2.0) (2026-07-13)
 
 

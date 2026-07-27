@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/efiten/core-hunter/compare/app-v1.3.1...app-v1.4.0) (2026-07-26)
+
+
+### Features
+
+* **app:** segmented progress ring for multi-state FABs ([#259](https://github.com/efiten/core-hunter/issues/259)) ([#265](https://github.com/efiten/core-hunter/issues/265)) ([fe22c49](https://github.com/efiten/core-hunter/commit/fe22c496801a5aa31792f7fcd625447f34e16253))
+
+
+### Bug Fixes
+
+* **app:** move the FAB stack down toward the thumb zone ([#257](https://github.com/efiten/core-hunter/issues/257)) ([#264](https://github.com/efiten/core-hunter/issues/264)) ([852a9bd](https://github.com/efiten/core-hunter/commit/852a9bd9fb415ebb664b6d5f31c6735840c22663))
+* **app:** stop auto-ping's discover broadcast and first trace-ping colliding ([#253](https://github.com/efiten/core-hunter/issues/253), [#254](https://github.com/efiten/core-hunter/issues/254)) ([#262](https://github.com/efiten/core-hunter/issues/262)) ([428f57c](https://github.com/efiten/core-hunter/commit/428f57c8aa0e5686c931d0ea6971ca1fae17b518))
+
 ## [1.3.1](https://github.com/efiten/core-hunter/compare/app-v1.3.0...app-v1.3.1) (2026-07-13)
 
 
