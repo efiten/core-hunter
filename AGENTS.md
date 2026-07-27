@@ -430,8 +430,16 @@ Receptions without a GPS fix are dropped at the PWA before publishing (no row, n
 
 - Receptions are written to IndexedDB **before** any MQTT publish attempt. The map renders from the
   local store on every tick.
-- The MQTT drain loop publishes rows to the broker but **never deletes local rows**. IndexedDB is
-  the working set; the backend deduplicates.
+- The MQTT drain loop publishes rows to the broker and deletes a local row **only** once that row has
+  reached the broker *and* has aged past the retention window (7 days). A reception that has not been
+  published is never deleted, however old — an offline phone keeps everything until it drains.
+  IndexedDB is the working set; the backend deduplicates. Publication is tracked by a durable
+  watermark, not an in-memory set, so a restart does not re-publish the store.
+  See `docs/2026-07-22-retention-and-bounded-reads.md` (#230); this replaces an earlier absolute
+  "never deletes local rows" rule, which made the store unbounded.
+- Queue reads are **bounded** — never `getAll()` over the store. The display reads its time window via
+  the `rx_at` index, the non-window surfaces read the newest `RECENT_CAP` rows, and the drain reads
+  only above the watermark. An O(store) read on a tick is a performance bug, not a style preference.
 - If BLE drops, MQTT drops, or the browser is closed and reopened, the map reloads from stored
   data and continues filling after reconnect.
 - The ingestor uses a **persistent MQTT session** (`CleanSession=false`) so the broker queues QoS 1
