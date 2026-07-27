@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { Queue, RETENTION_MS, prunableUpTo } from '../queue.js'
+import { Queue, RETENTION_MS, prunableUpTo, shouldContinueDraining, DRAIN_BUDGET_MS } from '../queue.js'
 
 // A reception as buildRecord() writes it (capture.js) — only the fields the
 // queue itself reads matter here.
@@ -190,5 +190,47 @@ describe('Queue.prune — retention, gated on publication (#230)', () => {
 
   it('retains for 7 days', () => {
     expect(RETENTION_MS).toBe(7 * DAY)
+  })
+})
+
+// #230: the drain reads in bounded batches so a first upgrade can't scan a
+// 50k-row store in one pass. But a fixed one-batch-per-tick then makes the
+// backlog take (rows / DRAIN_BATCH) ticks to clear — 50k rows at 100 per 5 s
+// is over half an hour, on exactly the offline-for-a-while device the buffer
+// exists to protect. So a tick keeps draining until the store is empty or a
+// time budget is spent, which adapts to the device instead of guessing a
+// batch size for the slowest one.
+describe('shouldContinueDraining', () => {
+  const B = { batchLimit: 100, budgetMs: 750 }
+
+  it('stops once a short batch shows the store is drained', () => {
+    expect(shouldContinueDraining({ ...B, batchSize: 42, elapsedMs: 0 })).toBe(false)
+  })
+
+  it('stops on an empty batch', () => {
+    expect(shouldContinueDraining({ ...B, batchSize: 0, elapsedMs: 0 })).toBe(false)
+  })
+
+  it('keeps going while batches come back full and the budget holds', () => {
+    expect(shouldContinueDraining({ ...B, batchSize: 100, elapsedMs: 100 })).toBe(true)
+  })
+
+  it('yields once the budget is spent, even with rows still waiting', () => {
+    expect(shouldContinueDraining({ ...B, batchSize: 100, elapsedMs: 750 })).toBe(false)
+    expect(shouldContinueDraining({ ...B, batchSize: 100, elapsedMs: 5000 })).toBe(false)
+  })
+
+  it('always yields between ticks rather than looping forever on a full store', () => {
+    // The property that matters: no combination of inputs returns true once
+    // the budget is gone, so a device that cannot keep up still gets its main
+    // thread back every tick.
+    for (const batchSize of [100, 1000]) {
+      expect(shouldContinueDraining({ ...B, batchSize, elapsedMs: B.budgetMs + 1 })).toBe(false)
+    }
+  })
+
+  it('exposes a budget well inside the 5 s drain tick', () => {
+    expect(DRAIN_BUDGET_MS).toBeGreaterThan(0)
+    expect(DRAIN_BUDGET_MS).toBeLessThan(5000)
   })
 })

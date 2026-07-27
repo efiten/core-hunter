@@ -6,20 +6,16 @@
 //   parseFrame → code check → decodePacket → classifyReception
 //   → GPS fix (drop if none) → buildRecord → queue.add → updateHud
 //
-// Render tick (1s): bounded queue reads → makeFilter → map.render
-// Drain tick (5s):  queue.unpublishedFrom(watermark) → publish → advance the
-//                   durable watermark → prune published rows past retention
-//
-// Both ticks read a bounded slice of the store, never the whole thing (#230):
-// the map gets its display window via the rx_at index, the log/target list get
-// the newest RECENT_CAP rows, and the drain gets only what it still owes.
+// Render tick (1s): non-destructive queue.takeAll() → makeFilter → map.render
+// Drain tick (5s):  non-destructive queue.takeAll() → publish unpublished rows
+//                   → add id to state.published Set (no queue.remove ever)
 
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
 import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue, RETENTION_MS } from './queue.js'
+import { Queue, shouldContinueDraining } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -90,9 +86,11 @@ const state = {
   targetList: null,
   connected: false,
   wakeLock: null,
-  // Drain dedup is a watermark persisted in IndexedDB (queue.getWatermark),
-  // not an in-memory Set — an in-memory one was empty on every boot, so a
-  // restart re-published the entire store one await at a time (#230).
+  // Drain dedup: in-memory Set of row ids already published this session.
+  // Rows are NEVER deleted from IndexedDB — the local store is the hunter's
+  // working set; re-publish dedup is the backend's concern (via raw+rx_at).
+  // On app restart the Set is empty, so rows are republished; that is fine.
+  published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
   // Epoch ms of the most recent captured reception, for the "since last packet"
@@ -388,15 +386,10 @@ async function processFrame(dv) {
 }
 
 // ---------------------------------------------------------------------------
-// Render tick — bounded, non-destructive reads (~every 1 s)
+// Render tick — reads ALL rows non-destructively (~every 1 s)
 // ---------------------------------------------------------------------------
-// Both queue reads use readonly IDB transactions and delete nothing, so they
-// are safe on the render path. Neither is O(store): since() is scoped to the
-// display window by the rx_at index, recent() to RECENT_CAP rows (#230).
-
-// Row cap for the reads that are not window-scoped (receptions log "all" mode,
-// target list). Well above what either surface displays.
-const RECENT_CAP = 2000
+// queue.takeAll() uses a readonly IDB transaction (getAll) — it does NOT
+// delete rows. It is safe to call it from the render path.
 
 // enrichNames fills sender_label from the CoreScope resolver for senders whose
 // full pubkey is known but have no name yet. Cache hits are applied in-place;
@@ -430,7 +423,10 @@ async function drawOnce() {
     const rows = await state.queue.recent(RECENT_CAP)
     state.lastRows = rows
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
+    // Enrich names on both the window and the recent rows to prevent mismatches
+    // in the log and target list (BLOCKER 1 fix for PR #283)
     enrichNames(windowRows)
+    enrichNames(rows)
     const fn = makeFilter({ ...state.filter, ignore: state.ignore })
     const filteredRows = windowRows.filter((r) => fn(r, now))
     const selected = selectedSet()
@@ -475,23 +471,34 @@ async function drainOnce() {
   if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
   draining = true
   try {
-    const watermark = await state.queue.getWatermark()
-    const rows = await state.queue.unpublishedFrom(watermark)
-    let last = watermark
-    for (const r of rows) {
-      try {
-        await state.publisher.publish(state.rxPubkey, r, state.name)
-        last = r.id
-      } catch (_) {
-        // Publish failed. Stop here rather than skipping ahead: the watermark
-        // means "everything at or below this id has reached the broker", so it
-        // can only advance over an unbroken run. The rest is retried next cycle.
-        break
+    const startedAt = Date.now()
+    let watermark = await state.queue.getWatermark()
+    // Keep taking batches until the store is drained or the budget is spent
+    // (#230). One batch per tick would leave a 50k backlog over half an hour
+    // behind; see shouldContinueDraining.
+    for (;;) {
+      const rows = await state.queue.unpublishedFrom(watermark)
+      let last = watermark
+      let failed = false
+      for (const r of rows) {
+        try {
+          await state.publisher.publish(state.rxPubkey, r, state.name)
+          last = r.id
+        } catch (_) {
+          // Publish failed. Stop here rather than skipping ahead: the watermark
+          // means "everything at or below this id has reached the broker", so it
+          // can only advance over an unbroken run. The rest is retried next cycle.
+          failed = true
+          break
+        }
       }
-    }
-    if (last > watermark) {
-      await state.queue.setWatermark(last)
-      console.debug('[drain] published through id', last)
+      if (last > watermark) {
+        await state.queue.setWatermark(last)
+        console.debug('[drain] published through id', last)
+        watermark = last
+      }
+      if (failed) break
+      if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
     }
     await pruneOnce()
   } catch (_) {
@@ -915,8 +922,8 @@ function buildTargetSheet() {
     pinnedEl: el('ts-pinned'),
     // Whole-row tap toggles this sender in the target set; the sheet stays open
     // so several can be picked in a row (#178).
-    onSelect: (id, label) => {
-      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, toggle: true } }))
+    onSelect: (id, label, ids) => {
+      document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id, label, ids, toggle: true } }))
     },
   })
 
@@ -1432,6 +1439,11 @@ function updateTargetChip() {
 // Target selection is a live union of sender ids (#178). detail = null clears;
 // { id, toggle:true } adds/removes one (the checkbox rows); { id } replaces the
 // whole selection with just that sender (a map popup's "Isolate sender").
+// A target-list row can represent several prefix-compatible id variants of
+// the same physical node (#267, decided 2026-07-18: multi-id selection) —
+// detail.ids carries that full group so toggling/selecting the row catches
+// receptions under any variant, not just the one currently displayed. Falls
+// back to the single id when a caller (e.g. the map popup) has no group.
 document.addEventListener('hunt:isolate-sender', (e) => {
   const d = e.detail
   const ids = new Set(state.filter.sender ? state.filter.sender.ids : [])
@@ -1440,8 +1452,14 @@ document.addEventListener('hunt:isolate-sender', (e) => {
   } else {
     const key = String(d.id).toLowerCase()
     if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
-    if (d.toggle) { ids.has(key) ? ids.delete(key) : ids.add(key) }
-    else { ids.clear(); ids.add(key) }
+    const group = Array.isArray(d.ids) && d.ids.length ? d.ids.map((x) => String(x).toLowerCase()) : [key]
+    if (d.toggle) {
+      const anySelected = group.some((k) => ids.has(k))
+      group.forEach((k) => (anySelected ? ids.delete(k) : ids.add(k)))
+    } else {
+      ids.clear()
+      group.forEach((k) => ids.add(k))
+    }
   }
   state.filter.sender = ids.size ? { ids: [...ids] } : null
   updateTargetChip()

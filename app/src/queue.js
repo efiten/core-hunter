@@ -22,6 +22,28 @@ const WATERMARK_KEY = 'published_through';
 // they have reached the broker. See prunableUpTo().
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Drain reads in bounded batches to avoid O(store) scans on first upgrade.
+export const DRAIN_BATCH = 100;
+
+// ...but one batch per tick would then make a backlog take (rows / DRAIN_BATCH)
+// ticks to clear — 50k rows at 100 per 5 s is over half an hour, on exactly the
+// been-offline-a-while device the buffer exists to protect. So a tick keeps
+// draining until the store is empty or this budget is spent. A time budget
+// rather than a bigger batch: it adapts to whatever the device and the link can
+// actually manage, instead of guessing a number that is too slow on a fast
+// phone and still too much work on a slow one.
+export const DRAIN_BUDGET_MS = 750;
+
+// shouldContinueDraining decides whether the drain loop takes another batch.
+// A short batch means the store is drained (getAll returned fewer than the
+// limit), so there is nothing to come back for. Otherwise keep going until the
+// budget is gone — the loop always yields between ticks, so a device that
+// cannot keep up still gets its main thread back.
+export function shouldContinueDraining({ batchSize, batchLimit = DRAIN_BATCH, elapsedMs, budgetMs = DRAIN_BUDGET_MS }) {
+  if (batchSize < batchLimit) return false;
+  return elapsedMs < budgetMs;
+}
+
 // prunableUpTo picks the highest row id retention is allowed to delete through.
 // "All receptions go to MQTT" outranks the age cap, so a row that has not been
 // published is never dropped no matter how old it is — a phone that has been
@@ -102,11 +124,12 @@ export class Queue {
   }
 
   // unpublishedFrom returns the rows above the watermark — everything the
-  // drain still owes the broker, in id order.
+  // drain still owes the broker, in id order. Limited to DRAIN_BATCH so
+  // the first upgrade doesn't scan the entire store in one pass.
   async unpublishedFrom(watermark) {
     const db = await openDB();
     const store = db.transaction(STORE, 'readonly').objectStore(STORE);
-    return (await result(store.getAll(IDBKeyRange.lowerBound(watermark, true)))) || [];
+    return (await result(store.getAll(IDBKeyRange.lowerBound(watermark, true), DRAIN_BATCH))) || [];
   }
 
   async getWatermark() {
