@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { Queue, RETENTION_MS, prunableUpTo, shouldContinueDraining, DRAIN_BUDGET_MS } from '../queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, DRAIN_BUDGET_MS, watermarkAfter } from '../queue.js'
 
 // A reception as buildRecord() writes it (capture.js) — only the fields the
 // queue itself reads matter here.
@@ -37,22 +37,6 @@ beforeEach(() => {
   globalThis.indexedDB = new IDBFactory()
 })
 
-describe('prunableUpTo', () => {
-  // Retention (#230) may never drop a reception that has not reached the
-  // broker: "all receptions go to MQTT" outranks the 7-day cap. A phone that
-  // has been offline for a month keeps everything until it drains.
-  it('never returns an id above the published watermark', () => {
-    expect(prunableUpTo(100, 40)).toBe(40)
-  })
-
-  it('is bounded by the age cutoff when that is the lower of the two', () => {
-    expect(prunableUpTo(30, 90)).toBe(30)
-  })
-
-  it('prunes nothing when nothing has been published', () => {
-    expect(prunableUpTo(100, 0)).toBe(0)
-  })
-})
 
 describe('Queue schema migration (v1 -> v2)', () => {
   it('keeps every existing row', async () => {
@@ -232,5 +216,48 @@ describe('shouldContinueDraining', () => {
   it('exposes a budget well inside the 5 s drain tick', () => {
     expect(DRAIN_BUDGET_MS).toBeGreaterThan(0)
     expect(DRAIN_BUDGET_MS).toBeLessThan(5000)
+  })
+})
+
+// #230 blocker 3: the decision that actually matters — how far the watermark
+// may advance after a drain pass — lived inline in app.js, which AGENTS.md §5
+// excludes from unit testing. So the one invariant protecting against data
+// loss was argued in a comment and never asserted. prunableUpTo was extracted
+// instead but never called, so its tests pinned a function production does not
+// run.
+//
+// The invariant: the watermark means "everything at or below this id has
+// reached the broker", so it may only advance over an UNBROKEN run of
+// successes. Skipping past a failure would permanently drop that reception.
+describe('watermarkAfter', () => {
+  it('leaves the watermark alone when nothing was published', () => {
+    expect(watermarkAfter(40, [])).toBe(40)
+  })
+
+  it('advances to the last id when every publish succeeded', () => {
+    expect(watermarkAfter(40, [{ id: 41, ok: true }, { id: 42, ok: true }])).toBe(42)
+  })
+
+  it('does not advance at all when the FIRST publish fails', () => {
+    // The primary data-loss mode: advancing here would mark row 41 as sent.
+    expect(watermarkAfter(40, [{ id: 41, ok: false }])).toBe(40)
+  })
+
+  it('stops at the last success before a failure, not at the last attempt', () => {
+    const outcomes = [{ id: 41, ok: true }, { id: 42, ok: true }, { id: 43, ok: false }]
+    expect(watermarkAfter(40, outcomes)).toBe(42)
+  })
+
+  it('ignores anything after a failure, even a later success', () => {
+    // Defensive: the caller breaks on failure, but the rule belongs here too —
+    // a contiguous prefix is the whole meaning of the watermark.
+    const outcomes = [{ id: 41, ok: true }, { id: 42, ok: false }, { id: 43, ok: true }]
+    expect(watermarkAfter(40, outcomes)).toBe(41)
+  })
+
+  it('never moves backwards', () => {
+    // setWatermark is monotonic too, but the decision should not depend on
+    // that: a stale batch must not be able to propose a lower value.
+    expect(watermarkAfter(90, [{ id: 41, ok: true }])).toBe(90)
   })
 })

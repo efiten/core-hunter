@@ -15,7 +15,7 @@ import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
 import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue, shouldContinueDraining } from './queue.js'
+import { Queue, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -478,20 +478,21 @@ async function drainOnce() {
     // behind; see shouldContinueDraining.
     for (;;) {
       const rows = await state.queue.unpublishedFrom(watermark)
-      let last = watermark
-      let failed = false
+      const outcomes = []
       for (const r of rows) {
         try {
           await state.publisher.publish(state.rxPubkey, r, state.name)
-          last = r.id
+          outcomes.push({ id: r.id, ok: true })
         } catch (_) {
-          // Publish failed. Stop here rather than skipping ahead: the watermark
-          // means "everything at or below this id has reached the broker", so it
-          // can only advance over an unbroken run. The rest is retried next cycle.
-          failed = true
+          // Publish failed. Stop here rather than skipping ahead — the rest is
+          // retried next cycle. How far the watermark may move is
+          // watermarkAfter's decision, not this loop's.
+          outcomes.push({ id: r.id, ok: false })
           break
         }
       }
+      const failed = outcomes.some((o) => !o.ok)
+      const last = watermarkAfter(watermark, outcomes)
       if (last > watermark) {
         await state.queue.setWatermark(last)
         console.debug('[drain] published through id', last)

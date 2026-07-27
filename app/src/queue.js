@@ -19,7 +19,10 @@ const META = 'meta';
 const WATERMARK_KEY = 'published_through';
 
 // Retention (#230): receptions older than this are pruned — but only once
-// they have reached the broker. See prunableUpTo().
+// they have reached the broker. "All receptions go to MQTT" outranks the age
+// cap, so a row that has not been published is never dropped no matter how old
+// it is: a phone offline for a month keeps everything until it drains. prune()
+// enforces that against the watermark.
 export const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Drain reads in bounded batches to avoid O(store) scans on first upgrade.
@@ -44,12 +47,20 @@ export function shouldContinueDraining({ batchSize, batchLimit = DRAIN_BATCH, el
   return elapsedMs < budgetMs;
 }
 
-// prunableUpTo picks the highest row id retention is allowed to delete through.
-// "All receptions go to MQTT" outranks the age cap, so a row that has not been
-// published is never dropped no matter how old it is — a phone that has been
-// offline for a month keeps everything until it drains.
-export function prunableUpTo(oldestAllowedId, watermark) {
-  return Math.min(oldestAllowedId, watermark);
+// watermarkAfter decides how far the watermark may move after a drain pass.
+//
+// The watermark means "everything at or below this id has reached the broker",
+// so it may only advance over an UNBROKEN run of successes — skipping past a
+// failed publish would mark that reception as sent and drop it permanently.
+// `outcomes` is [{ id, ok }] in publish order. Never moves backwards, so a
+// stale batch cannot propose a lower value.
+export function watermarkAfter(watermark, outcomes) {
+  let last = watermark;
+  for (const o of outcomes || []) {
+    if (!o.ok) break;
+    if (o.id > last) last = o.id;
+  }
+  return last;
 }
 
 function openDB() {
@@ -152,7 +163,8 @@ export class Queue {
   }
 
   // prune deletes receptions older than `cutoffIso`, but never past
-  // `watermark` — see prunableUpTo(). Returns how many rows were removed.
+  // `watermark` — an unpublished row outranks the age cap. Returns how many
+  // rows were removed.
   async prune(cutoffIso, watermark) {
     if (watermark <= 0) return 0;
     const db = await openDB();
