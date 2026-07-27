@@ -133,6 +133,9 @@ describe('cachedPosition — registry positions retained from a resolve', () => 
     stubFetch({ prefix: 'c0ffee05', pubkey: 'c0ffee05', name: 'Half', ambiguous: false, lat: 51.2 })
     await resolveName('c0ffee05')
     expect(cachedPosition('c0ffee05')).toBeNull()
+  })
+})
+
 // #230: drawOnce enriches two overlapping row sets per tick (the window rows
 // and the recent rows), so the same unresolved id is looked up twice in the
 // same tick. resolveName only consults the cache, and the cache is written
