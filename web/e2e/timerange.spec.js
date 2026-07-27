@@ -65,11 +65,12 @@ test('the absolute panel pre-fills from a token and Apply switches to an absolut
   await page.click('#tr-apply')
   await expect(page.locator('#time-picker')).toBeHidden()
   await expect(page.locator('#tr-label')).toHaveText('2026-07-20 08:00 → 2026-07-20 09:30')
-  // Apply stores the resolved instant, so the URL carries UTC. Comparing against
-  // a literal would only hold on a UTC runner and fail in any other zone —
-  // derive the expected value the same way the browser does.
-  const expectedFrom = new Date('2026-07-20T08:00').toISOString()
-  await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe(expectedFrom)
+  // Apply stores the resolved instant, so the URL carries UTC. The browser is
+  // pinned to Europe/Brussels (playwright.config.js), so 08:00 local is 06:00Z
+  // in July — deterministic, and it asserts the conversion rather than echoing
+  // it. Computing this in Node instead would read the *runner's* zone and pass
+  // only on a UTC machine, which is the trap this replaces.
+  await expect.poll(() => new URL(page.url()).searchParams.get('from')).toBe('2026-07-20T06:00:00.000Z')
 })
 
 test('copy absolute link freezes the range to timestamps', async ({ page, context }) => {
