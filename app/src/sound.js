@@ -77,6 +77,7 @@ const REVERB_SECONDS = 2.8
 const MUSIC_GAIN = 0.86
 const MUSIC_DENSITY = 1.7 // periods divided by this — how often notes fall
 const RX_GAIN = 0.5       // reception dits, independent of the music/bed level
+const FADE_S = 0.03       // music-bus fade before cutting voices, avoids a click
 
 // Generative music (Eno's Music-for-Airports technique): seven pad voices,
 // each looping ONE note of a calm F-pentatonic set on a mutually prime period.
@@ -122,13 +123,44 @@ export function createSoundEngine() {
       wet.gain.value = REVERB_WET
       master.connect(wet).connect(convolver).connect(ctx.destination)
     }
+    // Both recovery paths are armed here rather than in startMusic(), so the
+    // rxtx mode — which never starts music, and is the one carrying the actual
+    // signal information — gets them too.
+    resumeOnVisibility()
+    if (!ctx.onstatechange) {
+      // iOS can interrupt without a visibilitychange (an in-call banner does not
+      // background the page), so watch the context's own state as well.
+      ctx.onstatechange = () => { if (ctx && ctx.state === 'interrupted') ctx.resume().catch(() => {}) }
+    }
     const states = ['suspended', 'interrupted']
     if (states.includes(ctx.state)) {
       ctx.resume().catch(() => {})
-      const once = () => { ctx.resume().catch(() => {}); document.removeEventListener('pointerdown', once) }
-      document.addEventListener('pointerdown', once)
+      armGestureResume()
     }
     return ctx
+  }
+
+  // A suspended context's currentTime does not advance, so anything scheduled
+  // against it lands at t=0 and every queued voice fires on the same sample the
+  // moment it resumes. Nothing may be scheduled until the clock is actually
+  // running; the audio is a live cue, so dropping what could not be played at
+  // the time it referred to is the correct behaviour, not queueing it.
+  const isRunning = () => !!ctx && ctx.state === 'running'
+
+  // One pending gesture listener at a time. ensureCtx() runs per reception on
+  // the ping path, so re-adding unconditionally stacks a listener per packet
+  // while the context is suspended — hundreds over a call, all firing resume()
+  // in the same gesture.
+  let gestureArmed = false
+  function armGestureResume() {
+    if (gestureArmed) return
+    gestureArmed = true
+    const once = () => {
+      gestureArmed = false
+      document.removeEventListener('pointerdown', once)
+      if (ctx) ctx.resume().catch(() => {})
+    }
+    document.addEventListener('pointerdown', once)
   }
 
   // Registered once for the life of the engine. startMusic() can run many
@@ -221,6 +253,7 @@ export function createSoundEngine() {
   // One generative pad note: slow swell, soft unison detune, quiet octave,
   // its own stereo position, gently lowpassed.
   function genNote(f, pan) {
+    if (!isRunning()) return
     const c = ctx
     const t = c.currentTime, dur = 7 + Math.random() * 3, g = 0.05 + Math.random() * 0.02
     const out = c.createGain()
@@ -259,7 +292,11 @@ export function createSoundEngine() {
     if (genTimers.length) return
     const c = ensureCtx()
     resumeOnVisibility()
-    if (!genGain) { genGain = c.createGain(); genGain.gain.value = MUSIC_GAIN; genGain.connect(master) }
+    if (!genGain) { genGain = c.createGain(); genGain.connect(master) }
+    // Set every time, not just on creation: stopMusic() ramps this to zero to
+    // avoid a click, so a later re-entry has to bring it back up.
+    genGain.gain.cancelScheduledValues(c.currentTime)
+    genGain.gain.setValueAtTime(MUSIC_GAIN, c.currentTime)
     GEN_NOTES.forEach((f, i) => {
       const pan = -0.6 + (i / (GEN_NOTES.length - 1)) * 1.2
       const period = (GEN_PERIODS[i] / MUSIC_DENSITY) * 1000
@@ -276,10 +313,19 @@ export function createSoundEngine() {
   function stopMusic() {
     for (const t of genTimers) { clearTimeout(t); clearInterval(t) }
     genTimers = []
-    // Stop all active oscillators immediately
+    // Pad notes run 7-10 s, so stopping the timers alone leaves them sounding —
+    // "off" has to be off. Cutting the oscillators outright truncates them
+    // mid-envelope though, and up to 21 simultaneous truncations through a 35%
+    // reverb send is an audible click. Ramp the music bus down first, then stop
+    // just after it reaches zero.
     const t = ctx?.currentTime ?? 0
+    if (genGain && isRunning()) {
+      genGain.gain.cancelScheduledValues(t)
+      genGain.gain.setValueAtTime(genGain.gain.value, t)
+      genGain.gain.linearRampToValueAtTime(0, t + FADE_S)
+    }
     for (const osc of activeOscs) {
-      try { osc.stop(t) } catch (_) {}
+      try { osc.stop(t + FADE_S) } catch (_) {}
     }
     activeOscs = []
   }
@@ -302,6 +348,7 @@ export function createSoundEngine() {
     if (now - lastPingAt < MIN_PING_GAP_MS) return
     lastPingAt = now
     const c = ensureCtx()
+    if (!isRunning()) return
     const f = harmFreq(rssi, offset)
     const g = pingGain(rssi, offset) * RX_GAIN
     const len = 0.035 + rssiFrac(rssi, offset) * 0.06
@@ -342,6 +389,7 @@ export function createSoundEngine() {
   function txBlip(kind) {
     if (mode === 'off') return
     const c = ensureCtx()
+    if (!isRunning()) return
     if (kind === 'discover') { pop(c, 620, c.currentTime); pop(c, 830, c.currentTime + 0.11) }
     else pop(c, 990, c.currentTime)
   }

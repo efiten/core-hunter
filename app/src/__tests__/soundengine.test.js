@@ -13,6 +13,7 @@ function fakeParam(value = 0) {
     setValueAtTime() { return this },
     linearRampToValueAtTime() { return this },
     exponentialRampToValueAtTime() { return this },
+    cancelScheduledValues() { return this },
   }
 }
 
@@ -119,6 +120,47 @@ describe('music never schedules against a suspended clock (#145)', () => {
     ctx.oscillators.length = 0
     vi.advanceTimersByTime(60_000)
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+})
+
+// The same clock problem on the rx/tx path, which is the one that actually
+// matters: rxtx never starts the music, so the guard inside the note scheduler
+// does not cover it, and setMode runs at DOMContentLoaded before any gesture.
+describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
+  it('plays no dit while the context is suspended', () => {
+    ctx.state = 'suspended'; ctx.gestureGiven = false
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    ctx.oscillators.length = 0
+    for (let i = 0; i < 50; i++) { vi.advanceTimersByTime(100); e.ping(-80) }
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+
+  it('plays no transmit pop while the context is suspended', () => {
+    ctx.state = 'suspended'; ctx.gestureGiven = false
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    ctx.oscillators.length = 0
+    e.txBlip('discover'); e.txBlip('trace')
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+
+  it('plays them once the context is running', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    ctx.oscillators.length = 0
+    e.ping(-80)
+    expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
+  })
+
+  it('arms at most one pending gesture listener however many receptions arrive', () => {
+    ctx.state = 'suspended'; ctx.gestureGiven = false
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    for (let i = 0; i < 40; i++) { vi.advanceTimersByTime(100); e.ping(-80) }
+    const pointer = listeners.filter((l) => l.type === 'pointerdown')
+    expect(pointer).toHaveLength(1)
   })
 })
 
