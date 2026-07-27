@@ -5,7 +5,7 @@ import { locate, toLocatePoints } from './locate.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
-import { squareRing } from './pointmarker.js'
+import { squareRing, pillarHalfWidthM } from './pointmarker.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -38,6 +38,7 @@ const PITCH_3D = 60
 // instead of disappearing under the hex/building geometry (a flat circle
 // layer can't be raised — MapLibre circles always sit on the ground plane).
 const POINT_PILLAR_HALF_WIDTH_M = 3
+const POINT_PILLAR_MIN_PX = 4   // never let the footprint go sub-pixel (#250)
 
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
@@ -100,7 +101,7 @@ export function createHuntMap(containerId) {
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
       const tier = rssiTier(r.rssi, currentOffset())
-      const ring = squareRing(r.lat, r.lon, POINT_PILLAR_HALF_WIDTH_M)
+      const ring = squareRing(r.lat, r.lon, pillarHalfWidthM(r.lat, map.getZoom(), POINT_PILLAR_HALF_WIDTH_M, POINT_PILLAR_MIN_PX))
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
         properties: { id: String(r.id), color: cssVar(tierColorVar(tier)), height: extrusionHeight(r.rssi, currentOffset()) } })
     }

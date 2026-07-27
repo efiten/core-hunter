@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { squareRing } from '../pointmarker.js'
+import { squareRing, pillarHalfWidthM } from '../pointmarker.js'
 
 describe('squareRing', () => {
   it('returns a closed ring of 5 points', () => {
@@ -33,5 +33,29 @@ describe('squareRing', () => {
     const highLat = squareRing(70, 0, 5)
     const latSpan = (ring) => ring[2][1] - ring[1][1]
     expect(latSpan(highLat)).toBeCloseTo(latSpan(equator), 9)
+  })
+})
+
+describe('pillarHalfWidthM', () => {
+  // At hunting zooms the true 3 m footprint is already several pixels, so it is
+  // left alone; zoomed out it would be a hairline, so the pixel floor takes over.
+  it('keeps the true metre size where it is already legible', () => {
+    expect(pillarHalfWidthM(51, 18, 3, 4)).toBe(3)
+  })
+
+  it('widens once the true size would fall below the pixel floor', () => {
+    const w = pillarHalfWidthM(51, 14, 3, 4)
+    expect(w).toBeGreaterThan(3)
+    // 4 px at z14/lat51 is on the order of ten metres, not hundreds.
+    expect(w).toBeLessThan(50)
+  })
+
+  it('never shrinks below the base size, however far in you zoom', () => {
+    for (const z of [16, 18, 20, 22]) expect(pillarHalfWidthM(51, z, 3, 4)).toBeGreaterThanOrEqual(3)
+  })
+
+  it('grows monotonically as you zoom out', () => {
+    const widths = [18, 16, 14, 12, 10].map((z) => pillarHalfWidthM(51, z, 3, 4))
+    for (let i = 1; i < widths.length; i++) expect(widths[i]).toBeGreaterThanOrEqual(widths[i - 1])
   })
 })
