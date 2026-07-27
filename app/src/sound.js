@@ -131,7 +131,13 @@ export function createSoundEngine() {
     return ctx
   }
 
+  // Registered once for the life of the engine. startMusic() can run many
+  // times (every entry into `full`), and re-adding here would stack a listener
+  // per entry, each re-running resume() on the same context.
+  let visibilityBound = false
   function resumeOnVisibility() {
+    if (visibilityBound) return
+    visibilityBound = true
     const handler = () => {
       if (document.hidden) return
       if (ctx && ['suspended', 'interrupted'].includes(ctx.state)) {
@@ -237,7 +243,15 @@ export function createSoundEngine() {
       osc.connect(og).connect(out)
       osc.start(t)
       osc.stop(t + dur + 0.1)
+      // Tracked so stopMusic can silence a note that is still sounding — a pad
+      // runs 7-10 s, so clearing the timers alone leaves audio playing after
+      // the user asked for silence. Untracked again on its own end, or `full`
+      // mode would grow this array for as long as it plays.
       activeOscs.push(osc)
+      osc.onended = () => {
+        const i = activeOscs.indexOf(osc)
+        if (i !== -1) activeOscs.splice(i, 1)
+      }
     }
   }
 

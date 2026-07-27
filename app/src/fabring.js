@@ -1,9 +1,10 @@
 // Segmented progress ring for multi-state FABs (#259): N equal arcs around the
 // button, filled (accent) from the first segment through the current one, the
 // rest muted — so a tap's effect (advancing to the next segment) is visible at
-// a glance, not just inferable from the icon changing. Two-state plain toggles
-// (2D/3D, sound's future off/rxtx/full is 3-state so it DOES get a ring) don't
-// need this — a single on/off doesn't benefit from a "1 of 2" indicator.
+// a glance, not just inferable from the icon changing. Used by the layer FAB
+// (3 modes), the compass FAB (3 tap states) and the sound FAB (off/rxtx/full).
+// Two-state plain toggles like 2D/3D don't need it — a single on/off doesn't
+// benefit from a "1 of 2" indicator.
 
 const RADIUS = 20
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS

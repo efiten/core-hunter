@@ -1345,7 +1345,12 @@ const SOUND_LABELS = {
 
 function updateSoundIcon() {
   const btn = el('sound-toggle')
-  btn.innerHTML = SOUND_ICONS[state.soundMode]
+  // Ring shows the cycle position (#259), same as the layer and compass FABs —
+  // off/rxtx/full is a 3-state cycle, which is exactly what fabring.js says
+  // earns one. Without it this FAB was the one multi-state control whose next
+  // tap you could not predict.
+  const idx = SOUND_MODES.indexOf(state.soundMode)
+  btn.innerHTML = fabRingSvg(idx, SOUND_MODES.length) + SOUND_ICONS[state.soundMode]
   btn.setAttribute('aria-label', SOUND_LABELS[state.soundMode])
   btn.classList.toggle('on', state.soundMode !== 'off')
 }
