@@ -27,6 +27,10 @@ function routes(page, { lat, lon, points }) {
 }
 
 test.beforeEach(async ({ page }) => {
+  // Map state (layer toggles, locate=1) is persisted by urlstate, so a test
+  // that leaves Locate on would otherwise start the next one in focus mode with
+  // the layers cleared. Start every test from a clean store.
+  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
@@ -102,4 +106,19 @@ test('the layer is hidden from a guest, whose resolve responses carry no positio
   await page.goto('/')
   await expect(page.locator('.np-layer-toggle')).toBeHidden()
   await expect(page.locator('.np-advert')).toHaveCount(0)
+})
+
+test('the layer comes back after a Locate round-trip', async ({ page }) => {
+  // Locate clears nodePosLayer out of band. The redraw afterwards recomputes
+  // the same signature, so without resetting nodePosSig alongside the clear the
+  // early return fires and the layer stays empty for the rest of the session.
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+
+  await page.click('#locate-toggle')
+  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await page.click('#locate-toggle')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })

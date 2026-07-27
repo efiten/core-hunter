@@ -141,7 +141,7 @@ function applyObserverGate() {
   if (npToggle) npToggle.hidden = !show
   if (!show) {
     nodePosCb.checked = false
-    nodePosLayer.clearLayers()
+    nodePosLayer.clearLayers(); nodePosSig = null
     const note = document.getElementById('nodepos-note')
     if (note) note.hidden = true
   }
@@ -424,8 +424,13 @@ function activateLocate() {
   if (locateActive) { drawLocate(); return }
   locateActive = true
   locateBtn.classList.add('on')
-  // focus mode: hide every non-relevant layer so only the located node shows
-  pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers(); nodePosLayer.clearLayers()
+  // focus mode: hide every non-relevant layer so only the located node shows.
+  // nodePosSig has to go with the layer it describes: leaving it set means the
+  // redraw after Locate recomputes the same signature, takes the early return,
+  // and never repopulates — the layer would stay empty for the rest of the
+  // session. One clear, one reset.
+  pointLayer.clearLayers(); hexLayer.clearLayers(); csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
+  nodePosLayer.clearLayers(); nodePosSig = null
   urlstate.save()
   drawLocate()
   locateTimer = setInterval(drawLocate, 5000)
