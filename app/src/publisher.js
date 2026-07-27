@@ -3,6 +3,12 @@
 // hunter topic meshcore/hunter/{rxPubkey}/packets.
 import mqtt from 'mqtt';
 
+// MQTT keepalive, in seconds. Explicit rather than mqtt.js's 60 s default:
+// a missed PINGREQ is what flipped the status dot to "Not connected" while the
+// main thread was saturated (#230), so the window this depends on should be a
+// deliberate number in our code, not an undocumented library default.
+export const KEEPALIVE_S = 30;
+
 export class Publisher {
   // opts: { url, username, password } — EMQX WSS endpoint + per-client creds.
   constructor(opts) { this.opts = opts; this.client = null; }
@@ -13,6 +19,7 @@ export class Publisher {
       password: this.opts.password,
       clientId: this.opts.clientId, // = companion pubkey; EMQX ACL can bind topics to ${clientid}
       reconnectPeriod: 4000,
+      keepalive: KEEPALIVE_S,
       clean: true,
     });
     return new Promise((resolve, reject) => {
