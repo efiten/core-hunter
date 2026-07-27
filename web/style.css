@@ -131,6 +131,21 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
+/* Node-position layer (#197). The disclaimer stays on screen for as long as the
+   layer is drawn — it implies node locations, so a popup-only note is not
+   enough (AGENTS.md §7). Sits left so it never covers #locate-info. */
+#nodepos-note { position: fixed; left: 12px; bottom: 12px; z-index: 650; max-width: 300px;
+  background: var(--ch-surface); color: var(--ch-muted); border: 1px solid var(--ch-border);
+  border-radius: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.45;
+  backdrop-filter: blur(8px); pointer-events: none; }
+.np-advert-icon { background: none; border: none; }
+.np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; cursor: pointer; }
+/* Absolute so the label never shifts the ▲ off its anchored coordinate. The
+   layer is opt-in, so names are shown on the map while it is on (#197). */
+.np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+  margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
+  color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
+.np-caveat { color: var(--ch-muted); font-size: 11px; }
 #locate-info .lc-warn { color: var(--ch-sig-warm); }
 #locate-info .lc-muted { color: var(--ch-muted); }
 #locate-info .lc-help { margin-left: 4px; width: 16px; height: 16px; padding: 0; line-height: 14px;

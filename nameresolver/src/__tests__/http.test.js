@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolvePrefixResponse, createServer } from '../http.js'
+import { resolvePrefixResponse, positionsResponse, createServer } from '../http.js'
 
 // Minimal fake store implementing resolvePrefix.
 function fakeStore(rows) {
@@ -35,7 +35,45 @@ describe('resolvePrefixResponse', () => {
   })
 })
 
+describe('positionsResponse', () => {
+  it('returns every positioned node in one bulk payload', () => {
+    const store = { allWithPosition: () => [
+      { pubkey: 'aabbccdd', name: 'One', lat: 51.2, lon: 4.4 },
+      { pubkey: 'eeff0011', name: 'Two', lat: 52.1, lon: 5.3 },
+    ] }
+    const { status, json } = positionsResponse(store)
+    expect(status).toBe(200)
+    expect(json).toEqual({
+      count: 2,
+      nodes: [
+        { pubkey: 'aabbccdd', name: 'One', lat: 51.2, lon: 4.4 },
+        { pubkey: 'eeff0011', name: 'Two', lat: 52.1, lon: 5.3 },
+      ],
+    })
+  })
+
+  it('returns an empty list rather than erroring when nothing is positioned', () => {
+    const { status, json } = positionsResponse({ allWithPosition: () => [] })
+    expect(status).toBe(200)
+    expect(json).toEqual({ count: 0, nodes: [] })
+  })
+})
+
 describe('createServer', () => {
+  it('serves /api/nodes/positions', async () => {
+    const store = { ...fakeStore([]), allWithPosition: () => [{ pubkey: 'aabbccdd', name: 'One', lat: 51.2, lon: 4.4 }] }
+    const server = createServer(store)
+    await new Promise((resolve) => server.listen(0, resolve))
+    const port = server.address().port
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/api/nodes/positions`)
+      expect(r.status).toBe(200)
+      expect(await r.json()).toEqual({ count: 1, nodes: [{ pubkey: 'aabbccdd', name: 'One', lat: 51.2, lon: 4.4 }] })
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
+
   it('serves /api/nodes/count', async () => {
     const store = { ...fakeStore([]), count: () => 42 }
     const server = createServer(store)

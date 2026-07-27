@@ -31,8 +31,11 @@ export const SPLASH_COPY = {
 // Pinned in the glass panel: the AGENTS.md §7 position statement. The splash
 // implies locating a transmitter, so it must state we map radio signal, not the
 // target's GPS — the map shows where the hunter was when it heard the target.
+// The node-position layer (▲ markers) also displays self-reported advertised
+// positions, which may be stale; drift from our estimate indicates the
+// difference between the node's last report and current radio measurements.
 export const SPLASH_DISCLAIMER =
-  'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where you were when you heard it.'
+  'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where you were when you heard it. Advertised positions are self-reported by the operator and may be stale.'
 
 // Getting-started basics (was #143), shown as a short list in the glass panel.
 export const SPLASH_BASICS = [

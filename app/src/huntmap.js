@@ -2,6 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
+import { nodesInView, driftPresentation, groupSenderPoints, groupSenderPointsForNode, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
@@ -41,7 +42,7 @@ const POINT_PILLAR_HALF_WIDTH_M = 3
 const POINT_PILLAR_MIN_PX = 4   // never let the footprint go sub-pixel (#250)
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -66,6 +67,10 @@ export function createHuntMap(containerId) {
 
   let mode = 'both', lastRecords = [], lastSelected = null, onLocateCb = null, locateVisible = true
   let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
+  // Node-position layer (#197): registry nodes with a self-advertised position,
+  // drawn against our own estimate. Off until the FAB turns it on.
+  let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
+  let nodePosGen = 0, nodePosSig = null   // generation counter + signature guard to prevent popup flicker
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false, locateMarkers = []
@@ -163,7 +168,7 @@ export function createHuntMap(containerId) {
   }
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
-    for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here']) {
+    for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -215,6 +220,26 @@ export function createHuntMap(containerId) {
       paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 3 } })
     if (!map.getLayer('here')) map.addLayer({ id: 'here', type: 'circle', source: 'here',
       paint: { 'circle-radius': 6, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 2 } })
+    // Node-position layer (#197), added last so it sits above the hex heat —
+    // it is an explicit opt-in overlay, and a connector buried under a hot hex
+    // cell defeats the point of drawing it. The connector is solid; the circle
+    // is dashed for a trusted search radius and dotted for the drift fallback,
+    // so the two read differently without needing a label.
+    if (!map.getLayer('nodedrift')) map.addLayer({ id: 'nodedrift', type: 'line', source: 'nodedrift',
+      layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.9 } })
+    // Two layers over one source, split by dash pattern: line-dasharray is not
+    // a data-driven property in MapLibre (a `case` expression there fails style
+    // validation and the layer never mounts), so each pattern needs its own
+    // layer with a constant value and a filter.
+    if (!map.getLayer('nodecircle-search')) map.addLayer({ id: 'nodecircle-search', type: 'line', source: 'nodecircle',
+      filter: ['==', ['get', 'style'], 'search'],
+      layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [4, 4] } })
+    if (!map.getLayer('nodecircle-drift')) map.addLayer({ id: 'nodecircle-drift', type: 'line', source: 'nodecircle',
+      filter: ['==', ['get', 'style'], 'drift'],
+      layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
     draw()
   }
   // Initial style: 'load' fires once when the first style is ready. A theme
@@ -283,6 +308,121 @@ export function createHuntMap(containerId) {
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
     drawLocate(records)
+    drawNodeLayer(records)
+  }
+
+  // ---- node-position layer (#197) ----
+  // Colour encodes only what the rules decide, never a judgement about which
+  // position is "right": the advertised one is operator-self-reported and can
+  // be stale, so a gap is drift, not error.
+  function driftColor(p) {
+    if (p.kind === 'tight') return cssVar('--ch-accent')
+    if (p.kind === 'drifted' && p.outsideCircle) return cssVar('--ch-accent-2')
+    return cssVar('--ch-muted')
+  }
+
+  // The name rides alongside the ▲ rather than only inside the popup: this
+  // layer is opt-in, so the map can afford the labels while it is on. The
+  // label is absolutely positioned so it never shifts the glyph off the
+  // coordinate the marker is anchored to.
+  function nodeMarkerEl(cls, glyph, label) {
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    const el = document.createElement('div')
+    const name = label ? `<span class="np-label">${esc(label)}</span>` : ''
+    el.innerHTML = `<div class="${cls}">${glyph}${name}</div>`
+    return el
+  }
+
+  // A Marker built from a custom element does not toggle its popup on tap by
+  // itself, so wire the click explicitly.
+  function addNodeMarker(cls, glyph, lngLat, popup, label) {
+    const el = nodeMarkerEl(cls, glyph, label)
+    const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
+    el.addEventListener('click', (e) => { e.stopPropagation(); marker.togglePopup() })
+    nodeMarkers.push(marker)
+  }
+
+  // Recomputed per tick: the visible node set follows the viewport, and each
+  // node's estimate follows whatever receptions are currently plotted.
+  // Signature guards (like web/map.js) prevent popup flicker on every 1Hz render.
+  function drawNodeLayer(records) {
+    if (!map.getSource('nodedrift')) return
+    if (!nodeLayerOn) {
+      map.getSource('nodedrift').setData(EMPTY)
+      map.getSource('nodecircle').setData(EMPTY)
+      nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
+      return
+    }
+
+    const b = map.getBounds()
+    const bounds = { minLat: b.getSouth(), maxLat: b.getNorth(), minLon: b.getWest(), maxLon: b.getEast() }
+    const draw = []
+
+    // Registry nodes in view: advertised position, plus our estimate when we
+    // have heard them enough to produce one. Match sender_id (from receptions)
+    // against node pubkey: exact match for advert_pubkey, prefix match for
+    // discover_pubkey, no match for relay/direct_hash/channel_name (#197/#272).
+    for (const n of nodesInView(nodePositions, bounds)) {
+      const pts = groupSenderPointsForNode(records, n.pubkey)
+      const est = pts.length ? estimateFor(pts) : null
+      const p = driftPresentation({ advertised: n, estimate: est })
+      if (p.kind === 'none') continue
+      draw.push({ n, est, p })
+    }
+
+    // Compute signature of what would be drawn — if unchanged, skip rebuild to preserve open popups
+    const sig = draw.map((d) => [d.n.pubkey, d.n.lat, d.n.lon, d.p.kind, Math.round(d.p.driftM ?? -1),
+      Math.round(d.p.circle ? d.p.circle.radiusM : -1),
+      d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+    if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
+    nodePosSig = sig
+
+    const lines = [], circles = []
+    nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
+
+    for (const { n, est, p } of draw) {
+      const color = driftColor(p)
+      // Only the ▲ is labelled — the ● belongs to the same node, so naming
+      // both would just double the text for one target.
+      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), n.name || n.pubkey)
+      if (!est || !est.centroid) continue
+      addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], nodePopup(n, p, est))
+      lines.push({ type: 'Feature', properties: { color },
+        geometry: { type: 'LineString', coordinates: [[n.lon, n.lat], [est.centroid.lon, est.centroid.lat]] } })
+      if (p.circle) {
+        const ring = circleRing(est.centroid, p.circle.radiusM)
+        if (ring.length) circles.push({ type: 'Feature', properties: { color, style: p.circle.kind },
+          geometry: { type: 'LineString', coordinates: ring } })
+      }
+    }
+    map.getSource('nodedrift').setData(fc(lines))
+    map.getSource('nodecircle').setData(fc(circles))
+  }
+
+  function nodePopup(n, p, est) {
+    const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
+    // "no estimate" is not the same as "not heard" (#272). An advert or a
+    // discover reply names the node outright, so those receptions join to it
+    // and produce an estimate. A relayed packet measures the LAST HOP that
+    // re-broadcast to us — a valid measurement of that repeater, but carried on
+    // a 2-byte path prefix, which cannot be pinned to one registry node. So a
+    // node heard only that way has plenty of receptions and still no estimate
+    // here, and claiming it was never heard would be wrong.
+    const drift = p.driftM != null
+      ? `<br>drift ${Math.round(p.driftM)} m · ${est ? est.n : 0} points`
+      : '<br>no estimate — no reception identifies this node directly'
+    // The circle only claims accuracy when the sampling geometry earned it;
+    // say which of the two is being drawn so the map is self-explaining.
+    const circle = p.circle
+      ? `<br><span class="np-muted">${p.circle.kind === 'search'
+          ? `search radius ~${Math.round(p.circle.radiusM)} m`
+          : 'one-sided — radius not trusted'}</span>`
+      : ''
+    return new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+      .setHTML(`<div class="ch-popup">${esc(n.name || n.pubkey)}<br>`
+        + `<span class="np-muted">${markers}</span>${drift}${circle}`
+        + `<br><span class="np-muted np-caveat">Advertised position is self-reported by the operator and may be stale.</span></div>`)
   }
 
   // Locate: RSSI-weighted centroid + density heatmap over the plotted set (same
@@ -346,6 +486,16 @@ export function createHuntMap(containerId) {
     }
   }
   function setLayerMode(m) { mode = m; applyLayerVisibility(); draw() }
+  // Node-position layer (#197): the registry set is fetched once by app.js and
+  // handed over whole; bounds filtering happens here per tick.
+  function setNodePositions(nodes) { nodePositions = Array.isArray(nodes) ? nodes : []; draw() }
+  function setNodeLayerVisible(v) {
+    nodeLayerOn = !!v
+    for (const id of ['nodedrift', 'nodecircle-search', 'nodecircle-drift']) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', nodeLayerOn ? 'visible' : 'none')
+    }
+    draw()
+  }
   // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex/points
   // layers for their extruded twins, and shows 3D buildings (#147 phase 2,
   // points added in #250).
@@ -370,7 +520,7 @@ export function createHuntMap(containerId) {
     wireIsolate(popup, rec); wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, set3D, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, set3D, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
 }
 
 function popupHtml(r, selectedIds) {

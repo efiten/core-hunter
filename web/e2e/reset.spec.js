@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 test('successful reset shows the confirmation message', async ({ page }) => {
   await page.route('**/api/auth/reset', r => r.fulfill({ status: 204 }))
