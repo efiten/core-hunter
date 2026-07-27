@@ -83,6 +83,26 @@ export function senderParams({ ids, prefix } = {}) {
   return p ? [['sender', p]] : []
 }
 
+// The key currentFilters() carries both sender inputs under (see senderParams).
+export const SENDER_FILTER_KEY = 'senderPairs'
+
+// withoutSenderFilters strips the sender inputs from a filter set. The picker's
+// candidate pool is what you pick FROM, so narrowing it by the current pick
+// would shrink the list as you select, and would refetch on every click — the
+// pool is sender-independent by construction (#288). Both the selection and the
+// typed prefix travel under one key, so one exclusion covers them together.
+//
+// A named export rather than an inline `k !== '...'` at the call site: that key
+// was renamed once already, and the stale literal left behind kept the cache
+// invalidating on every selection change without anything failing.
+export function withoutSenderFilters(filters) {
+  const out = {}
+  for (const [k, v] of Object.entries(filters || {})) {
+    if (k !== SENDER_FILTER_KEY) out[k] = v
+  }
+  return out
+}
+
 // The picker's selection is its own state, so it carries its own encoding for
 // the shareable URL and localStorage. It cannot be delimiter-joined for the
 // same reason the query params can't be, so it goes as JSON. A corrupt or

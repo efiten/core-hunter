@@ -7,7 +7,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createTargetPicker, encodeSelection, decodeSelection } from './targetpicker.js'
+import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
 
 let currentRole = 'guest'
 
@@ -261,16 +261,18 @@ async function refreshPickerCandidates() {
   if (!targetPicker || !senderPicker || senderPicker.hidden) return
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
-  const f = (window.currentFilters && window.currentFilters()) || {}
-  // Build signature excluding sender filter, so cached results remain valid across
-  // sender selection changes (#288 blocker 4).
-  const sig = [...Object.entries(f).filter(([k]) => k !== 'sender').map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
+  // The candidate pool is sender-independent by construction, so both the
+  // signature and the query drop the sender filters (#288 blocker 4) — see
+  // withoutSenderFilters. Keeping them would shrink the list you are picking
+  // from as you pick, and refetch 25k rows on every checkbox click.
+  const f = withoutSenderFilters((window.currentFilters && window.currentFilters()) || {})
+  const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
   if (sig === cachedCandidatureSig) {
     // Filter unchanged, just re-render with current selection state
     targetPicker.render(cachedCandidatePoints, Date.now())
     return
   }
-  for (const [k, v] of Object.entries(f)) if (v && k !== 'sender') p.set(k, v)
+  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
   try {
     const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
     cachedCandidatePoints = points

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dedupeSenders, senderList, topSenders, targetParts, relTime,
-  senderParams, encodeSelection, decodeSelection,
+  senderParams, encodeSelection, decodeSelection, withoutSenderFilters,
 } from './targetpicker.js'
 
 const pt = (o) => ({ lat: 51, lon: 4, rssi: -80, rx_at: '2026-07-22T10:00:00Z', ...o })
@@ -132,5 +132,39 @@ describe('encodeSelection / decodeSelection (#288)', () => {
   })
   it('drops non-string and blank entries from a decoded list', () => {
     expect(decodeSelection('["aa", 3, "", "  ", "bb"]')).toEqual(['aa', 'bb'])
+  })
+})
+
+// #288 blocker 4: the candidate pool is what you pick FROM, so it must not
+// narrow by the sender filters — otherwise selecting a sender shrinks the list
+// you are selecting from, and every click refetches. Both sender inputs travel
+// under one key (senderPairs), so one exclusion covers the selection and the
+// typed prefix together. Named here rather than inlined at the call site: the
+// key was renamed once already and the stale literal silently re-broke the
+// cache without failing anything.
+describe('withoutSenderFilters (#288)', () => {
+  it('drops the sender filters and keeps everything else', () => {
+    const f = { hunter: 'abc', senderPairs: [['senders', 'aa']], types: 'advert', hops: '0' }
+    expect(withoutSenderFilters(f)).toEqual({ hunter: 'abc', types: 'advert', hops: '0' })
+  })
+
+  it('gives the same result whatever the selection is, so the cache holds', () => {
+    const base = { hunter: 'abc', types: 'advert' }
+    const none = withoutSenderFilters({ ...base, senderPairs: [] })
+    const one = withoutSenderFilters({ ...base, senderPairs: [['senders', 'aa']] })
+    const many = withoutSenderFilters({ ...base, senderPairs: [['senders', 'aa'], ['senders', 'bb']] })
+    const typed = withoutSenderFilters({ ...base, senderPairs: [['sender', 'bo']] })
+    expect(one).toEqual(none)
+    expect(many).toEqual(none)
+    expect(typed).toEqual(none)
+  })
+
+  it('never leaks senderPairs through, which would stringify an array into the query', () => {
+    expect(Object.keys(withoutSenderFilters({ senderPairs: [['senders', 'aa']] }))).toEqual([])
+  })
+
+  it('tolerates an absent or empty filter object', () => {
+    expect(withoutSenderFilters({})).toEqual({})
+    expect(withoutSenderFilters()).toEqual({})
   })
 })
