@@ -80,6 +80,41 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
 .tl-rssi { flex: 0 0 auto; color: var(--ch-accent); font-variant-numeric: tabular-nums; }
 .tl-time { flex: 0 0 auto; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+/* ---- Time-range picker (#285) ----
+   Quick ranges beside an absolute From/To panel, after Grafana's shape. */
+.tr-wrap { position: relative; display: inline-flex; }
+#tr-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
+/* Right-anchored: the panel is ~400px wide and the toggle sits well into the
+   bar, so growing leftwards always fits, where growing rightwards clipped the
+   quick-range column off the viewport edge. max-width + wrap keep it inside
+   the screen on a narrow one, where the two columns stack instead. */
+/* width:max-content because the containing block (.tr-wrap) is only as wide as
+   the toggle button -- without it, shrink-to-fit collapses the two columns into
+   a stack even on a wide screen. */
+.tr-panel { position: absolute; top: calc(100% + 4px); right: 0; z-index: 650;
+  width: max-content; max-width: calc(100vw - 24px);
+  background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
+  border-radius: 10px; padding: 12px; backdrop-filter: blur(8px);
+  box-shadow: 0 12px 34px rgba(0,0,0,.4); font-size: 13px; }
+.tr-cols { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.tr-abs { display: flex; flex-direction: column; gap: 8px; min-width: 210px; }
+.tr-head { font-size: 13px; font-weight: 600; }
+.tr-field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ch-muted); }
+.tr-field input { width: 100%; }
+.tr-actions { display: flex; gap: 8px; }
+#bar .tr-primary { background: var(--ch-accent); border-color: var(--ch-accent); color: var(--ch-bg); font-weight: 600; }
+#bar .tr-copy { background: transparent; border-color: var(--ch-border); color: var(--ch-muted); font-size: 12px; }
+#bar .tr-copy:hover { color: var(--ch-text); border-color: var(--ch-text); }
+/* Quick ranges: a scrollable column, so adding entries never grows the panel
+   past the viewport (the list is already 12 rows). */
+.tr-quick { list-style: none; margin: 0; padding: 0; width: 168px;
+  max-height: 264px; overflow-y: auto; border-left: 1px solid var(--ch-border); }
+.tr-item button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
+  background: transparent; color: var(--ch-text); font: inherit; font-size: 13px;
+  padding: 6px 10px; cursor: pointer; }
+.tr-item button:hover { background: color-mix(in srgb, var(--ch-text) 10%, transparent); }
+/* Active quick range: an accent rail on the left, as in the reference UI. */
+.tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
 /* ---- Reception ticker (#224) ----
    Parity with app's Receptions log (app/src/receptionlog.js, #130): frameless,
    log-style tail over the map (top-right). Newest at the bottom; a fixed

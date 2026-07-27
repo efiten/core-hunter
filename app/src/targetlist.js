@@ -3,17 +3,22 @@ import { senderList, topSenders, relTime, targetParts } from './feed.js'
 const PAGE_SIZE = 6
 const PINNED_COUNT = 3
 
-// Lowercased sender id for a row, matching how the selection set is keyed.
-function rowKey(rec) {
-  return rec.sender_id != null ? String(rec.sender_id).toLowerCase() : null
+// Lowercased ids a row answers to, matching how the selection set is keyed.
+// A row from senderList/topSenders always carries merged_ids (#267) — every
+// prefix-compatible id variant merged into this row's node — so a merged
+// row is selected when any of its variants is in the current selection, and
+// falls back to the bare sender_id for a row built outside dedupeSenders.
+function rowIds(rec) {
+  if (Array.isArray(rec.merged_ids) && rec.merged_ids.length) return rec.merged_ids
+  return rec.sender_id != null ? [String(rec.sender_id).toLowerCase()] : []
 }
 
 function row(rec, nowMs, onSelect, selectedIds) {
   const li = document.createElement('li')
   li.className = 'tl-item'
 
-  const key = rowKey(rec)
-  const selected = !!(selectedIds && key && selectedIds.has(key))
+  const ids = rowIds(rec)
+  const selected = !!(selectedIds && ids.some((id) => selectedIds.has(id)))
 
   // The whole row toggles the target — a big touch target with a checkbox that
   // shows state. It reads as a toggle to assistive tech (aria-pressed).
@@ -41,7 +46,7 @@ function row(rec, nowMs, onSelect, selectedIds) {
   meta.append(rssi, time)
 
   btn.append(check, name, meta)
-  btn.addEventListener('click', () => onSelect && onSelect(rec.sender_id, rec.sender_label))
+  btn.addEventListener('click', () => onSelect && onSelect(rec.sender_id, rec.sender_label, ids))
 
   li.appendChild(btn)
   return li

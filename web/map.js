@@ -8,6 +8,7 @@ import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
+import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 
 let currentRole = 'guest'
@@ -71,6 +72,7 @@ function setRxHighlight(rec) {
 }
 let locateActive = false
 let locateTimer = null
+let timeRangeTimer = null
 // Whether the "?" legend in the Locate info box is expanded. Persisted across
 // the box's 5 s re-renders so a poll doesn't collapse it under the user.
 let legendOpen = false
@@ -223,6 +225,12 @@ function applyRole(me) {
   notice.textContent = msg || ''
   notice.title = msg ? 'Guests & hunters see: last 24 h, max 500 recent points, ~1 km positions, anonymised hunters. Members see full data.' : ''
   notice.hidden = !msg
+  // Hide quick ranges that exceed the guest 24h cap for guest/hunter roles
+  const isGuest = currentRole === 'guest' || currentRole === 'hunter'
+  for (const [label, li] of Object.entries(quickRangeElements)) {
+    const exceedsGuestCap = ['Last 2 days', 'Last 7 days', 'Last 30 days'].includes(label)
+    li.hidden = isGuest && exceedsGuestCap
+  }
   applyLocateGate()
   applyObserverGate()
   refresh()
@@ -678,6 +686,133 @@ for (const id of ['f-from', 'f-to']) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Time-range picker (#285)
+// ---------------------------------------------------------------------------
+// #f-from/#f-to remain the state carriers (urlstate-bound, urlOnly per #217);
+// this panel is only a nicer way to write them. Quick ranges store relative
+// tokens verbatim, so the range keeps following now -- see timerange.js.
+const trToggle = document.getElementById('tr-toggle')
+const trPanel = document.getElementById('time-picker')
+const trLabelEl = document.getElementById('tr-label')
+const trQuick = document.getElementById('tr-quick')
+const trFromEl = document.getElementById('tr-from')
+const trToEl = document.getElementById('tr-to')
+const fFrom = document.getElementById('f-from')
+const fTo = document.getElementById('f-to')
+
+// The absolute fields are datetime-local and cannot display a token, so show
+// the token's *resolved* instant: opening the panel on "Last 6 hours" pre-fills
+// the concrete window it currently means, and editing from there naturally
+// converts the range to absolute.
+// What syncTimeUi last wrote into each absolute field, as { value, iso }. The
+// displayed string is a lossy rendering of the instant (see toLocalInput), so
+// the instant is kept alongside it and boundFromField reuses it when the field
+// comes back untouched.
+const trRendered = { from: null, to: null }
+
+function syncTimeUi() {
+  const now = Date.now()
+  trLabelEl.textContent = rangeLabel(fFrom.value, fTo.value, now)
+  const active = matchQuickRange(fFrom.value, fTo.value)
+  for (const li of trQuick.children) li.classList.toggle('active', !!active && li.dataset.label === active.label)
+  const f = resolveTimeValue(fFrom.value, now), t = resolveTimeValue(fTo.value, now)
+  // Don't rewrite the absolute fields while the panel is open. Skipping only the
+  // focused element is not enough: filling two datetime-local fields routinely
+  // takes longer than the 10 s relative-range tick, so the field you already
+  // finished gets reverted (and trRendered with it) while you type in the other,
+  // and Apply then submits a value you never chose. openTimePicker() re-syncs on
+  // every open, so nothing is stale when the panel is next shown.
+  if (!trPanel.hidden) return
+  const writeField = (elm, iso, slot) => {
+    elm.value = iso ? toLocalInput(Date.parse(iso)) : ''
+    trRendered[slot] = iso ? { value: elm.value, iso } : null
+  }
+  writeField(trFromEl, f, 'from')
+  writeField(trToEl, t, 'to')
+}
+
+// Start/stop the timer to re-resolve relative ranges so they follow "now".
+// Runs every 10s while a relative range is active to keep token-based windows rolling.
+// Also refreshes the data so the map shows the current rolling window (#289 blocker 2).
+function updateTimeRangeTimer() {
+  const isRelative = isTimeToken(fFrom.value) || isTimeToken(fTo.value)
+  if (isRelative && !timeRangeTimer) {
+    timeRangeTimer = setInterval(() => { syncTimeUi(); refresh() }, 10000)
+  } else if (!isRelative && timeRangeTimer) {
+    clearInterval(timeRangeTimer)
+    timeRangeTimer = null
+  }
+}
+
+// Write a range into the carriers and fire the same 'change' every other
+// filter fires, so urlstate.save(), refresh() and the CS-layer/Locate hooks
+// all run exactly as they do for a hand-edited field.
+function applyRange(from, to) {
+  fFrom.value = from; fTo.value = to
+  fFrom.dispatchEvent(new Event('change', { bubbles: true }))
+  fTo.dispatchEvent(new Event('change', { bubbles: true }))
+  urlstate.save()
+  syncTimeUi()
+  updateTimeRangeTimer()
+}
+
+// Update timer when filters change (including manual edits to absolute fields).
+fFrom.addEventListener('change', updateTimeRangeTimer)
+fTo.addEventListener('change', updateTimeRangeTimer)
+
+const quickRangeElements = {}
+for (const q of QUICK_RANGES) {
+  const li = document.createElement('li')
+  li.className = 'tr-item'; li.dataset.label = q.label
+  const b = document.createElement('button')
+  b.type = 'button'; b.textContent = q.label
+  b.addEventListener('click', () => { applyRange(q.from, q.to); closeTimePicker() })
+  li.appendChild(b)
+  quickRangeElements[q.label] = li
+  trQuick.appendChild(li)
+}
+
+document.getElementById('tr-apply').addEventListener('click', () => {
+  // Read the fields back through boundFromField so an untouched field keeps the
+  // instant it was rendered from (#289 blocker 4). Re-parsing the displayed
+  // string cannot do this: on the DST fall-back night it always resolves to the
+  // first pass through the ambiguous hour, so Apply with no edits moved the
+  // window an hour into the past.
+  applyRange(boundFromField(trFromEl.value, trRendered.from), boundFromField(trToEl.value, trRendered.to))
+  closeTimePicker()
+})
+
+// The escape hatch that pairs with storing tokens (#285): copy a link whose
+// range is frozen to concrete timestamps, so it reproduces exactly for whoever
+// opens it instead of following their now.
+document.getElementById('tr-copy').addEventListener('click', async (e) => {
+  const btn = e.currentTarget
+  const url = absoluteShareUrl(location.href, fFrom.value, fTo.value, Date.now())
+  try {
+    await navigator.clipboard.writeText(url)
+    btn.textContent = 'Copied!'
+  } catch (_) {
+    btn.textContent = 'Copy failed'
+  }
+  setTimeout(() => { btn.textContent = 'Copy absolute link' }, 1500)
+})
+
+// Sync while still hidden: syncTimeUi() only writes the absolute fields when the
+// panel is closed, so the order matters — populate, then show.
+function openTimePicker() { syncTimeUi(); trPanel.hidden = false; trToggle.setAttribute('aria-expanded', 'true') }
+function closeTimePicker() { trPanel.hidden = true; trToggle.setAttribute('aria-expanded', 'false') }
+trToggle.addEventListener('click', () => (trPanel.hidden ? openTimePicker() : closeTimePicker()))
+// Capture phase, same reason as elsewhere: a quick-range click re-renders rows
+// under the pointer, so a bubble-phase listener can see a detached target.
+document.addEventListener('click', (e) => {
+  if (trPanel.hidden) return
+  if (e.target.closest('.tr-wrap')) return
+  closeTimePicker()
+}, true)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !trPanel.hidden) closeTimePicker() })
+window.__syncTimeUi = syncTimeUi // test hook
+
 // Clear button: reset every filter to its default, drop the CS observer layers,
 // leave Locate, then redraw + persist (empty values fall out of the URL).
 document.getElementById('clear-filters').addEventListener('click', () => {
@@ -690,6 +825,11 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   if (locateActive) deactivateLocate() // restores points/hex per mode
   refresh()
   urlstate.save()
+  syncTimeUi() // Clear rewrites from/to -> the picker label must follow (#285)
+  // ...and so must the tick: resetFilters() assigns .value directly, so coming
+  // from a relative range the timer would otherwise keep firing refresh() every
+  // 10 s against the static absolute default it just restored.
+  updateTimeRangeTimer()
 })
 
 // Hover the sender box to see the resolved node name (if known): resolve the
@@ -740,6 +880,11 @@ let locateRestored = false // wantLocate fires at most once, see applyRole() bel
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
+// urlstate applies from/to by assigning .value, which fires no change event, so
+// the listeners that normally arm the tick never run. Without this a shared
+// /?from=now-1h&to=now link — the whole point of storing tokens — renders the
+// label "Last 1 hour" and then freezes at load time.
+updateTimeRangeTimer()
 updateSenderTitle() // tooltip for a sender restored from the URL/storage
 
 // Restore state that a value alone does not trigger (checkbox draw, locate focus).
@@ -750,6 +895,7 @@ updateSenderTitle() // tooltip for a sender restored from the URL/storage
 if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
 if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
 if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
+syncTimeUi() // label the picker button from the restored/default range (#285)
 refresh()
 
 // Target-list picker (#223): a small dropdown beside #f-sender, matching

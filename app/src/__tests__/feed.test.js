@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
+
+// A real advert carries the full 32-byte pubkey (meshpacket.js), so merge
+// anchors are 64 hex. pk() builds a distinct one from a short head.
+const pk = (head) => head + '0'.repeat(64 - head.length)
 
 describe('senderList', () => {
   it('keeps channel_name + advert_pubkey + discover_pubkey + relay kinds, drops the rest', () => {
@@ -49,6 +53,150 @@ describe('senderList', () => {
   })
 })
 
+// #268: prefix compatibility is not transitive, so it must never be closed over.
+// A short relay id can be a prefix of two different full pubkeys; treating that
+// as evidence merges two physically distinct nodes into one target, and Locate
+// then trilaterates RSSI samples from both transmitters as if they were one.
+// The rule is: a prefix attaches to at most ONE full-pubkey anchor, and a prefix
+// matching two or more anchors is evidence AGAINST merging, not for it — the
+// same meaning the resolver's own `ambiguous` flag carries.
+describe('dedupeSenders never closes over a non-transitive relation (#268)', () => {
+  const A = pk('a1b2c3d4')   // node A
+  const B = pk('a1b2ffff')   // node B — shares the first 2 bytes with A
+  const shared = { sender_label: 'Repeater-Zuid' }
+
+  it('does not merge two distinct full pubkeys bridged by one short relay id', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared, rx_at: '2026-06-29T10:00:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared, rx_at: '2026-06-29T10:01:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: B, ...shared, rx_at: '2026-06-29T10:02:00Z' }),
+    ], {})
+    const cluster = out.find((r) => r.merged_ids.includes(A))
+    expect(cluster.merged_ids).not.toContain(B)
+  })
+
+  it('leaves an ambiguous prefix on its own row rather than guessing an anchor', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: B, ...shared }),
+    ], {})
+    expect(out).toHaveLength(3)
+    expect(out.find((r) => r.merged_ids.includes('a1b2')).merged_ids).toEqual(['a1b2'])
+  })
+
+  it('still merges a prefix into its anchor when exactly one anchor matches', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(out).toHaveLength(1)
+    expect(out[0].merged_ids).toEqual(['a1b2', A])
+  })
+
+  it('never merges two prefixes with no full-pubkey anchor between them', () => {
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c3', ...shared }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3'])
+  })
+
+  it('produces the same clusters regardless of input order', () => {
+    const rows = [
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: B, ...shared }),
+    ]
+    const key = (out) => out.map((r) => r.merged_ids.join('+')).sort()
+    expect(key(senderList([...rows].reverse(), {}))).toEqual(key(senderList(rows, {})))
+  })
+
+  it('never lets a direct_hash reach the merge at all', () => {
+    // 1-byte path hashes have a 256-way collision space — excluded by kind,
+    // which is what bounds the blast radius of everything above.
+    const out = senderList([
+      rec({ sender_kind: 'direct_hash', sender_id: 'a1', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual([A].sort())
+  })
+})
+
+describe('dedupeSenders prefix-aware merging (#267)', () => {
+  it('merges advert/discover/relay rows for the same node when ids are prefix-compatible and the resolved name matches', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4e5f6'), sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:00:00Z' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c3', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rx_at: '2026-06-29T10:02:00Z' }),
+    ], {})
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ sender_id: 'a1b2c3', rx_at: '2026-06-29T10:05:00Z' })
+    expect(out[0].merged_ids).toEqual(['a1b2', 'a1b2c3', pk('a1b2c3d4e5f6')])
+  })
+  it('treats prefix compatibility case-insensitively', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('A1B2C3D4'), sender_label: 'Node' }),
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Node' }),
+    ], {})
+    expect(out).toHaveLength(1)
+  })
+  it('does not merge rows with the same name when the ids are not prefix-compatible', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('aabbcc'), sender_label: 'Same-Name' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'ffeedd', sender_label: 'Same-Name' }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual([pk('aabbcc'), 'ffeedd'].sort())
+  })
+  it('does not merge prefix-compatible ids before a name has resolved', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: null }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: null }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', pk('a1b2c3d4')].sort())
+  })
+  it('refuses a prefix that two anchors share, even under different names', () => {
+    // The refusal has to count by prefix alone. Gating the count on the name
+    // makes it collapse to one match here -- and the hop is equally likely to
+    // have come from the other node, so attaching it feeds one node's samples
+    // into the other's Locate estimate.
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Repeater-Zuid' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2ffff'), sender_label: 'Repeater-Noord' }),
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Repeater-Zuid' }),
+    ], {})
+    expect(out).toHaveLength(3)
+    const relay = out.find((r) => r.sender_id === 'a1b2')
+    expect(relay.merged_ids).toEqual(['a1b2'])
+  })
+  it('does not merge prefix-compatible ids with different resolved names', () => {
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Node-One' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Node-Two' }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', pk('a1b2c3d4')].sort())
+  })
+  it('never merges channel_name rows, even when ids are prefix-compatible and names match', () => {
+    const out = senderList([
+      rec({ sender_kind: 'channel_name', sender_id: 'ab', sender_label: 'Same' }),
+      rec({ sender_kind: 'channel_name', sender_id: 'abcd', sender_label: 'Same' }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual(['ab', 'abcd'])
+  })
+  it('always exposes merged_ids as a lowercased array, even for a row with no merge partner', () => {
+    const out = senderList([rec({ sender_kind: 'advert_pubkey', sender_id: 'ABCD', sender_label: 'Solo' })], {})
+    expect(out[0].merged_ids).toEqual(['abcd'])
+  })
+  it('merges the same physical node in the recency/RSSI ranking too', () => {
+    const now = Date.parse('2026-06-29T10:05:00Z')
+    const out = topSenders([
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Repeater-Zuid', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rssi: -80, rx_at: '2026-06-29T10:00:00Z' }),
+    ], { count: 3, nowMs: now })
+    expect(out).toHaveLength(1)
+  })
+})
+
 describe('topSenders', () => {
   const now = Date.parse('2026-06-29T10:05:00Z')
 
@@ -69,6 +217,30 @@ describe('topSenders', () => {
     ], { ignore: new Set(['b']), count: 3, nowMs: now })
     expect(out).toHaveLength(1)
     expect(out[0]).toMatchObject({ sender_id: 'A', rssi: -60 })
+  })
+})
+
+// #268 blocker 3: a trace-ping addresses a node by the first byte of its id
+// (sendTracePing uses id.slice(0, 2)), so every variant in a merged cluster
+// produces the byte-identical frame. Selecting one merged row must not cost
+// 2-3x the airtime — the duty-cycle budget in autoping.js is sized for one.
+describe('selectedRepeaterIds collapses variants that transmit identically (#268)', () => {
+  const A = pk('a1b2c3d4')
+  const rows = [
+    { sender_kind: 'relay', sender_id: 'a1b2', rx_at: '2026-06-29T10:00:00Z' },
+    { sender_kind: 'relay', sender_id: 'a1b2c3', rx_at: '2026-06-29T10:01:00Z' },
+    { sender_kind: 'advert_pubkey', sender_role: 'Repeater', sender_id: A, rx_at: '2026-06-29T10:02:00Z' },
+  ]
+
+  it('emits one id per distinct trace-ping frame', () => {
+    const out = selectedRepeaterIds(rows, new Set(['a1b2', 'a1b2c3', A.toLowerCase()]))
+    expect(out).toHaveLength(1)
+  })
+
+  it('still emits one id per genuinely different target', () => {
+    const other = [{ sender_kind: 'relay', sender_id: 'ff00', rx_at: '2026-06-29T10:00:00Z' }]
+    const out = selectedRepeaterIds([...rows, ...other], new Set(['a1b2', 'ff00']))
+    expect(out.sort()).toEqual(['a1b2', 'ff00'])
   })
 })
 
@@ -140,5 +312,66 @@ describe('targetParts', () => {
   it('falls back to a dash when neither is present', () => {
     expect(targetParts({ sender_label: null, sender_id: null }))
       .toEqual({ primary: '—', secondary: '' })
+  })
+})
+
+// #267/#268 blocker 4: a selection captured at tap time is a snapshot of the
+// ids a node was known by THEN. When that node is later heard under a new
+// variant — its first DISCOVER_RESP prefix, say — those receptions fall
+// outside the stored set and vanish from the map and Locate, while the row
+// still renders checked. Silently dropping receptions for the node you are
+// actively hunting is the failure a user is least likely to notice, so the
+// selection has to name the NODE and be expanded to its current ids on use.
+describe('selection follows the node, not the ids it had at tap time (#268)', () => {
+  const A = pk('a1b2c3d4')
+  const shared = { sender_label: 'Repeater-Zuid' }
+
+  it('keys a merged cluster on its full-pubkey anchor', () => {
+    const row = { sender_id: 'a1b2', merged_ids: ['a1b2', A] }
+    expect(clusterKey(row)).toBe(A)
+  })
+
+  it('keys an unmerged row on its own id, lowercased', () => {
+    expect(clusterKey({ sender_id: 'A1B2', merged_ids: ['a1b2'] })).toBe('a1b2')
+    expect(clusterKey({ sender_id: 'Spammer', merged_ids: ['spammer'] })).toBe('spammer')
+  })
+
+  it('is stable as the cluster grows — the key does not change', () => {
+    const before = clusterKey({ sender_id: 'a1b2', merged_ids: ['a1b2', A] })
+    const after = clusterKey({ sender_id: 'a1b2', merged_ids: ['a1b2', 'a1b2c3d4e5f6', A] })
+    expect(after).toBe(before)
+  })
+
+  it('expands a selected key to every id the node currently answers to', () => {
+    const rows = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect([...expandSelection([A], rows)].sort()).toEqual(['a1b2', A].sort())
+  })
+
+  it('picks up a variant that appeared AFTER the selection was made', () => {
+    // The actual bug: tap the row when it is {a1b2, A}, then the node's first
+    // discover reply arrives as a longer prefix of the same pubkey. Under the
+    // old snapshot that reception was dropped; the key is unchanged, so it is
+    // caught now. The prefix has to be a real prefix of A to belong to it.
+    const discoverPrefix = A.slice(0, 16)
+    const later = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: discoverPrefix, ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(expandSelection([A], later).has(discoverPrefix)).toBe(true)
+  })
+
+  it('keeps a selected node selected even when it is not currently heard', () => {
+    // Nothing in the window matches, so there is no cluster to expand — the
+    // key must survive rather than the selection silently emptying.
+    expect([...expandSelection([A], [])]).toEqual([A])
+  })
+
+  it('expands nothing for an empty selection', () => {
+    expect(expandSelection([], []).size).toBe(0)
+    expect(expandSelection(null, []).size).toBe(0)
   })
 })

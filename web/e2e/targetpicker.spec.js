@@ -98,6 +98,10 @@ test('Clear also clears the pick, not just the typed prefix', async ({ page }) =
   await expect.poll(() => urls.some((u) => sendersOf(u).length === 1)).toBe(true)
 
   urls.length = 0
+  // Close the panel first: it is a popover in the same bar, so with #285's
+  // time-range control alongside it, an open panel overlays the Clear button.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#sender-picker')).toBeHidden()
   await page.click('#clear-filters')
   // The pick lives in the picker, not in #f-sender, so Clear has to reach it —
   // otherwise the filter survives with no visible trace of why.

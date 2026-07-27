@@ -11,6 +11,10 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',
+    // Pin the zone, matching vitest.config.js. CI runs UTC while the project is
+    // developed in CEST, so anything local-vs-UTC either passes for the wrong
+    // reason in CI or fails only on a developer machine.
+    timezoneId: 'Europe/Brussels',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
