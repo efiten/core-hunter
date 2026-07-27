@@ -78,7 +78,9 @@ export function receptionKey(r) {
 // choice, not an oversight.
 export function tickerFilters(filters, mode) {
   if (mode !== 'all') return { ...filters }
-  return { ...filters, sender: '', types: '', hops: '' }
+  // Both sender inputs travel under senderPairs since #223; dropping the old
+  // `sender` key alone would leave the picker's selection applied in "all".
+  return { ...filters, sender: '', senderPairs: [], types: '', hops: '' }
 }
 
 // isLiveWindow gates the ticker's recurring poll: re-fetching a fixed

@@ -1,6 +1,7 @@
 import { API_BASE } from './config.js'
 import { save } from './urlstate.js'
 import { FILTER_PACKET_TYPES } from './packettypes.js'
+import { senderParams } from './targetpicker.js'
 import { resolveTimeValue } from './timerange.js'
 
 // Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
@@ -120,7 +121,16 @@ if (typeof document !== 'undefined') {
 
   window.currentFilters = () => ({
     hunter: window.currentHunters(),
-    sender: document.getElementById('f-sender').value.trim(),
+    // Two independent inputs on two params (#223): the picker's selection and
+    // the typed leading-prefix search. #f-sender no longer doubles as the
+    // selection store, so an id containing punctuation never has to survive a
+    // delimiter round-trip anywhere (#288).
+    senderPairs: senderParams({
+      ids: (window.selectedSenderIds && window.selectedSenderIds()) || [],
+      prefix: document.getElementById('f-sender').value,
+    }),
+    // #285 resolves relative tokens (now-1h, now/d) as well as absolute values,
+    // so it supersedes the plain localToUTC conversion here.
     from: resolveTimeValue(document.getElementById('f-from').value, Date.now()),
     to: resolveTimeValue(document.getElementById('f-to').value, Date.now()),
     types: window.currentTypes(),

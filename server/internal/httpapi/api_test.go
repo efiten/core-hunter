@@ -50,6 +50,70 @@ func TestFilterFromHunterCommaSeparated(t *testing.T) {
 	if len(f.Hunter) != 0 { t.Fatalf("absent hunter must not filter: %+v", f.Hunter) }
 }
 
+// ?sender=a;b is the target-list picker's exact multi-id selection (#223);
+// a single semicolon-less value keeps the existing leading-prefix behaviour.
+// A trailing semicolon is what makes a ONE-id picker selection distinguishable
+// from a typed prefix — the web viewer reuses one field for both.
+// Uses semicolon instead of comma since sender_id can contain commas (#288 blocker 3).
+// #223/#288: exact multi-id picks ride on a REPEATED ?senders= param, and
+// ?sender= stays the free-text leading-prefix search. sender_id is operator
+// text for channel_name senders (meshpacket.js -> reception.go), so it can
+// contain any character — there is no delimiter that is safe to overload, and
+// the previous comma and semicolon schemes both broke on real names. Repeating
+// the param removes the delimiter entirely.
+func TestFilterFromSendersRepeatedParam(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/points?senders=aaaa&senders=bbbb", nil)
+	f := filterFrom(r, nil)
+	if len(f.Senders) != 2 || f.Senders[0] != "aaaa" || f.Senders[1] != "bbbb" {
+		t.Fatalf("repeated senders not parsed: %+v", f.Senders)
+	}
+	if f.Sender != "" {
+		t.Fatalf("an exact selection must not also set the prefix Sender: %q", f.Sender)
+	}
+
+	// A single pick is still an EXACT set, with no trailing-delimiter trick.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?senders=aaaa", nil)
+	f = filterFrom(r, nil)
+	if len(f.Senders) != 1 || f.Senders[0] != "aaaa" {
+		t.Fatalf("single senders value must be an exact set: %+v", f.Senders)
+	}
+	if f.Sender != "" {
+		t.Fatalf("single senders value must not set the prefix Sender: %q", f.Sender)
+	}
+
+	// The whole point: an id carrying punctuation survives intact.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?senders=Bob%2C+K.&senders=Ann%3BB", nil)
+	f = filterFrom(r, nil)
+	if len(f.Senders) != 2 || f.Senders[0] != "Bob, K." || f.Senders[1] != "Ann;B" {
+		t.Fatalf("punctuation in sender_id must survive: %+v", f.Senders)
+	}
+
+	// ?sender= is now unambiguously the prefix search, punctuation included.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?sender=Bob%2C+K.", nil)
+	f = filterFrom(r, nil)
+	if f.Sender != "Bob, K." {
+		t.Fatalf("sender must stay a verbatim prefix: %q", f.Sender)
+	}
+	if len(f.Senders) != 0 {
+		t.Fatalf("prefix search must not set Senders: %+v", f.Senders)
+	}
+
+	// Empty values are dropped rather than producing an empty-string id, which
+	// would otherwise build `IN ('')` and silently match nothing.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?senders=&senders=+&senders=aaaa", nil)
+	f = filterFrom(r, nil)
+	if len(f.Senders) != 1 || f.Senders[0] != "aaaa" {
+		t.Fatalf("blank senders values must be dropped: %+v", f.Senders)
+	}
+
+	// Absent -> no filter of either kind.
+	r = httptest.NewRequest(http.MethodGet, "/api/points", nil)
+	f = filterFrom(r, nil)
+	if f.Sender != "" || len(f.Senders) != 0 {
+		t.Fatalf("absent sender must not filter: %q %+v", f.Sender, f.Senders)
+	}
+}
+
 func TestVersionEndpoint(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, nil, nil, nil, nil)

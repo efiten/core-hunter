@@ -8,7 +8,15 @@ import (
 type Filter struct {
 	MinLat, MinLon, MaxLat, MaxLon float64
 	HasBBox                        bool
+	// Sender is a single leading-prefix match on sender_id (the web viewer's
+	// free-text field, and the app's isolate). Senders (below) is the exact
+	// multi-id variant — they are mutually exclusive; Senders wins if both set.
 	From, To, Sender               string
+	// Senders filters on an exact set of sender_ids, matching any of them
+	// (SQL IN, case-insensitive); empty = no filter (#223). The target-list
+	// picker selects whole ids, so prefix semantics would over-match — picking
+	// 'aa' must not also return 'aabb'. Mirrors Hunter's shape (#196).
+	Senders                        []string
 	Ignore                         []string
 	// Hunter filters on hunter_pubkey; multiple values match any of them
 	// (SQL IN); empty = no filter (#196).
@@ -70,7 +78,13 @@ func (f Filter) where() (string, []any) {
 		}
 		conds = append(conds, "hunter_pubkey IN ("+strings.Join(ph, ",")+")")
 	}
-	if f.Sender != "" {
+	if len(f.Senders) > 0 {
+		ph := make([]string, len(f.Senders))
+		for i, s := range f.Senders {
+			ph[i] = "?"; args = append(args, strings.ToLower(s))
+		}
+		conds = append(conds, "sender_id IS NOT NULL AND lower(sender_id) IN ("+strings.Join(ph, ",")+")")
+	} else if f.Sender != "" {
 		conds = append(conds, "sender_id IS NOT NULL AND lower(sender_id) LIKE ?"); args = append(args, strings.ToLower(f.Sender)+"%")
 	}
 	conds, args = ignoreCond(conds, args, f.Ignore)

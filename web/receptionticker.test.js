@@ -80,13 +80,20 @@ describe('tickerFilters — "all" mode drops sender/types/hops, keeps hunter+tim
   // window, ignoring the sender/type/direct-only narrowing", not literally
   // unbounded — a deliberate, smaller scope than app's "all", called out here
   // and in the PR description since it's a real interpretation choice.
-  const filters = { hunter: 'h1', sender: 'aa', from: '2026-01-01', to: '2026-01-02', types: 'Advert', hops: '0' }
+  // senderPairs is where BOTH sender inputs live since #223 (the picker's
+  // selection and the typed prefix); `sender` is kept for the older callers.
+  const filters = { hunter: 'h1', sender: 'aa', senderPairs: [['senders', 'aa11bb22']], from: '2026-01-01', to: '2026-01-02', types: 'Advert', hops: '0' }
 
   it('filtered mode passes every field through unchanged', () => {
     expect(tickerFilters(filters, 'filtered')).toEqual(filters)
   })
   it('all mode drops sender/types/hops, keeps hunter/from/to', () => {
-    expect(tickerFilters(filters, 'all')).toEqual({ hunter: 'h1', sender: '', from: '2026-01-01', to: '2026-01-02', types: '', hops: '' })
+    expect(tickerFilters(filters, 'all')).toEqual({ hunter: 'h1', sender: '', senderPairs: [], from: '2026-01-01', to: '2026-01-02', types: '', hops: '' })
+  })
+  it('all mode drops the picker selection too, not just the typed prefix', () => {
+    // Dropping only `sender` would leave the picked ids applied, so "all" would
+    // silently still be narrowed to the selection.
+    expect(tickerFilters(filters, 'all').senderPairs).toEqual([])
   })
 })
 

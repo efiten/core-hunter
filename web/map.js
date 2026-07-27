@@ -8,6 +8,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
+import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
 import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 
@@ -42,6 +43,16 @@ const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
+// Target-list picker (#223), created near the end of this file once its DOM
+// exists; refreshPickerCandidates() (called from refresh()) feeds it on every
+// redraw in all modes, guarded since it's still null during the handful of
+// calls that can happen before that point.
+let targetPicker = null
+// Declared here rather than at the wiring site below: refreshPickerCandidates()
+// reads it, and a `const` further down would be in its temporal dead zone --
+// reading it would throw rather than fall through the null guard if a redraw
+// ever lands before module eval reaches the wiring.
+let senderPicker = null
 const nodePosLayer = L.layerGroup().addTo(map)
 // Reception ticker (#224) two-way sync support: a distinct, non-interactive
 // highlight ring for whatever reception is on the ticker's playhead. The
@@ -104,11 +115,25 @@ window.addEventListener('resize', setMapTop)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
+// The two sender filters travel on two params (#223): `sender` is the
+// free-text leading-prefix search, `senders` (repeated) is the target-list
+// picker's exact multi-id selection. Separate params rather than one
+// delimiter-joined value, because sender_id is arbitrary operator text for
+// channel_name senders and no delimiter is safe to overload (#288). The server
+// applies either as a real SQL condition (filterFrom in
+// server/internal/httpapi/api.go), so this stays a plain pass-through -- no
+// client-side narrowing, and hex/heatmap honours a multi-sender pick exactly
+// like the point layer does.
 function qs() {
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
   const f = (window.currentFilters && window.currentFilters()) || {}
-  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  for (const [k, v] of Object.entries(f)) {
+    // senderPairs is already [key, value][] and may repeat a key (#223), so it
+    // appends rather than sets -- URLSearchParams.set would keep only the last.
+    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
   return p.toString()
 }
 
@@ -142,6 +167,9 @@ async function drawPoints() {
   }
 }
 
+// A multi-sender pick restricts the heatmap too (#223): the sender filter is
+// applied server-side in SQL, so it lands before the grid-cell aggregation
+// rather than needing per-point rows the client no longer sees.
 async function drawHex() {
   hexLayer.clearLayers()
   const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`); const fc = await r.json()
@@ -237,6 +265,8 @@ export function refresh() {
     if (locateActive) return // focus mode: keep the non-relevant layers hidden
     if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
+    // Picker works in all modes, not just points mode (#288 blocker 1)
+    refreshPickerCandidates()
     drawNodePositions()   // follows the same filter/bbox set as the points
     if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
@@ -273,8 +303,50 @@ window.__mapProject = (lat, lon) => map.latLngToContainerPoint([lat, lon]) // te
 function filtersQs() {
   const p = new URLSearchParams()
   const f = (window.currentFilters && window.currentFilters()) || {}
-  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  for (const [k, v] of Object.entries(f)) {
+    // senderPairs is already [key, value][] and may repeat a key (#223), so it
+    // appends rather than sets -- URLSearchParams.set would keep only the last.
+    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
   return p.toString()
+}
+
+// The target picker (#223) needs the sender-UNfiltered candidate set: it must
+// offer every sender in the current hunter/time/type/hops window to pick from,
+// not just the ones already picked. Now that the server applies the sender
+// filter for real, drawPoints()'s result set is already narrowed -- feeding
+// that to the picker would shrink the list to the current selection and make
+// picking a second sender impossible. So the picker runs its own query with
+// `sender` dropped. Bbox-scoped like the map itself, the same limitation
+// snapToLatestPoints (#218) has and the issue anticipated.
+//
+// Only fetched while the panel is actually open -- an extra request on every
+// redraw would be pure waste for a control that is closed almost all the time.
+let cachedCandidatePoints = []
+let cachedCandidatureSig = null
+async function refreshPickerCandidates() {
+  if (!targetPicker || !senderPicker || senderPicker.hidden) return
+  const b = map.getBounds()
+  const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
+  // The candidate pool is sender-independent by construction, so both the
+  // signature and the query drop the sender filters (#288 blocker 4) — see
+  // withoutSenderFilters. Keeping them would shrink the list you are picking
+  // from as you pick, and refetch 25k rows on every checkbox click.
+  const f = withoutSenderFilters((window.currentFilters && window.currentFilters()) || {})
+  const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
+  if (sig === cachedCandidatureSig) {
+    // Filter unchanged, just re-render with current selection state
+    targetPicker.render(cachedCandidatePoints, Date.now())
+    return
+  }
+  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  try {
+    const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
+    cachedCandidatePoints = points
+    cachedCandidatureSig = sig
+    targetPicker.render(points, Date.now())
+  } catch (_) { /* keep the last good list; retried on the next redraw */ }
 }
 
 // Single newest-first page for the reception ticker (#224) -- the server
@@ -285,7 +357,12 @@ function filtersQs() {
 async function fetchTickerPage(mode) {
   const filters = tickerFilters((window.currentFilters && window.currentFilters()) || {}, mode)
   const p = new URLSearchParams()
-  for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v)
+  for (const [k, v] of Object.entries(filters)) {
+    // senderPairs is [key, value][] and may repeat a key (#223), so append it
+    // the way qs() does -- p.set would stringify the array into one garbage value.
+    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
   p.set('limit', String(RX_CAP)); p.set('offset', '0')
   const r = await fetch(`${API_BASE}/api/points?${p.toString()}`)
   if (!r.ok) throw new Error(`points ${r.status}`)
@@ -442,11 +519,21 @@ window.__locateRender = (points, senderId = 'efef79') => { locateActive = true; 
 // receptions across all hunters, full timeframe — not viewport-limited).
 // Deliberately narrower than filtersQs(): when a sender is set, Locate keeps
 // today's exact behaviour (sender + time only), unchanged by #176.
-function locateQs(f) {
-  const p = new URLSearchParams({ sender: f.sender })
+function locateQs(f, sender) {
+  const p = new URLSearchParams({ sender })
   if (f.from) p.set('from', f.from)
   if (f.to) p.set('to', f.to)
   return p.toString()
+}
+
+// Locate estimates one node, so it needs a single sender id. #223 split the
+// two sender inputs into senderPairs (picked ids, or one typed prefix), so
+// derive it from there: exactly one pair means one node either way. A
+// multi-select has no single node to locate, so it falls through to the
+// filter-scoped path, the same as when no sender is set at all.
+function locateSender(f) {
+  const pairs = f.senderPairs || []
+  return pairs.length === 1 ? pairs[0][1] : ''
 }
 
 // Locate estimates over a selected sender, or -- when no sender is set --
@@ -454,12 +541,13 @@ function locateQs(f) {
 // app's filtered-record Locate (#176, follow-up to #128).
 async function drawLocate() {
   const f = (window.currentFilters && window.currentFilters()) || {}
+  const sender = locateSender(f)
   const box = document.getElementById('locate-info')
   let fetched
   try {
     // Full paged dataset: the solver input and the drawn dots are the same
     // array, so the centroid always sits within the visible cloud.
-    fetched = await fetchPointsPaged(f.sender ? locateQs(f) : filtersQs(), { maxTotal: 100000 })
+    fetched = await fetchPointsPaged(sender ? locateQs(f, sender) : filtersQs(), { maxTotal: 100000 })
   } catch (e) {
     if (locateActive) {
       box.hidden = false
@@ -470,11 +558,11 @@ async function drawLocate() {
   const points = toLocatePoints(fetched.points)
   // CoreScope observer-points are keyed on a single heard_key -- they only
   // make sense to merge in when locating one specific sender (#176).
-  if (f.sender) {
+  if (sender) {
     // When a CoreScope layer is shown, count that node's CoreScope sightings too —
     // resilient (a failed source just contributes nothing).
     const tf = (f.from ? '&from=' + encodeURIComponent(f.from) : '') + (f.to ? '&to=' + encodeURIComponent(f.to) : '')
-    const hk = encodeURIComponent(f.sender)
+    const hk = encodeURIComponent(sender)
     const extra = []
     if (canSeeObserverPoints(currentRole)) {
       if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
@@ -485,7 +573,7 @@ async function drawLocate() {
       for (const rr of res) for (const p of rr.points || []) points.push({ lat: p.lat, lon: p.lon, rssi: p.rssi })
     }
   }
-  renderLocate(points, f.sender)
+  renderLocate(points, sender)
 }
 
 const locateBtn = document.getElementById('locate-toggle')
@@ -871,6 +959,9 @@ window.__syncTimeUi = syncTimeUi // test hook
 // leave Locate, then redraw + persist (empty values fall out of the URL).
 document.getElementById('clear-filters').addEventListener('click', () => {
   if (window.__resetFilters) window.__resetFilters()
+  // The pick lives in the picker, not in #f-sender, so resetFilters() cannot
+  // see it — without this the senders= filter survives Clear with no UI trace.
+  targetPicker.setSelected([])
   csAdvertCb.checked = false; csRelayCb.checked = false
   csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
   if (locateActive) deactivateLocate() // restores points/hex per mode
@@ -922,6 +1013,11 @@ urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
+// Captured before load(): the picker is wired further down (it needs the DOM),
+// so 'senders' is not a registered field yet when load() normalizes the address
+// bar — and normalizing drops unregistered keys, taking a pasted ?senders= with
+// it. Same shape as wantLocate below, applied once the picker exists.
+const initialSenders = urlstate.initial('senders', '')
 const wantLocate = urlstate.initial('locate', '') === '1'
 let locateRestored = false // wantLocate fires at most once, see applyRole() below
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
@@ -945,6 +1041,50 @@ if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 syncTimeUi() // label the picker button from the restored/default range (#285)
 refresh()
 
+// Target-list picker (#223): a small dropdown beside #f-sender, matching
+// the existing #f-hunter multi-select's "toggle button reveals a panel"
+// shape rather than app's full sheet -- web's top bar keeps every control
+// inline (#225 decision), so this stays a compact popover, not a sheet.
+const spToggle = document.getElementById('sp-toggle')
+senderPicker = document.getElementById('sender-picker')
+targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
+  pinnedEl: document.getElementById('tp-pinned'),
+  // The picker owns its selection now (#288), so the field's own input/urlstate
+  // wiring no longer carries it -- refresh and persist explicitly instead.
+  onChange: () => { urlstate.save(); refresh() },
+})
+// currentFilters (filters.js) reads the selection through this rather than
+// importing the picker, keeping the filter module free of DOM-component wiring.
+window.selectedSenderIds = () => targetPicker.getSelected()
+// Selection persists as JSON: a sender_id is arbitrary operator text, so the
+// stored form can no more be delimiter-joined than the query params can (#288).
+urlstate.register({ key: 'senders',
+  get: () => encodeSelection(targetPicker.getSelected()),
+  set: (v) => targetPicker.setSelected(decodeSelection(v)) })
+// load() already ran, so apply the pre-load capture now that the field exists.
+if (initialSenders) targetPicker.setSelected(decodeSelection(initialSenders))
+function openSenderPicker() {
+  senderPicker.hidden = false
+  spToggle.setAttribute('aria-expanded', 'true')
+  targetPicker.reset() // back to page 1; the next redraw below repopulates
+  refresh()
+}
+function closeSenderPicker() {
+  senderPicker.hidden = true
+  spToggle.setAttribute('aria-expanded', 'false')
+}
+spToggle.addEventListener('click', () => (senderPicker.hidden ? openSenderPicker() : closeSenderPicker()))
+// Capture phase, not bubble: a row click's own handler (onToggle -> render)
+// replaces the clicked button via listEl.replaceChildren() synchronously, so
+// by the time a bubble-phase document listener would run, e.target is
+// already detached and closest('.sp-wrap') wrongly returns null, closing the
+// picker after every pick. Capture runs before that mutation happens.
+document.addEventListener('click', (e) => {
+  if (senderPicker.hidden) return
+  if (e.target.closest('.sp-wrap')) return
+  closeSenderPicker()
+}, true)
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !senderPicker.hidden) closeSenderPicker() })
 // Reception ticker (#224) -- created once, available to every role (the
 // server already applies guest/member windowing to /api/points itself, same
 // as the map's own point layer). Wired both ways: onActiveChange highlights
