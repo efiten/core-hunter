@@ -38,11 +38,15 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* Locate: a styled checkbox segment (replaces the old locate FAB). */
 #locate-seg { gap: 6px; }
 #locate-checkbox { width: 14px; height: 14px; margin: 0; accent-color: var(--ch-accent); cursor: pointer; }
-/* BLE + MQTT status: two small dots stacked next to the menu button. */
+/* BLE + MQTT status: two small dots stacked inside the menu button, so the
+   whole control is one tap target that opens the connection pane (#281). */
 #status-dots { display: inline-flex; flex-direction: column; gap: 3px; align-items: center; }
 #status-dots i { display: block; width: 7px; height: 7px; border-radius: 50%;
   background: var(--ch-sig-none); }
 #status-dots i.on { background: var(--ch-accent); }
+/* Low companion battery rides the BLE dot — visible at a glance while driving
+   without occupying HUD space (#281). */
+#status-dots i.low { background: var(--ch-accent-2); }
 
 /* Single-hunter locate readout — floats top-left under the topbar, beside the
    receptions log (top-right); shown only while a sender is isolated. */
@@ -109,17 +113,45 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* Readout row: hero RSSI + secondary SNR + hop pill pushed right */
 #hud-readout-row { display: flex; align-items: baseline; gap: 12px; }
 
+/* nowrap: the hero value and its unit are one readout, and without this the
+   " dBm" span wrapped onto a second line for EVERY reading — the number alone
+   fills the line box at 38px — taking the readout row from 38px to 76px and
+   the HUD from 86px to 124px. #hud is bottom-anchored, so those 38px came
+   straight out of the clearance the FAB stack depends on (#264). Pre-existing,
+   found while checking this PR's own row-overflow fix at 360px. */
 #hud-rssi { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 38px; font-weight: 700; color: var(--ch-accent);
-  font-variant-numeric: tabular-nums; line-height: 1; }
+  font-variant-numeric: tabular-nums; line-height: 1;
+  white-space: nowrap; flex: none; }
 #hud-rssi .unit { font-size: 14px; color: var(--ch-muted); font-weight: 500; }
 
+/* min-width:0 so the deficit is shared. #hud-readout-row is a nowrap flex row;
+   with #hud-sender the only item able to shrink it absorbed 100% of any
+   shortfall, and past that the row simply overflowed — #hud has no
+   overflow:hidden and #hud-since's margin-left:auto resolves to 0 under
+   negative free space, so the time-since readout was pushed off the right edge.
+   Worst realistic case at 360px (SE, common Android): -105 dBm + SNR -12.5 dB
+   + 12m 34s + three 12px gaps ≈ 332px against a 328px content box. */
 #hud-snr { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
-  font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+  font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Time since last packet — pushed to the right edge of the readout row */
+/* Who the last packet came from (#281) — the origin, or "via <repeater>" when
+   it reached us through a relay. Ellipsises rather than pushing the row wide. */
+#hud-sender { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 15px; color: var(--ch-text); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#hud-sender.via { color: var(--ch-muted); }
+
+/* Time since last packet — pushed to the right edge of the readout row.
+   nowrap matters more than it looks: without it, a long sender name squeezes
+   this item below its content width and "12m 34s" wraps onto a second line,
+   taking the readout row from 38px to 76px and the whole HUD ~38px taller.
+   #hud is bottom-anchored, so that eats the ~25px clearance the FAB stack
+   relies on (#264) — measured at 360px with a realistic node name. */
 #hud-since { margin-left: auto; font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
-  font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+  font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums;
+  white-space: nowrap; flex: none; }
 
 /* Thermal bar: always-visible full gradient + marker */
 #hud-bar { position: relative; height: 9px; border-radius: 5px; overflow: visible; }
@@ -138,7 +170,8 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 /* Settings button lives in the top bar (right of the status dots) */
 #topbar-right { display: flex; align-items: center; gap: 10px; }
-.topbar-btn { position: relative; border: none; background: transparent; color: var(--ch-text);
+.topbar-btn { position: relative; display: inline-flex; align-items: center; gap: 7px;
+  border: none; background: transparent; color: var(--ch-text);
   font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
 /* ---- FABs ---- */
@@ -234,7 +267,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-about-name { font-size: 20px; font-weight: 600; }
 .ss-about-desc { font-size: 14px; line-height: 1.55; color: var(--ch-muted); margin: 0 0 16px; }
 .ss-about-links { display: flex; flex-direction: column; gap: 14px; margin: 18px 0; }
-.ss-about-links a { display: block; text-decoration: none; }
+.ss-about-links a, .ss-about-links button { display: block; text-decoration: none;
+  width: 100%; padding: 0; border: none; background: none; text-align: left;
+  font-family: inherit; cursor: pointer; }
 .ss-link-title { display: block; color: var(--ch-accent-2); font-size: 14px; font-weight: 600; }
 .ss-link-desc { display: block; color: var(--ch-muted); font-size: 12.5px; line-height: 1.45; margin-top: 2px; }
 .ss-about-disclaimer { font-size: 12px; line-height: 1.5; color: var(--ch-muted);
@@ -253,6 +288,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-conn-status dt { color: var(--ch-muted); }
 .ss-conn-status dd { margin: 0; color: var(--ch-text);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace; }
+.ss-conn-status dd.ss-conn-low { color: var(--ch-accent-2); font-weight: 600; }
 .ss-connect { border: none; border-radius: 11px; padding: 9px 18px;
   background: var(--ch-accent); color: var(--ch-bg); font-weight: 650; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
@@ -312,9 +348,6 @@ body.onboarding #topbar-controls, body.onboarding #settings-btn,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn, body.onboarding #mode3d-toggle,
 body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   box-shadow: 0 0 0 2px var(--ch-accent); }
-/* The "?" only re-opens onboarding, so it is redundant (and crowds the narrow
-   topbar) while the overlay is already showing. */
-body.onboarding #onboarding-btn { display: none; }
 
 /* top/left are computed per-callout in app.js (positionCallouts), anchored to
    each callout's actual target element instead of a hardcoded offset (#216). */

@@ -19,6 +19,8 @@ import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './q
 import { Publisher } from './publisher.js'
 import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
+import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
+import { senderReadout } from './hudsender.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
@@ -141,6 +143,9 @@ const state = {
   // Auto-ping (#233): toggled by the Discover FAB. lastLat/lastLon track the
   // position at the last fire, for the movement half of the fire gate.
   autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [] },
+  // Companion battery (#281): polled periodically while connected, since it
+  // doesn't arrive with each packet the way RSSI/SNR do.
+  battery: { mv: null, timer: null, failures: 0 },
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +181,12 @@ function updateHud(rec) {
   // Secondary: SNR (small muted)
   el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : 'SNR —'
 
+  // Who we heard it from — the origin, or "via <repeater>" for a relayed hop.
+  const who = senderReadout(rec)
+  const senderEl = el('hud-sender')
+  senderEl.textContent = who.text
+  senderEl.classList.toggle('via', who.viaRelay)
+
   // Thermal bar marker — continuous position from RSSI (calibration + attenuator)
   const offset = effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb)
   const pct = rssiToPct(rec.rssi, offset)
@@ -186,6 +197,70 @@ function setDot(id, on) {
   const d = el(id)
   if (on) d.classList.add('on')
   else d.classList.remove('on')
+  // `.low` is declared after `.on` and is equally specific, so it kept the dot
+  // coloured after the link dropped — a lit dot reading as "connected" to a
+  // driver glancing down. Clearing it here rather than at the call site means
+  // no future caller can reintroduce it (#281).
+  if (!on) d.classList.remove('low')
+}
+
+// Companion battery (#281): the reading itself lives in Settings → Connection
+// (raw voltage primary — no chemistry assumptions — with a rough Li-ion % hint),
+// while a low battery rides the BLE status dot so it's catchable at a glance
+// while driving.
+function renderBattery() {
+  const mv = state.battery.mv
+  const row = el('ss-conn-battery')
+  if (row) {
+    const pct = mvToPercent(mv)
+    // No percentage for a multi-cell pack: its endpoints are a firmware build
+    // flag we cannot read over the wire, so volts is the only honest readout.
+    row.textContent = !Number.isFinite(mv) ? '—'
+      : pct === null ? `${(mv / 1000).toFixed(2)}V`
+      : `${(mv / 1000).toFixed(2)}V (~${pct}%)`
+    row.classList.toggle('ss-conn-low', isLowBattery(mv))
+  }
+  const dot = el('dot-ble')
+  if (dot) dot.classList.toggle('low', state.connected && isLowBattery(mv))
+}
+
+const BATTERY_POLL_MS = 60000
+
+// CMD_GET_STATS is v8+ firmware, and a companion that predates it (or has no
+// stats handler at all) never answers — so every 60s poll would leave a 6s
+// dangling promise for the whole session, silently. Give up after three
+// consecutive misses rather than gating on fwVer: requestDeviceInfo has no
+// caller today, so a version gate would mean an extra connect round-trip, and
+// it would still not cover a v8+ board whose stats handler is absent.
+const BATTERY_POLL_FAILURES_BEFORE_GIVING_UP = 3
+
+function pollBattery() {
+  if (!state.connected || !state.transport) return
+  requestStatsCore(state.transport)
+    .then((info) => {
+      state.battery.failures = 0
+      state.battery.mv = info.batteryMv
+      renderBattery()
+    })
+    .catch(() => {
+      // A transient BLE hiccup is retried; a companion that never answers is
+      // not asked again until the next connect.
+      state.battery.failures = (state.battery.failures || 0) + 1
+      if (state.battery.failures >= BATTERY_POLL_FAILURES_BEFORE_GIVING_UP) stopBatteryPoll()
+    })
+}
+
+function startBatteryPoll() {
+  if (state.battery.timer) return
+  state.battery.timer = setInterval(pollBattery, BATTERY_POLL_MS)
+  pollBattery()
+}
+
+function stopBatteryPoll() {
+  if (state.battery.timer) { clearInterval(state.battery.timer); state.battery.timer = null }
+  state.battery.mv = null
+  state.battery.failures = 0
+  renderBattery()
 }
 
 // Light the filter pill's badge when the view is narrowed — either the filter
@@ -715,7 +790,14 @@ async function connectAll() {
     state.transport.onStatus((s) => {
       const on = s === 'connected'
       setDot('dot-ble', on)
-      if (!on) state.connected = false
+      if (!on) {
+        state.connected = false
+        // A spontaneous drop never reaches disconnectAll/stopBatteryPoll, so
+        // without this Settings keeps showing the last voltage read before the
+        // link died, indefinitely and with no sign it is stale.
+        state.battery.mv = null
+        renderBattery()
+      }
     })
     await state.transport.connect()
     state.connected = true
@@ -746,6 +828,7 @@ async function connectAll() {
     el('discover-btn').disabled = false
     refreshConnState()
     maybeShowBgHint()
+    startBatteryPoll()
   } catch (e) {
     console.error('[connect]', e)
     connectButtons().forEach((btn) => { btn.textContent = 'Connect (retry)'; btn.disabled = false })
@@ -798,6 +881,7 @@ function refreshConnState() {
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
   el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
+  renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
   el('ss-conn-mqtt').textContent = state.mqttPaused
     ? 'Paused'
@@ -825,6 +909,7 @@ async function disconnectAll(silent) {
   state.sf = null
   el('discover-btn').disabled = true
   stopAutoPing()
+  stopBatteryPoll()
 
   if (state.wakeLock) state.wakeLock.disable()
   if (state.publisher) { state.publisher.end(); state.publisher = null }
@@ -1036,6 +1121,7 @@ function buildSettingsSheet() {
           <dt>Companion</dt><dd id="ss-conn-name">—</dd>
           <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
           <dt>Spreading factor</dt><dd id="ss-conn-sf">—</dd>
+          <dt>Battery</dt><dd id="ss-conn-battery">—</dd>
           <dt>BLE</dt><dd id="ss-conn-ble">—</dd>
           <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
         </dl>
@@ -1100,6 +1186,10 @@ function buildSettingsSheet() {
         </div>
         <p class="ss-about-desc">Locate MeshCore nodes by their radio signal. Your logged receptions build a shared coverage map. Built by amateur-radio operators.</p>
         <nav class="ss-about-links">
+          <button type="button" id="ss-about-howto">
+            <span class="ss-link-title">How it works</span>
+            <span class="ss-link-desc">Re-open the walkthrough of the map, controls and what gets logged.</span>
+          </button>
           <a href="https://map.mesh-hunter.eu" target="_blank" rel="noopener">
             <span class="ss-link-title">Shared coverage map</span>
             <span class="ss-link-desc">Where MeshCore nodes have been heard, pooled from every hunter.</span>
@@ -1179,6 +1269,14 @@ function buildSettingsSheet() {
   }
   el('ss-tab-settings').addEventListener('click', () => selectTab('settings'))
   el('ss-tab-about').addEventListener('click', () => selectTab('about'))
+
+  // Replaces the old topbar "?" button (#281): closes the sheet so the
+  // walkthrough it re-opens isn't hidden behind it.
+  el('ss-about-howto').addEventListener('click', () => {
+    el('settings-sheet').hidden = true
+    state.showOnboarding = true
+    refreshSplash()
+  })
 
   let accFormMode = null // 'login' | 'register'
 
@@ -1707,8 +1805,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!state.connected) { state.wakeLock.enable(); connectAll() }
   })
 
-  // Onboarding: the "?" button re-opens the splash overlay; Close dismisses it.
-  el('onboarding-btn').addEventListener('click', () => { state.showOnboarding = true; refreshSplash() })
+  // Onboarding: Settings → About re-opens the splash overlay; Close dismisses it.
   el('splash-close').addEventListener('click', () => { state.showOnboarding = false; refreshSplash() })
   // Tapping the dimmed scrim itself (not the panel/callouts/close button)
   // also dismisses the reopened tour (#216) — gated the same way as the
