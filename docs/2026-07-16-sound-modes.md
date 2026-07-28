@@ -74,3 +74,32 @@ singing-bowl and sampled-ambiance beds; real music tracks vs. generative.
 - Everything is Web Audio synthesis — no audio assets shipped.
 - iOS/Bluefy: the ring/silent hardware switch mutes Web Audio; nothing we can
   detect or work around from the page.
+
+## Addendum 2026-07-27 — background behaviour (#260)
+
+Backgrounding (`visibilitychange` → hidden) while a sound mode is active
+previously left the bed/music playing unchanged, with no audible sign the app
+was no longer visibly hunting. Verified separately (#260, comment
+2026-07-18): the BLE-stall / HUD-honesty half of that issue was already fully
+covered by the existing `#198`/`#199` lifecycle work (`planResume`,
+`onVisibilityChange`, the "Capture paused Xs" banner) — nothing to fix there.
+This addendum covers the remaining sound-side half, unblocked once `#145`
+landed (PR #261).
+
+- **On hidden**, in `full` mode: the generative music layer stops
+  (`stopMusic()`) and the bed ducks to 30% of its already-quiet level
+  (`duckBed()`) rather than being silenced outright — it keeps breathing, just
+  audibly different, so background/foreground is a real state change you can
+  hear, not a silent no-op.
+- **A short cue marks each transition**, in any active mode (`rxtx` or
+  `full`) — two plain sine notes, falling (G4→D4) for backgrounded, rising
+  (D4→G4) for resumed. Distinct in shape from both the reception dit (one
+  pitched tone) and the tx pop (a fast upward flick), so a visibility
+  transition never reads as a reception or a transmission — and it is tied to
+  a real event (the visibility change itself), so the always-real rule holds.
+- **On return**, `full` mode restarts the generative layer (a fresh random
+  phase, same as any other entry into `full`) and ramps the bed back to its
+  normal level over 1.5 s.
+- Implemented as an extension of the engine's existing visibilitychange
+  handler (previously only resumed a suspended/interrupted `AudioContext`),
+  not a second listener.

@@ -166,15 +166,27 @@ export function createSoundEngine() {
   // Registered once for the life of the engine. startMusic() can run many
   // times (every entry into `full`), and re-adding here would stack a listener
   // per entry, each re-running resume() on the same context.
+  //
+  // Also owns the #260 background behaviour: backgrounding while a sound mode
+  // is active must be audible, not just silently full-volume in a pocket —
+  // the generative music layer stops (duckBed keeps the bed itself breathing,
+  // just quieter, rather than a hard stop) and a short cue marks each
+  // transition, a real event like everything else this engine plays.
   let visibilityBound = false
   function resumeOnVisibility() {
     if (visibilityBound) return
     visibilityBound = true
     const handler = () => {
-      if (document.hidden) return
+      if (document.hidden) {
+        if (mode !== 'off') backgroundCue()
+        if (mode === 'full') { stopMusic(); duckBed() }
+        return
+      }
       if (ctx && ['suspended', 'interrupted'].includes(ctx.state)) {
         ctx.resume().catch(() => {})
       }
+      if (mode !== 'off') resumeCue()
+      if (mode === 'full') { unduckBed(); startMusic() }
     }
     document.addEventListener('visibilitychange', handler)
   }
@@ -231,17 +243,45 @@ export function createSoundEngine() {
       lfo.start()
       // Fade in over a couple of seconds — no hard audio edge on mode flip.
       gain.gain.linearRampToValueAtTime(gainTarget, c.currentTime + 2)
-      nodes.push({ src, gain, lfo })
+      nodes.push({ src, gain, lfo, gainTarget })
     }
     layer(false, 'lowpass', 190, 0.05, 0.07, 0.02)   // distant surf swell
     layer(true, 'bandpass', 1100, 0.016, 0.11, 0.007) // soft moving air
     bed = nodes
   }
 
+  // Backgrounding (#260) ducks the bed rather than stopping it — a very low
+  // bed keeps breathing so the app still reads as alive while multitasking,
+  // just audibly different, unlike stopBed()'s hard fade-and-stop for a real
+  // mode change.
+  const BED_DUCK_FACTOR = 0.3
+  let bedDucked = false
+  function duckBed() {
+    if (!bed || bedDucked) return
+    bedDucked = true
+    const t = ctx.currentTime
+    for (const { gain, gainTarget } of bed) {
+      gain.gain.cancelScheduledValues(t)
+      gain.gain.setValueAtTime(gain.gain.value, t)
+      gain.gain.linearRampToValueAtTime(gainTarget * BED_DUCK_FACTOR, t + 1.5)
+    }
+  }
+  function unduckBed() {
+    if (!bed || !bedDucked) return
+    bedDucked = false
+    const t = ctx.currentTime
+    for (const { gain, gainTarget } of bed) {
+      gain.gain.cancelScheduledValues(t)
+      gain.gain.setValueAtTime(gain.gain.value, t)
+      gain.gain.linearRampToValueAtTime(gainTarget, t + 1.5)
+    }
+  }
+
   function stopBed() {
     if (!bed) return
     const nodes = bed
     bed = null
+    bedDucked = false
     for (const { src, gain, lfo } of nodes) {
       try {
         gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6)
@@ -392,6 +432,39 @@ export function createSoundEngine() {
     if (!isRunning()) return
     if (kind === 'discover') { pop(c, 620, c.currentTime); pop(c, 830, c.currentTime + 0.11) }
     else pop(c, 990, c.currentTime)
+  }
+
+  // Background/resume cue (#260): two plain sine notes, distinct in shape
+  // from both the dit (a single pitched tone) and the tx pop (a fast upward
+  // flick) so a visibility transition never reads as a reception or a
+  // transmission. Backgrounded falls (G4->D4, going quiet); resumed rises
+  // (D4->G4, waking up) — the mirror image of each other.
+  function tone(c, f, when, dur) {
+    const osc = c.createOscillator()
+    const gain = c.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = f
+    gain.gain.setValueAtTime(0, when)
+    gain.gain.linearRampToValueAtTime(0.14, when + 0.015)
+    gain.gain.setValueAtTime(0.14, when + dur - 0.02)
+    gain.gain.linearRampToValueAtTime(0, when + dur)
+    osc.connect(gain).connect(master)
+    osc.start(when)
+    osc.stop(when + dur + 0.02)
+  }
+
+  function backgroundCue() {
+    if (!isRunning()) return
+    const t = ctx.currentTime
+    tone(ctx, 392, t, 0.11)         // G4
+    tone(ctx, 293.66, t + 0.13, 0.11) // D4
+  }
+
+  function resumeCue() {
+    if (!isRunning()) return
+    const t = ctx.currentTime
+    tone(ctx, 293.66, t, 0.11)      // D4
+    tone(ctx, 392, t + 0.13, 0.11)  // G4
   }
 
   function destroy() {

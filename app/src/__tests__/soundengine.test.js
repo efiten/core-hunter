@@ -7,18 +7,20 @@ import { createSoundEngine } from '../sound.js'
 // fake context is enough to reach all of it; sound.js only needs the node
 // factories, and only `document.addEventListener` off the DOM.
 
+// `calls` records every ramp/set call made on this param -- used by the
+// background-duck tests (#260) to check a ramp target without modelling the
+// actual audio-rate value.
 function fakeParam(value = 0) {
-  return {
-    value,
-    setValueAtTime() { return this },
-    linearRampToValueAtTime() { return this },
-    exponentialRampToValueAtTime() { return this },
-    cancelScheduledValues() { return this },
+  const p = { value, calls: [] }
+  for (const m of ['setValueAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime', 'cancelScheduledValues']) {
+    p[m] = (...args) => { p.calls.push([m, ...args]); return p }
   }
+  return p
 }
 
 function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
   const oscillators = []
+  const gains = []
   const node = (extra = {}) => ({ connect(t) { return t }, ...extra })
   const ctx = {
     state,
@@ -27,6 +29,7 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     destination: node(),
     resumeCalls: 0,
     oscillators,
+    gains,
     // Autoplay policy: before a user gesture, resume() does not actually start
     // the clock. Modelling that is the point -- a fake that always succeeds
     // cannot exercise the suspended path at all.
@@ -37,7 +40,7 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
       return Promise.resolve()
     },
     close() {},
-    createGain: () => node({ gain: fakeParam(1) }),
+    createGain: () => { const g = node({ gain: fakeParam(1) }); gains.push(g); return g },
     createBiquadFilter: () => node({ type: '', frequency: fakeParam(0), Q: fakeParam(0) }),
     createConvolver: () => node({ buffer: null }),
     createStereoPanner: () => node({ pan: fakeParam(0) }),
@@ -215,5 +218,91 @@ describe('finished voices are not retained (#145)', () => {
     e.setMode('off')
     // Nothing re-stops a voice that already ended.
     expect(voices.every((o) => o.stopped === false)).toBe(true)
+  })
+})
+
+// #260: backgrounding while a sound mode is active must be audible — the
+// generative music layer stops (ducked), the bed keeps breathing (not
+// stopped outright) at a lower level, and a short cue marks each transition
+// so background/foreground is a real event like everything else this engine
+// plays, never silent state nobody notices.
+function fireVisibility(hidden) {
+  document.hidden = hidden
+  listeners.filter((l) => l.type === 'visibilitychange').forEach((l) => l.fn())
+}
+
+describe('backgrounding ducks the music and cues the transition (#260)', () => {
+  it('stops the generative music while hidden, in full mode', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    vi.advanceTimersByTime(60_000)
+    const before = ctx.oscillators.filter((o) => o.started && !o.stopped).length
+    expect(before).toBeGreaterThan(0)
+
+    fireVisibility(true)
+    ctx.oscillators.length = 0
+    vi.advanceTimersByTime(60_000)
+    // No new generative notes fire while hidden -- the timers were torn down.
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+
+  it('resumes the generative music once visible again, in full mode', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    fireVisibility(true)
+    fireVisibility(false)
+    ctx.oscillators.length = 0
+    vi.advanceTimersByTime(60_000)
+    expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
+  })
+
+  it('does not stop the bed outright while hidden -- it ducks, not silences', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    const bedSources = ctx.oscillators.slice() // bed LFOs, started at setMode('full')
+    fireVisibility(true)
+    // The bed's own oscillators (LFOs) are still the ones from startBed() --
+    // none of them got .stop() called by ducking.
+    expect(bedSources.every((o) => !o.stopped)).toBe(true)
+  })
+
+  it('ducks the bed gain lower while hidden and restores it on return', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    const bedGainCallsBefore = ctx.gains.reduce((n, g) => n + g.gain.calls.length, 0)
+    fireVisibility(true)
+    const bedGainCallsHidden = ctx.gains.reduce((n, g) => n + g.gain.calls.length, 0)
+    expect(bedGainCallsHidden).toBeGreaterThan(bedGainCallsBefore)
+    fireVisibility(false)
+    const bedGainCallsVisible = ctx.gains.reduce((n, g) => n + g.gain.calls.length, 0)
+    expect(bedGainCallsVisible).toBeGreaterThan(bedGainCallsHidden)
+  })
+
+  it('plays a cue on hidden and on resume, distinct from the bed/music', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('rxtx') // no bed/music at all -- isolates the cue itself
+    ctx.oscillators.length = 0
+    fireVisibility(true)
+    const hiddenCue = ctx.oscillators.filter((o) => o.started).length
+    expect(hiddenCue).toBeGreaterThan(0)
+    ctx.oscillators.length = 0
+    fireVisibility(false)
+    const resumeCue = ctx.oscillators.filter((o) => o.started).length
+    expect(resumeCue).toBeGreaterThan(0)
+  })
+
+  it('plays no cue and no duck when sound is off', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('off')
+    ctx.oscillators.length = 0
+    fireVisibility(true)
+    fireVisibility(false)
+    expect(ctx.oscillators).toHaveLength(0)
   })
 })
