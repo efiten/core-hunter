@@ -21,6 +21,7 @@ import { Gps } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
+import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
 import { isSettingsActive } from './settings.js'
 import { sinceLabel } from './elapsed.js'
@@ -337,7 +338,7 @@ function positionCallouts() {
   if (controls) place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' })
   const menuBtn = el('settings-btn')
   if (menuBtn) place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' })
-  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn'), el('mode3d-toggle'), el('sound-toggle')].filter(Boolean)
+  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn'), el('sound-toggle')].filter(Boolean)
   if (fabs.length) place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' })
 }
 
@@ -1303,67 +1304,83 @@ async function checkForUpdate() {
 }
 
 // ---------------------------------------------------------------------------
-// Layer-mode cycling
+// View cycling — layer mode + 2D/3D merged into one 5-state FAB (#258)
 // ---------------------------------------------------------------------------
+// Was two FABs (layer-toggle: both/points/hex · mode3d-toggle: 2D/3D, #147
+// phase 2) — merged into VIEW_STATES' 5-state cycle (maplayers.js) to free a
+// FAB slot. Persisted like the sound mode; unknown/corrupt storage falls back
+// to both/2D (index 1), the app's cold default — see loadViewIndex below.
 
-const LAYER_MODES = ['both', 'points', 'hex']
-let layerIdx = 0
+function loadViewIndex() {
+  const v = localStorage.getItem('core-hunter-view')
+  const i = VIEW_STATES.findIndex((s) => viewKey(s) === v)
+  // No/corrupt stored value falls back to both/2D — the app's cold default
+  // before this merge (huntmap.js's own mode/mode3D defaults), not index 0.
+  return i === -1 ? 1 : i
+}
 
-// One glyph per LAYER_MODES entry so the FAB reflects the active mode instead
-// of always showing the "both" icon.
-const LAYER_ICONS = {
-  // Hexagon (the hex-heatmap glyph) with a point dot inside — visually
-  // combines the other two modes' glyphs instead of reusing a generic
-  // stacked-layers icon that doesn't read as "points + hex together".
-  both: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
-    <polygon points="10,2 17,6 17,14 10,18 3,14 3,6"/>
-    <circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none"/>
-  </svg>`,
-  points: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+function saveViewIndex(i) {
+  try { localStorage.setItem('core-hunter-view', viewKey(VIEW_STATES[i])) } catch (_) {}
+}
+
+let viewIdx = loadViewIndex()
+
+// One glyph per VIEW_STATES entry. The 2D glyphs are the original flat layer
+// icons; the 3D glyphs are drawn isometrically so 2D vs 3D reads at a glance
+// without a separate icon, not just the tilted map behind the FAB.
+const VIEW_ICONS = {
+  points2d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
     <circle cx="10" cy="5" r="1.8" fill="currentColor" stroke="none"/>
     <circle cx="5" cy="14" r="1.8" fill="currentColor" stroke="none"/>
     <circle cx="15" cy="14" r="1.8" fill="currentColor" stroke="none"/>
   </svg>`,
-  hex: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+  // Hexagon (the hex-heatmap glyph) with a point dot inside — visually
+  // combines the other two modes' glyphs instead of reusing a generic
+  // stacked-layers icon that doesn't read as "points + hex together".
+  both2d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <polygon points="10,2 17,6 17,14 10,18 3,14 3,6"/>
+    <circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none"/>
   </svg>`,
-}
-
-function updateLayerIcon() {
-  const mode = LAYER_MODES[layerIdx]
-  // Ring shows the cycle position (#259) — 3 states, filled up through layerIdx.
-  el('layer-toggle').innerHTML = fabRingSvg(layerIdx, LAYER_MODES.length) + LAYER_ICONS[mode]
-  el('layer-toggle').setAttribute('aria-label', `Toggle layers (${mode})`)
-}
-
-// ---------------------------------------------------------------------------
-// 2D/3D mode toggle (#147 phase 2) — signal as extruded hex bars + 3D buildings
-// ---------------------------------------------------------------------------
-
-let mode3D = false
-
-// Icon shows the CURRENT mode, same convention as the layer-toggle FAB next to it.
-const MODE3D_ICONS = {
-  '2d': `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
-    <rect x="3" y="3" width="14" height="14" rx="1.5"/>
-  </svg>`,
-  '3d': `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+  // Isometric hex-prism outline — reads as the extruded hex bars this state
+  // draws (formerly the 2D/3D FAB's own "3D" glyph).
+  hex3d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <path d="M10 2l7 4v8l-7 4-7-4V6z"/>
     <path d="M3 6l7 4 7-4M10 10v8"/>
   </svg>`,
+  // Three standing pillars of varying height on a ground line — the 3D twin
+  // of points2d's three flat dots (#308's pillar markers, one per reception).
+  points3d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+    <line x1="3" y1="16" x2="17" y2="16" stroke-width="1.2" opacity="0.6"/>
+    <line x1="6" y1="16" x2="6" y2="10"/>
+    <line x1="10" y1="16" x2="10" y2="6"/>
+    <line x1="14" y1="16" x2="14" y2="11"/>
+    <circle cx="6" cy="10" r="1.3" fill="currentColor" stroke="none"/>
+    <circle cx="10" cy="6" r="1.3" fill="currentColor" stroke="none"/>
+    <circle cx="14" cy="11" r="1.3" fill="currentColor" stroke="none"/>
+  </svg>`,
+  // Faded hex-prism outline with one solid pillar standing inside — the 3D
+  // twin of both2d's hex-outline-plus-center-dot.
+  both3d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7z" opacity="0.55"/>
+    <line x1="10" y1="17" x2="10" y2="8" stroke-width="1.6"/>
+    <circle cx="10" cy="8" r="1.6" fill="currentColor" stroke="none"/>
+  </svg>`,
 }
-const MODE3D_LABELS = { '2d': 'Switch to 3D view', '3d': 'Switch to 2D view' }
-
-function update3DIcon() {
-  const key = mode3D ? '3d' : '2d'
-  el('mode3d-toggle').innerHTML = MODE3D_ICONS[key]
-  el('mode3d-toggle').setAttribute('aria-label', MODE3D_LABELS[key])
+function updateViewIcon() {
+  const key = viewKey(VIEW_STATES[viewIdx])
+  // Ring shows the cycle position (#259) — 5 states, filled up through viewIdx.
+  // `|| ''` so a state added without an icon degrades to a bare ring rather
+  // than writing the string "undefined" into the button.
+  el('layer-toggle').innerHTML = fabRingSvg(viewIdx, VIEW_STATES.length) + (VIEW_ICONS[key] || '')
+  el('layer-toggle').setAttribute('aria-label', `Toggle view (${VIEW_LABELS[key]})`)
 }
 
-function toggle3D() {
-  mode3D = !mode3D
-  update3DIcon()
-  if (state.map) state.map.set3D(mode3D)
+function cycleView() {
+  viewIdx = nextViewIndex(viewIdx)
+  saveViewIndex(viewIdx)
+  updateViewIcon()
+  const { mode, mode3D } = VIEW_STATES[viewIdx]
+  if (state.map) { state.map.setLayerMode(mode); state.map.set3D(mode3D) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1556,12 +1573,6 @@ function applyCourseHeading(heading, speed) {
   state.map.setBearing(bearingForHeading(resolved))
 }
 
-function cycleLayer() {
-  layerIdx = (layerIdx + 1) % LAYER_MODES.length
-  updateLayerIcon()
-  if (state.map) state.map.setLayerMode(LAYER_MODES[layerIdx])
-}
-
 // ---------------------------------------------------------------------------
 // Isolate-sender event
 // ---------------------------------------------------------------------------
@@ -1722,11 +1733,13 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   el('discover-btn').addEventListener('click', toggleAutoPing)
 
-  updateLayerIcon()
-  el('layer-toggle').addEventListener('click', cycleLayer)
-
-  update3DIcon()
-  el('mode3d-toggle').addEventListener('click', toggle3D)
+  // View FAB (#258): a persisted non-default state is applied to the map here,
+  // same pattern as the sound mode below.
+  updateViewIcon()
+  el('layer-toggle').addEventListener('click', cycleView)
+  const restoredView = VIEW_STATES[viewIdx]
+  state.map.setLayerMode(restoredView.mode)
+  state.map.set3D(restoredView.mode3D)
   el('nodepos-toggle').addEventListener('click', () => { toggleNodePositions().catch(() => {}) })
 
   // Sound FAB (#145). A persisted non-off mode is restored here; the engine

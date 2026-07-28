@@ -18,6 +18,39 @@
 
 const MODES = ['both', 'hex', 'points']
 
+// The 5-state combined layer+3D cycle (#258): merges the old layer-toggle FAB
+// (both/hex/points) and the 2D/3D FAB into one, freeing a FAB slot. "2D · hex
+// only" is deliberately dropped -- 5 states, not the full 3x2=6 combination
+// matrix (decided 2026-07-16).
+export const VIEW_STATES = [
+  { mode: 'points', mode3D: false },
+  { mode: 'both', mode3D: false },
+  { mode: 'hex', mode3D: true },
+  { mode: 'points', mode3D: true },
+  { mode: 'both', mode3D: true },
+]
+
+// Stable key per VIEW_STATES entry — the icon/label lookup in app.js and the
+// persisted storage value both use it, so storage survives a reorder.
+export const viewKey = (s) => s.mode + (s.mode3D ? '3d' : '2d')
+
+// Spoken form of each state, read out as the FAB's aria-label. Lives here
+// rather than in app.js so the suite can pin that every state has one — a
+// missing entry would otherwise reach a screen reader as "undefined".
+// Comma, not "·": a middle dot is either spoken as "middle dot" or dropped.
+export const VIEW_LABELS = {
+  points2d: '2D, points', both2d: '2D, hex + points', hex3d: '3D, hex',
+  points3d: '3D, points', both3d: '3D, hex + points',
+}
+
+// Cycles forward through VIEW_STATES. An out-of-range index (corrupt/legacy
+// storage) is treated the same way nextSoundMode treats an unknown mode: as
+// if it were "before the first state", so the next tap lands on index 1.
+export function nextViewIndex(i) {
+  const valid = Number.isInteger(i) && i >= 0 && i < VIEW_STATES.length
+  return (Math.max(valid ? i : -1, 0) + 1) % VIEW_STATES.length
+}
+
 export function layerVisibility({ mode, mode3D } = {}) {
   // Unknown/absent mode follows the app's cold default rather than hiding
   // everything, so a corrupt persisted value can't produce a blank map.
