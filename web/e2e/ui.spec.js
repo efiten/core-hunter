@@ -60,11 +60,12 @@ test('map starts in hex mode (#141), fetches /api/heatmap, and the toggle cycles
   await expect(btn).toHaveText('hex')
 })
 
-test('hunter dropdown is populated from /api/hunters', async ({ page }) => {
+test('hunter picker lists hunters from /api/hunters', async ({ page }) => {
   await page.goto('/')
+  await page.click('#hp-toggle')
   // No "All hunters" placeholder (#196): empty selection already means all.
-  await expect(page.locator('#f-hunter option')).toHaveCount(1)
-  await expect(page.locator('#f-hunter')).toContainText('ON8AR (42)')
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(1)
+  await expect(page.locator('#hp-list')).toContainText('ON8AR (42)')
 })
 
 test('hunter filter supports multi-select and reaches /api/heatmap as a comma-separated list (#196)', async ({ page }) => {
@@ -75,16 +76,19 @@ test('hunter filter supports multi-select and reaches /api/heatmap as a comma-se
     ] },
   }))
   await page.goto('/') // cold default mode is hex (#141) -> /api/heatmap, not /api/points
-  await expect(page.locator('#f-hunter')).toHaveJSProperty('multiple', true)
+  await page.click('#hp-toggle')
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
 
   const req = page.waitForRequest((r) => r.url().includes('/api/heatmap') && r.url().includes('hunter=abc123def456%2Cdef456abc123'))
-  await page.locator('#f-hunter').selectOption(['abc123def456', 'def456abc123'])
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
+  await page.locator('#hp-list .tl-row', { hasText: 'ON7BE' }).click()
   await req
   await expect(page).toHaveURL(/hunter=abc123def456%2Cdef456abc123/)
 
   // Deselecting back to nothing means "all hunters" again -- the param drops.
   const reqAll = page.waitForRequest((r) => r.url().includes('/api/heatmap') && !r.url().includes('hunter='))
-  await page.locator('#f-hunter').selectOption([])
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
+  await page.locator('#hp-list .tl-row', { hasText: 'ON7BE' }).click()
   await reqAll
   await expect(page).not.toHaveURL(/hunter=/)
 })
@@ -97,7 +101,10 @@ test('a shared URL with multiple hunters restores the selection (#196)', async (
     ] },
   }))
   await page.goto('/?hunter=abc123def456,def456abc123')
-  await expect(page.locator('#f-hunter')).toHaveValues(['abc123def456', 'def456abc123'])
+  await page.click('#hp-toggle')
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
+  await expect(page.locator('#hp-list .tl-row', { hasText: 'ON8AR' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#hp-list .tl-row', { hasText: 'ON7BE' })).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('with no saved/URL view and no data, the map opens on a neutral world view, not the old Belgium-ish default (#218)', async ({ page }) => {
@@ -140,7 +147,9 @@ test('snap to hunter: selecting a single hunter fits bounds and drops a marker a
   })
   await page.goto('/')
 
-  await page.locator('#f-hunter').selectOption(['abc123def456'])
+  await page.click('#hp-toggle')
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(1)
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
   await expect(async () => {
     const marker = await page.evaluate(() => window.__hunterMarkerLatLng())
     expect(marker).toBeTruthy()
@@ -152,7 +161,7 @@ test('snap to hunter: selecting a single hunter fits bounds and drops a marker a
 
   // Deselecting back to "All hunters" removes the marker without moving the map.
   const centerBefore = await page.evaluate(() => window.__mapCenter())
-  await page.locator('#f-hunter').selectOption([])
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
   await expect(async () => {
     expect(await page.evaluate(() => window.__hunterMarkerLatLng())).toBeNull()
   }).toPass()
@@ -180,14 +189,17 @@ test('snap to hunter: selecting multiple hunters fits to the union without a mar
   })
   await page.goto('/')
 
-  await page.locator('#f-hunter').selectOption(['abc123def456', 'def456abc123'])
+  await page.click('#hp-toggle')
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
+  await page.locator('#hp-list .tl-row', { hasText: 'ON7BE' }).click()
   await expect(async () => {
     expect(await page.evaluate(() => window.__mapCenter().lat)).toBeGreaterThan(54)
   }).toPass()
   expect(await page.evaluate(() => window.__hunterMarkerLatLng())).toBeNull()
 })
 
-test('hunter dropdown shows pseudonymised labels for guests', async ({ page }) => {
+test('hunter picker shows pseudonymised labels for guests', async ({ page }) => {
   // Guests get server-issued pseudonyms (hunter_pubkey="h<N>", hunter_name="Hunter <N>");
   // override this spec's default member mock just for this test.
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
@@ -195,10 +207,9 @@ test('hunter dropdown shows pseudonymised labels for guests', async ({ page }) =
     json: { hunters: [{ hunter_pubkey: 'h1', hunter_name: 'Hunter 1', count: 42 }] },
   }))
   await page.goto('/')
+  await page.click('#hp-toggle')
 
-  const opt = page.locator('#f-hunter option', { hasText: 'Hunter 1 (42)' })
-  await expect(opt).toHaveCount(1)
-  await expect(opt).toHaveAttribute('value', 'h1')
+  await expect(page.locator('#hp-list .tl-row', { hasText: 'Hunter 1 (42)' })).toHaveCount(1)
 })
 
 test('discover sender: prefix ID is resolved to a name via the API, popup shows name · role', async ({ page }) => {

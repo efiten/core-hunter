@@ -9,6 +9,8 @@ import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
+import { createMultiSelectPicker, wirePopover } from './multiselect.js'
+import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 
@@ -53,6 +55,11 @@ let targetPicker = null
 // reading it would throw rather than fall through the null guard if a redraw
 // ever lands before module eval reaches the wiring.
 let senderPicker = null
+// Hunter picker (#290): the same shape, generalized from the sender picker.
+// refreshHunterPickerCandidates() (called from refresh()) feeds it on every
+// redraw; declared here for the same TDZ reason as targetPicker/senderPicker.
+let hunterPicker = null
+let hunterPanel = null
 const nodePosLayer = L.layerGroup().addTo(map)
 // Reception ticker (#224) two-way sync support: a distinct, non-interactive
 // highlight ring for whatever reception is on the ticker's playhead. The
@@ -271,6 +278,7 @@ export function refresh() {
     if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
+    refreshHunterPickerCandidates()
     drawNodePositions()   // follows the same filter/bbox set as the points
     if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
@@ -353,6 +361,38 @@ async function refreshPickerCandidates() {
   } catch (_) { /* keep the last good list; retried on the next redraw */ }
 }
 
+// The hunter picker (#290) needs the same shape, mirroring refreshPickerCandidates()
+// above: its Top section ranks by recent activity, so it needs a hunter-
+// UNfiltered candidate point set -- otherwise a hunter you already picked would
+// never surface a newly-relevant one in the ranking. Bbox-scoped, only fetched
+// while the panel is open, same reasoning as the sender picker's candidate query.
+let cachedHunterCandidatePoints = []
+let cachedHunterCandidateSig = null
+async function refreshHunterPickerCandidates() {
+  if (!hunterPicker || !hunterPanel || hunterPanel.hidden) return
+  const b = map.getBounds()
+  const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
+  const f = withoutHunterFilter((window.currentFilters && window.currentFilters()) || {})
+  const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
+  if (sig === cachedHunterCandidateSig) {
+    hunterPicker.render(cachedHunterCandidatePoints, Date.now())
+    return
+  }
+  // senderPairs is [key, value][] and may repeat a key (#223) -- unlike the
+  // sender candidate query, withoutHunterFilter does not drop it, so it needs
+  // the same append handling filtersQs() uses.
+  for (const [k, v] of Object.entries(f)) {
+    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
+  try {
+    const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
+    cachedHunterCandidatePoints = points
+    cachedHunterCandidateSig = sig
+    hunterPicker.render(points, Date.now())
+  } catch (_) { /* keep the last good list; retried on the next redraw */ }
+}
+
 // Single newest-first page for the reception ticker (#224) -- the server
 // already orders /api/points by rx_at DESC (server/internal/store/query.go),
 // so limit=CAP&offset=0 is exactly "the newest CAP receptions", no pagination
@@ -401,7 +441,8 @@ async function snapToHunter() {
   }
   // #196 pairing decision: >1 hunter selected -> fit to the union, no marker.
 }
-document.getElementById('f-hunter').addEventListener('change', snapToHunter)
+// Fired from the hunter picker's onChange (#290) -- wired further down, once
+// the picker exists, same reasoning as the sender picker's onChange.
 window.__hunterMarkerLatLng = () => (hunterMarker ? hunterMarker.getLatLng() : null) // test hook
 
 // Fit the map to today's actual points on first load when there's no
@@ -985,9 +1026,12 @@ window.__syncTimeUi = syncTimeUi // test hook
 // leave Locate, then redraw + persist (empty values fall out of the URL).
 document.getElementById('clear-filters').addEventListener('click', () => {
   if (window.__resetFilters) window.__resetFilters()
-  // The pick lives in the picker, not in #f-sender, so resetFilters() cannot
-  // see it — without this the senders= filter survives Clear with no UI trace.
+  // The picks live in the pickers, not in #f-sender or a native select, so
+  // resetFilters() cannot see either — without this the senders=/hunter=
+  // filters survive Clear with no UI trace.
   targetPicker.setSelected([])
+  hunterPicker.setSelected([])
+  syncHunterToggleLabel()
   csAdvertCb.checked = false; csRelayCb.checked = false
   csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
   if (locateActive) deactivateLocate() // restores points/hex per mode
@@ -1025,8 +1069,9 @@ urlstate.register({ key: 'mode', get: () => mode,
 urlstate.register({ key: 'lat', get: () => map.getCenter().lat.toFixed(5), set: () => {} })
 urlstate.register({ key: 'lon', get: () => map.getCenter().lng.toFixed(5), set: () => {} })
 urlstate.register({ key: 'z', get: () => String(map.getZoom()), set: () => {} })
-// f-hunter is a <select multiple> (#196); .value only returns the first
-// selection, so it can't use bindControl -- register directly, mirroring 'types'.
+// The hunter selection is a Set, not a single input's .value (#196; the
+// picker itself since #290), so it can't use bindControl -- register
+// directly, mirroring 'types'.
 urlstate.register({ key: 'hunter', get: () => window.currentHunters(), set: (v) => window.setHunters(v) })
 urlstate.bindControl('sender', 'f-sender', { events: ['change', 'input'] })
 // urlOnly (#217): from/to must never be silently restored from a stale saved
@@ -1067,10 +1112,10 @@ if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 syncTimeUi() // label the picker button from the restored/default range (#285)
 refresh()
 
-// Target-list picker (#223): a small dropdown beside #f-sender, matching
-// the existing #f-hunter multi-select's "toggle button reveals a panel"
-// shape rather than app's full sheet -- web's top bar keeps every control
-// inline (#225 decision), so this stays a compact popover, not a sheet.
+// Target-list picker (#223): a small dropdown beside #f-sender, a "toggle
+// button reveals a panel" shape rather than app's full sheet -- web's top bar
+// keeps every control inline (#225 decision), so this stays a compact
+// popover, not a sheet. The hunter picker below (#290) shares the same shape.
 const spToggle = document.getElementById('sp-toggle')
 senderPicker = document.getElementById('sender-picker')
 targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
@@ -1102,28 +1147,93 @@ urlstate.register({ key: 'senders',
   set: (v) => targetPicker.setSelected(decodeSelection(v)) })
 // load() already ran, so apply the pre-load capture now that the field exists.
 if (initialSenders) targetPicker.setSelected(decodeSelection(initialSenders))
-function openSenderPicker() {
-  senderPicker.hidden = false
-  spToggle.setAttribute('aria-expanded', 'true')
-  targetPicker.reset() // back to page 1; the next redraw below repopulates
-  refresh()
+// Open/close + outside-click/Escape (#223) is shared with the hunter picker
+// below via wirePopover (#290) -- see multiselect.js for why outside-click
+// runs in the capture phase.
+wirePopover({
+  toggleEl: spToggle, panelEl: senderPicker, wrapEl: spToggle.closest('.ms-wrap'), wrapSelector: '.ms-wrap',
+  onOpen: () => { targetPicker.reset(); refresh() }, // back to page 1; the next redraw repopulates
+})
+
+// Hunter picker (#290): generalizes the sender picker's pattern to #f-hunter,
+// replacing the native <select multiple> -- no on-screen hint that ctrl/cmd
+// +click picked more than one, and no visual kinship with the sender picker
+// sitting right next to it. Row content differs (name (count), no RSSI/time-
+// ago), and the Top section is ranked by recent activity, not RSSI, since a
+// hunter has no signal-strength concept -- see hunterpicker.js.
+const hpToggle = document.getElementById('hp-toggle')
+hunterPanel = document.getElementById('hunter-picker')
+let hunterRoster = []
+const hunterAdapter = {
+  idOf: (h) => h.hunter_pubkey,
+  rowParts: (h) => ({ primary: hunterOptionLabel(h), secondary: '', meta: [] }),
+  sigOf: (h) => `${h.hunter_pubkey}|${h.hunter_name}|${h.count}`,
+  list: (_, { limit } = {}) => hunterList(hunterRoster, { limit }),
+  pinned: (points, { count } = {}) => topHunters(hunterRoster, points, { count }),
 }
-function closeSenderPicker() {
-  senderPicker.hidden = true
-  spToggle.setAttribute('aria-expanded', 'false')
+// The toggle is the only thing on screen once the panel closes, so it has to
+// carry the selection: a static "Hunters ▾" looked identical whether the map
+// was filtered or not, while ?hunter=… sat in the URL. The <select multiple>
+// this replaced showed the picked option text, so this was a regression, and
+// it is the same failure the Clear-button comment above warns about (#290).
+// Must be called from every path that changes the selection: a pick, Clear,
+// and the deep-link restore in loadHunterRoster.
+function syncHunterToggleLabel() {
+  const n = hunterPicker.getSelected().length
+  hpToggle.textContent = n ? `Hunters (${n}) ▾` : 'Hunters ▾'
+  hpToggle.classList.toggle('has-selection', n > 0)
 }
-spToggle.addEventListener('click', () => (senderPicker.hidden ? openSenderPicker() : closeSenderPicker()))
-// Capture phase, not bubble: a row click's own handler (onToggle -> render)
-// replaces the clicked button via listEl.replaceChildren() synchronously, so
-// by the time a bubble-phase document listener would run, e.target is
-// already detached and closest('.sp-wrap') wrongly returns null, closing the
-// picker after every pick. Capture runs before that mutation happens.
-document.addEventListener('click', (e) => {
-  if (senderPicker.hidden) return
-  if (e.target.closest('.sp-wrap')) return
-  closeSenderPicker()
-}, true)
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !senderPicker.hidden) closeSenderPicker() })
+
+hunterPicker = createMultiSelectPicker(hunterAdapter, document.getElementById('hp-list'), {
+  pinnedEl: document.getElementById('hp-pinned'),
+  onChange: () => { syncHunterToggleLabel(); urlstate.save(); refresh(); snapToHunter() },
+})
+// currentFilters/currentHunters (filters.js) read the selection through this,
+// same indirection as window.selectedSenderIds.
+window.selectedHunterIds = () => hunterPicker.getSelected()
+window.setHunterSelection = (v) => {
+  hunterPicker.setSelected(String(v || '').split(',').filter(Boolean))
+  syncHunterToggleLabel()
+}
+wirePopover({
+  toggleEl: hpToggle, panelEl: hunterPanel, wrapEl: hpToggle.closest('.ms-wrap'), wrapSelector: '.ms-wrap',
+  // Render from the roster immediately, before refresh()'s 250ms-debounced
+  // /api/points round-trip. Without it, opening the panel showed an empty list
+  // until that call landed -- and forever if it failed, since the list needs no
+  // points to be built.
+  onOpen: () => { hunterPicker.reset(); hunterPicker.render(cachedHunterCandidatePoints, Date.now()); refresh() },
+})
+
+// Hunter roster (#290) -- fetched once; the picker's row labels and Top-
+// section ranking both read it through the hunterRoster closure above.
+async function loadHunterRoster() {
+  try {
+    const r = await fetch(`${API_BASE}/api/hunters`); const d = await r.json()
+    hunterRoster = d.hunters || []
+    // The shared/saved selection can only be applied once the roster exists
+    // (it arrives async). Re-assert it and fire the same save/refresh/snap
+    // effects a user pick would, so the view + URL pick it up. Read the value
+    // captured before load (index.html), not initial('hunter') here -- by now
+    // urlstate.load()'s save() has already normalized the URL/storage to the
+    // still-empty live selection and would return '' (#196).
+    const want = String(window.__initialHunter || '').split(',').filter(Boolean)
+    if (want.length) {
+      hunterPicker.setSelected(want)
+      syncHunterToggleLabel()
+      urlstate.save(); refresh(); snapToHunter()
+    }
+    // Render on arrival regardless of the selection. hunterAdapter.list reads
+    // hunterRoster and needs no points at all, but refreshHunterPickerCandidates
+    // -- which was the only other caller -- early-returns when the panel is
+    // hidden and swallows fetch failures. So /api/points 500ing (or the panel
+    // being opened before /api/hunters resolves) left "Top" over a permanently
+    // empty list, with nothing to re-render it until an unrelated pan or zoom.
+    // Pre-PR the options came from /api/hunters alone; this restores that.
+    hunterPicker.render(cachedHunterCandidatePoints, Date.now())
+  } catch (_) {}
+}
+loadHunterRoster()
+
 // Reception ticker (#224) -- created once, available to every role (the
 // server already applies guest/member windowing to /api/points itself, same
 // as the map's own point layer). Wired both ways: onActiveChange highlights

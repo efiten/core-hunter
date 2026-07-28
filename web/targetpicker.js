@@ -254,13 +254,17 @@ export function decodeSelection(raw) {
 // ---------------------------------------------------------------------------
 // DOM component
 // ---------------------------------------------------------------------------
+// The row builder, paging, pinned section, and picker state are generic
+// (#290) -- lifted into multiselect.js so any "pick several of these" control
+// shares one pattern. Only the sender-specific adapter lives here.
 
-const PAGE_SIZE = 12
+import { createMultiSelectPicker } from './multiselect.js'
+
 const PINNED_COUNT = 3
 
 // The ids one row filters on. A merged row stands for a node heard under
 // several prefixes, and a later reception may arrive under any of them, so the
-// row carries all of them rather than only the id it is labelled with.
+// row carries all of them rather than only the id it is labelled with (#331).
 function rowIds(rec) {
   const merged = (rec.merged_ids || []).filter(Boolean)
   if (merged.length) return merged
@@ -268,38 +272,6 @@ function rowIds(rec) {
   return id ? [id] : []
 }
 
-function row(rec, nowMs, selectedIds, onToggle) {
-  const li = document.createElement('li')
-  li.className = 'tl-item'
-
-  const ids = rowIds(rec)
-  const selected = ids.some((i) => selectedIds.has(i))
-
-  const btn = document.createElement('button')
-  btn.type = 'button'; btn.className = 'tl-row'
-  btn.classList.toggle('active', selected)
-  btn.setAttribute('aria-pressed', String(selected))
-
-  const check = document.createElement('span'); check.className = 'tl-check'; check.setAttribute('aria-hidden', 'true')
-
-  const { primary, secondary } = targetParts(rec)
-  const name = document.createElement('span'); name.className = 'tl-name'; name.textContent = primary
-
-  const meta = document.createElement('span'); meta.className = 'tl-meta'
-  if (secondary) {
-    const prefix = document.createElement('span'); prefix.className = 'tl-prefix'; prefix.textContent = secondary
-    meta.appendChild(prefix)
-  }
-  const rssi = document.createElement('span'); rssi.className = 'tl-rssi'; rssi.textContent = String(rec.rssi ?? '—')
-  const time = document.createElement('span'); time.className = 'tl-time'; time.textContent = relTime(rec.rx_at, nowMs)
-  meta.append(rssi, time)
-
-  btn.append(check, name, meta)
-  btn.addEventListener('click', () => ids.length && onToggle(ids))
-
-  li.appendChild(btn)
-  return li
-}
 
 // createTargetPicker builds the browsable multi-select dropdown.
 //
@@ -316,80 +288,33 @@ function row(rec, nowMs, selectedIds, onToggle) {
 // can refresh and persist without this module knowing about either.
 export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange } = {}) {
   const input = document.getElementById(senderInputId)
-  const selected = new Set()
-  let visible = PAGE_SIZE
-  let lastPoints = []
-  let _lastSig = null
-  let _lastPinnedSig = null
 
-  const currentIds = () => selected
-
-  // Toggling is atomic over the row's whole id group: a merged row is one
-  // target, so it selects and deselects as one, whichever of its prefixes was
-  // already in the set.
-  function onToggle(ids) {
-    const keys = (Array.isArray(ids) ? ids : [ids]).map((i) => String(i).toLowerCase())
-    const anySelected = keys.some((k) => selected.has(k))
-    for (const k of keys) { if (anySelected) selected.delete(k); else selected.add(k) }
+  const adapter = {
+    // A merged row is one target across several prefixes (#331), so it reports
+    // its whole id group and the component selects/deselects it as a unit.
+    idsOf: rowIds,
+    rowParts: (rec, nowMs) => {
+      const { primary, secondary } = targetParts(rec)
+      return { primary, secondary, meta: [
+        { text: String(rec.rssi ?? '—'), cls: 'tl-rssi' },
+        { text: relTime(rec.rx_at, nowMs), cls: 'tl-time' },
+      ] }
+    },
+    // What a rendered row depends on. merged_ids is part of it: a new reception
+    // under a prefix the node was not yet known by changes the group the row
+    // toggles, without necessarily changing the newest reception it displays.
+    sigOf: (r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at + '/' + rowIds(r).join(','),
+    list: (points, { limit } = {}) => senderList(points, { limit }),
+    pinned: (points, { count, nowMs }) => topSenders(points, { count, nowMs }),
     // A typed prefix and an exact pick are different match kinds, so picking
     // clears the box rather than silently intersecting the two.
-    if (selected.size && input.value.trim()) {
-      input.value = ''
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-    }
-    if (onChange) onChange()
-    render(lastPoints, Date.now())
-  }
-
-  // What a rendered row depends on. merged_ids is part of it: a new reception
-  // under a prefix the node was not yet known by changes the group the row
-  // toggles, without necessarily changing the newest reception it displays.
-  const rowSig = (r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at + '/' + rowIds(r).join(',')
-
-  function render(points, nowMs) {
-    lastPoints = points || []
-    const selectedIds = currentIds()
-    const selKey = JSON.stringify([...selectedIds].sort())
-
-    if (pinnedEl) {
-      const pinned = topSenders(lastPoints, { count: PINNED_COUNT, nowMs })
-      const pinnedSig = pinned.map(rowSig).join('|') + '@' + selKey
-      if (pinnedSig !== _lastPinnedSig) {
-        _lastPinnedSig = pinnedSig
-        pinnedEl.replaceChildren(...pinned.map((rec) => row(rec, nowMs, selectedIds, onToggle)))
+    onPick: (selected) => {
+      if (selected.size && input.value.trim()) {
+        input.value = ''
+        input.dispatchEvent(new Event('input', { bubbles: true }))
       }
-    }
-
-    const items = senderList(lastPoints, { limit: visible })
-    const sig = items.map(rowSig).join('|') + '#' + visible + '@' + selKey
-    if (sig === _lastSig) return
-    _lastSig = sig
-    listEl.replaceChildren(...items.map((rec) => row(rec, nowMs, selectedIds, onToggle)))
+    },
   }
 
-  function reset() {
-    visible = PAGE_SIZE
-    _lastSig = null
-    _lastPinnedSig = null
-  }
-
-  listEl.addEventListener('scroll', () => {
-    if (listEl.scrollTop + listEl.clientHeight < listEl.scrollHeight - 24) return
-    const total = senderList(lastPoints).length
-    if (visible >= total) return
-    visible += PAGE_SIZE
-    _lastSig = null
-    render(lastPoints, Date.now())
-  })
-
-  // Selection accessors for urlstate (map.js) and the clear-filters path.
-  const getSelected = () => [...selected]
-  function setSelected(ids) {
-    selected.clear()
-    for (const id of ids || []) if (typeof id === 'string' && id.trim()) selected.add(id.toLowerCase())
-    render(lastPoints, Date.now())
-  }
-
-  return {
-    getSelected, setSelected, render, reset }
+  return createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, pinnedCount: PINNED_COUNT })
 }
