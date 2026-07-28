@@ -7,20 +7,18 @@ import { createSoundEngine } from '../sound.js'
 // fake context is enough to reach all of it; sound.js only needs the node
 // factories, and only `document.addEventListener` off the DOM.
 
-// `calls` records every ramp/set call made on this param -- used by the
-// background-duck tests (#260) to check a ramp target without modelling the
-// actual audio-rate value.
 function fakeParam(value = 0) {
-  const p = { value, calls: [] }
-  for (const m of ['setValueAtTime', 'linearRampToValueAtTime', 'exponentialRampToValueAtTime', 'cancelScheduledValues']) {
-    p[m] = (...args) => { p.calls.push([m, ...args]); return p }
+  return {
+    value,
+    setValueAtTime() { return this },
+    linearRampToValueAtTime() { return this },
+    exponentialRampToValueAtTime() { return this },
+    cancelScheduledValues() { return this },
   }
-  return p
 }
 
 function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
   const oscillators = []
-  const gains = []
   const node = (extra = {}) => ({ connect(t) { return t }, ...extra })
   const ctx = {
     state,
@@ -29,18 +27,22 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     destination: node(),
     resumeCalls: 0,
     oscillators,
-    gains,
     // Autoplay policy: before a user gesture, resume() does not actually start
     // the clock. Modelling that is the point -- a fake that always succeeds
     // cannot exercise the suspended path at all.
     gestureGiven: state === 'running',
+    // Real resume() is async: state does not flip until the promise settles.
+    // The fake used to flip it synchronously, which made every caller look
+    // correctly ordered no matter when it read isRunning() — it hid a dropped
+    // resume cue on exactly the platforms that suspend on hide. Flipping on a
+    // microtask is the minimum needed to make the ordering observable.
     resume() {
       this.resumeCalls++
-      if (this.gestureGiven) this.state = 'running'
-      return Promise.resolve()
+      const gestureGiven = this.gestureGiven
+      return Promise.resolve().then(() => { if (gestureGiven) this.state = 'running' })
     },
     close() {},
-    createGain: () => { const g = node({ gain: fakeParam(1) }); gains.push(g); return g },
+    createGain: () => node({ gain: fakeParam(1) }),
     createBiquadFilter: () => node({ type: '', frequency: fakeParam(0), Q: fakeParam(0) }),
     createConvolver: () => node({ buffer: null }),
     createStereoPanner: () => node({ pan: fakeParam(0) }),
@@ -221,18 +223,25 @@ describe('finished voices are not retained (#145)', () => {
   })
 })
 
-// #260: backgrounding while a sound mode is active must be audible — the
-// generative music layer stops (ducked), the bed keeps breathing (not
-// stopped outright) at a lower level, and a short cue marks each transition
-// so background/foreground is a real event like everything else this engine
-// plays, never silent state nobody notices.
-function fireVisibility(hidden) {
+// #260/#301: backgrounding while a sound mode is active must be audible AND
+// cheap — the normal bed+music (two looped noise sources, two LFOs, seven
+// note timers) stop outright and are replaced by a single minimal held tone,
+// so nothing keeps idling in a pocket for atmosphere that carries no
+// information. A short cue marks each transition so background/foreground is
+// a real event like everything else this engine plays, never a silent state
+// nobody notices.
+// Async: the visible branch now waits on ctx.resume() before it cues or
+// rebuilds anything, so a caller must let the microtask queue drain before
+// asserting. Awaiting twice covers resume()'s own .then plus the engine's.
+async function fireVisibility(hidden) {
   document.hidden = hidden
   listeners.filter((l) => l.type === 'visibilitychange').forEach((l) => l.fn())
+  await Promise.resolve()
+  await Promise.resolve()
 }
 
-describe('backgrounding ducks the music and cues the transition (#260)', () => {
-  it('stops the generative music while hidden, in full mode', () => {
+describe('backgrounding swaps to a minimal ambience and cues the transition (#260, #301)', () => {
+  it('stops the generative music while hidden, in full mode', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('full')
@@ -240,69 +249,164 @@ describe('backgrounding ducks the music and cues the transition (#260)', () => {
     const before = ctx.oscillators.filter((o) => o.started && !o.stopped).length
     expect(before).toBeGreaterThan(0)
 
-    fireVisibility(true)
+    await fireVisibility(true)
     ctx.oscillators.length = 0
     vi.advanceTimersByTime(60_000)
     // No new generative notes fire while hidden -- the timers were torn down.
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
   })
 
-  it('resumes the generative music once visible again, in full mode', () => {
+  it('resumes the generative music once visible again, in full mode', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('full')
-    fireVisibility(true)
-    fireVisibility(false)
+    await fireVisibility(true)
+    // Prove the music is actually stopped first, otherwise "it plays after
+    // returning" is satisfied by music that never stopped -- which is how this
+    // test passed against master.
+    ctx.oscillators.length = 0
+    vi.advanceTimersByTime(60_000)
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+
+    await fireVisibility(false)
     ctx.oscillators.length = 0
     vi.advanceTimersByTime(60_000)
     expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
   })
 
-  it('does not stop the bed outright while hidden -- it ducks, not silences', () => {
+  it('stops the bed outright while hidden -- it is replaced, not ducked in place', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('full')
     const bedSources = ctx.oscillators.slice() // bed LFOs, started at setMode('full')
-    fireVisibility(true)
-    // The bed's own oscillators (LFOs) are still the ones from startBed() --
-    // none of them got .stop() called by ducking.
-    expect(bedSources.every((o) => !o.stopped)).toBe(true)
+    await fireVisibility(true)
+    vi.advanceTimersByTime(1000) // stopBed()'s own fade-then-.stop() setTimeout
+    expect(bedSources.some((o) => o.stopped)).toBe(true)
   })
 
-  it('ducks the bed gain lower while hidden and restores it on return', () => {
+  it('starts a single minimal ambience tone while hidden, in full mode', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('full')
-    const bedGainCallsBefore = ctx.gains.reduce((n, g) => n + g.gain.calls.length, 0)
-    fireVisibility(true)
-    const bedGainCallsHidden = ctx.gains.reduce((n, g) => n + g.gain.calls.length, 0)
-    expect(bedGainCallsHidden).toBeGreaterThan(bedGainCallsBefore)
-    fireVisibility(false)
-    const bedGainCallsVisible = ctx.gains.reduce((n, g) => n + g.gain.calls.length, 0)
-    expect(bedGainCallsVisible).toBeGreaterThan(bedGainCallsHidden)
+    ctx.oscillators.length = 0
+    await fireVisibility(true)
+    // The ambience is one held tone + its own LFO (2 oscillators) plus the
+    // backgroundCue's own two notes (2 more) -- not the bed's two noise
+    // sources and two LFOs (4), which would make this 6+.
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(4)
   })
 
-  it('plays a cue on hidden and on resume, distinct from the bed/music', () => {
+  it('stops the ambience tone and restarts the normal bed on return', async () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    await fireVisibility(true)
+    // Identify the ambience by its own pitch (C3). Slicing every oscillator
+    // and asserting `some(stopped)` passed with the fix deleted: the slice
+    // includes the two cue tones, and the fake marks an oscillator stopped as
+    // soon as osc.stop(when) is called at creation -- so it was already true
+    // before stopBgAmbience() ran at all.
+    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 130.81) < 0.01)
+    expect(tone).toBeDefined()
+    expect(tone.stopped).toBe(false)
+
+    await fireVisibility(false)
+    vi.advanceTimersByTime(1000) // stopBgAmbience()'s own fade-then-.stop() setTimeout
+    expect(tone.stopped).toBe(true)
+
+    ctx.oscillators.length = 0
+    vi.advanceTimersByTime(60_000)
+    // The bed (and its LFOs) started up again, distinct from the ambience.
+    expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(2)
+  })
+
+  it('plays a cue on hidden and on resume, distinct from the bed/music', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('rxtx') // no bed/music at all -- isolates the cue itself
     ctx.oscillators.length = 0
-    fireVisibility(true)
+    await fireVisibility(true)
     const hiddenCue = ctx.oscillators.filter((o) => o.started).length
     expect(hiddenCue).toBeGreaterThan(0)
     ctx.oscillators.length = 0
-    fireVisibility(false)
+    await fireVisibility(false)
     const resumeCue = ctx.oscillators.filter((o) => o.started).length
     expect(resumeCue).toBeGreaterThan(0)
   })
 
-  it('plays no cue and no duck when sound is off', () => {
+  // Blocker 1. ctx.resume() is async, so on a platform that really suspends on
+  // hide, ctx.state is still 'suspended' on the tick the handler runs. Every
+  // cue is gated on isRunning(), so running them synchronously drops the
+  // resume cue entirely -- silence on the way back in, which is the case #260
+  // exists for. Only observable because the fake's resume() now settles on a
+  // microtask rather than flipping state inline.
+  it('still plays the resume cue when the context was genuinely suspended', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
+    e.setMode('rxtx')
+    await fireVisibility(true)
+    // What a backgrounded iOS/Bluefy context actually looks like on return.
+    ctx.state = 'suspended'
+    ctx.oscillators.length = 0
+    await fireVisibility(false)
+    expect(ctx.state).toBe('running')
+    expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
+  })
+
+  // Blocker 2. startBgAmbience() was the one voice on this path with no
+  // isRunning() guard. Persisted 'full' with no gesture yet means a suspended
+  // context at currentTime 0: the tone gets started and ramped from t=0 while
+  // nothing is audible, and bgAmbience goes non-null — so the early return at
+  // the top then believes an ambience is playing and a later, real
+  // backgrounding is silently skipped.
+  it('starts no ambience tone while the context is still suspended', async () => {
+    ctx.state = 'suspended'; ctx.gestureGiven = false
+    const e = createSoundEngine()
+    e.setMode('full')
+    ctx.oscillators.length = 0
+    await fireVisibility(true)
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+
+  it('still starts the ambience on a later backgrounding once the clock is running', async () => {
+    ctx.state = 'suspended'; ctx.gestureGiven = false
+    const e = createSoundEngine()
+    e.setMode('full')
+    await fireVisibility(true)   // suspended: must not latch bgAmbience
+    await fireVisibility(false)
+    ctx.state = 'running'; ctx.gestureGiven = true
+    ctx.oscillators.length = 0
+    await fireVisibility(true)   // now it genuinely should play
+    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 130.81) < 0.01)
+    expect(tone).toBeDefined()
+    expect(tone.started).toBe(true)
+  })
+
+  // The other half of #301: parking the atmosphere must not park the signal.
+  // Nothing gates ping() on visibility today, and this is what would catch a
+  // later change that did.
+  it('still plays a reception dit while hidden', async () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    await fireVisibility(true)
+    ctx.oscillators.length = 0
+    e.ping(-80)
+    expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
+  })
+
+  it('plays no cue when sound is off', async () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    // setMode('off') returns before ensureCtx(), so a fresh engine has no
+    // visibilitychange listener at all and firing one exercises nothing. Arm
+    // the listener via 'full' first, then switch off -- that is the state the
+    // mode !== 'off' guards are actually for.
+    e.setMode('full')
     e.setMode('off')
     ctx.oscillators.length = 0
-    fireVisibility(true)
-    fireVisibility(false)
-    expect(ctx.oscillators).toHaveLength(0)
+    await fireVisibility(true)
+    await fireVisibility(false)
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
   })
 })

@@ -167,11 +167,12 @@ export function createSoundEngine() {
   // times (every entry into `full`), and re-adding here would stack a listener
   // per entry, each re-running resume() on the same context.
   //
-  // Also owns the #260 background behaviour: backgrounding while a sound mode
-  // is active must be audible, not just silently full-volume in a pocket —
-  // the generative music layer stops (duckBed keeps the bed itself breathing,
-  // just quieter, rather than a hard stop) and a short cue marks each
-  // transition, a real event like everything else this engine plays.
+  // Also owns the #260/#301 background behaviour: the normal bed+music (two
+  // looped noise sources, two LFOs, seven note timers) cost real CPU/battery
+  // for something that carries no information by design, so hidden swaps to
+  // a single minimal held tone (startBgAmbience) instead of leaving them
+  // idling in a pocket. A short cue marks each transition, a real event like
+  // everything else this engine plays.
   let visibilityBound = false
   function resumeOnVisibility() {
     if (visibilityBound) return
@@ -179,14 +180,27 @@ export function createSoundEngine() {
     const handler = () => {
       if (document.hidden) {
         if (mode !== 'off') backgroundCue()
-        if (mode === 'full') { stopMusic(); duckBed() }
+        if (mode === 'full') { stopBed(); stopMusic(); startBgAmbience() }
         return
       }
-      if (ctx && ['suspended', 'interrupted'].includes(ctx.state)) {
-        ctx.resume().catch(() => {})
-      }
-      if (mode !== 'off') resumeCue()
-      if (mode === 'full') { unduckBed(); startMusic() }
+      // ctx.resume() is async: ctx.state stays 'suspended' until the promise
+      // settles, and everything below is gated on isRunning() either directly
+      // (resumeCue) or via scheduling against ctx.currentTime. Running them on
+      // this same tick drops the resume cue on exactly the platforms #260 is
+      // about — iOS Safari and Bluefy, the ones that actually suspend on hide.
+      // It also hits at boot: a PWA launched with a persisted mode and no
+      // gesture yet has a suspended context, so both cues would be lost and
+      // startBed() would build against currentTime === 0.
+      const wake = ctx && ['suspended', 'interrupted'].includes(ctx.state)
+        ? ctx.resume().catch(() => {})
+        : Promise.resolve()
+      wake.then(() => {
+        // Re-checked after the await: the user can hide the page again while
+        // the resume is in flight, and mode can change under a slow resume.
+        if (document.hidden) return
+        if (mode !== 'off') resumeCue()
+        if (mode === 'full') { stopBgAmbience(); startBed(); startMusic() }
+      })
     }
     document.addEventListener('visibilitychange', handler)
   }
@@ -243,45 +257,72 @@ export function createSoundEngine() {
       lfo.start()
       // Fade in over a couple of seconds — no hard audio edge on mode flip.
       gain.gain.linearRampToValueAtTime(gainTarget, c.currentTime + 2)
-      nodes.push({ src, gain, lfo, gainTarget })
+      nodes.push({ src, gain, lfo })
     }
     layer(false, 'lowpass', 190, 0.05, 0.07, 0.02)   // distant surf swell
     layer(true, 'bandpass', 1100, 0.016, 0.11, 0.007) // soft moving air
     bed = nodes
   }
 
-  // Backgrounding (#260) ducks the bed rather than stopping it — a very low
-  // bed keeps breathing so the app still reads as alive while multitasking,
-  // just audibly different, unlike stopBed()'s hard fade-and-stop for a real
-  // mode change.
-  const BED_DUCK_FACTOR = 0.3
-  let bedDucked = false
-  function duckBed() {
-    if (!bed || bedDucked) return
-    bedDucked = true
-    const t = ctx.currentTime
-    for (const { gain, gainTarget } of bed) {
-      gain.gain.cancelScheduledValues(t)
-      gain.gain.setValueAtTime(gain.gain.value, t)
-      gain.gain.linearRampToValueAtTime(gainTarget * BED_DUCK_FACTOR, t + 1.5)
-    }
+  // Backgrounding swaps to a dedicated, minimal ambience (#260/#301) rather
+  // than ducking the normal bed in place: the bed+music are two looped noise
+  // sources, two LFOs and seven note timers, all idling for no reason in a
+  // pocket alongside BLE/GPS/MQTT — real cost for something that carries no
+  // information by design. A single held tone (one oscillator, one LFO) reads
+  // as "parked, not dead" for a fraction of the resource cost.
+  const BG_TONE_HZ = 130.81 // C3 — sits below the music's own F-pentatonic register
+  const BG_TONE_GAIN = 0.025
+  let bgAmbience = null
+  function startBgAmbience() {
+    if (bgAmbience) return
+    const c = ensureCtx()
+    // Same guard every other voice on this path has. Without it: persisted
+    // 'full' with no gesture yet means a suspended context at currentTime 0,
+    // so the tone is started and ramped from t=0 while nothing is audible,
+    // bgAmbience goes non-null (so the guard above then believes an ambience
+    // is playing), and ensureCtx() has just armed a pointerdown listener while
+    // the page is hidden. stopBgAmbience()'s ctx.currentTime + 0.4 is exposed
+    // to the same frozen clock.
+    if (!isRunning()) return
+    const osc = c.createOscillator()
+    const gain = c.createGain()
+    const lfo = c.createOscillator()
+    const lfoGain = c.createGain()
+    osc.type = 'sine'
+    osc.frequency.value = BG_TONE_HZ
+    gain.gain.value = 0
+    lfo.frequency.value = 0.08
+    lfoGain.gain.value = BG_TONE_GAIN * 0.6
+    lfo.connect(lfoGain).connect(gain.gain)
+    osc.connect(gain).connect(master)
+    osc.start()
+    lfo.start()
+    gain.gain.linearRampToValueAtTime(BG_TONE_GAIN, c.currentTime + 1.5)
+    bgAmbience = { osc, gain, lfo }
   }
-  function unduckBed() {
-    if (!bed || !bedDucked) return
-    bedDucked = false
-    const t = ctx.currentTime
-    for (const { gain, gainTarget } of bed) {
-      gain.gain.cancelScheduledValues(t)
-      gain.gain.setValueAtTime(gain.gain.value, t)
-      gain.gain.linearRampToValueAtTime(gainTarget, t + 1.5)
-    }
+  function stopBgAmbience() {
+    if (!bgAmbience) return
+    const { osc, gain, lfo } = bgAmbience
+    bgAmbience = null
+    try {
+      const now = ctx.currentTime
+      // The fade-in ramp targets t0+1.5. Foregrounding inside that window
+      // leaves it scheduled later in the timeline than this ramp-to-zero, and
+      // per spec the param then climbs back up between the two events — the
+      // tone swells instead of dying. Cancel and re-anchor at the current
+      // value first. (Previously only the setTimeout below hid this, by
+      // stopping the oscillator ~100ms later.)
+      gain.gain.cancelScheduledValues(now)
+      gain.gain.setValueAtTime(gain.gain.value, now)
+      gain.gain.linearRampToValueAtTime(0, now + 0.4)
+      setTimeout(() => { try { osc.stop(); lfo.stop() } catch (_) {} }, 500)
+    } catch (_) { try { osc.stop(); lfo.stop() } catch (_) {} }
   }
 
   function stopBed() {
     if (!bed) return
     const nodes = bed
     bed = null
-    bedDucked = false
     for (const { src, gain, lfo } of nodes) {
       try {
         gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6)
@@ -373,9 +414,14 @@ export function createSoundEngine() {
   function setMode(m) {
     mode = m
     if (mode === 'off' || mode === 'rxtx') { stopBed(); stopMusic() }
+    // The parked tone only belongs to 'full'. Both call sites are foreground-
+    // only today, so leaving it out was unreachable rather than wrong — but it
+    // made the invariant implicit, and a mode change while hidden would orphan
+    // a tone with nothing left to stop it.
+    if (mode !== 'full') stopBgAmbience()
     if (mode === 'off') return
     ensureCtx()
-    if (mode === 'full') { startBed(); startMusic() }
+    if (mode === 'full' && !document.hidden) { startBed(); startMusic() }
   }
 
   // Morse dit per real zero-hop reception (#145 sound lab winner, round 6):
@@ -470,6 +516,7 @@ export function createSoundEngine() {
   function destroy() {
     stopBed()
     stopMusic()
+    stopBgAmbience()
     if (ctx) { try { ctx.close() } catch (_) {} ctx = null; master = null; genGain = null }
   }
 
