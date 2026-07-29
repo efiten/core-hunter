@@ -47,7 +47,6 @@ export function rxFade(d) {
 // ---------------------------------------------------------------------------
 
 const LINE_H = 20   // must match .rx-ln height in app.css
-const LANE = 6      // lines above the playhead (also the scroll-padding-top / LINE_H)
 const CAP = 200     // recent-window cap
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))

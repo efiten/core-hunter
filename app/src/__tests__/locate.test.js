@@ -148,7 +148,7 @@ describe('densityGrid', () => {
   ]
 
   it('returns a normalized grid of the requested size', () => {
-    const { grid, rows, cols } = densityGrid(pts, { cols: 16, rows: 16 })
+    const { grid } = densityGrid(pts, { cols: 16, rows: 16 })
     expect(grid).toHaveLength(16 * 16)
     expect(Math.max(...grid)).toBeCloseTo(1, 6) // peak normalized to 1
     expect(Math.min(...grid)).toBeGreaterThanOrEqual(0)

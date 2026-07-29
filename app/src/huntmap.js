@@ -2,7 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
-import { nodesInView, driftPresentation, groupSenderPoints, groupSenderPointsForNode, estimateFor, circleRing } from './nodelayer.js'
+import { nodesInView, driftPresentation, groupSenderPointsForNode, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
@@ -70,7 +70,7 @@ export function createHuntMap(containerId) {
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
   let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
-  let nodePosGen = 0, nodePosSig = null   // generation counter + signature guard to prevent popup flicker
+  let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false, locateMarkers = []
