@@ -56,7 +56,11 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   margin: 0 0 2px; }
 .tl-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 .tl-pinned { max-height: none; }
-#tp-list.tl-list { max-height: 40vh; margin-top: 10px; }
+/* min(40vh, ...) not 40vh alone: with PAGE_SIZE rows at ~49px the list stops
+   overflowing once 40vh exceeds a full page, so the scroll handler never fires
+   and everything past page one is unreachable with no affordance -- on a
+   portrait monitor, a 4K screen, or just a zoomed-out window (#298). */
+#tp-list.tl-list { max-height: min(40vh, 380px); margin-top: 10px; }
 .tl-item { border-top: 1px solid var(--ch-border); }
 .tl-item:first-child { border-top: 0; }
 .tl-row { width: 100%; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;

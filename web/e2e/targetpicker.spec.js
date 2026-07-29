@@ -144,3 +144,45 @@ test('the plain text prefix search still works unchanged (single value, no comma
   await page.fill('#f-sender', 'aa11')
   await expect.poll(() => urls.some((u) => u.includes('sender=aa11') && !u.includes(','))).toBe(true)
 })
+
+test('senders past the first page are reachable on a tall viewport (#298)', async ({ page }) => {
+  // The list is capped in px, not vh, so it always overflows past one page and
+  // the scroll handler can fire. With a vh-only cap this viewport is tall
+  // enough that it never overflows and these rows are unreachable.
+  await page.setViewportSize({ width: 1280, height: 1600 })
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    ...A,
+    sender_id: 'aa' + String(i).padStart(6, '0'),
+    sender_label: 'Node-' + String(i).padStart(2, '0'),
+    rx_at: `2026-07-22T14:${String(i).padStart(2, '0')}:00Z`,
+  }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: many } }))
+  await page.goto('/?mode=points')
+  await page.click('#sp-toggle')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(12, { timeout: 10000 })
+
+  const list = page.locator('#tp-list')
+  await expect(list).toHaveJSProperty('scrollHeight', await list.evaluate((el) => el.scrollHeight))
+  const overflows = await list.evaluate((el) => el.scrollHeight > el.clientHeight)
+  expect(overflows).toBe(true)   // the precondition the lazy load depends on
+
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight })
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(24, { timeout: 10000 })
+})
+
+test('typing a prefix clears an active pick instead of being ignored (#299)', async ({ page }) => {
+  const urls = []
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
+  await page.goto('/?mode=points')
+  await page.click('#sp-toggle')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
+  await expect.poll(() => urls.some((u) => sendersOf(u).length === 1)).toBe(true)
+
+  urls.length = 0
+  await page.fill('#f-sender', 'cc33')
+  // The typed prefix now reaches the server, and the pick is gone rather than
+  // silently overriding it.
+  await expect.poll(() => urls.some((u) => new URL(u).searchParams.get('sender') === 'cc33')).toBe(true)
+  await expect.poll(() => urls.every((u) => sendersOf(u).length === 0)).toBe(true)
+})
