@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.1](https://github.com/efiten/core-hunter/compare/web-v1.3.0...web-v1.3.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* refuse ambiguous prefixes and consult sender_kind on both sides ([#295](https://github.com/efiten/core-hunter/issues/295), [#296](https://github.com/efiten/core-hunter/issues/296)) ([#325](https://github.com/efiten/core-hunter/issues/325)) ([55a026f](https://github.com/efiten/core-hunter/commit/55a026fbc1bf8c213ce76d582620d596cd343f9b))
+* **web:** reachable picker rows, live prefix input, honest guest range ([#298](https://github.com/efiten/core-hunter/issues/298), [#299](https://github.com/efiten/core-hunter/issues/299), [#300](https://github.com/efiten/core-hunter/issues/300)) ([#327](https://github.com/efiten/core-hunter/issues/327)) ([b5a552e](https://github.com/efiten/core-hunter/commit/b5a552ea362b81c884affbd51e9084cdbfbace1c))
+
+
+### Continuous Integration
+
+* add an eslint no-undef pass over app, web and nameresolver ([#303](https://github.com/efiten/core-hunter/issues/303)) ([#324](https://github.com/efiten/core-hunter/issues/324)) ([0eafdca](https://github.com/efiten/core-hunter/commit/0eafdca066e9728457d1da400c405fd4198f4f00))
+
+
+### Tests
+
+* **web:** route every spec through the shared e2e fixture ([#304](https://github.com/efiten/core-hunter/issues/304)) ([#329](https://github.com/efiten/core-hunter/issues/329)) ([d89b9eb](https://github.com/efiten/core-hunter/commit/d89b9ebfcf9e1debd5594e1b38b8bdfc0038bb5d))
+
 ## [1.3.0](https://github.com/efiten/core-hunter/compare/web-v1.2.1...web-v1.3.0) (2026-07-27)
 
 
