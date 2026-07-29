@@ -3,6 +3,7 @@ import {
   isTimeToken, resolveToken, resolveTimeValue,
   QUICK_RANGES, matchQuickRange, rangeLabel, absoluteShareUrl,
   toLocalInput, boundFromField,
+  exceedsGuestWindow,
 } from './timerange.js'
 
 // Fixed clock for every case below: 2026-07-22 15:30 local.
@@ -177,5 +178,35 @@ describe('boundFromField — DST-safe read-back of the absolute fields (#289)', 
     const t = Date.parse('2026-07-22T07:15:00Z')
     const rendered = { value: toLocalInput(t), iso: new Date(t).toISOString() }
     expect(boundFromField(rendered.value, rendered)).toBe(new Date(t).toISOString())
+  })
+})
+
+describe('exceedsGuestWindow — would the server clamp this range? (#300)', () => {
+  const NOW = Date.parse('2026-07-22T15:00:00Z')
+
+  it('is false for ranges inside the 24h the server allows', () => {
+    expect(exceedsGuestWindow('now-1h', 'now', NOW)).toBe(false)
+    expect(exceedsGuestWindow('now-24h', 'now', NOW)).toBe(false)
+  })
+  it('is true for the quick ranges hidden from a degraded role', () => {
+    expect(exceedsGuestWindow('now-2d', 'now', NOW)).toBe(true)
+    expect(exceedsGuestWindow('now-7d', 'now', NOW)).toBe(true)
+    expect(exceedsGuestWindow('now-30d', 'now', NOW)).toBe(true)
+  })
+  it('treats an open-ended start as unbounded, not as zero', () => {
+    // No `from` means "everything", which is the most clamped case of all.
+    expect(exceedsGuestWindow('', 'now', NOW)).toBe(true)
+  })
+  it('measures the span, not the distance from now', () => {
+    // A historical one-hour window is inside the cap even though it is old;
+    // the server clamps by window start, so the label should not cry wolf.
+    expect(exceedsGuestWindow('2026-07-01T10:00', '2026-07-01T11:00', NOW)).toBe(false)
+    expect(exceedsGuestWindow('2026-07-01T10:00', '2026-07-05T10:00', NOW)).toBe(true)
+  })
+  it('flags an unparseable start, because that is unbounded in practice', () => {
+    // Junk resolves to no `from`, qs() drops the param, and the server then
+    // clamps a degraded role to 24h — so the range really is capped and the
+    // label should say so. Same path as an empty start, deliberately.
+    expect(exceedsGuestWindow('nonsense', 'now', NOW)).toBe(true)
   })
 })

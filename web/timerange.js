@@ -136,6 +136,25 @@ function shortAbsolute(v, nowMs) {
 
 // rangeLabel is what the picker button shows: the quick-range name when the
 // current pair is one, otherwise the absolute span.
+// The server clamps anyone below member to a 24h window (httpapi/degrade.go,
+// guestWindow). Hiding the >24h quick ranges stops a guest PICKING one, but a
+// shared link can still carry `from=now-7d`, and then the label said "Last 7
+// days" over 24h of data with the active marker on a hidden row (#300).
+export const GUEST_WINDOW_MS = 24 * 60 * 60 * 1000
+
+// exceedsGuestWindow: would this resolved range ask for more than the server
+// will return to a degraded role? An open-ended `from` is unbounded, so yes.
+export function exceedsGuestWindow(from, to, nowMs) {
+  const f = resolveTimeValue(from, nowMs)
+  if (!f) return true
+  const fromMs = Date.parse(f)
+  if (Number.isNaN(fromMs)) return false
+  const t = resolveTimeValue(to, nowMs)
+  const toMs = t ? Date.parse(t) : nowMs
+  if (Number.isNaN(toMs)) return false
+  return (toMs - fromMs) > GUEST_WINDOW_MS
+}
+
 export function rangeLabel(from, to, nowMs) {
   const q = matchQuickRange(from, to)
   if (q) return q.label
