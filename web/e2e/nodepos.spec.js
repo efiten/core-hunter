@@ -27,10 +27,6 @@ function routes(page, { lat, lon, points }) {
 }
 
 test.beforeEach(async ({ page }) => {
-  // Map state (layer toggles, locate=1) is persisted by urlstate, so a test
-  // that leaves Locate on would otherwise start the next one in focus mode with
-  // the layers cleared. Start every test from a clean store.
-  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
