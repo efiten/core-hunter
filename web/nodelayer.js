@@ -92,6 +92,15 @@ export function driftPresentation({ advertised, estimate }) {
 // groupSenderPoints buckets located receptions by sender so each node can be
 // estimated independently. Receptions without a sender or a GPS fix carry no
 // location information and are dropped.
+// Which sender kinds can name a registry node at all. advert carries the full
+// pubkey and discover carries a prefix of it; relay path-hashes, 1-byte direct
+// hashes and channel names are different namespaces entirely and must never be
+// matched against a pubkey. Kept identical to app/src/nodelayer.js (#296) — the
+// two files are a sync-required pair, see the header.
+export function isRegistryIdKind(senderKind) {
+  return senderKind === 'advert_pubkey' || senderKind === 'discover_pubkey'
+}
+
 export function groupSenderPoints(records) {
   const out = new Map()
   if (!Array.isArray(records)) return out

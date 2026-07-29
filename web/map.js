@@ -2,7 +2,7 @@ import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPoints, estimateFor, driftPresentation, circleRing } from './nodelayer.js'
+import { groupSenderPoints, estimateFor, driftPresentation, circleRing, isRegistryIdKind } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
@@ -733,6 +733,12 @@ async function drawNodePositions() {
   // A newer draw started (or the layer was switched off) while we were waiting.
   if (gen !== nodePosGen || !nodePosCb.checked) return
   const bySender = groupSenderPoints(points)
+  // groupSenderPoints reduces each reception to {lat,lon,rssi}, so the kind has
+  // to be read off the raw rows: collect the ids that are in the pubkey
+  // namespace at all before the grouped points lose it (#296).
+  const registryIds = new Set(
+    points.filter((pt) => isRegistryIdKind(pt.sender_kind))
+      .map((pt) => String(pt.sender_id).toLowerCase()))
 
   // Resolve any sender we have not looked up yet, then redraw once — same
   // fill-only, at-most-once-per-key pattern the name lookups already use.
@@ -744,10 +750,22 @@ async function drawNodePositions() {
   // Resolve everything first so the signature covers the whole rendered set.
   const draw = []
   for (const [id, pts] of bySender) {
-    // Only use cached position for full pubkeys (#272 blocker 4): a 2-byte
-    // relay prefix could resolve to the wrong node if there are collisions
-    // in the upstream resolver. Partial prefixes are ambiguous by design.
-    const advertised = (isFullPubkey(id) ? cachedPosition(id) : null) || null
+    // Two gates, for two different reasons (#296).
+    //
+    // Kind: only advert/discover ids live in the pubkey namespace at all. This
+    // side never consulted sender_kind before, so a 64-hex id of ANY kind was
+    // accepted — a full-length relay path element or a channel name that
+    // happens to be 64 hex would have been looked up as a node.
+    //
+    // Full pubkey: unlike the app, this side has no local registry to check a
+    // prefix against. Its only source of uniqueness is the resolver, and
+    // resolve.go returns the FIRST upstream reporting a non-empty name with
+    // ambiguous=false — a per-registry claim, so a prefix that is unique in one
+    // upstream and absent from another comes back "unique" while naming the
+    // wrong node. The app can refuse ambiguity exactly (groupSenderPointsForNodes);
+    // here we cannot, so prefixes are not trusted at all. Deliberately stricter,
+    // not an oversight.
+    const advertised = (registryIds.has(id) && isFullPubkey(id) ? cachedPosition(id) : null) || null
     const est = estimateFor(pts)
     const p = driftPresentation({ advertised, estimate: est })
     // estimate-only adds nothing here: the points themselves already show it,
