@@ -29,7 +29,7 @@ import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds, senderList, clusterKey, expandSelection } from './feed.js'
+import { selectedRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
@@ -1608,8 +1608,11 @@ function updateTargetChip() {
     return
   }
   chip.classList.add('active')
+  // Never render a full-length id: feed.js's own rule, and the reason #305
+  // saw the chip push the topbar off-screen. Unresolved falls back to the same
+  // 6-char prefix the target list uses.
   chip.textContent = ids.length === 1
-    ? '⌖ ' + (state.senderLabels.get(ids[0]) || ids[0])
+    ? '⌖ ' + (state.senderLabels.get(ids[0]) || idPrefix(ids[0]))
     : '⌖ ' + ids.length + ' targets'
 }
 
@@ -1629,11 +1632,15 @@ document.addEventListener('hunt:isolate-sender', (e) => {
     keys.clear()
   } else {
     const id = String(d.id).toLowerCase()
-    if (d.label != null) state.senderLabels.set(id, d.label || String(d.id))
-    // One key per node, not one per id variant (#268): clusterKey resolves the
-    // group to its full-pubkey anchor where there is one, so the selection
-    // survives the cluster gaining or losing prefixes.
-    const key = clusterKey({ sender_id: id, merged_ids: Array.isArray(d.ids) && d.ids.length ? d.ids.map((x) => String(x).toLowerCase()) : [id] })
+    // One key per node, not one per id variant (#268), resolved against the
+    // rows in hand so the map popup and the target list agree (#297) — see
+    // selectionKeyFor.
+    const key = selectionKeyFor(senderList(state.lastRows || [], { ignore: state.ignore }), id, d.ids)
+    // Store the label under the KEY, which is what updateTargetChip reads. It
+    // used to be stored under the id: for a merged row the display record is
+    // usually the most recent reception (often a prefix), so the lookup missed
+    // and the chip fell through to rendering the raw 64-hex anchor (#297).
+    if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
     if (d.toggle) {
       if (keys.has(key)) keys.delete(key); else keys.add(key)
     } else {

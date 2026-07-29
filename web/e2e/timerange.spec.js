@@ -1,12 +1,8 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 // Time-range picker (#285).
 
 test.beforeEach(async ({ page }) => {
-  // from/to persist through urlstate, so a test that picks a quick range leaves
-  // the next one starting on that token instead of the absolute default — the
-  // label then reads "Today" where the default "00:00 → 23:59" is expected.
-  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
@@ -92,4 +88,19 @@ test('Clear resets the range back to today and relabels', async ({ page }) => {
   await expect(page.locator('#tr-label')).toHaveText('Last 6 hours')
   await page.click('#clear-filters')
   await expect(page.locator('#tr-label')).toHaveText('00:00 → 23:59')
+})
+
+test('a guest is told the range is clamped, not just shown a hidden row (#300)', async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.goto('/?mode=points&from=now-7d&to=now')
+  // Hiding the >24h quick ranges stops a guest picking one, but a shared link
+  // still lands here — and the server clamps to 24h regardless.
+  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (24 h max)')
+  await page.click('#tr-toggle')
+  await expect(page.locator('.tr-item', { hasText: 'Last 7 days' })).toBeHidden()
+})
+
+test('a member sees no clamp note for the same range (#300)', async ({ page }) => {
+  await page.goto('/?mode=points&from=now-7d&to=now')
+  await expect(page.locator('#tr-label')).toHaveText('Last 7 days')
 })

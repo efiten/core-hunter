@@ -1,8 +1,8 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
-import { nodesInView, driftPresentation, groupSenderPointsForNode, estimateFor, circleRing } from './nodelayer.js'
+import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
@@ -98,17 +98,25 @@ export function createHuntMap(containerId) {
   // extruded to the same tier height as hex-3d's bars (extrusionHeight), so
   // hotter/closer receptions stand taller — same colour/height language as the
   // hex bars, just narrower, so points still read distinctly from hex cells.
-  // fill-extrusion-opacity is a flat constant (same MapLibre limitation noted
-  // on hex-3d — no data-driven opacity), so age-fade isn't represented here;
-  // colour + height still carry the tier.
-  function buildPoints3DFC(records) {
+  // fill-extrusion-opacity is layer-wide (MapLibre has no data-driven opacity
+  // for it, same limitation noted on hex-3d), but fill-extrusion-color IS
+  // per-feature — so tier opacity and age-fade ride in the colour's alpha
+  // instead of being dropped (#302).
+  function buildPoints3DFC(records, nowMs) {
     const feats = []
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
       const tier = rssiTier(r.rssi, currentOffset())
+      const fade = ageFade(r.rx_at, nowMs, timeWindowMs)
       const ring = squareRing(r.lat, r.lon, pillarHalfWidthM(r.lat, map.getZoom(), POINT_PILLAR_HALF_WIDTH_M, POINT_PILLAR_MIN_PX))
+      // Alpha rides in the colour, not in fill-extrusion-opacity, which is a
+      // single layer-wide number (#302). Same tier opacity x age-fade the flat
+      // layer applies, so "still transmitting" still reads differently from
+      // "was here ten minutes ago" in 3D.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
-        properties: { id: String(r.id), color: cssVar(tierColorVar(tier)), height: extrusionHeight(r.rssi, currentOffset()) } })
+        properties: { id: String(r.id),
+          color: withAlpha(cssVar(tierColorVar(tier)), fillOpacity(tier) * fade),
+          height: extrusionHeight(r.rssi, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -215,7 +223,10 @@ export function createHuntMap(containerId) {
     if (!map.getLayer('points-3d')) map.addLayer({ id: 'points-3d', type: 'fill-extrusion', source: 'points-3d',
       layout: { visibility: shown('points-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
-        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.9 } })
+        // 1, not 0.9: the per-feature alpha in fill-extrusion-color carries
+        // tier opacity and age-fade, and a layer-wide value would multiply on
+        // top of it (#302).
+        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     if (!map.getLayer('highlight')) map.addLayer({ id: 'highlight', type: 'circle', source: 'highlight',
       paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 3 } })
     if (!map.getLayer('here')) map.addLayer({ id: 'here', type: 'circle', source: 'here',
@@ -303,7 +314,7 @@ export function createHuntMap(containerId) {
     const vis = layerVisibility({ mode, mode3D })
     map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records) : EMPTY)
     map.getSource('points').setData(vis.points ? buildPointsFC(records, nowMs) : EMPTY)
-    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records) : EMPTY)
+    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, nowMs) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
@@ -362,8 +373,13 @@ export function createHuntMap(containerId) {
     // have heard them enough to produce one. Match sender_id (from receptions)
     // against node pubkey: exact match for advert_pubkey, prefix match for
     // discover_pubkey, no match for relay/direct_hash/channel_name (#197/#272).
-    for (const n of nodesInView(nodePositions, bounds)) {
-      const pts = groupSenderPointsForNode(records, n.pubkey)
+    // One pass over the records for the whole in-view set, not one pass per
+    // node: this also lets an id that matches two nodes be refused outright
+    // rather than attributed to both (#295).
+    const inView = nodesInView(nodePositions, bounds)
+    const byNode = groupSenderPointsForNodes(records, inView)
+    for (const n of inView) {
+      const pts = byNode.get(String(n.pubkey).toLowerCase()) || []
       const est = pts.length ? estimateFor(pts) : null
       const p = driftPresentation({ advertised: n, estimate: est })
       if (p.kind === 'none') continue

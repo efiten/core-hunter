@@ -2,14 +2,14 @@ import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPoints, estimateFor, driftPresentation, circleRing } from './nodelayer.js'
+import { groupSenderPoints, estimateFor, driftPresentation, circleRing, isRegistryIdKind } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
-import { guestNotice, canSeeLocate, canSeeObserverPoints } from './auth.js'
+import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
-import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField } from './timerange.js'
+import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 
 let currentRole = 'guest'
@@ -239,13 +239,17 @@ function applyRole(me) {
   notice.title = msg ? 'Guests & hunters see: last 24 h, max 500 recent points, ~1 km positions, anonymised hunters. Members see full data.' : ''
   notice.hidden = !msg
   // Hide quick ranges that exceed the guest 24h cap for guest/hunter roles
-  const isGuest = currentRole === 'guest' || currentRole === 'hunter'
+  const isGuest = isDegradedFor(currentRole)   // same rule the server applies (degrade.go)
   for (const [label, li] of Object.entries(quickRangeElements)) {
     const exceedsGuestCap = ['Last 2 days', 'Last 7 days', 'Last 30 days'].includes(label)
     li.hidden = isGuest && exceedsGuestCap
   }
   applyLocateGate()
   applyObserverGate()
+  // The range label depends on the role (#300), and this runs after
+  // /api/auth/me resolves — at module-eval time currentRole is still the
+  // 'guest' default, so without this a member keeps the clamp note.
+  syncTimeUi()
   refresh()
   // Deferred ?locate=1 restore (Task 5): fires once, the first time the
   // resolved role can see Locate — including a guest who logs in as a member
@@ -733,6 +737,12 @@ async function drawNodePositions() {
   // A newer draw started (or the layer was switched off) while we were waiting.
   if (gen !== nodePosGen || !nodePosCb.checked) return
   const bySender = groupSenderPoints(points)
+  // groupSenderPoints reduces each reception to {lat,lon,rssi}, so the kind has
+  // to be read off the raw rows: collect the ids that are in the pubkey
+  // namespace at all before the grouped points lose it (#296).
+  const registryIds = new Set(
+    points.filter((pt) => isRegistryIdKind(pt.sender_kind))
+      .map((pt) => String(pt.sender_id).toLowerCase()))
 
   // Resolve any sender we have not looked up yet, then redraw once — same
   // fill-only, at-most-once-per-key pattern the name lookups already use.
@@ -744,10 +754,22 @@ async function drawNodePositions() {
   // Resolve everything first so the signature covers the whole rendered set.
   const draw = []
   for (const [id, pts] of bySender) {
-    // Only use cached position for full pubkeys (#272 blocker 4): a 2-byte
-    // relay prefix could resolve to the wrong node if there are collisions
-    // in the upstream resolver. Partial prefixes are ambiguous by design.
-    const advertised = (isFullPubkey(id) ? cachedPosition(id) : null) || null
+    // Two gates, for two different reasons (#296).
+    //
+    // Kind: only advert/discover ids live in the pubkey namespace at all. This
+    // side never consulted sender_kind before, so a 64-hex id of ANY kind was
+    // accepted — a full-length relay path element or a channel name that
+    // happens to be 64 hex would have been looked up as a node.
+    //
+    // Full pubkey: unlike the app, this side has no local registry to check a
+    // prefix against. Its only source of uniqueness is the resolver, and
+    // resolve.go returns the FIRST upstream reporting a non-empty name with
+    // ambiguous=false — a per-registry claim, so a prefix that is unique in one
+    // upstream and absent from another comes back "unique" while naming the
+    // wrong node. The app can refuse ambiguity exactly (groupSenderPointsForNodes);
+    // here we cannot, so prefixes are not trusted at all. Deliberately stricter,
+    // not an oversight.
+    const advertised = (registryIds.has(id) && isFullPubkey(id) ? cachedPosition(id) : null) || null
     const est = estimateFor(pts)
     const p = driftPresentation({ advertised, estimate: est })
     // estimate-only adds nothing here: the points themselves already show it,
@@ -855,7 +877,11 @@ const trRendered = { from: null, to: null }
 
 function syncTimeUi() {
   const now = Date.now()
-  trLabelEl.textContent = rangeLabel(fFrom.value, fTo.value, now)
+  // Say so when the server is going to clamp this, rather than labelling a
+  // range the data does not cover (#300). Hiding the >24h rows only stops a
+  // guest picking one; a shared ?from=now-7d link still lands here.
+  const clamped = isDegradedFor(currentRole) && exceedsGuestWindow(fFrom.value, fTo.value, now)
+  trLabelEl.textContent = rangeLabel(fFrom.value, fTo.value, now) + (clamped ? ' (24 h max)' : '')
   const active = matchQuickRange(fFrom.value, fTo.value)
   for (const li of trQuick.children) li.classList.toggle('active', !!active && li.dataset.label === active.label)
   const f = resolveTimeValue(fFrom.value, now), t = resolveTimeValue(fTo.value, now)
@@ -1056,6 +1082,19 @@ targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list')
 // currentFilters (filters.js) reads the selection through this rather than
 // importing the picker, keeping the filter module free of DOM-component wiring.
 window.selectedSenderIds = () => targetPicker.getSelected()
+// Typing a prefix while a pick is active used to do nothing at all: ids take
+// absolute precedence in senderParams, and only the pick->type direction
+// cleared the other side. The input accepted the text, the map ignored it, and
+// nothing said why (#299). Typing is an explicit act, so let it win — the same
+// direction the pick already has when it clears the field.
+document.getElementById('f-sender').addEventListener('input', (e) => {
+  if (!e.target.value.trim()) return
+  if (!targetPicker.getSelected().length) return
+  targetPicker.setSelected([])
+  urlstate.save()
+  refresh()
+})
+
 // Selection persists as JSON: a sender_id is arbitrary operator text, so the
 // stored form can no more be delimiter-joined than the query params can (#288).
 urlstate.register({ key: 'senders',

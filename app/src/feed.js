@@ -124,8 +124,10 @@ export function topSenders(records, { ignore, count = 3, nowMs } = {}) {
 // the target list never renders (and overlaps on) a full-length hex string.
 const ID_PREFIX_HEX_CHARS = 6
 
-function idPrefix(id) {
-  return id.slice(0, ID_PREFIX_HEX_CHARS)
+// Exported so every surface that has to render an unresolved id uses the same
+// short form — feed.js's own rule is that a full-length id is never shown.
+export function idPrefix(id) {
+  return String(id || '').slice(0, ID_PREFIX_HEX_CHARS)
 }
 
 // targetParts splits a sender row into a primary label and a muted secondary
@@ -161,6 +163,26 @@ export function clusterKey(rec) {
   const anchor = ids.find((id) => FULL_PUBKEY.test(id))
   if (anchor) return anchor
   return String((rec && rec.sender_id) || '').toLowerCase()
+}
+
+// selectionKeyFor picks the key a tap on `id` should select, given the rows in
+// hand. It is the counterpart to expandSelection: that turns keys back into
+// ids, this turns an id into the key.
+//
+// Callers do not all know the cluster. The target list passes the row's whole
+// merged_ids group; the map popup has only the one sender_id it drew (#297).
+// Keying off the raw id in that second case selected a single variant while the
+// list rendered the whole cluster as checked, and a later tap on that row
+// computed the anchor — a different key — so it added a second selection
+// instead of clearing the first. Resolving against the current rows makes both
+// callers agree without either needing to know about the other.
+export function selectionKeyFor(rows, id, ids) {
+  const wanted = String(id || '').toLowerCase()
+  if (!wanted) return ''
+  const cluster = (rows || []).find((r) => (r.merged_ids || []).includes(wanted))
+  if (cluster) return clusterKey(cluster)
+  const group = Array.isArray(ids) && ids.length ? ids.map((x) => String(x).toLowerCase()) : [wanted]
+  return clusterKey({ sender_id: wanted, merged_ids: group })
 }
 
 // expandSelection turns selected node keys into the id set to filter on right
