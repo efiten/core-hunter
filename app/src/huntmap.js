@@ -70,7 +70,7 @@ export function createHuntMap(containerId) {
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
   let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
-  let nodePosGen = 0, nodePosSig = null   // generation counter + signature guard to prevent popup flicker
+  let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false, locateMarkers = []

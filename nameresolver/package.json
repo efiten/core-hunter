@@ -15,6 +15,8 @@
     "mqtt": "^5.10.1"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
+    "globals": "^17.8.0",
     "vitest": "^3.2.6"
   }
 }
