@@ -1,13 +1,8 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 // Target-list picker (#223) — browsable multi-select parity with app's target sheet.
 
 test.beforeEach(async ({ page }) => {
-  // The picker's selection is a persisted filter (urlstate -> localStorage), so
-  // a pick made in one navigation is restored on the next. Start every test from
-  // a clean store, otherwise assertions depend on whether save() happened to run
-  // before the following goto.
-  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))

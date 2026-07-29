@@ -1,12 +1,8 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './fixtures.js'
 
 // Time-range picker (#285).
 
 test.beforeEach(async ({ page }) => {
-  // from/to persist through urlstate, so a test that picks a quick range leaves
-  // the next one starting on that token instead of the absolute default — the
-  // label then reads "Today" where the default "00:00 → 23:59" is expected.
-  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
