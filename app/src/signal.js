@@ -59,3 +59,24 @@ const EXTRUSION_HEIGHT = { hot: 90, warm: 68, mid: 48, cool: 30, cold: 15, none:
 export function extrusionHeight(rssi, offset = 0) {
   return EXTRUSION_HEIGHT[rssiTier(rssi, offset)]
 }
+
+// withAlpha bakes an alpha into a CSS colour so it can travel as a per-feature
+// value. MapLibre's fill-extrusion-opacity is not data-driven — it is one
+// number for the whole layer — but fill-extrusion-color IS, so the pillars can
+// only carry tier opacity and age-fade if the alpha rides in the colour (#302).
+//
+// Accepts the #rgb / #rrggbb the --ch-sig-* tokens resolve to. Anything else is
+// returned unchanged rather than guessed at, so a token that is already
+// rgb()/rgba() degrades to "no fade" instead of an invalid paint value.
+export function withAlpha(color, alpha) {
+  const a = Math.max(0, Math.min(1, Number(alpha)))
+  if (!Number.isFinite(a)) return color
+  const s = String(color || '').trim()
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(s)
+  if (!m) return color
+  const h = m[1].length === 3 ? m[1].split('').map((c) => c + c).join('') : m[1]
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r},${g},${b},${Number(a.toFixed(3))})`
+}

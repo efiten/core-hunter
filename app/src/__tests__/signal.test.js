@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight , withAlpha } from '../signal.js'
 
 describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
   it('maps the strong end to 1 and clamps above', () => {
@@ -98,5 +98,31 @@ describe('ageFade — point opacity multiplier by age within the time window', (
     expect(ageFade('2026-06-29T10:00:00Z', now, null)).toBe(1)
     expect(ageFade(null, now, WINDOW)).toBe(1)
     expect(ageFade('not-a-date', now, WINDOW)).toBe(1)
+  })
+})
+
+describe('withAlpha — pillars carry fade in the colour (#302)', () => {
+  it('converts a 6-digit hex token to rgba', () => {
+    expect(withAlpha('#ff453a', 0.5)).toBe('rgba(255,69,58,0.5)')
+  })
+  it('expands 3-digit shorthand', () => {
+    expect(withAlpha('#f00', 1)).toBe('rgba(255,0,0,1)')
+  })
+  it('clamps out-of-range alpha rather than emitting an invalid colour', () => {
+    expect(withAlpha('#ff453a', 2)).toBe('rgba(255,69,58,1)')
+    expect(withAlpha('#ff453a', -1)).toBe('rgba(255,69,58,0)')
+  })
+  it('rounds long alphas so the feature property stays compact', () => {
+    // fillOpacity x ageFade produces values like 0.5399999999999999.
+    expect(withAlpha('#ff453a', 0.5399999999999999)).toBe('rgba(255,69,58,0.54)')
+  })
+  it('passes through a colour it cannot parse instead of guessing', () => {
+    // A token already in rgb()/rgba() form degrades to "no fade", not to an
+    // invalid paint value that would drop the whole layer.
+    expect(withAlpha('rgb(1,2,3)', 0.5)).toBe('rgb(1,2,3)')
+    expect(withAlpha('', 0.5)).toBe('')
+  })
+  it('tolerates whitespace around the token, as getPropertyValue returns it', () => {
+    expect(withAlpha('  #ff453a  ', 0.25)).toBe('rgba(255,69,58,0.25)')
   })
 })
