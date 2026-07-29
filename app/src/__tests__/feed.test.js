@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -373,5 +373,50 @@ describe('selection follows the node, not the ids it had at tap time (#268)', ()
   it('expands nothing for an empty selection', () => {
     expect(expandSelection([], []).size).toBe(0)
     expect(expandSelection(null, []).size).toBe(0)
+  })
+})
+
+describe('selectionKeyFor — the map popup and the target list must agree (#297)', () => {
+  const pk = (head) => head + '0'.repeat(64 - head.length)
+  const A = pk('a1b2c3d4')
+  const rows = [{ sender_id: 'a1b2c3', merged_ids: ['a1b2c3', A] }]
+
+  it('resolves a bare id to its cluster anchor', () => {
+    // The map popup dispatches only the sender_id it drew. Keying off that
+    // selected one variant while the target-list row rendered as checked for
+    // the whole cluster, and the next tap on that row computed a different key.
+    expect(selectionKeyFor(rows, 'a1b2c3')).toBe(A)
+    expect(selectionKeyFor(rows, A)).toBe(A)
+  })
+
+  it('gives the same key whichever variant the caller happens to hold', () => {
+    expect(selectionKeyFor(rows, 'a1b2c3')).toBe(selectionKeyFor(rows, A))
+  })
+
+  it('still honours an explicit group when the id is in no current cluster', () => {
+    // The node has not been heard in this window, so there is no row for it.
+    expect(selectionKeyFor([], 'a1b2c3', ['a1b2c3', A])).toBe(A)
+  })
+
+  it('falls back to the id itself with no cluster and no group', () => {
+    expect(selectionKeyFor([], 'a1b2c3')).toBe('a1b2c3')
+  })
+
+  it('is case-insensitive', () => {
+    expect(selectionKeyFor(rows, 'A1B2C3')).toBe(A)
+  })
+
+  it('returns empty for a missing id rather than inventing a key', () => {
+    expect(selectionKeyFor(rows, null)).toBe('')
+  })
+})
+
+describe('idPrefix — no surface renders a full-length id (#297)', () => {
+  it('shortens a full pubkey to the same 6 chars the target list shows', () => {
+    expect(idPrefix('a1b2c3d4' + '0'.repeat(56))).toBe('a1b2c3')
+  })
+  it('leaves an already-short id alone and tolerates nullish input', () => {
+    expect(idPrefix('a1b2')).toBe('a1b2')
+    expect(idPrefix(null)).toBe('')
   })
 })
