@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.1](https://github.com/efiten/core-hunter/compare/app-v1.5.0...app-v1.5.1) (2026-07-29)
+
+
+### Bug Fixes
+
+* **app:** make the map popup and the target list agree on a selection ([#297](https://github.com/efiten/core-hunter/issues/297)) ([#326](https://github.com/efiten/core-hunter/issues/326)) ([8bde3bb](https://github.com/efiten/core-hunter/commit/8bde3bb40c8b7bb848d2c382730cbe692e8968cd))
+* **app:** restore tier opacity and age-fade on the 3D pillars ([#302](https://github.com/efiten/core-hunter/issues/302)) ([#328](https://github.com/efiten/core-hunter/issues/328)) ([74d6a1f](https://github.com/efiten/core-hunter/commit/74d6a1f15dade491d3a198018f39ca55bf894d95))
+* refuse ambiguous prefixes and consult sender_kind on both sides ([#295](https://github.com/efiten/core-hunter/issues/295), [#296](https://github.com/efiten/core-hunter/issues/296)) ([#325](https://github.com/efiten/core-hunter/issues/325)) ([55a026f](https://github.com/efiten/core-hunter/commit/55a026fbc1bf8c213ce76d582620d596cd343f9b))
+
+
+### Continuous Integration
+
+* add an eslint no-undef pass over app, web and nameresolver ([#303](https://github.com/efiten/core-hunter/issues/303)) ([#324](https://github.com/efiten/core-hunter/issues/324)) ([0eafdca](https://github.com/efiten/core-hunter/commit/0eafdca066e9728457d1da400c405fd4198f4f00))
+
 ## [1.5.0](https://github.com/efiten/core-hunter/compare/app-v1.4.0...app-v1.5.0) (2026-07-27)
 
 

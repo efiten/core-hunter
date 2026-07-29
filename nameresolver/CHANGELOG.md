@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/efiten/core-hunter/compare/nameresolver-v1.1.0...nameresolver-v1.1.1) (2026-07-29)
+
+
+### Continuous Integration
+
+* add an eslint no-undef pass over app, web and nameresolver ([#303](https://github.com/efiten/core-hunter/issues/303)) ([#324](https://github.com/efiten/core-hunter/issues/324)) ([0eafdca](https://github.com/efiten/core-hunter/commit/0eafdca066e9728457d1da400c405fd4198f4f00))
+
 ## [1.1.0](https://github.com/efiten/core-hunter/compare/nameresolver-v1.0.0...nameresolver-v1.1.0) (2026-07-27)
 
 
