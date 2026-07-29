@@ -11,7 +11,7 @@ const ring = (lat, lon, rM, n) => Array.from({ length: n }, (_, i) => {
   return {
     lat: lat + (rM * Math.sin(a)) / 111320,
     lon: lon + (rM * Math.cos(a)) / (111320 * Math.cos((lat * Math.PI) / 180)),
-    rssi: -65 - i, snr: -3, sender_id: SENDER, sender_label: '', hunter_name: 'ON8AR',
+    rssi: -65 - i, snr: -3, sender_id: SENDER, sender_kind: 'advert_pubkey', sender_label: '', hunter_name: 'ON8AR',
     packet_type: 'Advert', rx_at: '2026-07-19T10:00:00Z',
   }
 })
@@ -83,7 +83,7 @@ test('a drift under 100 m reports a distance but claims no radius', async ({ pag
 test('a one-sided estimate does not claim a search radius', async ({ page }) => {
   // Three points on one bearing only: encirclement stays below the 0.5 gate.
   const oneSided = [0, 1, 2].map((i) => ({
-    lat: 51 + i * 0.0009, lon: 4, rssi: -70 - i, snr: -3, sender_id: SENDER, sender_label: '',
+    lat: 51 + i * 0.0009, lon: 4, rssi: -70 - i, snr: -3, sender_id: SENDER, sender_kind: 'advert_pubkey', sender_label: '',
     hunter_name: 'ON8AR', packet_type: 'Advert', rx_at: '2026-07-19T10:00:00Z',
   }))
   await routes(page, { lat: 51.0025, lon: 4.0, points: oneSided })
@@ -121,4 +121,21 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await expect(page.locator('.np-advert')).toHaveCount(0)
   await page.click('#locate-toggle')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+})
+
+test('a 64-hex id of a non-registry kind is not looked up as a node (#296)', async ({ page }) => {
+  // sender_id can be 64 hex without being a pubkey — a full-length relay path
+  // element, or an operator who named a channel that way. Only advert/discover
+  // ids live in the pubkey namespace, so this must draw nothing even though the
+  // resolver would happily return a position for it.
+  await page.route('**/api/points*', (r) => r.fulfill({
+    json: { points: ring(51, 4, 250, 8).map((p) => ({ ...p, sender_kind: 'relay' })) },
+  }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({
+    json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0 },
+  }))
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  await expect(page.locator('#nodepos-note')).toBeVisible()
+  await expect(page.locator('.np-advert')).toHaveCount(0)
 })

@@ -2,7 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight } from './signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
-import { nodesInView, driftPresentation, groupSenderPoints, groupSenderPointsForNode, estimateFor, circleRing } from './nodelayer.js'
+import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
@@ -362,8 +362,13 @@ export function createHuntMap(containerId) {
     // have heard them enough to produce one. Match sender_id (from receptions)
     // against node pubkey: exact match for advert_pubkey, prefix match for
     // discover_pubkey, no match for relay/direct_hash/channel_name (#197/#272).
-    for (const n of nodesInView(nodePositions, bounds)) {
-      const pts = groupSenderPointsForNode(records, n.pubkey)
+    // One pass over the records for the whole in-view set, not one pass per
+    // node: this also lets an id that matches two nodes be refused outright
+    // rather than attributed to both (#295).
+    const inView = nodesInView(nodePositions, bounds)
+    const byNode = groupSenderPointsForNodes(records, inView)
+    for (const n of inView) {
+      const pts = byNode.get(String(n.pubkey).toLowerCase()) || []
       const est = pts.length ? estimateFor(pts) : null
       const p = driftPresentation({ advertised: n, estimate: est })
       if (p.kind === 'none') continue

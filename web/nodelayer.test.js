@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from './nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, isRegistryIdKind } from './nodelayer.js'
 import { haversineM } from './locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -173,5 +173,20 @@ describe('circleRing', () => {
   })
   it('returns an empty ring for a non-positive radius', () => {
     expect(circleRing({ lat: 51.2, lon: 4.4 }, 0, 8)).toEqual([])
+  })
+})
+
+describe('isRegistryIdKind — which ids live in the pubkey namespace (#296)', () => {
+  it('accepts the two kinds that carry a pubkey', () => {
+    expect(isRegistryIdKind('advert_pubkey')).toBe(true)
+    expect(isRegistryIdKind('discover_pubkey')).toBe(true)
+  })
+  it('rejects the kinds that are a different namespace entirely', () => {
+    // A relay path element or a channel name can be 64 hex by coincidence;
+    // without this gate it would be looked up as a node pubkey.
+    expect(isRegistryIdKind('relay')).toBe(false)
+    expect(isRegistryIdKind('direct_hash')).toBe(false)
+    expect(isRegistryIdKind('channel_name')).toBe(false)
+    expect(isRegistryIdKind(undefined)).toBe(false)
   })
 })

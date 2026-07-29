@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNode, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
 import { haversineM } from '../locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -143,48 +143,89 @@ describe('senderIdMatches (#272 blocker 1)', () => {
   })
 })
 
-describe('groupSenderPointsForNode', () => {
-  const fullPubkey = 'aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011'
-  const rec = (o) => ({ sender_id: 'aa', sender_kind: 'advert_pubkey', lat: 51.2, lon: 4.4, rssi: -70, ...o })
+describe('groupSenderPointsForNodes', () => {
+  const A = 'aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011aabbccddeeff0011'
+  const B = 'aabbffff1122334455667788990011aabbccddeeff0011aabbccddeeff002233'
+  const C = 'ffee00112233445566778899aabbccddeeff00112233445566778899aabbccdd'
+  const rec = (o) => ({ sender_id: A, sender_kind: 'advert_pubkey', lat: 51.2, lon: 4.4, rssi: -70, ...o })
+  const nodes = (...keys) => keys.map((k) => ({ pubkey: k, lat: 51, lon: 4 }))
 
-  it('finds receptions matching node pubkey by advert_pubkey (exact match)', () => {
-    const recs = [
-      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey' }),
-      rec({ sender_id: 'other', sender_kind: 'advert_pubkey' }),
-    ]
-    const pts = groupSenderPointsForNode(recs, fullPubkey)
-    expect(pts).toHaveLength(1)
-    expect(pts[0].rssi).toBe(-70)
+  it('attributes an exact advert pubkey to its node', () => {
+    const out = groupSenderPointsForNodes([rec({ sender_id: A }), rec({ sender_id: C })], nodes(A))
+    expect(out.get(A)).toHaveLength(1)
+    expect(out.get(A)[0].rssi).toBe(-70)
   })
-  it('finds receptions matching node pubkey by discover_pubkey (prefix match)', () => {
+
+  it('attributes a discover prefix to the one node it matches', () => {
     const recs = [
       rec({ sender_id: 'aabbccdd', sender_kind: 'discover_pubkey' }),
-      rec({ sender_id: 'aabb', sender_kind: 'discover_pubkey' }),
-      rec({ sender_id: 'bbccddee', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: 'ffee0011', sender_kind: 'discover_pubkey' }),
     ]
-    const pts = groupSenderPointsForNode(recs, fullPubkey)
-    expect(pts).toHaveLength(2)  // first two match as prefixes
+    const out = groupSenderPointsForNodes(recs, nodes(A, C))
+    expect(out.get(A)).toHaveLength(1)
+    expect(out.get(C)).toHaveLength(1)
   })
-  it('ignores relay and direct_hash kinds', () => {
+
+  // The reason this function takes the whole node set instead of one node.
+  it('refuses a prefix that matches two nodes, rather than giving it to both', () => {
+    // 'aabb' starts both A and B. There is no way to tell which one sent it,
+    // so it must contribute to neither (#295).
+    const recs = [rec({ sender_id: 'aabb', sender_kind: 'discover_pubkey' })]
+    const out = groupSenderPointsForNodes(recs, nodes(A, B))
+    expect(out.get(A)).toHaveLength(0)
+    expect(out.get(B)).toHaveLength(0)
+  })
+
+  it('still attributes the unambiguous prefixes in the same batch', () => {
+    const recs = [
+      rec({ sender_id: 'aabb', sender_kind: 'discover_pubkey' }),       // ambiguous A/B
+      rec({ sender_id: 'aabbccdd', sender_kind: 'discover_pubkey' }),   // A only
+      rec({ sender_id: 'ffee0011', sender_kind: 'discover_pubkey' }),   // C only
+    ]
+    const out = groupSenderPointsForNodes(recs, nodes(A, B, C))
+    expect(out.get(A)).toHaveLength(1)
+    expect(out.get(B)).toHaveLength(0)
+    expect(out.get(C)).toHaveLength(1)
+  })
+
+  it('is not fooled by an exact advert that also prefixes another node', () => {
+    // An advert carries the whole key, so it is never ambiguous even when a
+    // shorter node key happens to be a prefix relationship away.
+    const out = groupSenderPointsForNodes([rec({ sender_id: A })], nodes(A, B))
+    expect(out.get(A)).toHaveLength(1)
+    expect(out.get(B)).toHaveLength(0)
+  })
+
+  it('ignores relay, direct_hash and channel_name kinds entirely', () => {
     const recs = [
       rec({ sender_id: 'aabbccdd', sender_kind: 'relay' }),
-      rec({ sender_id: 'aabb', sender_kind: 'direct_hash' }),
+      rec({ sender_id: 'aa', sender_kind: 'direct_hash' }),
+      rec({ sender_id: 'Repeater-Zuid', sender_kind: 'channel_name' }),
     ]
-    const pts = groupSenderPointsForNode(recs, fullPubkey)
-    expect(pts).toHaveLength(0)
+    const out = groupSenderPointsForNodes(recs, nodes(A))
+    expect(out.get(A)).toHaveLength(0)
   })
+
+  it('rejects a discover prefix shorter than 2 bytes', () => {
+    const out = groupSenderPointsForNodes([rec({ sender_id: 'aa', sender_kind: 'discover_pubkey' })], nodes(A))
+    expect(out.get(A)).toHaveLength(0)
+  })
+
   it('drops receptions without a GPS fix', () => {
-    const recs = [
-      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey', lat: 51.2, lon: 4.4 }),
-      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey', lat: null, lon: 4.4 }),
-      rec({ sender_id: fullPubkey, sender_kind: 'advert_pubkey', lat: 51.2, lon: null }),
-    ]
-    const pts = groupSenderPointsForNode(recs, fullPubkey)
-    expect(pts).toHaveLength(1)
+    const recs = [rec({ lat: null }), rec({ lon: undefined }), rec({})]
+    const out = groupSenderPointsForNodes(recs, nodes(A))
+    expect(out.get(A)).toHaveLength(1)
   })
-  it('returns an empty array for missing input', () => {
-    expect(groupSenderPointsForNode(null, fullPubkey)).toEqual([])
-    expect(groupSenderPointsForNode([], null)).toEqual([])
+
+  it('returns an entry for every node, even one that heard nothing', () => {
+    const out = groupSenderPointsForNodes([], nodes(A, C))
+    expect(out.get(A)).toEqual([])
+    expect(out.get(C)).toEqual([])
+  })
+
+  it('is case-insensitive on both sides', () => {
+    const out = groupSenderPointsForNodes([rec({ sender_id: A.toUpperCase() })], nodes(A.toUpperCase()))
+    expect(out.get(A)).toHaveLength(1)
   })
 })
 

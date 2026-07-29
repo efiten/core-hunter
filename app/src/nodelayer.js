@@ -86,37 +86,66 @@ export function driftPresentation({ advertised, estimate }) {
 // (from registry position). Full advert_pubkey must match exactly (64-hex).
 // Discover pubkey prefix matches if it's a prefix of the full key. Relay,
 // direct_hash, and channel_name do not match registry nodes.
+// Which sender kinds can name a registry node at all. advert carries the full
+// pubkey and discover carries a prefix of it; relay path-hashes, 1-byte direct
+// hashes and channel names are different namespaces entirely (see meshpacket.js)
+// and must never be matched against a pubkey.
+export function isRegistryIdKind(senderKind) {
+  return senderKind === 'advert_pubkey' || senderKind === 'discover_pubkey'
+}
+
 export function senderIdMatches(senderId, senderKind, nodePubkey) {
   if (!senderId || !nodePubkey) return false
+  if (!isRegistryIdKind(senderKind)) return false
   const id = String(senderId).toLowerCase()
   const key = String(nodePubkey).toLowerCase()
-
-  if (senderKind === 'advert_pubkey') {
-    // Full pubkey from an advert — must match exactly
-    return id === key
-  } else if (senderKind === 'discover_pubkey') {
-    // Discover reply pubkey prefix — matches if it's a prefix of the node's full key
-    return key.startsWith(id) && id.length >= 4  // >= 2 bytes (4 hex)
-  }
-  // relay, direct_hash, channel_name don't match registry nodes
-  return false
+  // An advert carries the whole key, so it must match exactly.
+  if (senderKind === 'advert_pubkey') return id === key
+  // A discover reply carries a prefix. >= 2 bytes only; shorter is too
+  // collision-prone to attribute at all.
+  return id.length >= 4 && key.startsWith(id)
 }
 
-// groupSenderPointsForNode finds all reception points for a node by matching
-// on sender_id and sender_kind against the node's pubkey. Handles partial
-// prefix matches for discover_pubkey, exact matches for advert_pubkey.
-export function groupSenderPointsForNode(records, nodePubkey) {
-  const points = []
-  if (!Array.isArray(records) || !nodePubkey) return points
+// groupSenderPointsForNodes attributes receptions to registry nodes in ONE pass,
+// and refuses any reception whose id matches more than one of them.
+//
+// The refusal is the point. A discover prefix is only 2+ bytes, so it can be a
+// prefix of two different registry pubkeys at once — with a few hundred
+// positioned nodes that is roughly even odds somewhere in the set. Asking each
+// node independently "does this prefix start my key?" makes both of them answer
+// yes, so the same receptions feed two estimates, two connectors and two drift
+// figures, one of which measures a different node. There is no way to tell from
+// the reception which node it came from, so the honest answer is neither: an
+// ambiguous id contributes to nothing. Same rule the target-list merge settled
+// on in #267, and the same thing resolve.go's `ambiguous` flag means.
+//
+// Returns Map<pubkey, points[]>, with an entry for every node passed in.
+export function groupSenderPointsForNodes(records, nodes) {
+  const out = new Map()
+  const keys = []
+  for (const n of nodes || []) {
+    const k = n && n.pubkey ? String(n.pubkey).toLowerCase() : null
+    if (!k) continue
+    out.set(k, [])
+    keys.push(k)
+  }
+  if (!Array.isArray(records) || keys.length === 0) return out
+
   for (const r of records) {
-    if (r.sender_id == null) continue
+    if (!r || r.sender_id == null) continue
     if (!isCoord(r.lat) || !isCoord(r.lon)) continue
-    if (senderIdMatches(r.sender_id, r.sender_kind, nodePubkey)) {
-      points.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+    if (!isRegistryIdKind(r.sender_kind)) continue
+    let matched = null
+    for (const k of keys) {
+      if (!senderIdMatches(r.sender_id, r.sender_kind, k)) continue
+      if (matched !== null) { matched = null; break }   // ambiguous -> drop it
+      matched = k
     }
+    if (matched) out.get(matched).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
   }
-  return points
+  return out
 }
+
 
 // groupSenderPoints buckets located receptions by sender so each node can be
 // estimated independently. Receptions without a sender or a GPS fix carry no
