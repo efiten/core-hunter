@@ -35,6 +35,15 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 // see docs/2026-07-11-3d-mode.md: its AWS DEM tiles kept the map in a
 // perpetual load loop and froze weaker GPUs.)
 
+// Ceiling for the two-finger tilt gesture (#333). MapLibre's own default
+// maxPitch is 60 — the same value the FAB eases to (PITCH_3D, maplayers.js) —
+// so without this the gesture bottomed out exactly where the FAB left off and
+// the camera could never look along the ground. 85 is MapLibre's hard maximum
+// (86+ throws "maxPitch must be less than or equal to 85"); 90 is not offered
+// because a camera level with the horizon projects to infinity.
+// PITCH_3D deliberately stays 60: the FAB is the introduction to 3D, and the
+// gesture is what takes you the rest of the way.
+const MAX_PITCH = 85
 // Points-in-3D (#250): a small standing "pillar" per reception, same tier
 // height/colour as hex-3d's bars, so it reads clearly in the tilted view
 // instead of disappearing under the hex/building geometry (a flat circle
@@ -64,7 +73,7 @@ export function createHuntMap(containerId) {
   try {
     map = new maplibregl.Map({
       container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
-      attributionControl: false, dragRotate: true, pitchWithRotate: false,
+      attributionControl: false, dragRotate: true, pitchWithRotate: false, maxPitch: MAX_PITCH,
     })
   } catch (e) { return stub }
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
