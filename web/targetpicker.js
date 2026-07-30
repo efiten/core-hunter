@@ -5,14 +5,111 @@
 // no local capture store or sender_kind-based target-eligibility gate (a
 // BLE-capture-classification concept, meshpacket.js) — the data source here
 // is whatever points the map's current filters already fetched, and every
-// sender_id present is eligible, not just "target kinds".
+// sender_id present is eligible, not just "target kinds". sender_kind is
+// consulted for one thing only: which ids live in the pubkey namespace and may
+// therefore be prefix-merged (see mergePrefixGroups).
 
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
 
+// Kinds whose sender_id lives in the pubkey namespace, so one can be a hex
+// prefix of another: an advert carries the full 32-byte key, a discover reply a
+// 3-byte prefix, a relay path element a 1-3 byte path hash. channel_name's id is
+// a decrypted display name — arbitrary operator text, never prefix-merged.
+const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
+const HEX_ID = /^[0-9a-f]+$/
+// 2 bytes is where merging starts: a 1-byte path hash is 1-in-256, far too
+// coarse to attribute to a node just because one candidate happens to be in the
+// window.
+const MIN_MERGE_HEX_CHARS = 4
+
+// Two rows are name-incompatible only when BOTH resolve and disagree — that is
+// positive evidence of two nodes. An unresolved side says nothing either way,
+// unlike the app (feed.js), which requires a matching name on both sides before
+// merging. That gate cannot work here: the picker renders whatever /api/points
+// returned, where sender_label is only ever set by an advert, so the rows this
+// merge exists for are unresolved on at least one side by construction.
+function namesCompatible(a, b) {
+  const x = String(a || '').trim().toLowerCase()
+  const y = String(b || '').trim().toLowerCase()
+  if (!x || !y) return true
+  return x === y
+}
+
+// mergePrefixGroups collapses the rows that name one physical node — a full
+// advert pubkey plus the shorter prefixes the same node is heard under — into a
+// single row, so the list reads one row per node (#331; the app's equivalent is
+// feed.js mergePrefixGroups, #267/#268).
+//
+// Each id attaches to the LONGEST id it is a prefix of, but only when
+// everything longer that it could be is one single chain (e.g. 4a4a → 4a4abe →
+// 4a4abe11…). If two candidates exist that are not prefixes of each other —
+// say 4a4abe11… and 4a4aff… — then 4a4a is equally likely to be either, and it
+// stays on its own row. Ambiguity is evidence against merging, not for it: this
+// is a direction-finding tool, and feeding two physically separate transmitters
+// to Locate as one target is the wrong answer in the worst possible place.
+//
+// Two full pubkeys never merge: neither is a prefix of the other, so the rule
+// above already leaves them apart. Note the residual risk this cannot see —
+// a prefix whose true owner never adverted in the window attaches to the one
+// candidate that is there. That is inherent to prefix attribution; the merge
+// only ever claims what the window can support.
+//
+// The merged row keeps the newest reception (so RSSI and age stay live) but is
+// named by the cluster's longest id, and by any name that resolved anywhere in
+// the cluster. `merged_ids` carries every id it was built from, lowercased, so
+// the selection can filter on all of them at once.
+function mergePrefixGroups(entries) {
+  const eligible = entries
+    .map(([id, rec], i) => ({ i, id: id.toLowerCase(), rec }))
+    .filter((e) => HEX_PREFIX_KINDS.has(e.rec.sender_kind)
+      && e.id.length >= MIN_MERGE_HEX_CHARS && HEX_ID.test(e.id))
+
+  // Bucket by the first 2 bytes: a prefix relation implies a shared leading
+  // 4 hex chars, so candidates never have to be searched outside the bucket.
+  const buckets = new Map()
+  for (const e of eligible) {
+    const k = e.id.slice(0, MIN_MERGE_HEX_CHARS)
+    if (!buckets.has(k)) buckets.set(k, [])
+    buckets.get(k).push(e)
+  }
+
+  const attachTo = new Map()   // entry index -> entry index of a longer id
+  for (const e of eligible) {
+    const longer = buckets.get(e.id.slice(0, MIN_MERGE_HEX_CHARS))
+      .filter((o) => o.id.length > e.id.length && o.id.startsWith(e.id))
+    if (!longer.length) continue
+    const chained = longer.every((a) => longer.every((b) => a.id.startsWith(b.id) || b.id.startsWith(a.id)))
+    if (!chained) continue     // could be either of two nodes -> stands alone
+    const target = longer.reduce((a, b) => (b.id.length > a.id.length ? b : a))
+    if (!namesCompatible(e.rec.sender_label, target.rec.sender_label)) continue
+    attachTo.set(e.i, target.i)
+  }
+
+  // Follow each chain to its root. attachTo always points at a strictly longer
+  // id, so the walk terminates.
+  const groups = new Map()
+  entries.forEach((_, i) => {
+    let root = i
+    while (attachTo.has(root)) root = attachTo.get(root)
+    if (!groups.has(root)) groups.set(root, [])
+    groups.get(root).push(i)
+  })
+
+  return [...groups.values()].map((idxs) => {
+    const group = idxs.map((i) => entries[i])
+    const merged_ids = group.map(([id]) => id.toLowerCase()).sort()
+    const [canonical] = group.reduce((a, b) => (b[0].length > a[0].length ? b : a))
+    const [, newest] = group.reduce((a, b) => (Date.parse(b[1].rx_at) > Date.parse(a[1].rx_at) ? b : a))
+    const label = group.map(([, r]) => r.sender_label).find((l) => l && String(l).trim()) || newest.sender_label
+    return { ...newest, sender_id: canonical, sender_label: label, merged_ids }
+  })
+}
+
 // dedupeSenders collapses receptions into one row per sender_id, keeping the
-// most recent (by rx_at) for each.
+// most recent (by rx_at) for each, then merges the rows that are prefix
+// variants of one node (see mergePrefixGroups).
 export function dedupeSenders(points) {
   const bySender = new Map()
   for (const r of points || []) {
@@ -21,7 +118,7 @@ export function dedupeSenders(points) {
     const prev = bySender.get(id)
     if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
   }
-  return [...bySender.values()]
+  return mergePrefixGroups([...bySender.entries()])
 }
 
 // senderList sorts deduped senders by name (falling back to id), case-
@@ -128,12 +225,22 @@ export function decodeSelection(raw) {
 const PAGE_SIZE = 12
 const PINNED_COUNT = 3
 
+// The ids one row filters on. A merged row stands for a node heard under
+// several prefixes, and a later reception may arrive under any of them, so the
+// row carries all of them rather than only the id it is labelled with.
+function rowIds(rec) {
+  const merged = (rec.merged_ids || []).filter(Boolean)
+  if (merged.length) return merged
+  const id = rec.sender_id != null ? String(rec.sender_id).toLowerCase() : ''
+  return id ? [id] : []
+}
+
 function row(rec, nowMs, selectedIds, onToggle) {
   const li = document.createElement('li')
   li.className = 'tl-item'
 
-  const id = rec.sender_id != null ? String(rec.sender_id) : ''
-  const selected = !!(id && selectedIds.has(id.toLowerCase()))
+  const ids = rowIds(rec)
+  const selected = ids.some((i) => selectedIds.has(i))
 
   const btn = document.createElement('button')
   btn.type = 'button'; btn.className = 'tl-row'
@@ -155,7 +262,7 @@ function row(rec, nowMs, selectedIds, onToggle) {
   meta.append(rssi, time)
 
   btn.append(check, name, meta)
-  btn.addEventListener('click', () => id && onToggle(id))
+  btn.addEventListener('click', () => ids.length && onToggle(ids))
 
   li.appendChild(btn)
   return li
@@ -184,9 +291,13 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange }
 
   const currentIds = () => selected
 
-  function onToggle(id) {
-    const key = String(id).toLowerCase()
-    if (selected.has(key)) selected.delete(key); else selected.add(key)
+  // Toggling is atomic over the row's whole id group: a merged row is one
+  // target, so it selects and deselects as one, whichever of its prefixes was
+  // already in the set.
+  function onToggle(ids) {
+    const keys = (Array.isArray(ids) ? ids : [ids]).map((i) => String(i).toLowerCase())
+    const anySelected = keys.some((k) => selected.has(k))
+    for (const k of keys) { if (anySelected) selected.delete(k); else selected.add(k) }
     // A typed prefix and an exact pick are different match kinds, so picking
     // clears the box rather than silently intersecting the two.
     if (selected.size && input.value.trim()) {
@@ -197,6 +308,11 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange }
     render(lastPoints, Date.now())
   }
 
+  // What a rendered row depends on. merged_ids is part of it: a new reception
+  // under a prefix the node was not yet known by changes the group the row
+  // toggles, without necessarily changing the newest reception it displays.
+  const rowSig = (r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at + '/' + rowIds(r).join(',')
+
   function render(points, nowMs) {
     lastPoints = points || []
     const selectedIds = currentIds()
@@ -204,7 +320,7 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange }
 
     if (pinnedEl) {
       const pinned = topSenders(lastPoints, { count: PINNED_COUNT, nowMs })
-      const pinnedSig = pinned.map((r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at).join('|') + '@' + selKey
+      const pinnedSig = pinned.map(rowSig).join('|') + '@' + selKey
       if (pinnedSig !== _lastPinnedSig) {
         _lastPinnedSig = pinnedSig
         pinnedEl.replaceChildren(...pinned.map((rec) => row(rec, nowMs, selectedIds, onToggle)))
@@ -212,7 +328,7 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange }
     }
 
     const items = senderList(lastPoints, { limit: visible })
-    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at).join('|') + '#' + visible + '@' + selKey
+    const sig = items.map(rowSig).join('|') + '#' + visible + '@' + selKey
     if (sig === _lastSig) return
     _lastSig = sig
     listEl.replaceChildren(...items.map((rec) => row(rec, nowMs, selectedIds, onToggle)))
