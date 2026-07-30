@@ -300,6 +300,42 @@ Resolved (firmware-confirmed):
   `out_frame` construction in `examples/companion_radio/MyMesh.cpp` (`CMD_APP_START` handler).
   No longer gated; used for SF-ordered resolver selection (see §8).
 
+### Prefix attribution: the app refuses, the website may merge
+
+One physical node is named by up to three different-length ids in the same pubkey namespace — the
+full 32-byte advert pubkey, a 3-byte discover prefix, a 1-3 byte relay path hash. Whether two such
+ids may be treated as one node differs **per component, deliberately**:
+
+- **App (`app/src/feed.js`, `web`-independent):** strict. A prefix attaches to a full pubkey only
+  when a resolved name is present on **both** sides and matches. The app has a local capture store
+  and can afford the name as a safety margin. Do not loosen this.
+- **Website (`web/targetpicker.js`):** merging **is** allowed without a resolved name (#331). The
+  picker renders whatever `/api/points` returned, where `sender_label` is only ever set by an
+  advert — a name gate would therefore never merge anything, and the sender dropdown listed the same
+  node once per prefix. A prefix merges onto the longest id it belongs to when everything longer
+  that it could be forms a single chain (`4a4a` → `4a4abe` → `4a4abe11…`).
+
+The website's looser rule is bounded by refusals that must stay in place. Ambiguity is evidence
+*against* merging, never for it — a wrong merge feeds two physically separate transmitters to Locate
+as one target:
+
+- two candidates that are not prefixes of each other (`4a4abe11…` vs `4a4aff…`) → the prefix stands
+  on its own row
+- `channel_name` ids never merge — that id is a decrypted display name, not part of the pubkey
+  namespace
+- two full pubkeys are two nodes, always
+- both sides resolved to *different* names → refuse
+- merging starts at 2 bytes; a 1-byte path hash is 1-in-256, too coarse to attribute
+
+A merged row is named by the node's own key (the longest id known for it) with the id still shown,
+keeps the newest reception for RSSI and age, and carries `merged_ids` so one click selects every
+prefix variant as one target.
+
+This does **not** relax the separate, stricter rule on the website's node-position layer
+(`web/map.js`, #296): a prefix is never resolved to a node *identity* there, because the resolver's
+`ambiguous=false` is a per-registry claim and this side has no local registry to check it against.
+Merging rows in a picker and trusting a prefix as an identity are different acts.
+
 ### Colours via CSS variables only
 
 All colour values in component styles must use the `--ch-*` design tokens defined in
