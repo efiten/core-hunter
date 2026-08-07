@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { layerVisibility } from '../maplayers.js'
+import { layerVisibility, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
 
 // #250/#266: which of the four signal layers is visible for a given
 // layer-mode / 2D-3D combination. Extracted from huntmap.js because that file
@@ -20,7 +20,7 @@ describe('layerVisibility in 2D', () => {
   })
   it('never shows a 3D layer in 2D', () => {
     for (const m of ['both', 'hex', 'points']) {
-      expect(vis(m, true === false)).toMatchObject({ 'hex-3d': false, 'points-3d': false })
+      expect(vis(m, false)).toMatchObject({ 'hex-3d': false, 'points-3d': false })
     }
   })
 })
@@ -73,5 +73,57 @@ describe('layerVisibility is total', () => {
   })
   it('treats an unknown mode as the cold default (hex), not as nothing visible', () => {
     expect(vis('', false)).toMatchObject({ hex: true, points: false })
+  })
+})
+
+// #258: the layer-mode FAB and the 2D/3D FAB merge into one 5-state cycle.
+// "2D · hex only" is deliberately dropped -- 5 states, not the full 3x2=6
+// combination matrix.
+describe('VIEW_STATES / nextViewIndex (#258)', () => {
+  it('has exactly the 5 states in the decided order, dropping 2D hex-only', () => {
+    expect(VIEW_STATES).toEqual([
+      { mode: 'points', mode3D: false },
+      { mode: 'both', mode3D: false },
+      { mode: 'hex', mode3D: true },
+      { mode: 'points', mode3D: true },
+      { mode: 'both', mode3D: true },
+    ])
+  })
+  it('never contains the dropped 2D-hex-only combination', () => {
+    expect(VIEW_STATES.some((s) => s.mode === 'hex' && !s.mode3D)).toBe(false)
+  })
+  // The whole visited sequence, not just where it lands after 5 steps: a step
+  // function that is correct for some indices and jumps for others still ends
+  // at 0 after five taps, so the endpoint alone proves nothing.
+  it('visits every state in order, one per tap, and wraps back to 0', () => {
+    const visited = []
+    let i = 0
+    for (let n = 0; n < 5; n++) { i = nextViewIndex(i); visited.push(i) }
+    expect(visited).toEqual([1, 2, 3, 4, 0])
+  })
+  it('treats an out-of-range index as if it were before the first state', () => {
+    expect(nextViewIndex(-1)).toBe(1)
+    expect(nextViewIndex(99)).toBe(1)
+    expect(nextViewIndex(undefined)).toBe(1)
+    expect(nextViewIndex(1.5)).toBe(1)
+  })
+})
+
+// A state with no label reaches a screen reader as "undefined", and a state
+// with no icon writes that string into the button — neither shows up in a
+// build or a render test, so the maps are pinned to VIEW_STATES here.
+describe('VIEW_LABELS covers VIEW_STATES (#258)', () => {
+  it('has a spoken label for every state', () => {
+    for (const s of VIEW_STATES) expect(VIEW_LABELS[viewKey(s)]).toBeTruthy()
+  })
+  it('has no label for a state that does not exist', () => {
+    const keys = VIEW_STATES.map(viewKey)
+    expect(Object.keys(VIEW_LABELS).sort()).toEqual([...keys].sort())
+  })
+  it('keeps middle dots out of the spoken labels', () => {
+    for (const l of Object.values(VIEW_LABELS)) expect(l).not.toContain('·')
+  })
+  it('gives 2D and 3D distinct keys for the same layer mode', () => {
+    expect(viewKey({ mode: 'both', mode3D: false })).not.toBe(viewKey({ mode: 'both', mode3D: true }))
   })
 })
