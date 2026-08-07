@@ -14,9 +14,12 @@
 // ---------------------------------------------------------------------------
 
 // Kinds whose sender_id lives in the pubkey namespace, so one can be a hex
-// prefix of another: an advert carries the full 32-byte key, a discover reply a
-// 3-byte prefix, a relay path element a 1-3 byte path hash. channel_name's id is
-// a decrypted display name — arbitrary operator text, never prefix-merged.
+// prefix of another. Lengths seen in the live window, not assumed: an advert
+// carries the full 32-byte key; a discover reply carries 8 bytes (16 hex) or the
+// full key, never 3; a relay path element carries a 1-3 byte path hash.
+// channel_name's id is a decrypted display name — arbitrary operator text of any
+// length, never prefix-merged. The rule below only needs "longer and starts
+// with", so it holds for any of these lengths.
 const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
 const HEX_ID = /^[0-9a-f]+$/
 // 2 bytes is where merging starts: a 1-byte path hash is 1-in-256, far too
@@ -27,12 +30,19 @@ const MIN_MERGE_HEX_CHARS = 4
 // Two rows are name-incompatible only when BOTH resolve and disagree — that is
 // positive evidence of two nodes. An unresolved side says nothing either way,
 // unlike the app (feed.js), which requires a matching name on both sides before
-// merging. That gate cannot work here: the picker renders whatever /api/points
-// returned, where sender_label is only ever set by an advert, so the rows this
-// merge exists for are unresolved on at least one side by construction.
+// merging.
+//
+// The app's stricter gate would not fix #331 here, but not because names are
+// absent: `sender_label` is NOT only set by an advert. The repeater-name backfill
+// writes it onto short prefixes too, so in the live window ~19% of 2-byte and
+// ~20% of 3-byte relay ids carry one, while the largest long-id population —
+// 8-byte discover ids — carries none. A both-sides-must-match gate would merge
+// the labelled minority and leave the ~200 unlabelled prefix rows that #331 is
+// actually about. So the gate stays loose, and disagreement is what refuses.
+const norm = (s) => String(s || '').trim().toLowerCase()
 function namesCompatible(a, b) {
-  const x = String(a || '').trim().toLowerCase()
-  const y = String(b || '').trim().toLowerCase()
+  const x = norm(a)
+  const y = norm(b)
   if (!x || !y) return true
   return x === y
 }
@@ -57,9 +67,9 @@ function namesCompatible(a, b) {
 // only ever claims what the window can support.
 //
 // The merged row keeps the newest reception (so RSSI and age stay live) but is
-// named by the cluster's longest id, and by any name that resolved anywhere in
-// the cluster. `merged_ids` carries every id it was built from, lowercased, so
-// the selection can filter on all of them at once.
+// named by the cluster's longest id, and by the name on the longest member that
+// has one. `merged_ids` carries every id it was built from, lowercased, so the
+// selection can filter on all of them at once.
 function mergePrefixGroups(entries) {
   const eligible = entries
     .map(([id, rec], i) => ({ i, id: id.toLowerCase(), rec }))
@@ -97,14 +107,37 @@ function mergePrefixGroups(entries) {
     groups.get(root).push(i)
   })
 
-  return [...groups.values()].map((idxs) => {
+  const rows = []
+  for (const idxs of groups.values()) {
     const group = idxs.map((i) => entries[i])
+
+    // namesCompatible above is only ever evaluated against the LONGEST candidate,
+    // never between members. When that longest id is unlabelled it is compatible
+    // with everything, so two members carrying *different* names each pass and
+    // still meet in one group. Since labels do occur on short prefixes and the
+    // common long id (8-byte discover) has none, that is the ordinary shape here,
+    // not a corner. So the assembled group is checked as a whole, and a group
+    // whose names are not unanimous is not merged at all: which member the prefix
+    // belongs to is precisely what is in doubt, and ambiguity is evidence against
+    // merging. Every member goes back to its own row rather than picking a winner.
+    const names = new Set(group.map(([, r]) => norm(r.sender_label)).filter(Boolean))
+    if (names.size > 1) {
+      for (const [id, rec] of group) rows.push({ ...rec, sender_id: id, merged_ids: [id.toLowerCase()] })
+      continue
+    }
+
+    // Longest id first, so the label is taken from the strongest evidence in the
+    // group: a name on a full advert pubkey came from the advert itself, one on a
+    // 2-byte prefix is a backfilled unique-match guess. Scanning in group order
+    // instead chose between them by which reception happened to arrive first.
+    const byLongest = [...group].sort((a, b) => b[0].length - a[0].length)
     const merged_ids = group.map(([id]) => id.toLowerCase()).sort()
-    const [canonical] = group.reduce((a, b) => (b[0].length > a[0].length ? b : a))
+    const [canonical] = byLongest[0]
     const [, newest] = group.reduce((a, b) => (Date.parse(b[1].rx_at) > Date.parse(a[1].rx_at) ? b : a))
-    const label = group.map(([, r]) => r.sender_label).find((l) => l && String(l).trim()) || newest.sender_label
-    return { ...newest, sender_id: canonical, sender_label: label, merged_ids }
-  })
+    const label = byLongest.map(([, r]) => r.sender_label).find((l) => norm(l)) || newest.sender_label
+    rows.push({ ...newest, sender_id: canonical, sender_label: label, merged_ids })
+  }
+  return rows
 }
 
 // dedupeSenders collapses receptions into one row per sender_id, keeping the

@@ -99,6 +99,60 @@ describe('dedupeSenders — prefix variants of one node collapse to one row', ()
     expect(out).toHaveLength(2)
   })
 
+  // The name gate is only a pairwise check against the LONGEST candidate, so
+  // two members could each be compatible with an unlabelled longest id while
+  // disagreeing with each other, and land in one group anyway. Not exotic:
+  // sender_label IS set on 2/3-byte prefixes (the repeater-name backfill sets
+  // ~20% of them), and the largest long-id population — 8-byte discover ids —
+  // carries no label at all, so "longest is unlabelled" is the usual shape.
+  it('refuses a group whose members disagree, even via an unlabelled longest id', () => {
+    const out = dedupeSenders([
+      discover('4a4abe11', { sender_label: '' }),   // longest, unlabelled — compatible with both
+      relay('4a4a', { sender_label: 'Zuid' }),
+      relay('4a4abe', { sender_label: 'Noord' }),
+    ])
+    expect(out).toHaveLength(3)
+    expect(ids(out)).toEqual(['4a4a', '4a4abe', '4a4abe11'])
+    for (const r of out) expect(r.merged_ids).toHaveLength(1)
+  })
+
+  it('still merges through an unlabelled longest id when the names agree', () => {
+    const out = dedupeSenders([
+      discover('4a4abe11', { sender_label: '' }),
+      relay('4a4a', { sender_label: 'Zuid' }),
+      relay('4a4abe', { sender_label: 'Zuid' }),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_id).toBe('4a4abe11')
+    expect(out[0].sender_label).toBe('Zuid')
+  })
+
+  it('treats case and padding differences as the same name, not a disagreement', () => {
+    const out = dedupeSenders([
+      advert(FULL_A, { sender_label: 'BE-ZOD-MOSKEE-DIS' }),
+      relay('4a4a', { sender_label: ' be-zod-moskee-dis ' }),
+    ])
+    expect(out).toHaveLength(1)
+  })
+
+  // A label on a full advert pubkey is authoritative; one on a 2-byte prefix is
+  // a backfilled unique-match guess. Picking with .find over Map insertion order
+  // chose between them by accident of which reception arrived first.
+  it('names a merged row from the longest id that has a label', () => {
+    const rows = [
+      relay('4a4a', { sender_label: ' be-zod-moskee-dis ', rx_at: '2026-07-22T10:05:00Z' }),
+      advert(FULL_A, { sender_label: 'BE-ZOD-MOSKEE-DIS', rx_at: '2026-07-22T10:00:00Z' }),
+    ]
+    expect(dedupeSenders(rows)[0].sender_label).toBe('BE-ZOD-MOSKEE-DIS')
+    expect(dedupeSenders([...rows].reverse())[0].sender_label).toBe('BE-ZOD-MOSKEE-DIS')
+  })
+
+  it('falls back to a shorter id label when the longest has none', () => {
+    const out = dedupeSenders([advert(FULL_A), relay('4a4a', { sender_label: 'Zuid' })])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_label).toBe('Zuid')
+  })
+
   it('never merges a channel_name id, whatever it looks like', () => {
     // channel_name's id is a decrypted display name, not part of the pubkey
     // namespace, so a hex-looking coincidence must not fold two nodes together.
