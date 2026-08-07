@@ -17,7 +17,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    Each child is a borderless segment; a single outer border + inner dividers
    join them. Target opens a top-anchored popover, filters likewise, and locate
    is a styled checkbox that toggles the overlay. */
-#topbar-controls { display: inline-flex; align-items: stretch;
+/* min-width:0 so the group can shrink below its content width. Without it the
+   chip's own max-width is not enough: #topbar-left already has min-width:0, so
+   the group overflows it and lands on top of #topbar-right instead (measured:
+   7px of overlap at 375px with a 130px chip). The chip is the only child that
+   can give — the pill and locate are nowrap with no min-width — so the deficit
+   lands there, down to its 3.5rem floor. */
+#topbar-controls { display: inline-flex; align-items: stretch; min-width: 0;
   border: 1px solid var(--ch-border); border-radius: 10px; }
 #topbar-controls > * { display: inline-flex; align-items: center; gap: 5px; margin: 0;
   padding: 7px 11px; border: none; border-radius: 0; background: transparent; color: var(--ch-text);
@@ -26,7 +32,18 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #topbar-controls > :first-child { border-top-left-radius: 9px; border-bottom-left-radius: 9px; }
 #topbar-controls > :last-child { border-top-right-radius: 9px; border-bottom-right-radius: 9px; }
 
-#target-chip { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace; }
+/* #305: a long node name pushed #topbar-right off screen. display:inline-block
+   is load-bearing, not tidiness — #topbar-controls > * sets inline-flex above,
+   and in a flex container the bare text node becomes an anonymous flex item,
+   which text-overflow cannot reach (it applies to inline content in a block
+   container, and no selector can target an anonymous item). Left as inline-flex
+   the label clips square mid-glyph with no "…", which is the one thing the
+   ellipsis is for. min-width keeps the chip a hittable target at 320px, where
+   min-width:0 alone would let it shrink to padding (~22px) — it is the primary
+   control in this group and gets tapped one-handed while driving. */
+#target-chip { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  display: inline-block; min-width: 3.5rem; max-width: 130px;
+  overflow: hidden; text-overflow: ellipsis; }
 #target-chip.active { color: var(--ch-accent-2); }
 
 .filter-pill-caret { transition: transform .15s ease; }

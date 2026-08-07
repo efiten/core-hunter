@@ -1627,15 +1627,24 @@ function updateTargetChip() {
   if (ids.length === 0) {
     chip.textContent = 'Select target'
     chip.classList.remove('active')
+    chip.removeAttribute('title')
     return
   }
   chip.classList.add('active')
   // Never render a full-length id: feed.js's own rule, and the reason #305
   // saw the chip push the topbar off-screen. Unresolved falls back to the same
   // 6-char prefix the target list uses.
-  chip.textContent = ids.length === 1
-    ? '⌖ ' + (state.senderLabels.get(ids[0]) || idPrefix(ids[0]))
-    : '⌖ ' + ids.length + ' targets'
+  const name = ids.length === 1
+    ? (state.senderLabels.get(ids[0]) || idPrefix(ids[0]))
+    : ids.length + ' targets'
+  chip.textContent = '⌖ ' + name
+  // The chip clips long names at 130px (#305). A title recovers the full one,
+  // but only on pointer devices — Android Chrome and Bluefy have no hover, and
+  // a long-press on a <button> opens the selection menu instead. So it is a
+  // desktop affordance, not the fix; the fix is that the text is a name or a
+  // 6-char prefix rather than an unbounded id. No ⌖ here — the glyph is
+  // decoration and would just be read out twice.
+  chip.title = name
 }
 
 // Target selection is a set of NODE keys (#268; #178 originally stored raw
