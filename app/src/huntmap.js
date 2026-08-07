@@ -6,7 +6,7 @@ import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor,
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility } from './maplayers.js'
-import { squareRing, pillarHalfWidthM } from './pointmarker.js'
+import { octagonRing, pillarRadiusM } from './pointmarker.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -38,8 +38,11 @@ const PITCH_3D = 60
 // height/colour as hex-3d's bars, so it reads clearly in the tilted view
 // instead of disappearing under the hex/building geometry (a flat circle
 // layer can't be raised — MapLibre circles always sit on the ground plane).
-const POINT_PILLAR_HALF_WIDTH_M = 3
-const POINT_PILLAR_MIN_PX = 4   // never let the footprint go sub-pixel (#250)
+const POINT_PILLAR_RADIUS_M = 3
+// Minimum on-screen RADIUS (centre -> vertex), not half-width: keeps the
+// footprint off sub-pixel when zoomed out (#250). Across the flats that is
+// 4 x cos(pi/8) = 3.70 px, deliberately slimmer than the old square (#308).
+const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
@@ -94,7 +97,8 @@ export function createHuntMap(containerId) {
     }
     return fc(feats)
   }
-  // 3D twin of buildPointsFC (#250): a small square footprint per reception,
+  // 3D twin of buildPointsFC (#250): an octagon footprint per reception (#308
+  // rounded this from a square to match the flat 2D circle it replaces),
   // extruded to the same tier height as hex-3d's bars (extrusionHeight), so
   // hotter/closer receptions stand taller — same colour/height language as the
   // hex bars, just narrower, so points still read distinctly from hex cells.
@@ -108,7 +112,7 @@ export function createHuntMap(containerId) {
       if (r.lat == null || r.lon == null) continue
       const tier = rssiTier(r.rssi, currentOffset())
       const fade = ageFade(r.rx_at, nowMs, timeWindowMs)
-      const ring = squareRing(r.lat, r.lon, pillarHalfWidthM(r.lat, map.getZoom(), POINT_PILLAR_HALF_WIDTH_M, POINT_PILLAR_MIN_PX))
+      const ring = octagonRing(r.lat, r.lon, pillarRadiusM(r.lat, map.getZoom(), POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
       // Alpha rides in the colour, not in fill-extrusion-opacity, which is a
       // single layer-wide number (#302). Same tier opacity x age-fade the flat
       // layer applies, so "still transmitting" still reads differently from
