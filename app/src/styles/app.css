@@ -74,12 +74,20 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .np-muted { color: var(--ch-muted); }
 .np-caveat { font-size: 11px; }
 
-/* AGENTS.md §7: the layer implies node locations, so the disclaimer stays on
-   screen for as long as the layer is drawn — not only inside a tapped popup. */
-#nodepos-note { position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 520;
+/* AGENTS.md §7: the layer implies node locations, so what the glyphs mean is
+   on screen the whole time the layer is — not only inside a tapped popup.
+   Both live in #toast-stack rather than pinned at bottom:12px, where they sat
+   over the hero RSSI readout in #hud (#306). Stacking is what that container
+   is for, so neither can overlap the HUD or the paused banner.
+   #nodepos-note is the full prose, shown as a 2s glance on each activation;
+   #nodepos-key is the permanent one-liner. See nodeposnotice.js. */
+#nodepos-note, #nodepos-key {
   padding: 7px 10px; border: 1px solid var(--ch-border); border-radius: 10px;
   background: var(--ch-surface); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   color: var(--ch-muted); font-size: 11px; line-height: 1.45; pointer-events: none; }
+/* Quieter than the prose — it is a legend, on screen for the whole session,
+   so it should not compete with the map it labels. */
+#nodepos-key { font-size: 10.5px; padding: 5px 9px; opacity: 0.85; }
 
 /* Shared toast stack (#199) — paused-banner and the first-connect hint share
    this slot so they stack instead of overlapping on narrow (mobile) viewports. */

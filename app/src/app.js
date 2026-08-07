@@ -34,6 +34,7 @@ import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
+import { nodePosNotice, NODEPOS_GLANCE_MS, NODEPOS_KEY_TEXT } from './nodeposnotice.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
@@ -1399,16 +1400,37 @@ async function loadNodePositions() {
   if (state.map) state.map.setNodePositions([...byPubkey.values()])
 }
 
+// §7: this layer implies node locations. The one-line ▲/● key is on screen for
+// as long as the layer is — a popup-only note would not satisfy it — while the
+// full disclaimer prose is a 2s glance so it stops covering the HUD (#306).
+// Which of the two may fade is decided in nodeposnotice.js, under test.
+let nodePosFadeTimer = null
+
+function applyNodePosNotices({ glanceExpired = false } = {}) {
+  const { note, key } = nodePosNotice({ on: nodePosOn, glanceExpired })
+  const noteEl = el('nodepos-note')
+  const keyEl = el('nodepos-key')
+  noteEl.textContent = SPLASH_DISCLAIMER
+  noteEl.hidden = !note
+  keyEl.textContent = NODEPOS_KEY_TEXT
+  keyEl.hidden = !key
+}
+
 async function toggleNodePositions() {
   nodePosOn = !nodePosOn
   const btn = el('nodepos-toggle')
   btn.classList.toggle('on', nodePosOn)
   btn.setAttribute('aria-pressed', String(nodePosOn))
-  // §7: this layer implies node locations, so the disclaimer is on screen for
-  // as long as the layer is — a popup-only note would not satisfy it.
-  const note = el('nodepos-note')
-  note.textContent = SPLASH_DISCLAIMER
-  note.hidden = !nodePosOn
+  // Cleared on every entry, so rapid toggling can't have a stale timer hide
+  // the glance two seconds into a later activation.
+  if (nodePosFadeTimer) { clearTimeout(nodePosFadeTimer); nodePosFadeTimer = null }
+  applyNodePosNotices()
+  if (nodePosOn) {
+    nodePosFadeTimer = setTimeout(() => {
+      nodePosFadeTimer = null
+      applyNodePosNotices({ glanceExpired: true })
+    }, NODEPOS_GLANCE_MS)
+  }
   if (nodePosOn) await loadNodePositions()
   if (state.map) state.map.setNodeLayerVisible(nodePosOn)
 }
