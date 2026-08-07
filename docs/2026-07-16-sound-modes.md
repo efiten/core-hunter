@@ -74,3 +74,42 @@ singing-bowl and sampled-ambiance beds; real music tracks vs. generative.
 - Everything is Web Audio synthesis — no audio assets shipped.
 - iOS/Bluefy: the ring/silent hardware switch mutes Web Audio; nothing we can
   detect or work around from the page.
+
+## Addendum 2026-07-27 — background behaviour (#260, #301)
+
+Backgrounding (`visibilitychange` → hidden) while a sound mode is active
+previously left the bed/music playing unchanged, with no audible sign the app
+was no longer visibly hunting. Verified separately (#260, comment
+2026-07-18): the BLE-stall / HUD-honesty half of that issue was already fully
+covered by the existing `#198`/`#199` lifecycle work (`planResume`,
+`onVisibilityChange`, the "Capture paused Xs" banner) — nothing to fix there.
+This addendum covers the remaining sound-side half, unblocked once `#145`
+landed (PR #261).
+
+First cut ducked the existing bed in place (kept its two noise sources + two
+LFOs running at 30% level). Revised after #301 pointed out that the bed+music
+are real CPU/battery cost — two looped noise sources, two LFOs, seven note
+timers, all idling in a pocket for atmosphere that carries no information by
+design — so ducking still paid that cost for no reason.
+
+- **On hidden**, in `full` mode: the bed and generative music stop outright
+  (`stopBed()` + `stopMusic()`, same hard-stop path a real mode change already
+  used) and are replaced by a single minimal held tone (`startBgAmbience()` —
+  one oscillator, one LFO) at C3, quiet, below the music's own F-pentatonic
+  register. Reads as "parked, not dead" for a fraction of the resource cost of
+  ducking the full bed.
+- **A short cue marks each transition**, in any active mode (`rxtx` or
+  `full`) — two plain sine notes, falling (G4→D4) for backgrounded, rising
+  (D4→G4) for resumed. Distinct in shape from both the reception dit (one
+  pitched tone) and the tx pop (a fast upward flick), so a visibility
+  transition never reads as a reception or a transmission — and it is tied to
+  a real event (the visibility change itself), so the always-real rule holds.
+- **On return**, `full` mode stops the ambience tone and restarts the normal
+  bed + generative music (a fresh random phase, same as any other entry into
+  `full`).
+- Implemented as an extension of the engine's existing visibilitychange
+  handler (previously only resumed a suspended/interrupted `AudioContext`),
+  not a second listener.
+- #301's other two points are separate: the two-tap-to-silence `nextSoundMode`
+  cycle order, and the open question of whether the 7-voice generative engine
+  matches the original #145/#255 intent — neither addressed here.
