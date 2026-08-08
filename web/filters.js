@@ -1,23 +1,7 @@
-import { API_BASE } from './config.js'
 import { save } from './urlstate.js'
 import { FILTER_PACKET_TYPES } from './packettypes.js'
 import { senderParams } from './targetpicker.js'
 import { resolveTimeValue } from './timerange.js'
-
-// Pseudonym-aware label for a #f-hunter <option>: guests get `hunter_name`
-// (server-issued "Hunter <N>" pseudonym), members+ get the real name; unnamed
-// falls back to an 8-char pubkey prefix.
-export function hunterOptionLabel(h) {
-  return `${h.hunter_name || h.hunter_pubkey.slice(0, 8)} (${h.count})`
-}
-
-// Row count for #f-hunter's expanded listbox (#240) — show every option up
-// to a cap so a long hunter list doesn't take over the screen, but never
-// fewer than 2 rows (even for 0-1 options) so it still reads as a listbox
-// rather than a single-line dropdown.
-export function hunterListboxSize(optionCount) {
-  return Math.min(Math.max(optionCount, 2), 8)
-}
 
 // from/to hold either an absolute datetime-local string or a relative token
 // ("now-6h") since #285 -- resolveTimeValue handles both, and is the one place
@@ -41,36 +25,14 @@ function defaultToday() {
 }
 
 // Reset every filter to its default: all hunters, no sender, timeframe = today.
+// The hunter picker's own selection lives in map.js (like the sender picker,
+// #223/#290), so map.js's clear-filters handler clears it directly.
 // Exposed for the "Clear" button; map.js handles the layer/locate/redraw side.
 function resetFilters() {
-  for (const o of document.getElementById('f-hunter').options) o.selected = false
   const s = document.getElementById('f-sender'); s.value = ''; s.title = ''
   const now = new Date()
   document.getElementById('f-from').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0))
   document.getElementById('f-to').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59))
-}
-
-async function loadHunters() {
-  try {
-    const r = await fetch(`${API_BASE}/api/hunters`); const d = await r.json()
-    const sel = document.getElementById('f-hunter')
-    for (const h of d.hunters || []) {
-      const o = document.createElement('option')
-      o.value = h.hunter_pubkey
-      o.textContent = hunterOptionLabel(h)
-      sel.appendChild(o)
-    }
-    // The shared/saved selection can only be applied once its options exist
-    // (options arrive async). Re-assert it and fire change so the view + URL pick it
-    // up. Read the value captured before load (index.html), not initial('hunter')
-    // here -- by now urlstate.load()'s save() has already normalized the URL/storage
-    // to the still-empty live selection and would return '' (#196).
-    const want = new Set(String(window.__initialHunter || '').split(',').filter(Boolean))
-    if (want.size) {
-      for (const o of sel.options) o.selected = want.has(o.value)
-      sel.dispatchEvent(new Event('change'))
-    }
-  } catch (_) {}
 }
 
 // All DOM wiring below is guarded so this module can be imported under Vitest
@@ -110,14 +72,13 @@ if (typeof document !== 'undefined') {
 
   window.__resetFilters = resetFilters
 
-  // getters/setter used by currentFilters and the urlstate registration (map.js);
-  // a native <select multiple> mirrors the f-types chip pattern above.
-  window.currentHunters = () =>
-    [...document.getElementById('f-hunter').selectedOptions].map((o) => o.value).join(',')
-  window.setHunters = (v) => {
-    const want = new Set(String(v || '').split(',').filter(Boolean))
-    for (const o of document.getElementById('f-hunter').options) o.selected = want.has(o.value)
-  }
+  // getters/setter used by currentFilters and the urlstate registration
+  // (map.js). The hunter picker itself is created in map.js (like the sender
+  // picker, #290) -- these delegate through window.selectedHunterIds /
+  // window.setHunterSelection, set once the picker exists, same lazy-
+  // indirection pattern already used below for window.selectedSenderIds.
+  window.currentHunters = () => (window.selectedHunterIds ? window.selectedHunterIds() : []).join(',')
+  window.setHunters = (v) => { if (window.setHunterSelection) window.setHunterSelection(v) }
 
   window.currentFilters = () => ({
     hunter: window.currentHunters(),
@@ -138,25 +99,10 @@ if (typeof document !== 'undefined') {
     hops: document.getElementById('f-direct').checked ? '0' : '',
   })
 
-  // f-hunter is registered directly with urlstate (map.js), not via bindControl
-  // (a <select multiple>'s .value only returns the first selection) -- persist
-  // it explicitly here, same as the f-types chips do.
-  const hunterSel = document.getElementById('f-hunter')
-  hunterSel.addEventListener('change', save)
-
-  // Expand to a multi-row listbox on focus (#240) so the multi-select is
-  // discoverable/usable without already knowing the ctrl/cmd+click gesture;
-  // collapse back to the compact 1-line footprint on blur.
-  hunterSel.addEventListener('focus', () => {
-    hunterSel.size = hunterListboxSize(hunterSel.options.length)
-    hunterSel.classList.add('expanded')
-  })
-  hunterSel.addEventListener('blur', () => {
-    hunterSel.removeAttribute('size')
-    hunterSel.classList.remove('expanded')
-  })
-
-  for (const id of ['f-hunter', 'f-sender', 'f-from', 'f-to', 'f-direct']) {
+  // f-hunter's persist/refresh/change wiring now lives in map.js, alongside
+  // the hunter picker itself (#290) -- same reasoning as the sender picker's
+  // onChange (urlstate.save() + refresh() there, not a 'change' listener here).
+  for (const id of ['f-sender', 'f-from', 'f-to', 'f-direct']) {
     const el = document.getElementById(id)
     el.addEventListener('change', () => window.__refresh && window.__refresh())
     if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())
@@ -164,5 +110,4 @@ if (typeof document !== 'undefined') {
     // hidden state carriers now, and the two datetime-local fields that
     // replaced them live inside the time-picker panel (map.js wires those).
   }
-  loadHunters()
 }

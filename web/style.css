@@ -21,14 +21,6 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }
-/* #f-hunter is a <select multiple> (#196); without a fixed height it defaults
-   to a ~4-row listbox that wrecks the single-line toolbar. Scrolls internally
-   when more options are selected/hovered than fit. Expands on focus (#240,
-   filters.js sets the `size` attribute) so the multi-select is discoverable;
-   #bar is a fixed, high-z-index overlay, so the taller row just covers more
-   of the map underneath rather than pushing any layout around. */
-#f-hunter { height:28px; min-width:120px; }
-#f-hunter.expanded { height:auto; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 /* Checked state highlights the label, mirroring app's .fs-row.active pattern
    for its own direct-only row (#225) -- .active is toggled by filters.js. */
@@ -42,12 +34,15 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #f-types { display:inline-flex; gap:4px; flex-wrap:wrap; }
 #bar .f-chip { font-size:12px; padding:3px 8px; border-radius:999px; border-color:var(--ch-muted); color:var(--ch-muted); }
 #bar .f-chip.active { color:var(--ch-bg); background:var(--ch-accent); border-color:var(--ch-accent); }
-/* ---- Target-list picker (#223) ----
-   Browsable multi-select parity with app's target sheet. .tl-* rules below
-   are ported as-is from app/src/styles/app.css for exact visual parity. */
-.sp-wrap { position: relative; display: inline-flex; }
-#sp-toggle { padding: 5px 6px; }
-#sp-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
+/* ---- Multi-select picker (#223, generalised to any "pick several of these"
+   control by #290) ----
+   Browsable checkbox-row popover, shared by the sender picker (#f-sender/
+   #sp-toggle/#sender-picker) and the hunter picker (#hp-toggle/#hunter-picker).
+   .tl-* rules below are ported as-is from app/src/styles/app.css for exact
+   visual parity with app's target sheet. */
+.ms-wrap { position: relative; display: inline-flex; }
+.ms-toggle { padding: 5px 6px; }
+.ms-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
 .tl-panel { position: absolute; top: calc(100% + 4px); left: 0; width: 240px; z-index: 650;
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(8px);
@@ -56,11 +51,18 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   margin: 0 0 2px; }
 .tl-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 .tl-pinned { max-height: none; }
-/* min(40vh, ...) not 40vh alone: with PAGE_SIZE rows at ~49px the list stops
-   overflowing once 40vh exceeds a full page, so the scroll handler never fires
-   and everything past page one is unreachable with no affordance -- on a
-   portrait monitor, a 4K screen, or just a zoomed-out window (#298). */
-#tp-list.tl-list { max-height: min(40vh, 380px); margin-top: 10px; }
+/* min(40vh, ...) not 40vh alone: with PAGE_SIZE rows the list stops overflowing
+   once 40vh exceeds a full page, so the scroll handler never fires and
+   everything past page one is unreachable with no affordance -- on a portrait
+   monitor, a 4K screen, or just a zoomed-out window (#298).
+   On .tl-scroll rather than #tp-list so it covers BOTH pickers: hunter rows
+   carry no secondary text or meta, so their second grid row collapses and a row
+   is ~36px against the sender picker's ~49px. 12 x 36 = 432px, so the hunter
+   list stopped overflowing at a viewport taller than ~1080px -- a maximised
+   window on a 1440p monitor -- a LOWER threshold than the sender picker's
+   ~1470px, and with #f-hunter gone there is no prefix-search fallback to reach
+   the missing rows by (#290). */
+.tl-scroll { max-height: min(40vh, 380px); margin-top: 10px; }
 .tl-item { border-top: 1px solid var(--ch-border); }
 .tl-item:first-child { border-top: 0; }
 .tl-row { width: 100%; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto;

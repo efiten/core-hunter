@@ -41,4 +41,24 @@ export async function mapSettled(page) {
   }, undefined, { timeout: 10000 })
 }
 
+// Open a picker popover without racing the app's boot. #hp-toggle/#sp-toggle are
+// static markup in index.html, so they are clickable the instant the document
+// parses — while map.js is still evaluating and wirePopover() has not attached
+// its click listener yet. Playwright's actionability checks all pass, the click
+// dispatches into a button with no handler, and it is silently dropped: the panel
+// never opens and nothing later re-opens it, so the test fails on a 5 s
+// toBeVisible instead of on anything it meant to assert. That is the same
+// boot-window drop as #270, and it is load-dependent — it only surfaces in a full
+// parallel run, where module evaluation is slow enough to lose the race.
+//
+// Retrying the click is what makes this timing-independent; waiting on a readiness
+// hook would only move the guess. The panel state is checked before each attempt,
+// so an attempt that did land is never toggled back shut.
+export async function openPicker(page, toggleSel, panelSel) {
+  await expect(async () => {
+    if (await page.locator(panelSel).isHidden()) await page.click(toggleSel)
+    await expect(page.locator(panelSel)).toBeVisible({ timeout: 1000 })
+  }).toPass({ timeout: 15000 })
+}
+
 export { expect }

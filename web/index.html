@@ -15,8 +15,8 @@
     import { VERSION } from './version.js'
     import { initial } from './urlstate.js'
     // Captured here (before filters.js/map.js even start fetching) because
-    // #f-hunter's options arrive async from /api/hunters; by the time that
-    // resolves, map.js's synchronous urlstate.load()->save() has already
+    // the hunter picker's roster arrives async from /api/hunters; by the time
+    // that resolves, map.js's synchronous urlstate.load()->save() has already
     // normalized the URL/storage to the (still-empty) live selection, which
     // would otherwise wipe out a shared/saved hunter selection (#196).
     window.__initialHunter = initial('hunter', '')
@@ -56,14 +56,21 @@
 </head>
 <body>
   <header id="bar">
-    <select id="f-hunter" multiple title="All hunters if none selected"></select>
-    <span class="sp-wrap">
+    <span class="ms-wrap">
+      <button id="hp-toggle" type="button" class="ms-toggle" title="All hunters if none selected" aria-expanded="false">Hunters ▾</button>
+      <div id="hunter-picker" class="tl-panel" hidden>
+        <div class="tl-pinned-label">Top</div>
+        <div id="hp-pinned" class="tl-list tl-pinned"></div>
+        <ul id="hp-list" class="tl-list tl-scroll"></ul>
+      </div>
+    </span>
+    <span class="ms-wrap">
       <input id="f-sender" type="text" placeholder="sender id (prefix)" />
-      <button id="sp-toggle" type="button" title="Pick from heard senders" aria-expanded="false">▾</button>
+      <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">▾</button>
       <div id="sender-picker" class="tl-panel" hidden>
         <div class="tl-pinned-label">Top</div>
         <div id="tp-pinned" class="tl-list tl-pinned"></div>
-        <ul id="tp-list" class="tl-list"></ul>
+        <ul id="tp-list" class="tl-list tl-scroll"></ul>
       </div>
     </span>
     <!-- #285: f-from/f-to stay the state carriers (urlstate binds them, and
