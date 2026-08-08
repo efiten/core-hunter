@@ -1,4 +1,4 @@
-import { test, expect, mapSettled } from './fixtures.js'
+import { test, expect, mapSettled, openPicker } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -62,7 +62,7 @@ test('map starts in hex mode (#141), fetches /api/heatmap, and the toggle cycles
 
 test('hunter picker lists hunters from /api/hunters', async ({ page }) => {
   await page.goto('/')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   // No "All hunters" placeholder (#196): empty selection already means all.
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(1)
   await expect(page.locator('#hp-list')).toContainText('ON8AR (42)')
@@ -76,7 +76,7 @@ test('hunter filter supports multi-select and reaches /api/heatmap as a comma-se
     ] },
   }))
   await page.goto('/') // cold default mode is hex (#141) -> /api/heatmap, not /api/points
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
 
   const req = page.waitForRequest((r) => r.url().includes('/api/heatmap') && r.url().includes('hunter=abc123def456%2Cdef456abc123'))
@@ -101,7 +101,7 @@ test('a shared URL with multiple hunters restores the selection (#196)', async (
     ] },
   }))
   await page.goto('/?hunter=abc123def456,def456abc123')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
   await expect(page.locator('#hp-list .tl-row', { hasText: 'ON8AR' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('#hp-list .tl-row', { hasText: 'ON7BE' })).toHaveAttribute('aria-pressed', 'true')
@@ -147,7 +147,7 @@ test('snap to hunter: selecting a single hunter fits bounds and drops a marker a
   })
   await page.goto('/')
 
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(1)
   await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
   await expect(async () => {
@@ -189,7 +189,7 @@ test('snap to hunter: selecting multiple hunters fits to the union without a mar
   })
   await page.goto('/')
 
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
   await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
   await page.locator('#hp-list .tl-row', { hasText: 'ON7BE' }).click()
@@ -207,7 +207,7 @@ test('hunter picker shows pseudonymised labels for guests', async ({ page }) => 
     json: { hunters: [{ hunter_pubkey: 'h1', hunter_name: 'Hunter 1', count: 42 }] },
   }))
   await page.goto('/')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
 
   await expect(page.locator('#hp-list .tl-row', { hasText: 'Hunter 1 (42)' })).toHaveCount(1)
 })

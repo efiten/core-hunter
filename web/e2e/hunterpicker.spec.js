@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, openPicker } from './fixtures.js'
 
 // Hunter picker (#290) — generalizes the #223 target-list picker pattern to
 // #f-hunter's role: browsable multi-select parity, replacing the native
@@ -21,7 +21,7 @@ test('opening the picker lists hunters from /api/hunters', async ({ page }) => {
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [H1, H2] } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hunter-picker')).toBeVisible()
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
   await expect(page.locator('#hp-list')).toContainText('ON8AR (42)')
@@ -35,7 +35,7 @@ test('a picked selection reaches the server as a comma-separated hunter= param',
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
   await page.goto('/?mode=points')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
 
   await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
@@ -54,7 +54,7 @@ test('the picker keeps listing every candidate hunter after one is picked', asyn
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [H1, H2] } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
 
   await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
@@ -77,7 +77,7 @@ test('the Top section ranks by most recent activity, not highest count', async (
     { lat: 51, lon: 4, rssi: -80, hunter_pubkey: 'fresh222222', rx_at: new Date().toISOString() },
   ] } }))
   await page.goto('/?mode=points')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-pinned .tl-row')).toHaveCount(2, { timeout: 10000 })
   const pinnedNames = await page.locator('#hp-pinned .tl-name').allTextContents()
   expect(pinnedNames[0]).toContain('Fresh')
@@ -88,7 +88,7 @@ test('a shared URL with multiple hunters restores the selection (#196)', async (
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [H1, H2] } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points&hunter=abc123def456,def456abc123')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(2)
   await expect(page.locator('#hp-list .tl-row', { hasText: 'ON8AR' })).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('#hp-list .tl-row', { hasText: 'ON7BE' })).toHaveAttribute('aria-pressed', 'true')
@@ -99,7 +99,7 @@ test('Clear also clears the hunter selection', async ({ page }) => {
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [H1] } }))
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
   await page.goto('/?mode=points')
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(1)
   await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
   await expect.poll(() => urls.some((u) => hunterOf(u) === 'abc123def456')).toBe(true)
@@ -117,12 +117,12 @@ test('closes on outside click and on Escape', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points')
 
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hunter-picker')).toBeVisible()
   await page.mouse.click(10, 300) // well outside the popover
   await expect(page.locator('#hunter-picker')).toBeHidden()
 
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hunter-picker')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('#hunter-picker')).toBeHidden()
@@ -138,9 +138,9 @@ test('opening the hunter picker closes an already-open sender picker (distinct .
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points')
 
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#sender-picker')).toBeVisible()
-  await page.click('#hp-toggle')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
   await expect(page.locator('#hunter-picker')).toBeVisible()
   await expect(page.locator('#sender-picker')).toBeHidden()
 })
