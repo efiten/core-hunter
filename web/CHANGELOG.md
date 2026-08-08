@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/efiten/core-hunter/compare/web-v1.3.1...web-v1.3.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **web:** merge sender-picker rows for one node across id prefixes ([#331](https://github.com/efiten/core-hunter/issues/331)) ([#332](https://github.com/efiten/core-hunter/issues/332)) ([116c1a4](https://github.com/efiten/core-hunter/commit/116c1a407906bef6c7dfdb2fffe3cdd7157dd7f0))
+
 ## [1.3.1](https://github.com/efiten/core-hunter/compare/web-v1.3.0...web-v1.3.1) (2026-07-29)
 
 
