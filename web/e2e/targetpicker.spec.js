@@ -165,6 +165,36 @@ test('senders past the first page are reachable on a tall viewport (#298)', asyn
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(24, { timeout: 10000 })
 })
 
+// Prefix merging (#331): the same node was listed once per prefix it was heard
+// under (a 2-byte relay path hash, a 3-byte discover prefix, the full pubkey).
+const FULL = '4a4abe' + '11'.repeat(29)
+const ADV = { ...A, sender_id: FULL, sender_label: '', sender_kind: 'advert_pubkey', rx_at: '2026-07-22T14:59:50Z' }
+const HOP = { ...ADV, sender_id: '4a4a', sender_kind: 'relay', rx_at: '2026-07-22T14:59:59Z' }
+
+test('one row per node, and picking it filters on every prefix it is known by', async ({ page }) => {
+  const urls = []
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [ADV, HOP, B] } }) })
+  await page.goto('/?mode=points')
+  await page.click('#sp-toggle')
+  // Two nodes, not three rows: the advert and its path hash are one node.
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  // The id stays visible, and it is the node's own key, not the path hash.
+  const merged = page.locator('#tp-list .tl-row', { hasText: '4a4abe' })
+  await expect(merged).toHaveCount(1)
+
+  // One click selects the group, so a later reception under either prefix still
+  // counts as the same target.
+  await merged.click()
+  await expect(merged).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => urls.some((u) => sendersOf(u).slice().sort().join() === ['4a4a', FULL].sort().join())).toBe(true)
+
+  // ...and one more click releases the whole group.
+  urls.length = 0
+  await merged.click()
+  await expect(merged).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => urls.length > 0 && urls.every((u) => sendersOf(u).length === 0)).toBe(true)
+})
+
 test('typing a prefix clears an active pick instead of being ignored (#299)', async ({ page }) => {
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })

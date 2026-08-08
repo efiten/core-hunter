@@ -26,6 +26,171 @@ describe('dedupeSenders — one row per sender_id, keeping the most recent', () 
   })
 })
 
+// Prefix merging (#331): one physical node is named by up to three reception
+// kinds — a full 64-hex advert pubkey, a 3-byte discover prefix, a 2-byte relay
+// path hash — and the picker listed each as its own row (see the app's
+// equivalent, feed.js mergePrefixGroups, #267/#268).
+const full = (head) => head + '11'.repeat((64 - head.length) / 2)
+const FULL_A = full('4a4abe')                  // 4a4abe1111…
+const FULL_B = '4a4a' + 'ff'.repeat(30)        // 4a4aff…  — shares 4a4a, not 4a4abe
+const FULL_C = full('99aabb')
+const kindRow = (kind) => (id, o = {}) => pt({ sender_id: id, sender_kind: kind, sender_label: '', ...o })
+const advert = kindRow('advert_pubkey')
+const discover = kindRow('discover_pubkey')
+const relay = kindRow('relay')
+const channel = kindRow('channel_name')
+const ids = (out) => out.map((r) => r.sender_id).sort()
+
+describe('dedupeSenders — prefix variants of one node collapse to one row', () => {
+  it('merges a 2-byte relay path hash into the advert full pubkey', () => {
+    const out = dedupeSenders([advert(FULL_A), relay('4a4a', { rx_at: '2026-07-22T10:05:00Z' })])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_id).toBe(FULL_A)                   // named by the node's own key
+    expect(out[0].merged_ids).toEqual(['4a4a', FULL_A].sort())
+  })
+
+  it('merges a 3-byte discover prefix onto the same row', () => {
+    const out = dedupeSenders([advert(FULL_A), discover('4a4abe'), relay('4a4a')])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_id).toBe(FULL_A)
+    expect(out[0].merged_ids).toHaveLength(3)
+  })
+
+  it('collapses a 2-byte into a 3-byte prefix when no advert is in the window', () => {
+    const out = dedupeSenders([discover('4a4abe'), relay('4a4a')])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_id).toBe('4a4abe')                 // longest known id wins
+  })
+
+  it('keeps the newest reception for signal and time, under the canonical id', () => {
+    const out = dedupeSenders([
+      advert(FULL_A, { rssi: -95, rx_at: '2026-07-22T10:00:00Z' }),
+      relay('4a4a', { rssi: -70, rx_at: '2026-07-22T10:05:00Z' }),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ sender_id: FULL_A, rssi: -70, rx_at: '2026-07-22T10:05:00Z' })
+  })
+
+  it('carries a resolved name onto the merged row even when the newest row is unresolved', () => {
+    const out = dedupeSenders([
+      advert(FULL_A, { sender_label: 'NEO7HI', rx_at: '2026-07-22T10:00:00Z' }),
+      relay('4a4a', { rx_at: '2026-07-22T10:05:00Z' }),
+    ])
+    expect(out[0].sender_label).toBe('NEO7HI')
+  })
+
+  it('merges unresolved rows too, and still shows an id', () => {
+    // Deliberately looser than the app (feed.js requires a matching resolved
+    // name on both sides): on the web every row in the reported case was
+    // unresolved, so a name gate would never merge anything.
+    const out = dedupeSenders([discover('4a4abe'), relay('4a4a')])
+    expect(out).toHaveLength(1)
+    expect(targetParts(out[0])).toEqual({ primary: '4a4abe (name not resolved)', secondary: '4a4abe' })
+  })
+
+  it('refuses a prefix that could be either of two nodes', () => {
+    const out = dedupeSenders([advert(FULL_A), advert(FULL_B), relay('4a4a')])
+    expect(out).toHaveLength(3)
+    expect(ids(out)).toEqual(['4a4a', FULL_A, FULL_B].sort())
+  })
+
+  it('refuses when the two sides resolve to different names', () => {
+    const out = dedupeSenders([advert(FULL_A, { sender_label: 'Zuid' }), relay('4a4a', { sender_label: 'Noord' })])
+    expect(out).toHaveLength(2)
+  })
+
+  // The name gate is only a pairwise check against the LONGEST candidate, so
+  // two members could each be compatible with an unlabelled longest id while
+  // disagreeing with each other, and land in one group anyway. Not exotic:
+  // sender_label IS set on 2/3-byte prefixes (the repeater-name backfill sets
+  // ~20% of them), and the largest long-id population — 8-byte discover ids —
+  // carries no label at all, so "longest is unlabelled" is the usual shape.
+  it('refuses a group whose members disagree, even via an unlabelled longest id', () => {
+    const out = dedupeSenders([
+      discover('4a4abe11', { sender_label: '' }),   // longest, unlabelled — compatible with both
+      relay('4a4a', { sender_label: 'Zuid' }),
+      relay('4a4abe', { sender_label: 'Noord' }),
+    ])
+    expect(out).toHaveLength(3)
+    expect(ids(out)).toEqual(['4a4a', '4a4abe', '4a4abe11'])
+    for (const r of out) expect(r.merged_ids).toHaveLength(1)
+  })
+
+  it('still merges through an unlabelled longest id when the names agree', () => {
+    const out = dedupeSenders([
+      discover('4a4abe11', { sender_label: '' }),
+      relay('4a4a', { sender_label: 'Zuid' }),
+      relay('4a4abe', { sender_label: 'Zuid' }),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_id).toBe('4a4abe11')
+    expect(out[0].sender_label).toBe('Zuid')
+  })
+
+  it('treats case and padding differences as the same name, not a disagreement', () => {
+    const out = dedupeSenders([
+      advert(FULL_A, { sender_label: 'BE-ZOD-MOSKEE-DIS' }),
+      relay('4a4a', { sender_label: ' be-zod-moskee-dis ' }),
+    ])
+    expect(out).toHaveLength(1)
+  })
+
+  // A label on a full advert pubkey is authoritative; one on a 2-byte prefix is
+  // a backfilled unique-match guess. Picking with .find over Map insertion order
+  // chose between them by accident of which reception arrived first.
+  it('names a merged row from the longest id that has a label', () => {
+    const rows = [
+      relay('4a4a', { sender_label: ' be-zod-moskee-dis ', rx_at: '2026-07-22T10:05:00Z' }),
+      advert(FULL_A, { sender_label: 'BE-ZOD-MOSKEE-DIS', rx_at: '2026-07-22T10:00:00Z' }),
+    ]
+    expect(dedupeSenders(rows)[0].sender_label).toBe('BE-ZOD-MOSKEE-DIS')
+    expect(dedupeSenders([...rows].reverse())[0].sender_label).toBe('BE-ZOD-MOSKEE-DIS')
+  })
+
+  it('falls back to a shorter id label when the longest has none', () => {
+    const out = dedupeSenders([advert(FULL_A), relay('4a4a', { sender_label: 'Zuid' })])
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_label).toBe('Zuid')
+  })
+
+  it('never merges a channel_name id, whatever it looks like', () => {
+    // channel_name's id is a decrypted display name, not part of the pubkey
+    // namespace, so a hex-looking coincidence must not fold two nodes together.
+    expect(dedupeSenders([advert(FULL_A), channel('4a4a')])).toHaveLength(2)
+  })
+
+  it('never merges two full pubkeys with each other', () => {
+    expect(dedupeSenders([advert(FULL_A), advert(FULL_B)])).toHaveLength(2)
+    expect(dedupeSenders([advert(FULL_A), advert(FULL_C)])).toHaveLength(2)
+  })
+
+  it('leaves a 1-byte path hash on its own row', () => {
+    // 1 byte is 1-in-256; the reported rule starts at 2 bytes.
+    expect(dedupeSenders([advert(FULL_A), relay('4a')])).toHaveLength(2)
+  })
+
+  it('does not depend on the input order', () => {
+    expect(dedupeSenders([relay('4a4a'), advert(FULL_A)])).toHaveLength(1)
+  })
+
+  it('leaves a prefix with nothing longer to attach to alone', () => {
+    expect(dedupeSenders([relay('4a4a'), relay('99aa')])).toHaveLength(2)
+  })
+})
+
+describe('senderList / topSenders over merged rows', () => {
+  it('ranks a merged node once, on its newest reception', () => {
+    const rows = [
+      advert(FULL_A, { rssi: -95, rx_at: '2026-07-22T10:00:00Z' }),
+      relay('4a4a', { rssi: -70, rx_at: '2026-07-22T10:05:00Z' }),
+    ]
+    const out = topSenders(rows, { nowMs: Date.parse('2026-07-22T10:05:10Z'), count: 3 })
+    expect(out).toHaveLength(1)
+    expect(out[0].sender_id).toBe(FULL_A)
+    expect(senderList(rows)).toHaveLength(1)
+  })
+})
+
 describe('senderList — name-sorted (case-insensitive), optionally limited', () => {
   const rows = [
     pt({ sender_id: 'cc', sender_label: 'charlie' }),
