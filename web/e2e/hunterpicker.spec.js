@@ -144,3 +144,31 @@ test('opening the hunter picker closes an already-open sender picker (distinct .
   await expect(page.locator('#hunter-picker')).toBeVisible()
   await expect(page.locator('#sender-picker')).toBeHidden()
 })
+
+test('hunters past the first page are reachable on a tall viewport (#290)', async ({ page }) => {
+  // The counterpart to targetpicker.spec.js's #298 test, and the reason the px
+  // cap lives on .tl-scroll rather than #tp-list. A hunter row carries no
+  // secondary text and no meta, so its second grid row collapses and the row is
+  // ~36px against the sender picker's ~49px -- 12 x 36 = 432px, so a vh-only cap
+  // stops overflowing at a viewport around 1080px, a LOWER threshold than the
+  // sender picker's. The scroll handler then never fires, and with #f-hunter
+  // gone there is no prefix-search fallback to reach the missing rows by.
+  await page.setViewportSize({ width: 1280, height: 1600 })
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    hunter_pubkey: 'ab' + String(i).padStart(10, '0'),
+    hunter_name: 'Hunter-' + String(i).padStart(2, '0'),
+    count: 30 - i,
+  }))
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: many } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/?mode=points')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(12, { timeout: 10000 })
+
+  const list = page.locator('#hp-list')
+  const overflows = await list.evaluate((el) => el.scrollHeight > el.clientHeight)
+  expect(overflows).toBe(true)   // the precondition the lazy load depends on
+
+  await list.evaluate((el) => { el.scrollTop = el.scrollHeight })
+  await expect(page.locator('#hp-list .tl-row')).toHaveCount(24, { timeout: 10000 })
+})
