@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/efiten/core-hunter/compare/web-v1.3.2...web-v1.4.0) (2026-08-08)
+
+
+### Features
+
+* **web:** generalize the target-list picker to the hunter filter ([#290](https://github.com/efiten/core-hunter/issues/290)) ([#313](https://github.com/efiten/core-hunter/issues/313)) ([8e34c51](https://github.com/efiten/core-hunter/commit/8e34c51eeccd21e75e369475fc575e66b9cf6658))
+
 ## [1.3.2](https://github.com/efiten/core-hunter/compare/web-v1.3.1...web-v1.3.2) (2026-08-08)
 
 
