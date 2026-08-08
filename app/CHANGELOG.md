@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.6.0](https://github.com/efiten/core-hunter/compare/app-v1.5.1...app-v1.6.0) (2026-08-08)
+
+
+### Features
+
+* **app:** companion battery, topbar consolidation and HUD sender readout ([#323](https://github.com/efiten/core-hunter/issues/323)) ([a25bf1c](https://github.com/efiten/core-hunter/commit/a25bf1c4536afee6e734e99f153f69d4d2002a48)), closes [#281](https://github.com/efiten/core-hunter/issues/281)
+* **app:** merge layer FAB + 2D/3D FAB into one 5-state view cycle ([#314](https://github.com/efiten/core-hunter/issues/314)) ([9e48a38](https://github.com/efiten/core-hunter/commit/9e48a38d3e1611089ced882a64cba53d210eec61)), closes [#258](https://github.com/efiten/core-hunter/issues/258)
+* **app:** park background audio and cue both transitions ([#315](https://github.com/efiten/core-hunter/issues/315)) ([14bc526](https://github.com/efiten/core-hunter/commit/14bc5267f3c14d896e2dfff08072b58c843f8342)), closes [#260](https://github.com/efiten/core-hunter/issues/260)
+
+
+### Bug Fixes
+
+* **app:** round the 3D pillar footprint to an octagon, sized as a radius ([#311](https://github.com/efiten/core-hunter/issues/311)) ([ad0560b](https://github.com/efiten/core-hunter/commit/ad0560b8f092bc8134fc4be5e0aa5d050498c8aa)), closes [#308](https://github.com/efiten/core-hunter/issues/308)
+* **app:** show the node-position disclaimer as a glance, keep a permanent key ([#312](https://github.com/efiten/core-hunter/issues/312)) ([eb89280](https://github.com/efiten/core-hunter/commit/eb89280b21ca3b3785eca6ba00e30d6db8a33e49)), closes [#306](https://github.com/efiten/core-hunter/issues/306)
+* **app:** truncate target chip with ellipsis, keep topbar controls visible ([#310](https://github.com/efiten/core-hunter/issues/310)) ([22233c9](https://github.com/efiten/core-hunter/commit/22233c994b30a640a55c3a809c1156d5b7683d39)), closes [#305](https://github.com/efiten/core-hunter/issues/305)
+
 ## [1.5.1](https://github.com/efiten/core-hunter/compare/app-v1.5.0...app-v1.5.1) (2026-07-29)
 
 
