@@ -23,6 +23,16 @@ export function hexToBytes(hex) {
   return out;
 }
 
+// carriesSignedIdentity reports whether a classification's identity can be
+// checked at all. Only an Advert is signed (Ed25519 over pubkey + timestamp +
+// app data), and it is also the only kind whose identity feeds name resolution
+// and the node-position layer — so it is both the one worth verifying and the
+// only one that can be (#356). Everything else names its sender with an
+// unauthenticated path hash, prefix or channel-key-derived string.
+export function carriesSignedIdentity(cls) {
+  return !!cls && !!cls.sender && cls.sender.kind === 'advert_pubkey'
+}
+
 export function classifyReception(decoded, channelNameFor = () => null) {
   const pt = decoded.payloadType
   const hops = decoded.pathLength || 0

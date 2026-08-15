@@ -13,8 +13,8 @@
 
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
-import { initDecoder, decodePacket, channelNameFor, bytesToHex } from './decode.js'
-import { classifyReception } from './meshpacket.js'
+import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'
+import { classifyReception, carriesSignedIdentity } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
@@ -470,6 +470,25 @@ async function processFrame(dv) {
     // case worth telling the user about — silently dropping receptions during
     // a drive is indistinguishable from the app being broken (#274).
     if (cls && cls.isDirect === true && fix) noticePoorFix(fix)
+    return
+  }
+
+  // An Advert is the only packet whose identity is signed, and the only one
+  // whose identity is rendered as a name and a self-reported position (#356).
+  // Verify before it can name anything: an advert that does not verify is a
+  // fabricated identity, and capturing it would put a forged name — and a
+  // forged position — into the registry surfaces and into locate(). The
+  // reception itself is real, but it is unattributable, and this pipeline has
+  // never captured unattributable packets.
+  //
+  // Note the limit: this stops an identity being invented, not replayed. A
+  // genuine advert captured elsewhere and rebroadcast verifies exactly as this
+  // one does — see docs/2026-08-15-hop-count-trust.md.
+  if (carriesSignedIdentity(cls) && !(await verifyAdvertSignature(bytesToHex(frame.raw)))) {
+    // Logged, not silent: a dropped advert is otherwise indistinguishable from
+    // "no adverts heard", and this is the one place the app can see either a
+    // forgery or a packet corrupted in flight.
+    console.warn('advert signature did not verify, identity refused:', cls.sender.id)
     return
   }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyReception } from '../meshpacket.js'
+import { classifyReception, carriesSignedIdentity } from '../meshpacket.js'
 
 const mk = (payloadType, decoded, pathLength = 0) => ({ payloadType, pathLength, payload: { decoded } })
 
@@ -56,5 +56,28 @@ describe('classifyReception', () => {
   it('TRACE with a path is never attributed', () => {
     const c = classifyReception({ payloadType: 9, pathLength: 3, routeType: 1, path: ['AABB', 'CCDD', 'EEFF'], payload: { decoded: {} } })
     expect(c.sender.id).toBeNull(); expect(c.isDirect).toBe(false)
+  })
+})
+
+// #356: an Advert is the one packet type carrying an identity — pubkey, name
+// and self-reported position — and the one whose claim can be checked, since
+// it is signed. Verification is async, so classifyReception (pure, sync) only
+// says which classifications need it; the check itself happens in the capture
+// path.
+describe('carriesSignedIdentity', () => {
+  it('is true for an advert, the only signed identity', () => {
+    expect(carriesSignedIdentity({ sender: { kind: 'advert_pubkey', id: 'aa' } })).toBe(true)
+  })
+
+  it('is false for the kinds that carry no signature to check', () => {
+    for (const kind of ['relay', 'discover_pubkey', 'channel_name', 'direct_hash', null]) {
+      expect(carriesSignedIdentity({ sender: { kind, id: 'aa' } })).toBe(false)
+    }
+  })
+
+  it('is total for junk input', () => {
+    expect(carriesSignedIdentity(null)).toBe(false)
+    expect(carriesSignedIdentity({})).toBe(false)
+    expect(carriesSignedIdentity({ sender: null })).toBe(false)
   })
 })
