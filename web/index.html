@@ -20,6 +20,34 @@
     // normalized the URL/storage to the (still-empty) live selection, which
     // would otherwise wipe out a shared/saved hunter selection (#196).
     window.__initialHunter = initial('hunter', '')
+    // The ?v= buster covers the stylesheet, the manifest/icon and the two entry
+    // scripts — NOT the module graph behind them: `import './signal.js'`
+    // resolves without the query, so nothing imported is versioned (#347).
+    //
+    // That is safe only because the site is served with `Cache-Control:
+    // no-cache`, which makes the browser revalidate every asset against its
+    // ETag before use — measured 2026-08-15 on map.mesh-hunter.eu for
+    // index.html, map.js, signal.js and style.css. So a module can never be
+    // served stale against a fresh stylesheet, and the buster is belt and
+    // braces rather than the mechanism.
+    //
+    // Which direction is dangerous is worth being precise about. A CSS token
+    // and the JS that reads it ship together (`--ch-sig-faint` and the faint
+    // tier both landed in #344), so a STALE module never asks for a token its
+    // stylesheet lacks — that pairing is harmless, and it is also the only one
+    // the current setup can produce, since style.css is versioned and the
+    // module graph is not. The breaking pairing is the reverse: a stale
+    // style.css against a fresh signal.js, where cssVar() returns '' and
+    // Leaflet's canvas silently ignores an empty fillStyle, so points inherit
+    // the previous colour instead of failing visibly. The buster is what
+    // prevents that one.
+    //
+    // If the nginx policy ever became a max-age, note that versioning the
+    // imports would NOT rescue it: `VERSION` comes from ./version.js, imported
+    // unversioned above, and index.html would be cached too — a stale
+    // version.js yields a stale ?v= and resolves the whole graph to the old
+    // files. index.html and version.js have to stay uncached for any buster
+    // scheme to mean anything.
     const v = '?v=' + VERSION
     const css = document.createElement('link')
     css.rel = 'stylesheet'; css.href = 'style.css' + v
