@@ -6,11 +6,17 @@
 const FILTER_PACKET_TYPES = [
   { value: 'Advert',      label: 'Advert' },
   { value: 'GroupText',   label: 'Channel' },
+  { value: 'GroupData',   label: 'Channel data' },
   { value: 'Response',    label: 'Response' },
   { value: 'Request',     label: 'Request' },
+  { value: 'AnonRequest', label: 'Anon req' },
   { value: 'TextMessage', label: 'Direct msg' },
   { value: 'Ack',         label: 'Ack' },
+  { value: 'Control',     label: 'Control' },
+  { value: 'Path',        label: 'Path' },
+  { value: 'Multipart',   label: 'Multipart' },
   { value: 'Trace',       label: 'Trace' },
+  { value: 'RawCustom',   label: 'Raw' },
 ]
 
 // Friendly label for a raw decoder packet_type — same mapping as the filter

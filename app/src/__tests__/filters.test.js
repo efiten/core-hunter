@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel } from '../filters.js'
+import { PayloadType, getPayloadTypeName } from '@michaelhart/meshcore-decoder'
+import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel, FILTER_PACKET_TYPES } from '../filters.js'
 
 const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true, hops: 0,
   rx_at: '2026-06-29T10:00:00Z', ...o })
@@ -87,5 +88,24 @@ describe('packetTypeLabel', () => {
   it('falls back to the raw value for null/undefined', () => {
     expect(packetTypeLabel(null)).toBe(null)
     expect(packetTypeLabel(undefined)).toBe(undefined)
+  })
+})
+
+describe('FILTER_PACKET_TYPES', () => {
+  // The chips are the only way to narrow by type, so a type the decoder can
+  // name but the list doesn't carry is a reception nobody can filter for —
+  // Control, Path and AnonRequest alone are 22% of the production data (#341).
+  it('covers every packet type the decoder can name', () => {
+    const covered = new Set(FILTER_PACKET_TYPES.map((t) => t.value))
+    const missing = Object.values(PayloadType)
+      .filter((v) => typeof v === 'number')
+      .map((v) => getPayloadTypeName(v))
+      .filter((name) => !covered.has(name))
+    expect(missing).toEqual([])
+  })
+  it('has a unique value and a non-empty label per entry', () => {
+    const values = FILTER_PACKET_TYPES.map((t) => t.value)
+    expect(new Set(values).size).toBe(values.length)
+    for (const t of FILTER_PACKET_TYPES) expect(t.label).toBeTruthy()
   })
 })
