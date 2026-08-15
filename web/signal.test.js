@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import * as webSignal from './signal.js'
+import * as appSignal from '../app/src/signal.js'
 import { snrTier, tierColorVar, fillOpacity, rssiTier } from './signal.js'
 import {
   snrTier as appSnrTier,
@@ -39,6 +41,16 @@ describe('signal — parity with app/src/signal.js', () => {
   it('falls back to the same opacity for an unknown tier', () => {
     expect(fillOpacity('nonsense')).toBe(appFillOpacity('nonsense'))
     expect(fillOpacity(undefined)).toBe(appFillOpacity(undefined))
+  })
+  // Structural guard (#238 option 2): web is a subset of app by design, so a
+  // name here that app does not have is a fork rather than a subset. And the
+  // covered list is asserted so that ADDING an export to web fails this test
+  // until it gets a parity assertion of its own — otherwise the next shared
+  // function drifts exactly the way the opacity fallback did.
+  it('exports a subset of the app module, all of it covered above', () => {
+    const webExports = Object.keys(webSignal).sort()
+    for (const name of webExports) expect(appSignal).toHaveProperty(name)
+    expect(webExports).toEqual(['fillOpacity', 'rssiTier', 'snrTier', 'tierColorVar'])
   })
 })
 
