@@ -415,9 +415,13 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
   await page.check('#cs-relays')
   await expect(page.locator('path.leaflet-interactive')).toHaveCount(1, { timeout: 10000 })
 
-  // Open the popup while the lookup is still in flight: it shows the raw id.
+  // Open the popup while the lookup is still in flight. Pinned as "not yet
+  // resolved", not merely "contains the id": the id line is present either
+  // way, so on a slow machine the redraw could already have happened and every
+  // later assertion would pass for the wrong reason.
   await page.locator('path.leaflet-interactive').click()
-  await expect(page.locator('.leaflet-popup-content')).toContainText('1d6f')
+  await expect(page.locator('.leaflet-popup-content')).toContainText('relay 1d6f')
+  await expect(page.locator('.leaflet-popup-content')).not.toContainText('BE-HSS-DinX')
 
   // Past the resolver delay the popup is still there — this is the regression.
   await page.waitForTimeout(1200)

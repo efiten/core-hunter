@@ -57,7 +57,15 @@ const csRelayLayer = L.layerGroup().addTo(map)
 let popupOpen = false
 const nameRedraw = deferWhile(() => popupOpen)
 map.on('popupopen', () => { popupOpen = true })
-map.on('popupclose', () => { popupOpen = false; nameRedraw.flush() })
+map.on('popupclose', () => {
+  popupOpen = false
+  // Deferred a tick, and flush() re-checks: Leaflet removes the previous popup
+  // before adding the next one, so clicking straight from one marker to
+  // another fires popupclose while the next popup is already opening. Flushing
+  // synchronously there would clear the layer out from under it — this bug,
+  // one interaction later.
+  setTimeout(() => nameRedraw.flush(), 0)
+})
 // Target-list picker (#223), created near the end of this file once its DOM
 // exists; refreshPickerCandidates() (called from refresh()) feeds it on every
 // redraw in all modes, guarded since it's still null during the handful of
@@ -210,7 +218,7 @@ async function drawPoints() {
   // name — but not out from under an open popup (#271).
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
-      if (names.some((n) => n)) nameRedraw.run(() => refresh())
+      if (names.some((n) => n)) nameRedraw.run('points', () => refresh())
     })
   }
 }
@@ -733,8 +741,11 @@ document.addEventListener('click', (e) => {
 // Timeframe-scoped (from/to), not bbox; the heard_key resolves to the node /
 // repeater name. Relays (last-hop repeaters) drawn as a ring to distinguish them
 // from the solid advert (zero-hop node) dots.
+const observerDraw = { advert: latestWins(), rxlog: latestWins() }
+
 async function drawObserverPoints(src, layer, ring) {
   if (!canSeeObserverPoints(currentRole)) return
+  const isCurrent = observerDraw[src]()
   layer.clearLayers()
   const f = (window.currentFilters && window.currentFilters()) || {}
   const p = new URLSearchParams({ src })
@@ -749,7 +760,17 @@ async function drawObserverPoints(src, layer, ring) {
   // The checkbox may have been unchecked while this fetch was in flight —
   // bail so a late response doesn't re-populate a layer the user just turned
   // off (the toggle already cleared it and dropped adv/rel from the URL).
-  if (!csCbForSrc(src).checked) { layer.clearLayers(); return }
+  // locateActive for the same reason: Locate clears both CS layers for its
+  // focus view and suppresses refresh() for the whole session, so a late
+  // response would repaint into it and stay there. Reachable deterministically
+  // from the popup's own "Locate this sender" button, which closes the popup
+  // (releasing a held redraw) before activating Locate.
+  if (!csCbForSrc(src).checked || locateActive) { layer.clearLayers(); return }
+  // Two draws of the same layer can overlap — a held redraw released by a
+  // popupclose while an explicit one (filter change, checkbox) is mid-fetch.
+  // The layer is cleared before the fetch, so both responses would append and
+  // the layer would end up with every marker twice.
+  if (!isCurrent()) return
   const unresolved = new Set()
   for (const pt of d.points || []) {
     const id = (pt.heard_key || '').toLowerCase()
@@ -777,7 +798,10 @@ async function drawObserverPoints(src, layer, ring) {
       // moved inside the callback because the redraw can now be held until a
       // popup closes (#271) — by then, either may have changed.
       if (!names.some((n) => n)) return
-      nameRedraw.run(() => {
+      // Keyed per source: the advert and relay layers redraw independently and
+      // are never redrawn by a pan or a filter change, so sharing one slot
+      // would drop one of them silently rather than defer it.
+      nameRedraw.run(`cs:${src}`, () => {
         if (csCbForSrc(src).checked && !locateActive) drawObserverPoints(src, layer, ring)
       })
     })
