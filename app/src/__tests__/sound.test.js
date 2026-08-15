@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { SOUND_MODES, nextSoundMode, harmFreq, pingGain, shouldPing, createSoundEngine } from '../sound.js'
-import { RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../signal.js'
+import { RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../../../web/shared/signal.js'
 
 describe('nextSoundMode', () => {
   it('cycles off → rxtx → full → off', () => {

@@ -28,7 +28,7 @@ import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
 import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex } from './settings.js'
 import { sinceLabel } from './elapsed.js'
-import { effectivePlotOffset, rssiToPct } from './signal.js'
+import { effectivePlotOffset, rssiToPct } from '../../web/shared/signal.js'
 import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'

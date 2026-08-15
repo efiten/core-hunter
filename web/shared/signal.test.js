@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM } from './signal.js'
 
 describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
   it('maps the strong end to 1 and clamps above', () => {

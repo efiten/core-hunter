@@ -1,4 +1,4 @@
-import { rssiTier, tierColorVar } from './signal.js'
+import { rssiTier, tierColorVar } from './shared/signal.js'
 import { packetTypeLabel } from './packettypes.js'
 import { senderName } from './names.js'
 

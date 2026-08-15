@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha } from '../../web/shared/signal.js'
 import { getConfig } from './config.js'
 import { locate, toLocatePoints } from './locate.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'

@@ -21,7 +21,7 @@
 // rssiFrac is the HUD thermal bar's own weak..strong mapping, shared so a ping
 // "sounds as hot" as the reception looks on the map/HUD. `offset` throughout
 // this module is the plot offset (calibration + attenuator).
-import { rssiFrac } from './signal.js'
+import { rssiFrac } from '../../web/shared/signal.js'
 
 export const SOUND_MODES = ['off', 'rxtx', 'full']
 

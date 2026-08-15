@@ -1,5 +1,5 @@
 import { relTime } from './feed.js'
-import { rssiTier, tierColorVar } from './signal.js'
+import { rssiTier, tierColorVar } from '../../web/shared/signal.js'
 import { packetTypeLabel } from './filters.js'
 
 // Receptions log (#130) — a frameless, log-style tail over the map that

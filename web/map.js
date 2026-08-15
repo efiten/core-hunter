@@ -1,4 +1,4 @@
-import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity } from './shared/signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
