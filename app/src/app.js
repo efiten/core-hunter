@@ -1467,7 +1467,7 @@ function cycleView() {
   saveViewIndex(viewIdx)
   updateViewIcon()
   const { mode, mode3D } = VIEW_STATES[viewIdx]
-  if (state.map) { state.map.setLayerMode(mode); state.map.set3D(mode3D) }
+  if (state.map) state.map.setView(mode, mode3D)
 }
 
 // ---------------------------------------------------------------------------
@@ -1854,8 +1854,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateViewIcon()
   el('layer-toggle').addEventListener('click', cycleView)
   const restoredView = VIEW_STATES[viewIdx]
-  state.map.setLayerMode(restoredView.mode)
-  state.map.set3D(restoredView.mode3D)
+  state.map.setView(restoredView.mode, restoredView.mode3D)
   el('nodepos-toggle').addEventListener('click', () => { toggleNodePositions().catch(() => {}) })
 
   // Sound FAB (#145). A persisted non-off mode is restored here; the engine

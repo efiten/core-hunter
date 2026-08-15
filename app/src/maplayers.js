@@ -1,7 +1,7 @@
 // Which signal layers are visible for a given layer-mode / 2D-3D combination.
 //
 // Pulled out of huntmap.js (#266) for two reasons. It was duplicated there —
-// once when the layers are added on style load, once in set3D — and the two
+// once when the layers are added on style load, once in the 3D toggle — and the two
 // copies had already drifted, so a theme switch could leave a different set
 // visible than a FAB tap. And huntmap.js is DOM-bound, so AGENTS.md §5 keeps
 // it out of the unit suite; this is the part worth pinning.
@@ -50,6 +50,12 @@ export function nextViewIndex(i) {
   const valid = Number.isInteger(i) && i >= 0 && i < VIEW_STATES.length
   return (Math.max(valid ? i : -1, 0) + 1) % VIEW_STATES.length
 }
+
+// Camera pitch for the 3D view. 60° reads as a tilted plan rather than a
+// first-person view — far enough to give the extruded bars height, short
+// enough to keep the horizon out of frame.
+export const PITCH_3D = 60
+export function pitchFor(mode3D) { return mode3D ? PITCH_3D : 0 }
 
 export function layerVisibility({ mode, mode3D } = {}) {
   // Unknown/absent mode follows the app's cold default rather than hiding

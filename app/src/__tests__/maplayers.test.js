@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { layerVisibility, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
+import { layerVisibility, pitchFor, PITCH_3D, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
 
 // #250/#266: which of the four signal layers is visible for a given
 // layer-mode / 2D-3D combination. Extracted from huntmap.js because that file
 // is DOM-bound and excluded from unit testing (AGENTS.md §5), while this is
 // exactly the decision that was wrong — and it was duplicated in two places
-// (addOverlays and set3D) that had already drifted apart.
+// (addOverlays and the 3D toggle) that had already drifted apart.
 const vis = (mode, mode3D) => layerVisibility({ mode, mode3D })
 
 describe('layerVisibility in 2D', () => {
@@ -125,5 +125,32 @@ describe('VIEW_LABELS covers VIEW_STATES (#258)', () => {
   })
   it('gives 2D and 3D distinct keys for the same layer mode', () => {
     expect(viewKey({ mode: 'both', mode3D: false })).not.toBe(viewKey({ mode: 'both', mode3D: true }))
+  })
+})
+
+// Camera pitch per view state (#336). It lives here with layerVisibility for
+// the same reason: setView() applies visibility, pitch and buildings together,
+// and a pitch that disagrees with the layer set is the bug that split them in
+// the first place.
+describe('pitchFor — camera tilt per view state', () => {
+  it('is flat in 2D', () => {
+    expect(pitchFor(false)).toBe(0)
+  })
+  it('is tilted in 3D', () => {
+    expect(pitchFor(true)).toBe(PITCH_3D)
+    expect(PITCH_3D).toBe(60)
+  })
+  it('tilts short of horizontal, so the horizon never enters the frame', () => {
+    expect(pitchFor(true)).toBeLessThan(90)
+  })
+  it('reads any truthy/falsy flag, since it comes from persisted state', () => {
+    expect(pitchFor(undefined)).toBe(0)
+    expect(pitchFor(null)).toBe(0)
+    expect(pitchFor(1)).toBe(PITCH_3D)
+  })
+  it('gives every VIEW_STATES entry the tilt its own flag asks for', () => {
+    for (const s of VIEW_STATES) {
+      expect(pitchFor(s.mode3D)).toBe(s.mode3D ? PITCH_3D : 0)
+    }
   })
 })
