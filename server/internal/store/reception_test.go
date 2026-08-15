@@ -93,3 +93,73 @@ func TestInsertSenderFieldsRoundTrip(t *testing.T) {
 		t.Fatalf("got %q %q", kind, id)
 	}
 }
+
+// #346: an absent or null acc_m must stay distinguishable from a real 0 —
+// stored as SQL NULL rather than as the most accurate row in the table.
+func TestParsePayloadKeepsUnknownAccuracyDistinctFromZero(t *testing.T) {
+	cases := []struct {
+		name string
+		gps  string
+		want *float64
+	}{
+		{"real value", `{"lat":1,"lon":2,"acc_m":8.5}`, f64(8.5)},
+		{"explicit zero", `{"lat":1,"lon":2,"acc_m":0}`, f64(0)},
+		{"explicit null", `{"lat":1,"lon":2,"acc_m":null}`, nil},
+		{"absent key", `{"lat":1,"lon":2}`, nil},
+	}
+	for _, c := range cases {
+		body := []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","gps":` + c.gps + `}`)
+		r, err := ParsePayload("t", body, "now")
+		if err != nil {
+			t.Fatalf("%s: ParsePayload: %v", c.name, err)
+		}
+		switch {
+		case c.want == nil && r.PosAccM != nil:
+			t.Fatalf("%s: want unknown accuracy, got %v", c.name, *r.PosAccM)
+		case c.want != nil && r.PosAccM == nil:
+			t.Fatalf("%s: want %v, got unknown", c.name, *c.want)
+		case c.want != nil && *r.PosAccM != *c.want:
+			t.Fatalf("%s: want %v, got %v", c.name, *c.want, *r.PosAccM)
+		}
+	}
+}
+
+func TestInsertStoresUnknownAccuracyAsNULL(t *testing.T) {
+	st, _ := Open(":memory:")
+	defer st.Close()
+	unknown, _ := ParsePayload("t", []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2}}`), "now")
+	known, _ := ParsePayload("t", []byte(`{"origin_id":"bb","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2,"acc_m":12}}`), "now")
+	for _, r := range []Reception{unknown, known} {
+		if err := st.Insert(r); err != nil {
+			t.Fatalf("Insert: %v", err)
+		}
+	}
+	var nullRows, zeroRows int
+	if err := st.db.QueryRow(`SELECT count(*) FROM hunter_receptions WHERE pos_acc_m IS NULL`).Scan(&nullRows); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if err := st.db.QueryRow(`SELECT count(*) FROM hunter_receptions WHERE pos_acc_m = 0`).Scan(&zeroRows); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if nullRows != 1 || zeroRows != 0 {
+		t.Fatalf("null=%d zero=%d, want 1 and 0", nullRows, zeroRows)
+	}
+}
+
+// A reception without a position is useless to this product — the app itself
+// refuses to capture one — so a payload missing lat/lon is a parse failure and
+// lands in the dead-letter table, rather than being stored at the null island.
+func TestParsePayloadRejectsAMissingPosition(t *testing.T) {
+	for _, body := range []string{
+		`{"origin_id":"aa","timestamp":"t","raw":"00"}`,
+		`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{}}`,
+		`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{"lat":1}}`,
+		`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{"lon":2}}`,
+	} {
+		if _, err := ParsePayload("t", []byte(body), "now"); err == nil {
+			t.Fatalf("want error for %s", body)
+		}
+	}
+}
+
+func f64(v float64) *float64 { return &v }

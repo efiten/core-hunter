@@ -90,3 +90,18 @@ func TestHandleInsertFailure(t *testing.T) {
 		t.Fatalf("error should have insert: prefix, got %q", f.raws[0].err)
 	}
 }
+
+// #346: a payload with no position is dead-lettered rather than stored at 0,0.
+func TestHandleDeadLettersAPayloadWithoutAPosition(t *testing.T) {
+	f := &fake{}
+	body := []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","hops":0,"is_direct":true}`)
+	if err := Handle(f, "meshcore/hunter/aa/packets", body, func() string { return "now" }); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(f.got) != 0 {
+		t.Fatalf("Insert should not be called: %+v", f.got)
+	}
+	if len(f.raws) != 1 || !strings.Contains(f.raws[0].err, "gps") {
+		t.Fatalf("want a dead-letter row naming gps, got %+v", f.raws)
+	}
+}
