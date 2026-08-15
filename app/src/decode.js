@@ -48,17 +48,22 @@ export function decodePacket(rawHex) {
 // including the hop count, is unauthenticated; see
 // docs/2026-08-15-hop-count-trust.md.
 //
-// Fails closed by construction: the decoder's verification path catches its own
-// errors into console.error and leaves isValid untouched, so anything short of
-// an explicit true — a throw, a non-advert, a malformed payload — reads as
-// unverified rather than as verified.
+// Reads signatureValid, NOT isValid. isValid is set true by the plain parse
+// for any structurally sound packet and is only cleared once the decoder has
+// actually reached the Ed25519 step, so it answers "this parsed" rather than
+// "this is signed by the key it names" — a real non-advert packet comes back
+// isValid: true, signatureValid: undefined. signatureValid exists only when
+// verification ran, which makes `=== true` the only reading that fails closed
+// through the paths where it did not: a non-advert, a malformed payload, and
+// the decoder's own catch (it logs to console.error and leaves the packet
+// otherwise untouched).
 //
 // Async, which is why it is a separate call rather than part of decodePacket():
 // only Adverts pay for it, ~3% of captured traffic.
 export async function verifyAdvertSignature(rawHex) {
   try {
     const v = await MeshCoreDecoder.decodeWithVerification(rawHex, keyStore ? { keyStore } : {})
-    return !!(v && v.payload && v.payload.decoded && v.payload.decoded.isValid === true)
+    return v?.payload?.decoded?.signatureValid === true
   } catch (e) {
     return false
   }

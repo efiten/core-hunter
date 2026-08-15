@@ -57,17 +57,29 @@ describe('verifyAdvertSignature', () => {
     expect(await verifyAdvertSignature(REAL_ADVERT)).toBe(true)
   })
 
-  it('rejects the same advert with a tampered byte', async () => {
-    const tail = REAL_ADVERT.slice(-4) === 'aaaa' ? 'bbbb' : 'aaaa'
-    expect(await verifyAdvertSignature(REAL_ADVERT.slice(0, -4) + tail)).toBe(false)
+  // The 64-byte signature sits at hex offsets 76-203; everything after it is
+  // the signed app data (flags, position, name). Both halves are covered: a
+  // broken signature, and a forged name under an untouched signature — which
+  // is where an attacker would actually work.
+  const flip = (hex, i) => hex.slice(0, i) + (hex[i] === '0' ? '1' : '0') + hex.slice(i + 1)
+
+  it('rejects the same advert with a tampered signature byte', async () => {
+    expect(await verifyAdvertSignature(flip(REAL_ADVERT, 128))).toBe(false)
   })
 
   it('rejects a tampered name, not just a broken signature', async () => {
-    // Flip a byte in the middle (app data), where a forger would actually
-    // work — the signature covers pubkey + timestamp + appData.
-    const i = Math.floor(REAL_ADVERT.length / 2)
-    const flipped = REAL_ADVERT.slice(0, i) + (REAL_ADVERT[i] === '0' ? '1' : '0') + REAL_ADVERT.slice(i + 1)
-    expect(await verifyAdvertSignature(flipped)).toBe(false)
+    expect(await verifyAdvertSignature(flip(REAL_ADVERT, REAL_ADVERT.length - 3))).toBe(false)
+  })
+
+  // The decoder sets payload.decoded.isValid = true for any structurally sound
+  // packet and only records the signature result in signatureValid, which is
+  // left undefined whenever verification never ran — a non-advert, or the
+  // decoder's own catch. Reading isValid therefore returns TRUE for a packet
+  // that was never verified at all: a security check that fails open. This is
+  // the case that caught it.
+  it('refuses a packet that was never signature-checked at all', async () => {
+    // A real captured DIRECT packet — structurally valid, no signature.
+    expect(await verifyAdvertSignature('0640774ad5974332ebc33dde2e08ef96b7b337d3358d')).toBe(false)
   })
 
   // The decoder swallows a verification throw into console.error and leaves
