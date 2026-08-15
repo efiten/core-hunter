@@ -125,10 +125,22 @@ func TestParsePayloadKeepsUnknownAccuracyDistinctFromZero(t *testing.T) {
 }
 
 func TestInsertStoresUnknownAccuracyAsNULL(t *testing.T) {
-	st, _ := Open(":memory:")
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
 	defer st.Close()
-	unknown, _ := ParsePayload("t", []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2}}`), "now")
-	known, _ := ParsePayload("t", []byte(`{"origin_id":"bb","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2,"acc_m":12}}`), "now")
+	// Both parses are checked: if ParsePayload ever started rejecting a
+	// payload without acc_m, an ignored error would leave a zero Reception
+	// whose PosAccM is nil anyway, and this test would still pass.
+	unknown, err := ParsePayload("t", []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2}}`), "now")
+	if err != nil {
+		t.Fatalf("ParsePayload (unknown accuracy): %v", err)
+	}
+	known, err := ParsePayload("t", []byte(`{"origin_id":"bb","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2,"acc_m":12}}`), "now")
+	if err != nil {
+		t.Fatalf("ParsePayload (known accuracy): %v", err)
+	}
 	for _, r := range []Reception{unknown, known} {
 		if err := st.Insert(r); err != nil {
 			t.Fatalf("Insert: %v", err)

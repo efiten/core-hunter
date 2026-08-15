@@ -1,7 +1,10 @@
 package ingest
 
 import (
+	"bytes"
 	"errors"
+	"log"
+	"os"
 	"strings"
 	"testing"
 
@@ -103,5 +106,41 @@ func TestHandleDeadLettersAPayloadWithoutAPosition(t *testing.T) {
 	}
 	if len(f.raws) != 1 || !strings.Contains(f.raws[0].err, "gps") {
 		t.Fatalf("want a dead-letter row naming gps, got %+v", f.raws)
+	}
+}
+
+// A dead-letter row is not observable on its own: raw_messages has no reader
+// anywhere in the repo, and Handle returns nil once the row is safely stored,
+// so main.go logs nothing. Without a log line an operator sees "no data" with
+// nothing pointing at the cause (#346 review).
+func TestHandleLogsWhatItDeadLetters(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	defer log.SetOutput(os.Stderr)
+
+	f := &fake{}
+	body := []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","hops":0,"is_direct":true}`)
+	if err := Handle(f, "meshcore/hunter/aa/packets", body, func() string { return "now" }); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "meshcore/hunter/aa/packets") || !strings.Contains(out, "gps") {
+		t.Fatalf("want a log line naming the topic and the reason, got %q", out)
+	}
+}
+
+func TestHandleLogsNothingForAGoodPayload(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+
+	f := &fake{}
+	body := []byte(`{"origin_id":"aa","timestamp":"t","raw":"00","gps":{"lat":1,"lon":2}}`)
+	if err := Handle(f, "t", body, func() string { return "now" }); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("want no log output, got %q", buf.String())
 	}
 }
