@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { nodePosNotice, NODEPOS_KEY_TEXT, NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
+import { nodePosNotice, nodePosKeyText, NODEPOS_KEY_TEXT, NODEPOS_EMPTY_TEXT, NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
 // AGENTS.md §7. The rule these tests exist to defend: while the node-position
 // layer is drawn, something on screen must say that ▲ is an operator-reported
@@ -75,5 +75,37 @@ describe('the key text', () => {
   it('keeps the glance short enough to be a glance', () => {
     expect(NODEPOS_GLANCE_MS).toBeGreaterThan(0)
     expect(NODEPOS_GLANCE_MS).toBeLessThanOrEqual(5000)
+  })
+})
+
+// #307: the layer only draws a node some resolver's bulk /positions endpoint
+// actually returned. If every resolver 404s, errors, or simply holds no
+// positions, the layer draws nothing — and "worked, nothing to show" looked
+// exactly like "failed silently". The key line says which it was.
+describe('nodePosKeyText — what the permanent line says', () => {
+  it('is the glyph key when there is registry data to draw', () => {
+    expect(nodePosKeyText({ registryEmpty: false })).toBe(NODEPOS_KEY_TEXT)
+    expect(nodePosKeyText()).toBe(NODEPOS_KEY_TEXT)
+  })
+
+  it('says the registry is empty when there is nothing to draw', () => {
+    expect(nodePosKeyText({ registryEmpty: true })).toBe(NODEPOS_EMPTY_TEXT)
+  })
+
+  // Explaining ▲ and ● while neither is on screen is worse than saying
+  // nothing: it implies the layer is working and the area is simply empty.
+  it('does not explain glyphs that cannot be on screen', () => {
+    expect(NODEPOS_EMPTY_TEXT).not.toContain('▲')
+    expect(NODEPOS_EMPTY_TEXT).not.toContain('●')
+  })
+
+  it('names the registry as the source of the emptiness, not the map view', () => {
+    expect(NODEPOS_EMPTY_TEXT).toMatch(/registry|resolver/i)
+  })
+
+  it('always answers with a non-empty string, so the layer is never unlabelled', () => {
+    for (const registryEmpty of [true, false, undefined]) {
+      expect(nodePosKeyText({ registryEmpty })).toBeTruthy()
+    }
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
 import { haversineM } from '../locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -290,5 +290,36 @@ describe('circleRing', () => {
   })
   it('returns an empty ring for a non-positive radius', () => {
     expect(circleRing({ lat: 51.2, lon: 4.4 }, 0, 8)).toEqual([])
+  })
+})
+
+// #307 review: the empty-state line is driven by how many registry nodes can
+// actually be drawn, not how many rows came back. The resolve proxy strips
+// lat/lon below the member role, so a full response of position-less nodes is
+// exactly the "nothing will be drawn" case the notice exists for.
+describe('drawableNodes — registry rows that can actually be plotted', () => {
+  const node = (o) => ({ pubkey: 'aa', lat: 51, lon: 4, ...o })
+
+  it('keeps a node with a pubkey and finite coordinates', () => {
+    expect(drawableNodes([node()])).toHaveLength(1)
+  })
+  it('drops a node whose position was stripped or never set', () => {
+    expect(drawableNodes([node({ lat: null }), node({ lon: undefined }), node({ lat: 'x' })])).toEqual([])
+  })
+  it('drops a node with no pubkey to attribute it to', () => {
+    expect(drawableNodes([node({ pubkey: '' }), node({ pubkey: null })])).toEqual([])
+  })
+  it('drops NaN and Infinity, which pass a null check but not a map', () => {
+    expect(drawableNodes([node({ lat: NaN }), node({ lon: Infinity })])).toEqual([])
+  })
+  it('is total for junk input', () => {
+    expect(drawableNodes(null)).toEqual([])
+    expect(drawableNodes([null, undefined, 5, 'x'])).toEqual([])
+  })
+  it('agrees with inBounds: everything it keeps can be tested against a viewport', () => {
+    const world = { minLat: -90, maxLat: 90, minLon: -180, maxLon: 180 }
+    for (const n of drawableNodes([node(), node({ lat: -33.9, lon: 18.4 })])) {
+      expect(inBounds(n, world)).toBe(true)
+    }
   })
 })

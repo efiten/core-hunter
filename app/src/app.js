@@ -38,7 +38,8 @@ import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
-import { nodePosNotice, NODEPOS_GLANCE_MS, NODEPOS_KEY_TEXT } from './nodeposnotice.js'
+import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { drawableNodes } from './nodelayer.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
@@ -1479,27 +1480,45 @@ function cycleView() {
 // The bulk endpoint only exists on our own nameresolver — third-party CoreScope
 // resolvers implement the resolve contract but not this — so a 404 or a network
 // error just means that resolver contributes nothing.
-let nodePosOn = false, nodePosLoaded = false
+let nodePosOn = false, nodePosLoaded = false, nodePosAttempted = false, nodePosCount = 0
 
-async function loadNodePositions() {
-  if (nodePosLoaded) return
+// Single-flight: toggling the layer off and on during a slow fetch used to
+// start a second concurrent load, and a failing second pass would clobber a
+// successful first one — leaving an empty layer under a "no registry data"
+// line that was not true.
+let nodePosInFlight = null
+function loadNodePositions() {
+  if (nodePosLoaded) return Promise.resolve()
+  if (!nodePosInFlight) nodePosInFlight = fetchNodePositions().finally(() => { nodePosInFlight = null })
+  return nodePosInFlight
+}
+
+async function fetchNodePositions() {
   const cfg = getConfig()
   const resolvers = (cfg && cfg.resolvers) || []
   const byPubkey = new Map()
+  let anyAnswered = false
   for (const r of resolvers) {
     try {
       const url = r.url.replace(/\/resolve$/, '/positions')
       const res = await fetch(url)
       if (!res.ok) continue
       const j = await res.json()
-      for (const n of j.nodes || []) {
-        if (n && n.pubkey) byPubkey.set(String(n.pubkey).toLowerCase(), n)
+      anyAnswered = true
+      for (const n of drawableNodes(j.nodes || [])) {
+        byPubkey.set(String(n.pubkey).toLowerCase(), n)
       }
     } catch (_) {
       // resolver unreachable or has no bulk endpoint — skip it
     }
   }
-  nodePosLoaded = true
+  // Only latch when something actually answered. A run where every resolver
+  // was unreachable is a transient failure, not an empty registry: latching it
+  // would pin the empty layer for the whole session, with no retry when
+  // connectivity comes back.
+  nodePosLoaded = anyAnswered
+  nodePosAttempted = true
+  nodePosCount = byPubkey.size
   if (state.map) state.map.setNodePositions([...byPubkey.values()])
 }
 
@@ -1515,7 +1534,11 @@ function applyNodePosNotices({ glanceExpired = false } = {}) {
   const keyEl = el('nodepos-key')
   noteEl.textContent = SPLASH_DISCLAIMER
   noteEl.hidden = !note
-  keyEl.textContent = NODEPOS_KEY_TEXT
+  // registryEmpty is only meaningful once the fetch has finished; until then
+  // the glyph key is the honest line, since positions may still arrive (#307).
+  // "Nothing came back" and "nobody answered" both mean nothing can be drawn,
+  // and both are only knowable once a load attempt has finished.
+  keyEl.textContent = nodePosKeyText({ registryEmpty: nodePosAttempted && nodePosCount === 0 })
   keyEl.hidden = !key
 }
 
@@ -1534,7 +1557,12 @@ async function toggleNodePositions() {
       applyNodePosNotices({ glanceExpired: true })
     }, NODEPOS_GLANCE_MS)
   }
-  if (nodePosOn) await loadNodePositions()
+  if (nodePosOn) {
+    await loadNodePositions()
+    // The count is only known after the fetch, so the key is re-applied here:
+    // "no registry data" and "worked, nothing in view" must not look alike.
+    applyNodePosNotices({ glanceExpired: nodePosFadeTimer === null })
+  }
   if (state.map) state.map.setNodeLayerVisible(nodePosOn)
 }
 
