@@ -1,7 +1,13 @@
 import { bytesToHex } from './decode.js'
+import { isUsableFix } from './gps.js'
 
-// Zero-hop rule (iteration 2): only direct receptions are captured/published.
-export function shouldCapture(cls) { return !!cls && cls.isDirect === true }
+// Zero-hop rule (iteration 2): only direct receptions are captured/published,
+// and only against a fix good enough to place them (#274) — once a reception
+// is binned into the hex grid there is no way to un-see it, so a poor fix is
+// refused here rather than filtered downstream.
+export function shouldCapture(cls, fix) {
+  return !!cls && cls.isDirect === true && isUsableFix(fix)
+}
 
 export function buildRecord(frame, cls, gps, nowIso) {
   return {

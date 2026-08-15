@@ -4,7 +4,8 @@
 //
 // Pipeline per 0x88 frame:
 //   parseFrame → code check → decodePacket → classifyReception
-//   → GPS fix (drop if none) → buildRecord → queue.add → updateHud
+//   → GPS fix (drop if none, or if it is too inaccurate to place — #274)
+//   → buildRecord → queue.add → updateHud
 //
 // Render tick (1s): non-destructive queue.takeAll() → makeFilter → map.render
 // Drain tick (5s):  non-destructive queue.takeAll() → publish unpublished rows
@@ -17,7 +18,7 @@ import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
-import { Gps } from './gps.js'
+import { Gps, shouldNoticePoorFix, GPS_MAX_ACC_M } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
@@ -357,11 +358,25 @@ function initSplashContent() {
 const PAUSED_BANNER_MS = 4000
 let pausedBannerTimer = null
 function showPausedBanner(hiddenForLabel) {
+  showBannerText(`Capture paused ${hiddenForLabel} (backgrounded)`)
+}
+
+function showBannerText(text) {
   const box = el('bg-paused-banner')
-  box.textContent = `Capture paused ${hiddenForLabel} (backgrounded)`
+  box.textContent = text
   box.hidden = false
   if (pausedBannerTimer) clearTimeout(pausedBannerTimer)
   pausedBannerTimer = setTimeout(() => { box.hidden = true; pausedBannerTimer = null }, PAUSED_BANNER_MS)
+}
+
+// Poor-GPS notice (#274) — reuses the paused banner, since "capture is not
+// happening right now, and here is why" is exactly what that banner says.
+let lastPoorFixNoticeAt = null
+function noticePoorFix(fix) {
+  const now = Date.now()
+  if (!shouldNoticePoorFix(lastPoorFixNoticeAt, now)) return
+  lastPoorFixNoticeAt = now
+  showBannerText(`Capture paused — GPS fix ±${Math.round(fix.acc_m)} m (needs ≤${GPS_MAX_ACC_M} m)`)
 }
 
 // One-time first-connect hint (#199): screen-off/background pauses capture,
@@ -472,10 +487,14 @@ async function processFrame(dv) {
   try { decoded = decodePacket(bytesToHex(frame.raw)) } catch (e) { return }
   if (!decoded || !decoded.isValid) return
   const cls = classifyReception(decoded, channelNameFor)
-  if (!shouldCapture(cls)) return
-
   const fix = state.gps.latest()
-  if (!fix) return
+  if (!shouldCapture(cls, fix)) {
+    // A direct reception refused only because the fix is too poor is the one
+    // case worth telling the user about — silently dropping receptions during
+    // a drive is indistinguishable from the app being broken (#274).
+    if (cls && cls.isDirect === true && fix) noticePoorFix(fix)
+    return
+  }
 
   const rec = buildRecord(frame, cls, fix, new Date().toISOString())
   rec._text = cls.text // local-only, for the popup; stripped before publish
