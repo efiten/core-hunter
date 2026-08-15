@@ -46,9 +46,10 @@ export const test = base.extend({
       const contentType = url.endsWith('.css') ? 'text/css' : 'application/javascript'
       await page.route(url, async (route) => {
         try {
-          route.fulfill({ status: 200, contentType, body: await cdnBody(url) })
+          const body = await cdnBody(url)
+          await route.fulfill({ status: 200, contentType, body })
         } catch (_) {
-          route.continue() // network hiccup: fall back to the real thing
+          await route.continue() // network hiccup: fall back to the real thing
         }
       })
     }
@@ -96,8 +97,13 @@ export function openPicker(page, toggleSel, panelSel) {
 // the Locate button and the time-range toggle are static markup too.
 // clickUntil retries until the effect the caller is waiting for has actually
 // happened, so the test depends on the outcome rather than on the timing.
-// `isDone` is checked before each attempt, so a click that did land is never
-// undone by a retry, which is what makes this safe for a toggle.
+//
+// `isDone` MUST be something the click handler does SYNCHRONOUSLY — a panel
+// un-hidden, a class added. It is checked before each attempt, so a landed
+// click is never undone by a retry; but with a condition that only becomes
+// true after a fetch (Locate's #locate-info, written by drawLocate() after
+// /api/points resolves) the retry would fire while the first click is still
+// in flight and toggle the control straight back off.
 export async function clickUntil(page, selector, isDone) {
   await expect(async () => {
     if (!(await isDone())) await page.click(selector)

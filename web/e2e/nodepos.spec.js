@@ -113,9 +113,9 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await page.check('#f-nodepos')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isVisible())
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
   await expect(page.locator('.np-advert')).toHaveCount(0)
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isHidden())
+  await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === 0)
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
 
