@@ -7,7 +7,8 @@
 //   rxtx — a morse dit per real zero-hop reception + the transmit pops, no
 //          bed/music; pitch (F harmonic series) and length scale with RSSI
 //          (hotter = higher/longer), same fixed dBm band as the HUD bar
-//          (-115..-75, calibration/attenuator offset applied)
+//          (RSSI_WEAK_DBM..RSSI_STRONG_DBM, calibration/attenuator offset
+//          applied)
 //   full — the surf/air soundbed + generative ambient music (Eno-style, never
 //          repeats), with the rx/tx sounds on top. The bed/music carry no
 //          information (atmosphere only), so the always-real rule holds.
@@ -16,6 +17,8 @@
 // old WebViews), mirroring the huntmap stub pattern.
 // Mix values (reverb wet/decay, music volume/density) were chosen by ear in
 // the #145 sound lab — see docs/2026-07-16-sound-modes.md.
+
+import { rssiFrac } from './signal.js'
 
 export const SOUND_MODES = ['off', 'rxtx', 'full']
 
@@ -26,16 +29,9 @@ export function nextSoundMode(mode) {
   return SOUND_MODES[(Math.max(i, 0) + 1) % SOUND_MODES.length]
 }
 
-// Same band as the HUD's rssiToPct: weak -115 dBm .. strong -75 dBm. `offset`
-// is the plot offset (calibration + attenuator), so a ping "sounds as hot" as
-// the reception looks on the map/HUD.
-const WEAK = -115
-const STRONG = -75
-function rssiFrac(rssi, offset = 0) {
-  if (rssi == null) return 0
-  const calibrated = rssi + offset
-  return (Math.max(WEAK, Math.min(STRONG, calibrated)) - WEAK) / (STRONG - WEAK)
-}
+// Same band as the HUD's rssiToPct — literally the same function now, so a
+// ping "sounds as hot" as the reception looks on the map/HUD. `offset` is the
+// plot offset (calibration + attenuator).
 
 // RSSI → ping pitch on the HARMONIC SERIES of F2 (87.31 Hz), consonant
 // overtones only: F4 A4 C5 F5 G5 A5 C6. The generative music plays in

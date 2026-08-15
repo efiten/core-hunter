@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { SOUND_MODES, nextSoundMode, harmFreq, pingGain, shouldPing, createSoundEngine } from '../sound.js'
+import { RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../signal.js'
 
 describe('nextSoundMode', () => {
   it('cycles off → rxtx → full → off', () => {
@@ -18,14 +19,19 @@ describe('nextSoundMode', () => {
 
 describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   const F2 = 87.31
-  it('maps the weak end (-115 dBm) to the 4th harmonic (F4)', () => {
-    expect(harmFreq(-115)).toBeCloseTo(F2 * 4, 5)
+  it('maps the weak end (-125 dBm) to the 4th harmonic (F4)', () => {
+    expect(harmFreq(-125)).toBeCloseTo(F2 * 4, 5)
   })
   it('maps the strong end (-75 dBm) to the 12th harmonic (C6)', () => {
     expect(harmFreq(-75)).toBeCloseTo(F2 * 12, 5)
   })
+  // The band bottomed out at -115, so the whole sub -115 fringe pinged
+  // identically — the same flattening the map had before #282.
+  it('still rises across the sub -115 fringe', () => {
+    expect(harmFreq(-115)).toBeGreaterThan(harmFreq(-125))
+  })
   it('clamps outside the band', () => {
-    expect(harmFreq(-140)).toBeCloseTo(harmFreq(-115), 5)
+    expect(harmFreq(-140)).toBeCloseTo(harmFreq(-125), 5)
     expect(harmFreq(-20)).toBeCloseTo(harmFreq(-75), 5)
   })
   it('quantizes — nearby RSSI values land on the same harmonic', () => {
@@ -33,7 +39,7 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   })
   it('only produces consonant overtones of F (harmonics 4,5,6,8,9,10,12)', () => {
     const allowed = [4, 5, 6, 8, 9, 10, 12]
-    for (let rssi = -120; rssi <= -70; rssi += 1) {
+    for (let rssi = -130; rssi <= -70; rssi += 1) {
       const h = Math.round(harmFreq(rssi) / F2)
       expect(allowed).toContain(h)
     }
@@ -41,6 +47,10 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   it('applies the plot offset (calibration + attenuator), same as the map', () => {
     // -105 raw with +10 offset ≡ -95 calibrated
     expect(harmFreq(-105, 10)).toBeCloseTo(harmFreq(-95), 5)
+  })
+  it('takes the weak/strong anchors from signal.js, so HUD, map and ping agree', () => {
+    expect(harmFreq(RSSI_WEAK_DBM)).toBeCloseTo(F2 * 4, 5)
+    expect(harmFreq(RSSI_STRONG_DBM)).toBeCloseTo(F2 * 12, 5)
   })
   it('defaults a missing RSSI to the lowest harmonic', () => {
     expect(harmFreq(null)).toBeCloseTo(F2 * 4, 5)

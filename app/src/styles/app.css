@@ -182,7 +182,8 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #hud-bar { position: relative; height: 9px; border-radius: 5px; overflow: visible; }
 #hud-bar-fill { position: absolute; inset: 0; border-radius: 5px;
   background: linear-gradient(90deg,
-    var(--ch-sig-cold), var(--ch-sig-cool), var(--ch-sig-mid), var(--ch-sig-warm), var(--ch-sig-hot)); }
+    var(--ch-sig-faint), var(--ch-sig-cold), var(--ch-sig-cool), var(--ch-sig-mid),
+    var(--ch-sig-warm), var(--ch-sig-hot)); }
 #hud-bar-marker { position: absolute; top: -3px; width: 3px; height: 15px; border-radius: 2px;
   background: var(--ch-text); box-shadow: 0 0 0 2px var(--ch-surface);
   left: 10%; transform: translateX(-50%); transition: left .4s ease; }
