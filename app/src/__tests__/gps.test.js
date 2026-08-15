@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isValidFix, isUsableFix, shouldNoticePoorFix, GPS_MAX_ACC_M, POOR_FIX_NOTICE_MS } from '../gps.js'
+import { isValidFix, isUsableFix, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M, POOR_FIX_NOTICE_MS } from '../gps.js'
 
 const fix = (o) => ({ lat: 51.05, lon: 4.12, acc_m: 8, ...o })
 
@@ -53,9 +53,34 @@ describe('isUsableFix — accurate enough to record a reception against', () => 
     expect(isUsableFix(fix({ acc_m: null }))).toBe(true)
     expect(isUsableFix(fix({ acc_m: undefined }))).toBe(true)
   })
+  // CoreLocation reports horizontalAccuracy < 0 to mean "this location is
+  // invalid" — the exact case this gate exists for, so it must not read as a
+  // perfect fix just because it compares below the threshold.
+  it('refuses a negative accuracy, which flags an invalid location', () => {
+    expect(isUsableFix(fix({ acc_m: -1 }))).toBe(false)
+    expect(isUsableFix(fix({ acc_m: -1000 }))).toBe(false)
+  })
+  it('refuses a non-finite accuracy', () => {
+    expect(isUsableFix(fix({ acc_m: NaN }))).toBe(false)
+    expect(isUsableFix(fix({ acc_m: Infinity }))).toBe(false)
+  })
   it('is false for anything isValidFix rejects', () => {
     expect(isUsableFix(fix({ lat: NaN }))).toBe(false)
     expect(isUsableFix(null)).toBe(false)
+  })
+})
+
+describe('accuracyLabel — what the dropped-capture notice says about the fix', () => {
+  it('reports a usable figure in whole metres', () => {
+    expect(accuracyLabel(fix({ acc_m: 249.6 }))).toBe('±250 m')
+  })
+  // Reached for every refusal, including the ones refused *because* acc_m is
+  // absent, negative or NaN — none of which may render as "±NaN m".
+  it('says accuracy is unknown rather than printing a nonsense number', () => {
+    expect(accuracyLabel(fix({ acc_m: NaN }))).toBe('accuracy unknown')
+    expect(accuracyLabel(fix({ acc_m: null }))).toBe('accuracy unknown')
+    expect(accuracyLabel(fix({ acc_m: -1 }))).toBe('accuracy unknown')
+    expect(accuracyLabel(null)).toBe('accuracy unknown')
   })
 })
 

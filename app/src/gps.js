@@ -11,7 +11,7 @@ export const GPS_MAX_ACC_M = 100
 // drive through an urban canyon looks exactly like the app being broken.
 export const POOR_FIX_NOTICE_MS = 30000
 
-const inRange = (v, max) => Number.isFinite(v) && typeof v === 'number' && Math.abs(v) <= max
+const inRange = (v, max) => Number.isFinite(v) && Math.abs(v) <= max
 
 // isValidFix rejects coordinates that are unusable at all: NaN/non-numeric or
 // out of range. iOS can emit an invalid CLLocation briefly after a resume,
@@ -24,10 +24,22 @@ export function isValidFix(fix) {
 // reception against. A fix with no accuracy figure at all is accepted: it says
 // nothing about quality, and refusing it would discard every reception from a
 // device that does not report one.
+// A negative accuracy is refused rather than treated as "better than any
+// threshold": CoreLocation uses horizontalAccuracy < 0 to mean the location is
+// invalid, which is exactly the case this gate exists for.
 export function isUsableFix(fix, maxAccM = GPS_MAX_ACC_M) {
   if (!isValidFix(fix)) return false
   if (fix.acc_m == null) return true
-  return Number.isFinite(fix.acc_m) && fix.acc_m <= maxAccM
+  return Number.isFinite(fix.acc_m) && fix.acc_m >= 0 && fix.acc_m <= maxAccM
+}
+
+// accuracyLabel describes a fix's accuracy for the dropped-capture notice.
+// That notice is shown for every refusal, including the ones caused by an
+// absent, negative or NaN acc_m, so it must never render "±NaN m".
+export function accuracyLabel(fix) {
+  const a = fix && fix.acc_m
+  if (!Number.isFinite(a) || a < 0) return 'accuracy unknown'
+  return `±${Math.round(a)} m`
 }
 
 // shouldNoticePoorFix throttles that notice to once per POOR_FIX_NOTICE_MS.

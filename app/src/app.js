@@ -18,7 +18,7 @@ import { classifyReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
-import { Gps, shouldNoticePoorFix, GPS_MAX_ACC_M } from './gps.js'
+import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
@@ -376,7 +376,7 @@ function noticePoorFix(fix) {
   const now = Date.now()
   if (!shouldNoticePoorFix(lastPoorFixNoticeAt, now)) return
   lastPoorFixNoticeAt = now
-  showBannerText(`Capture paused — GPS fix ±${Math.round(fix.acc_m)} m (needs ≤${GPS_MAX_ACC_M} m)`)
+  showBannerText(`Capture paused — GPS fix ${accuracyLabel(fix)} (needs ≤${GPS_MAX_ACC_M} m)`)
 }
 
 // One-time first-connect hint (#199): screen-off/background pauses capture,
