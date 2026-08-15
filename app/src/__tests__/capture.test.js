@@ -17,11 +17,25 @@ describe('buildRecord', () => {
 })
 
 describe('shouldCapture', () => {
-  it('returns true for a direct (zero-hop) classification', () => {
-    expect(shouldCapture({ isDirect: true })).toBe(true)
+  const good = { lat: 51, lon: 4, acc_m: 8 }
+
+  it('returns true for a direct (zero-hop) classification with a usable fix', () => {
+    expect(shouldCapture({ isDirect: true }, good)).toBe(true)
   })
 
   it('returns false for a relayed (non-zero-hop) classification', () => {
-    expect(shouldCapture({ isDirect: false })).toBe(false)
+    expect(shouldCapture({ isDirect: false }, good)).toBe(false)
+  })
+
+  // The hex grid has no way to un-see a reception once it is binned, so a fix
+  // too poor to be meaningful is refused at the source rather than recorded
+  // and sorted out downstream (#274).
+  it('refuses a direct reception when the fix is too inaccurate', () => {
+    expect(shouldCapture({ isDirect: true }, { lat: 51, lon: 4, acc_m: 350 })).toBe(false)
+  })
+
+  it('refuses a direct reception when there is no fix or the fix is invalid', () => {
+    expect(shouldCapture({ isDirect: true }, null)).toBe(false)
+    expect(shouldCapture({ isDirect: true }, { lat: NaN, lon: 4, acc_m: 8 })).toBe(false)
   })
 })
