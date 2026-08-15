@@ -19,6 +19,21 @@ export const NODEPOS_GLANCE_MS = 2000
 
 export const NODEPOS_KEY_TEXT = '▲ advertised position (operator-reported) · ● estimate inferred from RSSI'
 
+// Shown instead of the key when no configured resolver returned any position
+// at all (#307). Toggling the layer on used to look identical whether it had
+// worked with nothing to show or failed silently — and a glyph key is worse
+// than useless with no glyphs on screen, since it implies the layer is fine
+// and the area is simply empty. Names the registry, because that is the half
+// that is missing; "no nodes in view right now" is a different sentence.
+export const NODEPOS_EMPTY_TEXT = 'No positions from the node registry — resolver unreachable or it holds none, so nothing can be drawn'
+
+// Which line the permanent surface carries. The surface itself is
+// unconditional on `on` (see nodePosNotice), so the layer is never unlabelled;
+// this only decides what it says.
+export function nodePosKeyText({ registryEmpty = false } = {}) {
+  return registryEmpty ? NODEPOS_EMPTY_TEXT : NODEPOS_KEY_TEXT
+}
+
 export function nodePosNotice({ on = false, glanceExpired = false } = {}) {
   return {
     // No memory of previous activations: turning the layer off and on again

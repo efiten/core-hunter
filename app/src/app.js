@@ -38,7 +38,7 @@ import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
-import { nodePosNotice, NODEPOS_GLANCE_MS, NODEPOS_KEY_TEXT } from './nodeposnotice.js'
+import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { calloutPosition, unionRect } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
@@ -1479,7 +1479,7 @@ function cycleView() {
 // The bulk endpoint only exists on our own nameresolver — third-party CoreScope
 // resolvers implement the resolve contract but not this — so a 404 or a network
 // error just means that resolver contributes nothing.
-let nodePosOn = false, nodePosLoaded = false
+let nodePosOn = false, nodePosLoaded = false, nodePosCount = 0
 
 async function loadNodePositions() {
   if (nodePosLoaded) return
@@ -1500,6 +1500,7 @@ async function loadNodePositions() {
     }
   }
   nodePosLoaded = true
+  nodePosCount = byPubkey.size
   if (state.map) state.map.setNodePositions([...byPubkey.values()])
 }
 
@@ -1515,7 +1516,9 @@ function applyNodePosNotices({ glanceExpired = false } = {}) {
   const keyEl = el('nodepos-key')
   noteEl.textContent = SPLASH_DISCLAIMER
   noteEl.hidden = !note
-  keyEl.textContent = NODEPOS_KEY_TEXT
+  // registryEmpty is only meaningful once the fetch has finished; until then
+  // the glyph key is the honest line, since positions may still arrive (#307).
+  keyEl.textContent = nodePosKeyText({ registryEmpty: nodePosLoaded && nodePosCount === 0 })
   keyEl.hidden = !key
 }
 
@@ -1534,7 +1537,12 @@ async function toggleNodePositions() {
       applyNodePosNotices({ glanceExpired: true })
     }, NODEPOS_GLANCE_MS)
   }
-  if (nodePosOn) await loadNodePositions()
+  if (nodePosOn) {
+    await loadNodePositions()
+    // The count is only known after the fetch, so the key is re-applied here:
+    // "no registry data" and "worked, nothing in view" must not look alike.
+    applyNodePosNotices({ glanceExpired: nodePosFadeTimer === null })
+  }
   if (state.map) state.map.setNodeLayerVisible(nodePosOn)
 }
 
