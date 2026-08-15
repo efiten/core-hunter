@@ -31,11 +31,23 @@
     // served stale against a fresh stylesheet, and the buster is belt and
     // braces rather than the mechanism.
     //
-    // If that nginx policy ever changes to a max-age, this becomes a real
-    // hazard: a fresh style.css with a cached signal.js resolves
-    // `--ch-sig-faint` to '', and Leaflet's canvas silently ignores an empty
-    // fillStyle — points inherit the previous colour instead of failing
-    // visibly. Version the imports (or keep no-cache) before that happens.
+    // Which direction is dangerous is worth being precise about. A CSS token
+    // and the JS that reads it ship together (`--ch-sig-faint` and the faint
+    // tier both landed in #344), so a STALE module never asks for a token its
+    // stylesheet lacks — that pairing is harmless, and it is also the only one
+    // the current setup can produce, since style.css is versioned and the
+    // module graph is not. The breaking pairing is the reverse: a stale
+    // style.css against a fresh signal.js, where cssVar() returns '' and
+    // Leaflet's canvas silently ignores an empty fillStyle, so points inherit
+    // the previous colour instead of failing visibly. The buster is what
+    // prevents that one.
+    //
+    // If the nginx policy ever became a max-age, note that versioning the
+    // imports would NOT rescue it: `VERSION` comes from ./version.js, imported
+    // unversioned above, and index.html would be cached too — a stale
+    // version.js yields a stale ?v= and resolves the whole graph to the old
+    // files. index.html and version.js have to stay uncached for any buster
+    // scheme to mean anything.
     const v = '?v=' + VERSION
     const css = document.createElement('link')
     css.rel = 'stylesheet'; css.href = 'style.css' + v
