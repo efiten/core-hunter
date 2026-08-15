@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/efiten/core-hunter/compare/server-v1.1.0...server-v1.1.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **server:** store an unknown gps accuracy as NULL and reject a positionless payload ([#349](https://github.com/efiten/core-hunter/issues/349)) ([3232b90](https://github.com/efiten/core-hunter/commit/3232b90725380626b955f49b025f9086dacfde5c))
+
 ## [1.1.0](https://github.com/efiten/core-hunter/compare/server-v1.0.1...server-v1.1.0) (2026-07-27)
 
 

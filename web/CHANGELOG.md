@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.5.0](https://github.com/efiten/core-hunter/compare/web-v1.4.0...web-v1.5.0) (2026-08-15)
+
+
+### Features
+
+* **app,web:** carry the decoder's full packet-type set in the filter chips ([#343](https://github.com/efiten/core-hunter/issues/343)) ([e924935](https://github.com/efiten/core-hunter/commit/e924935728c677241dafe369ef18508223a9c339))
+* **app,web:** extend the weak end of the RSSI scale below -110 dBm ([#344](https://github.com/efiten/core-hunter/issues/344)) ([29b1015](https://github.com/efiten/core-hunter/commit/29b101542f40857b99da3d299970de2f5f7b6e85))
+
+
+### Bug Fixes
+
+* **web:** hold a name-resolution redraw while a popup is open ([#354](https://github.com/efiten/core-hunter/issues/354)) ([369ddcf](https://github.com/efiten/core-hunter/commit/369ddcf8befb0b645f4e6e8f6caefc2822275a56))
+* **web:** keep the map painted while a pan/zoom redraw is in flight ([#350](https://github.com/efiten/core-hunter/issues/350)) ([fcb32d0](https://github.com/efiten/core-hunter/commit/fcb32d0b623f7aeefac2dd66c9fd5f4bf80cbe48))
+* **web:** stop filters.js and map.js racing — the page could die on load ([#361](https://github.com/efiten/core-hunter/issues/361)) ([caff818](https://github.com/efiten/core-hunter/commit/caff818e66220c2b09a50e3b8a1943b161e9c036))
+
+
+### Documentation
+
+* **web:** record what the ?v= buster covers, and the nginx policy it leans on ([#360](https://github.com/efiten/core-hunter/issues/360)) ([e21b209](https://github.com/efiten/core-hunter/commit/e21b20976ddb3147ec9971f876494d375ba4d33f))
+
+
+### Tests
+
+* **web:** close two diagnosed e2e flake sources — boot-window clicks and the per-test CDN fetch ([#352](https://github.com/efiten/core-hunter/issues/352)) ([fa9bec2](https://github.com/efiten/core-hunter/commit/fa9bec2412ccec2a609f9639594e8eff2ea19d8d))
+* **web:** pin app&lt;-&gt;web parity for the duplicated modules ([#238](https://github.com/efiten/core-hunter/issues/238) option 2) ([#359](https://github.com/efiten/core-hunter/issues/359)) ([473e84e](https://github.com/efiten/core-hunter/commit/473e84e9293309bf8c2feefa42b4bb427bf990c3))
+
 ## [1.4.0](https://github.com/efiten/core-hunter/compare/web-v1.3.2...web-v1.4.0) (2026-08-08)
 
 

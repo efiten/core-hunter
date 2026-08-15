@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.7.0](https://github.com/efiten/core-hunter/compare/app-v1.6.0...app-v1.7.0) (2026-08-15)
+
+
+### Features
+
+* **app,web:** carry the decoder's full packet-type set in the filter chips ([#343](https://github.com/efiten/core-hunter/issues/343)) ([e924935](https://github.com/efiten/core-hunter/commit/e924935728c677241dafe369ef18508223a9c339))
+* **app,web:** extend the weak end of the RSSI scale below -110 dBm ([#344](https://github.com/efiten/core-hunter/issues/344)) ([29b1015](https://github.com/efiten/core-hunter/commit/29b101542f40857b99da3d299970de2f5f7b6e85))
+* **app:** refuse captures on a GPS fix too poor to place, and guard invalid fixes ([#345](https://github.com/efiten/core-hunter/issues/345)) ([ee8874f](https://github.com/efiten/core-hunter/commit/ee8874f296986bad66c7d7d73e6026979cca0ce5))
+* **app:** verify advert signatures before an advert may name anything ([#362](https://github.com/efiten/core-hunter/issues/362)) ([cac64b3](https://github.com/efiten/core-hunter/commit/cac64b356a317514456bcfc6badbf6a6c13c647b))
+
+
+### Bug Fixes
+
+* **app:** guard localStorage reads so a storage-hostile context cannot blank the app ([#342](https://github.com/efiten/core-hunter/issues/342)) ([ce9d534](https://github.com/efiten/core-hunter/commit/ce9d534acd6ad081f07b3bff0073816233a5dbef))
+* **app:** say so when the node-position layer has no registry data to draw ([#355](https://github.com/efiten/core-hunter/issues/355)) ([2e2f30a](https://github.com/efiten/core-hunter/commit/2e2f30a48cba25c38b45e471694e092510b1c0cf))
+
+
+### Performance Improvements
+
+* **app:** rebuild the map once per view change, not twice ([#351](https://github.com/efiten/core-hunter/issues/351)) ([f2d0546](https://github.com/efiten/core-hunter/commit/f2d0546609bb6408bc80bcc8e6a2175fbbf4cba3))
+
 ## [1.6.0](https://github.com/efiten/core-hunter/compare/app-v1.5.1...app-v1.6.0) (2026-08-08)
 
 
