@@ -4,6 +4,7 @@ import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, 
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, estimateFor, driftPresentation, circleRing, isRegistryIdKind } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
+import { latestWins } from './latestwins.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
@@ -144,9 +145,34 @@ function qs() {
   return p.toString()
 }
 
+// The layers are rebuilt off-map and swapped in one go, rather than cleared
+// before the fetch: clearing first leaves the map empty for a whole round-trip
+// after every pan/zoom, which reads as flicker (#317). Markers are built into
+// a local array and only added once the data they represent has arrived.
+// mayPaint() also covers Locate: activateLocate() empties both layers for its
+// focus view, so a draw that was already in flight must not repaint over it —
+// refresh() is suppressed for the whole Locate session, so a stray repaint
+// would stay on screen until the user pans (drawObserverPoints guards the
+// same way).
+const pointsDraw = latestWins()
+const hexDraw = latestWins()
+const mayPaint = (isCurrent) => isCurrent() && !locateActive
+const setStatus = (text) => { document.getElementById('status').textContent = text }
+
 async function drawPoints() {
-  pointLayer.clearLayers()
-  const { points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  const isCurrent = pointsDraw()
+  let points, capped
+  try {
+    ({ points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 }))
+  } catch (_) {
+    // The layer is no longer cleared up front, so a failed fetch would
+    // otherwise leave the previous bbox's points and count sitting there as
+    // if they were the answer.
+    if (mayPaint(isCurrent)) { pointLayer.clearLayers(); setStatus('points unavailable') }
+    return
+  }
+  if (!mayPaint(isCurrent)) return
+  const markers = []
   const unresolved = new Set()
   for (const pt of points) {
     if (!pt.sender_label && isResolvableId(pt.sender_id) && cachedName(pt.sender_id) === undefined) {
@@ -159,13 +185,15 @@ async function drawPoints() {
     const tier = rssiTier(pt.rssi)
     const marker = L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}`)
-      .addTo(pointLayer)
     // Reception ticker two-way sync (#224): clicking a marker scrolls the
     // ticker to the matching line, keyed by receptionKey since /api/points
     // rows carry no stable id.
     marker.on('click', () => { if (rxTicker) rxTicker.focusRecord(receptionKey(pt)) })
+    markers.push(marker)
   }
-  document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
+  pointLayer.clearLayers()
+  for (const m of markers) m.addTo(pointLayer)
+  setStatus(`${points.length} points${capped ? ' (capped)' : ''}`)
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
@@ -178,14 +206,23 @@ async function drawPoints() {
 // applied server-side in SQL, so it lands before the grid-cell aggregation
 // rather than needing per-point rows the client no longer sees.
 async function drawHex() {
-  hexLayer.clearLayers()
-  const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`); const fc = await r.json()
+  const isCurrent = hexDraw()
+  let fc
+  try {
+    const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`)
+    if (!r.ok) throw new Error(`heatmap ${r.status}`)
+    fc = await r.json()
+  } catch (_) {
+    if (mayPaint(isCurrent)) { hexLayer.clearLayers(); setStatus('heatmap unavailable') }
+    return
+  }
+  if (!mayPaint(isCurrent)) return
+  const cells = []
   for (const f of fc.features || []) {
     const ring = f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon])
     const tier = rssiTier(f.properties.best_rssi)
     const cell = L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindTooltip(`best RSSI ${esc(f.properties.best_rssi)} · ${f.properties.count} pts · ${(f.properties.hunters||[]).length} hunters`)
-      .addTo(hexLayer)
     // Ticker sync from hex mode (#224). The marker-click path only exists in
     // 'points'/'both', and the cold default is 'hex' (#141), so without this a
     // first-time visitor clicking the map got nothing. A cell is an aggregate
@@ -198,8 +235,11 @@ async function drawHex() {
       const hit = newestInRing(rxTicker.records(), ring)
       if (hit) rxTicker.focusRecord(receptionKey(hit))
     })
+    cells.push(cell)
   }
-  document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
+  hexLayer.clearLayers()
+  for (const c of cells) c.addTo(hexLayer)
+  setStatus(fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : ''))
 }
 
 function applyLocateGate() {
@@ -274,8 +314,11 @@ export function refresh() {
   clearTimeout(t)
   t = setTimeout(() => {
     if (locateActive) return // focus mode: keep the non-relevant layers hidden
-    if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
-    if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
+    // The else branches take a ticket as well as clearing: a draw started
+    // under the previous mode is obsolete the moment the toggle empties its
+    // layer, and would otherwise still be the newest and repaint it.
+    if (mode === 'points' || mode === 'both') drawPoints(); else { pointsDraw(); pointLayer.clearLayers() }
+    if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); hexLayer.clearLayers() }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
