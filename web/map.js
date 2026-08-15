@@ -5,6 +5,7 @@ import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, estimateFor, driftPresentation, circleRing, isRegistryIdKind } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
+import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
@@ -46,6 +47,17 @@ const hexLayer = L.layerGroup().addTo(map)
 const locateLayer = L.layerGroup().addTo(map)
 const csAdvertLayer = L.layerGroup().addTo(map)
 const csRelayLayer = L.layerGroup().addTo(map)
+
+// A name-resolution redraw clears its layer, and removing a marker closes its
+// popup — so a popup opened just before a background lookup finished would
+// vanish under the cursor (#271). Hold those redraws while a popup is open and
+// run the last one when it closes. Only automatic redraws go through this: a
+// redraw the user asked for (filter, pan, layer toggle) closing a popup is
+// expected behaviour.
+let popupOpen = false
+const nameRedraw = deferWhile(() => popupOpen)
+map.on('popupopen', () => { popupOpen = true })
+map.on('popupclose', () => { popupOpen = false; nameRedraw.flush() })
 // Target-list picker (#223), created near the end of this file once its DOM
 // exists; refreshPickerCandidates() (called from refresh()) feeds it on every
 // redraw in all modes, guarded since it's still null during the handful of
@@ -194,10 +206,11 @@ async function drawPoints() {
   pointLayer.clearLayers()
   for (const m of markers) m.addTo(pointLayer)
   setStatus(`${points.length} points${capped ? ' (capped)' : ''}`)
-  // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
+  // Look up unknown full-pubkey senders once each; redraw if any resolved to a
+  // name — but not out from under an open popup (#271).
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
-      if (names.some((n) => n)) refresh()
+      if (names.some((n) => n)) nameRedraw.run(() => refresh())
     })
   }
 }
@@ -760,8 +773,13 @@ async function drawObserverPoints(src, layer, ring) {
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
       // Same guard as above: don't redraw for a layer that's been switched off
-      // (or gone into Locate focus) while the names were resolving.
-      if (names.some((n) => n) && csCbForSrc(src).checked && !locateActive) drawObserverPoints(src, layer, ring)
+      // (or gone into Locate focus) while the names were resolving. The guard
+      // moved inside the callback because the redraw can now be held until a
+      // popup closes (#271) — by then, either may have changed.
+      if (!names.some((n) => n)) return
+      nameRedraw.run(() => {
+        if (csCbForSrc(src).checked && !locateActive) drawObserverPoints(src, layer, ring)
+      })
     })
   }
 }

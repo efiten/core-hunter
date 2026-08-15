@@ -394,3 +394,39 @@ test('the site is installable: manifest is linked and valid, no service worker (
   const regs = await page.evaluate(() => navigator.serviceWorker.getRegistrations())
   expect(regs).toHaveLength(0)
 })
+
+// #271: every redraw path clears its layer, and removing a marker closes its
+// popup — so a name resolving in the background used to shut a popup the user
+// had just opened. The redraw is held until the popup closes.
+test('an open popup survives a name-resolution redraw, and the redraw still happens after', async ({ page }) => {
+  await page.route('**/api/observer-points*', (route) => {
+    const src = new URL(route.request().url()).searchParams.get('src')
+    const pts = src === 'rxlog'
+      ? [{ lat: 51, lon: 4, rssi: -100, snr: -5, heard_key: '1d6f', src: 'rxlog', observer: 'Erwin Mobile', rx_at: '2026-06-30T15:00:00Z' }]
+      : []
+    route.fulfill({ json: { points: pts } })
+  })
+  // Slow resolver, so the popup is open and waiting when the name lands.
+  await page.route('**/api/resolve*', async (r) => {
+    await new Promise((res) => setTimeout(res, 600))
+    r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
+  })
+  await page.goto('/')
+  await page.check('#cs-relays')
+  await expect(page.locator('path.leaflet-interactive')).toHaveCount(1, { timeout: 10000 })
+
+  // Open the popup while the lookup is still in flight: it shows the raw id.
+  await page.locator('path.leaflet-interactive').click()
+  await expect(page.locator('.leaflet-popup-content')).toContainText('1d6f')
+
+  // Past the resolver delay the popup is still there — this is the regression.
+  await page.waitForTimeout(1200)
+  await expect(page.locator('.leaflet-popup-content')).toBeVisible()
+
+  // ...and the held redraw runs on close, so the name is not lost either.
+  await page.locator('.leaflet-popup-close-button').click()
+  await expect(async () => {
+    await page.locator('path.leaflet-interactive').click()
+    await expect(page.locator('.leaflet-popup-content')).toContainText('BE-HSS-DinX', { timeout: 1000 })
+  }).toPass({ timeout: 10000 })
+})
