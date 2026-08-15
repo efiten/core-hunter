@@ -61,6 +61,14 @@ describe('loadSoundMode', () => {
     vi.stubGlobal('localStorage', storageWith({ 'core-hunter-sound': 'siren' }))
     expect(loadSoundMode()).toBe('off')
   })
+  // A plain object literal answers for its prototype's keys, so 'toString'
+  // would come back truthy and be returned as if it were a sound mode.
+  it("falls back to 'off' for a stored Object.prototype key", () => {
+    for (const k of ['toString', 'valueOf', 'constructor', 'hasOwnProperty']) {
+      vi.stubGlobal('localStorage', storageWith({ 'core-hunter-sound': k }))
+      expect(loadSoundMode()).toBe('off')
+    }
+  })
   it("returns 'off' instead of throwing when storage access throws", () => {
     vi.stubGlobal('localStorage', throwingStorage())
     expect(loadSoundMode()).toBe('off')

@@ -28,7 +28,9 @@ export function loadAttenuator() {
 const SOUND_MODE_MIGRATION = { ping: 'rxtx', ambient: 'full', music: 'full' }
 export function loadSoundMode() {
   const v = readStored('core-hunter-sound')
-  if (SOUND_MODE_MIGRATION[v]) return SOUND_MODE_MIGRATION[v]
+  // Object.hasOwn, not a plain truthy lookup: an object literal answers for
+  // its prototype's keys, so a stored 'toString' would be returned as a mode.
+  if (Object.hasOwn(SOUND_MODE_MIGRATION, v)) return SOUND_MODE_MIGRATION[v]
   return SOUND_MODES.includes(v) ? v : 'off'
 }
 
