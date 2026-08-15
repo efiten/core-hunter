@@ -469,7 +469,14 @@ Payload (JSON):
 The PWA publishes everything the companion hears (iteration 1) — or all zero-hop receptions
 (iteration 2 after ratification). The local map filter (direct/all toggle) affects only the local
 view, not what is published upstream. The ingestor deduplicates by `(origin_id, rx_at, sender_key)`.
-Receptions without a GPS fix are dropped at the PWA before publishing (no row, no publish).
+Receptions without a GPS fix are dropped at the PWA before publishing (no row, no publish), and a
+fix too inaccurate to place one is refused there too (#274).
+
+**`gps` is required; `acc_m` is optional.** `lat` and `lon` must both be present — a payload without
+them is dead-lettered into `raw_messages` rather than stored, since a value type would turn the
+absence into 0,0, a real coordinate off West Africa. `acc_m` may be absent or `null` when the device
+reports no accuracy figure; it is then stored as SQL `NULL`, never as `0` — which would mean the most
+accurate fix in the table (#346). Keep the ingestor's `gps` fields pointers for exactly this reason.
 
 ---
 
