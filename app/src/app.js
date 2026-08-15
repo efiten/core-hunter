@@ -25,7 +25,7 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
-import { isSettingsActive } from './settings.js'
+import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex } from './settings.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset } from './signal.js'
 import { createReceptionLog } from './receptionlog.js'
@@ -66,26 +66,13 @@ function saveIgnore(set) {
 
 // Attenuator setting (dB, non-positive: 0/-10/-20/-30). Persisted; added back to
 // plotted RSSI so the picture stays consistent when an external attenuator is on.
-function loadAttenuator() {
-  const v = Number(localStorage.getItem('core-hunter-attenuator'))
-  return v === -10 || v === -20 || v === -30 ? v : 0
-}
-
+// Loader lives in settings.js (guarded + unit-tested, #338).
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
-// like the attenuator; unknown stored values fall back to off. Also migrates
-// the pre-#255 4-state values (a couple of days of dogfooding only, never
-// released) onto the collapsed 3-state set.
-const SOUND_MODE_MIGRATION = { ping: 'rxtx', ambient: 'full', music: 'full' }
-function loadSoundMode() {
-  const v = localStorage.getItem('core-hunter-sound')
-  if (SOUND_MODE_MIGRATION[v]) return SOUND_MODE_MIGRATION[v]
-  return SOUND_MODES.includes(v) ? v : 'off'
-}
-
+// like the attenuator; loader lives in settings.js (guarded + unit-tested, #338).
 function saveSoundMode(mode) {
   try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
 }
@@ -1408,15 +1395,8 @@ async function checkForUpdate() {
 // Was two FABs (layer-toggle: both/points/hex · mode3d-toggle: 2D/3D, #147
 // phase 2) — merged into VIEW_STATES' 5-state cycle (maplayers.js) to free a
 // FAB slot. Persisted like the sound mode; unknown/corrupt storage falls back
-// to both/2D (index 1), the app's cold default — see loadViewIndex below.
-
-function loadViewIndex() {
-  const v = localStorage.getItem('core-hunter-view')
-  const i = VIEW_STATES.findIndex((s) => viewKey(s) === v)
-  // No/corrupt stored value falls back to both/2D — the app's cold default
-  // before this merge (huntmap.js's own mode/mode3D defaults), not index 0.
-  return i === -1 ? 1 : i
-}
+// to both/2D (index 1), the app's cold default — see loadViewIndex in
+// settings.js (guarded + unit-tested, #338).
 
 function saveViewIndex(i) {
   try { localStorage.setItem('core-hunter-view', viewKey(VIEW_STATES[i])) } catch (_) {}
