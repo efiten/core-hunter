@@ -16,9 +16,42 @@ const BLOCKED = [
   '**/corsproxy.on8ar.eu/**',
 ]
 
+// Leaflet is the one third-party request that must still resolve — `L` is
+// required for the map to exist at all — and it was left going to the real
+// unpkg.com. Every test loads the page in a fresh context, so that is one
+// real 150 kB CDN round-trip per test, 87 per run, all landing at once under
+// parallel load: the page boots slowly, map.js is still evaluating when the
+// first click arrives, and the failures land on whichever tests were unlucky.
+//
+// Fetched once per worker process and replayed from memory instead. The
+// promise (not the body) is cached so concurrent tests share the one fetch,
+// and a failure is not cached — the next test retries rather than inheriting
+// a permanent empty Leaflet.
+const CDN = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css']
+const cdnCache = new Map()
+function cdnBody(url) {
+  if (!cdnCache.has(url)) {
+    cdnCache.set(url, fetch(url).then((r) => {
+      if (!r.ok) throw new Error(`${url} -> ${r.status}`)
+      return r.text()
+    }).catch((e) => { cdnCache.delete(url); throw e }))
+  }
+  return cdnCache.get(url)
+}
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     for (const pattern of BLOCKED) await page.route(pattern, (r) => r.abort())
+    for (const url of CDN) {
+      const contentType = url.endsWith('.css') ? 'text/css' : 'application/javascript'
+      await page.route(url, async (route) => {
+        try {
+          route.fulfill({ status: 200, contentType, body: await cdnBody(url) })
+        } catch (_) {
+          route.continue() // network hiccup: fall back to the real thing
+        }
+      })
+    }
     await use(page)
   },
 })
@@ -54,10 +87,21 @@ export async function mapSettled(page) {
 // Retrying the click is what makes this timing-independent; waiting on a readiness
 // hook would only move the guess. The panel state is checked before each attempt,
 // so an attempt that did land is never toggled back shut.
-export async function openPicker(page, toggleSel, panelSel) {
+export function openPicker(page, toggleSel, panelSel) {
+  return clickUntil(page, toggleSel, () => page.locator(panelSel).isVisible())
+}
+
+// The general form of the same problem: any control whose handler is attached
+// by map.js during module evaluation can swallow a click that arrives first —
+// the Locate button and the time-range toggle are static markup too.
+// clickUntil retries until the effect the caller is waiting for has actually
+// happened, so the test depends on the outcome rather than on the timing.
+// `isDone` is checked before each attempt, so a click that did land is never
+// undone by a retry, which is what makes this safe for a toggle.
+export async function clickUntil(page, selector, isDone) {
   await expect(async () => {
-    if (await page.locator(panelSel).isHidden()) await page.click(toggleSel)
-    await expect(page.locator(panelSel)).toBeVisible({ timeout: 1000 })
+    if (!(await isDone())) await page.click(selector)
+    expect(await isDone()).toBe(true)
   }).toPass({ timeout: 15000 })
 }
 

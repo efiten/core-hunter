@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, clickUntil } from './fixtures.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
 // against our RSSI estimate (●), with the gap between them as drift.
@@ -113,9 +113,9 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await page.check('#f-nodepos')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 
-  await page.click('#locate-toggle')
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isVisible())
   await expect(page.locator('.np-advert')).toHaveCount(0)
-  await page.click('#locate-toggle')
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isHidden())
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
 

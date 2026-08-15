@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, openPicker } from './fixtures.js'
 
 // Target-list picker (#223) — browsable multi-select parity with app's target sheet.
 
@@ -15,7 +15,7 @@ const B = { ...A, sender_id: 'cc33dd44', sender_label: 'Charlie', rx_at: '2026-0
 test('opening the picker lists senders from the currently loaded points', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#sender-picker')).toBeVisible()
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await expect(page.locator('#tp-list')).toContainText('NEO7HI')
@@ -28,7 +28,7 @@ test('a picked selection is sent to the server as repeated senders= params', asy
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
   // One id per senders= param, so an id is never delimiter-joined and any
@@ -54,7 +54,7 @@ test('the picker keeps listing every candidate sender after one is picked', asyn
     return r.fulfill({ json: { points } })
   })
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
@@ -70,7 +70,7 @@ test('a single pick survives a reload as a pick, not a prefix search', async ({ 
   // The selection persists as JSON, since a sender_id is arbitrary operator
   // text that cannot be delimiter-joined (#288).
   await page.goto('/?mode=points&senders=' + encodeURIComponent('["aa11bb22"]'))
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'true')
   // ...whereas the same id typed into the prefix box is a search, not a pick.
@@ -78,7 +78,7 @@ test('a single pick survives a reload as a pick, not a prefix search', async ({ 
   // otherwise be restored on the next load and mask what is being asserted.
   await page.evaluate(() => localStorage.clear())
   await page.goto('/?mode=points&sender=aa11bb22')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await expect(page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })).toHaveAttribute('aria-pressed', 'false')
 })
@@ -87,7 +87,7 @@ test('Clear also clears the pick, not just the typed prefix', async ({ page }) =
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
   await expect.poll(() => urls.some((u) => sendersOf(u).length === 1)).toBe(true)
@@ -106,7 +106,7 @@ test('Clear also clears the pick, not just the typed prefix', async ({ page }) =
 test('a picked row shows checked state, and unpicking it restores the plain count', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
 
   const row = page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' })
@@ -121,12 +121,12 @@ test('closes on outside click and on Escape', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A] } }))
   await page.goto('/?mode=points')
 
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#sender-picker')).toBeVisible()
   await page.mouse.click(10, 300) // well outside the popover
   await expect(page.locator('#sender-picker')).toBeHidden()
 
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#sender-picker')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('#sender-picker')).toBeHidden()
@@ -153,7 +153,7 @@ test('senders past the first page are reachable on a tall viewport (#298)', asyn
   }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: many } }))
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(12, { timeout: 10000 })
 
   const list = page.locator('#tp-list')
@@ -175,7 +175,7 @@ test('one row per node, and picking it filters on every prefix it is known by', 
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [ADV, HOP, B] } }) })
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   // Two nodes, not three rows: the advert and its path hash are one node.
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   // The id stays visible, and it is the node's own key, not the path hash.
@@ -199,7 +199,7 @@ test('typing a prefix clears an active pick instead of being ignored (#299)', as
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A, B] } }) })
   await page.goto('/?mode=points')
-  await page.click('#sp-toggle')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
   await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
   await expect.poll(() => urls.some((u) => sendersOf(u).length === 1)).toBe(true)

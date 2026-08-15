@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, clickUntil } from './fixtures.js'
 
 // A small spread of synthetic receptions around (51, 4): one strong, several weak,
 // all > 10 m apart (so dedupe keeps them) and < 20 km (so none are rejected).
@@ -92,7 +92,7 @@ test('Locate button fetches /api/points and renders the overlay', async ({ page 
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
   await page.fill('#f-sender', '4a')
-  await page.click('#locate-toggle')
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isVisible())
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
   await expect(page.locator('.lc-strongest')).toHaveCount(1)
@@ -106,7 +106,7 @@ test('Locate with no sender still fetches, using the current filters', async ({ 
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && !r.url().includes('sender='))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/')
-  await page.click('#locate-toggle')
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isVisible())
   await req
   await expect(page.locator('#locate-info')).toContainText('too few to estimate')
 })
@@ -116,7 +116,7 @@ test('Locate with no sender but a type filter locates over that filtered set (#1
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
   await page.click('button.f-chip[data-type="Advert"]')
-  await page.click('#locate-toggle')
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isVisible())
   await req
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
@@ -128,7 +128,7 @@ test('Locate surfaces a fetch error instead of crashing the poll loop', async ({
   await page.route('**/api/points*', (r) => r.fulfill({ status: 500, body: 'boom' }))
   await page.goto('/')
   await page.fill('#f-sender', '4a')
-  await page.click('#locate-toggle')
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-info').isVisible())
   await expect(page.locator('#locate-info')).toContainText('Could not load points')
 })
 
