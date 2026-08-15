@@ -33,12 +33,19 @@ export function nextSoundMode(mode) {
 }
 
 // RSSI → ping pitch on the HARMONIC SERIES of F2 (87.31 Hz), consonant
-// overtones only: F4 A4 C5 F5 G5 A5 C6. The generative music plays in
+// overtones only: F4 A4 C5 F5 G5 A5 C6 F6. The generative music plays in
 // F-pentatonic, and overtones of F physically cannot clash with it — that was
 // the fix for the first pentatonic attempt, a kalimba tuned to G, which fought
 // the music. Hotter signal = higher harmonic.
+//
+// F6 is the eighth step, added with the wider band of #282: the steps are
+// evenly spaced across weak..strong, so stretching the band from 40 dB to
+// 50 dB over seven steps would have coarsened each one from 6.7 to 8.3 dB —
+// swallowing a 7 dB gain at close range, which is exactly the change you hunt
+// by. Eight steps put it back at 7.1 dB. F6 is an octave of the root, so it
+// cannot clash with the music either.
 const HARM_ROOT_HZ = 87.31 // F2
-const HARMONICS = [4, 5, 6, 8, 9, 10, 12]
+const HARMONICS = [4, 5, 6, 8, 9, 10, 12, 16]
 export function harmFreq(rssi, offset = 0) {
   return HARM_ROOT_HZ * HARMONICS[Math.round(rssiFrac(rssi, offset) * (HARMONICS.length - 1))]
 }

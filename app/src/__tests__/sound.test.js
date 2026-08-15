@@ -22,8 +22,14 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   it('maps the weak end (-125 dBm) to the 4th harmonic (F4)', () => {
     expect(harmFreq(-125)).toBeCloseTo(F2 * 4, 5)
   })
-  it('maps the strong end (-75 dBm) to the 12th harmonic (C6)', () => {
-    expect(harmFreq(-75)).toBeCloseTo(F2 * 12, 5)
+  it('maps the strong end (-75 dBm) to the 16th harmonic (F6)', () => {
+    expect(harmFreq(-75)).toBeCloseTo(F2 * 16, 5)
+  })
+  // The step size is what you actually hunt by: closing from -95 to -88 dBm
+  // has to be audible as a rise, not absorbed inside one harmonic. Widening
+  // the band to -125 without an eighth step would have swallowed it (#282).
+  it('rises across a 7 dB gain at close range', () => {
+    expect(harmFreq(-88)).toBeGreaterThan(harmFreq(-95))
   })
   // The band bottomed out at -115, so the whole sub -115 fringe pinged
   // identically — the same flattening the map had before #282.
@@ -38,7 +44,7 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
     expect(harmFreq(-96)).toBeCloseTo(harmFreq(-97), 5)
   })
   it('only produces consonant overtones of F (harmonics 4,5,6,8,9,10,12)', () => {
-    const allowed = [4, 5, 6, 8, 9, 10, 12]
+    const allowed = [4, 5, 6, 8, 9, 10, 12, 16]
     for (let rssi = -130; rssi <= -70; rssi += 1) {
       const h = Math.round(harmFreq(rssi) / F2)
       expect(allowed).toContain(h)
@@ -50,7 +56,7 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   })
   it('takes the weak/strong anchors from signal.js, so HUD, map and ping agree', () => {
     expect(harmFreq(RSSI_WEAK_DBM)).toBeCloseTo(F2 * 4, 5)
-    expect(harmFreq(RSSI_STRONG_DBM)).toBeCloseTo(F2 * 12, 5)
+    expect(harmFreq(RSSI_STRONG_DBM)).toBeCloseTo(F2 * 16, 5)
   })
   it('defaults a missing RSSI to the lowest harmonic', () => {
     expect(harmFreq(null)).toBeCloseTo(F2 * 4, 5)
