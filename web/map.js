@@ -149,13 +149,29 @@ function qs() {
 // before the fetch: clearing first leaves the map empty for a whole round-trip
 // after every pan/zoom, which reads as flicker (#317). Markers are built into
 // a local array and only added once the data they represent has arrived.
+// mayPaint() also covers Locate: activateLocate() empties both layers for its
+// focus view, so a draw that was already in flight must not repaint over it —
+// refresh() is suppressed for the whole Locate session, so a stray repaint
+// would stay on screen until the user pans (drawObserverPoints guards the
+// same way).
 const pointsDraw = latestWins()
 const hexDraw = latestWins()
+const mayPaint = (isCurrent) => isCurrent() && !locateActive
+const setStatus = (text) => { document.getElementById('status').textContent = text }
 
 async function drawPoints() {
   const isCurrent = pointsDraw()
-  const { points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
-  if (!isCurrent()) return
+  let points, capped
+  try {
+    ({ points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 }))
+  } catch (_) {
+    // The layer is no longer cleared up front, so a failed fetch would
+    // otherwise leave the previous bbox's points and count sitting there as
+    // if they were the answer.
+    if (mayPaint(isCurrent)) { pointLayer.clearLayers(); setStatus('points unavailable') }
+    return
+  }
+  if (!mayPaint(isCurrent)) return
   const markers = []
   const unresolved = new Set()
   for (const pt of points) {
@@ -177,7 +193,7 @@ async function drawPoints() {
   }
   pointLayer.clearLayers()
   for (const m of markers) m.addTo(pointLayer)
-  document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
+  setStatus(`${points.length} points${capped ? ' (capped)' : ''}`)
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
@@ -191,8 +207,16 @@ async function drawPoints() {
 // rather than needing per-point rows the client no longer sees.
 async function drawHex() {
   const isCurrent = hexDraw()
-  const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`); const fc = await r.json()
-  if (!isCurrent()) return
+  let fc
+  try {
+    const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`)
+    if (!r.ok) throw new Error(`heatmap ${r.status}`)
+    fc = await r.json()
+  } catch (_) {
+    if (mayPaint(isCurrent)) { hexLayer.clearLayers(); setStatus('heatmap unavailable') }
+    return
+  }
+  if (!mayPaint(isCurrent)) return
   const cells = []
   for (const f of fc.features || []) {
     const ring = f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon])
@@ -215,7 +239,7 @@ async function drawHex() {
   }
   hexLayer.clearLayers()
   for (const c of cells) c.addTo(hexLayer)
-  document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
+  setStatus(fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : ''))
 }
 
 function applyLocateGate() {
@@ -290,8 +314,11 @@ export function refresh() {
   clearTimeout(t)
   t = setTimeout(() => {
     if (locateActive) return // focus mode: keep the non-relevant layers hidden
-    if (mode === 'points' || mode === 'both') drawPoints(); else pointLayer.clearLayers()
-    if (mode === 'hex' || mode === 'both') drawHex(); else hexLayer.clearLayers()
+    // The else branches take a ticket as well as clearing: a draw started
+    // under the previous mode is obsolete the moment the toggle empties its
+    // layer, and would otherwise still be the newest and repaint it.
+    if (mode === 'points' || mode === 'both') drawPoints(); else { pointsDraw(); pointLayer.clearLayers() }
+    if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); hexLayer.clearLayers() }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
