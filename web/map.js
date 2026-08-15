@@ -4,6 +4,7 @@ import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, 
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, estimateFor, driftPresentation, circleRing, isRegistryIdKind } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
+import { latestWins } from './latestwins.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
@@ -144,9 +145,18 @@ function qs() {
   return p.toString()
 }
 
+// The layers are rebuilt off-map and swapped in one go, rather than cleared
+// before the fetch: clearing first leaves the map empty for a whole round-trip
+// after every pan/zoom, which reads as flicker (#317). Markers are built into
+// a local array and only added once the data they represent has arrived.
+const pointsDraw = latestWins()
+const hexDraw = latestWins()
+
 async function drawPoints() {
-  pointLayer.clearLayers()
+  const isCurrent = pointsDraw()
   const { points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  if (!isCurrent()) return
+  const markers = []
   const unresolved = new Set()
   for (const pt of points) {
     if (!pt.sender_label && isResolvableId(pt.sender_id) && cachedName(pt.sender_id) === undefined) {
@@ -159,12 +169,14 @@ async function drawPoints() {
     const tier = rssiTier(pt.rssi)
     const marker = L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}`)
-      .addTo(pointLayer)
     // Reception ticker two-way sync (#224): clicking a marker scrolls the
     // ticker to the matching line, keyed by receptionKey since /api/points
     // rows carry no stable id.
     marker.on('click', () => { if (rxTicker) rxTicker.focusRecord(receptionKey(pt)) })
+    markers.push(marker)
   }
+  pointLayer.clearLayers()
+  for (const m of markers) m.addTo(pointLayer)
   document.getElementById('status').textContent = `${points.length} points${capped ? ' (capped)' : ''}`
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a name.
   if (unresolved.size) {
@@ -178,14 +190,15 @@ async function drawPoints() {
 // applied server-side in SQL, so it lands before the grid-cell aggregation
 // rather than needing per-point rows the client no longer sees.
 async function drawHex() {
-  hexLayer.clearLayers()
+  const isCurrent = hexDraw()
   const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`); const fc = await r.json()
+  if (!isCurrent()) return
+  const cells = []
   for (const f of fc.features || []) {
     const ring = f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon])
     const tier = rssiTier(f.properties.best_rssi)
     const cell = L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
       .bindTooltip(`best RSSI ${esc(f.properties.best_rssi)} · ${f.properties.count} pts · ${(f.properties.hunters||[]).length} hunters`)
-      .addTo(hexLayer)
     // Ticker sync from hex mode (#224). The marker-click path only exists in
     // 'points'/'both', and the cold default is 'hex' (#141), so without this a
     // first-time visitor clicking the map got nothing. A cell is an aggregate
@@ -198,7 +211,10 @@ async function drawHex() {
       const hit = newestInRing(rxTicker.records(), ring)
       if (hit) rxTicker.focusRecord(receptionKey(hit))
     })
+    cells.push(cell)
   }
+  hexLayer.clearLayers()
+  for (const c of cells) c.addTo(hexLayer)
   document.getElementById('status').textContent = fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : '')
 }
 
