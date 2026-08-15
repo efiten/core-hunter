@@ -42,6 +42,33 @@ export function decodePacket(rawHex) {
   }
 }
 
+// verifyAdvertSignature checks an Advert's Ed25519 signature over
+// public_key + timestamp + app_data — the only cryptographic proof of identity
+// MeshCore offers (#356). Everything else a packet claims about who sent it,
+// including the hop count, is unauthenticated; see
+// docs/2026-08-15-hop-count-trust.md.
+//
+// Reads signatureValid, NOT isValid. isValid is set true by the plain parse
+// for any structurally sound packet and is only cleared once the decoder has
+// actually reached the Ed25519 step, so it answers "this parsed" rather than
+// "this is signed by the key it names" — a real non-advert packet comes back
+// isValid: true, signatureValid: undefined. signatureValid exists only when
+// verification ran, which makes `=== true` the only reading that fails closed
+// through the paths where it did not: a non-advert, a malformed payload, and
+// the decoder's own catch (it logs to console.error and leaves the packet
+// otherwise untouched).
+//
+// Async, which is why it is a separate call rather than part of decodePacket():
+// only Adverts pay for it, ~3% of captured traffic.
+export async function verifyAdvertSignature(rawHex) {
+  try {
+    const v = await MeshCoreDecoder.decodeWithVerification(rawHex, keyStore ? { keyStore } : {})
+    return v?.payload?.decoded?.signatureValid === true
+  } catch (e) {
+    return false
+  }
+}
+
 export function channelNameFor(channelHash) {
   if (!channelHash) return null
   return hashToName[String(channelHash).toLowerCase()] || null
