@@ -18,6 +18,9 @@
 // Mix values (reverb wet/decay, music volume/density) were chosen by ear in
 // the #145 sound lab — see docs/2026-07-16-sound-modes.md.
 
+// rssiFrac is the HUD thermal bar's own weak..strong mapping, shared so a ping
+// "sounds as hot" as the reception looks on the map/HUD. `offset` throughout
+// this module is the plot offset (calibration + attenuator).
 import { rssiFrac } from './signal.js'
 
 export const SOUND_MODES = ['off', 'rxtx', 'full']
@@ -28,10 +31,6 @@ export function nextSoundMode(mode) {
   const i = SOUND_MODES.indexOf(mode)
   return SOUND_MODES[(Math.max(i, 0) + 1) % SOUND_MODES.length]
 }
-
-// Same band as the HUD's rssiToPct — literally the same function now, so a
-// ping "sounds as hot" as the reception looks on the map/HUD. `offset` is the
-// plot offset (calibration + attenuator).
 
 // RSSI → ping pitch on the HARMONIC SERIES of F2 (87.31 Hz), consonant
 // overtones only: F4 A4 C5 F5 G5 A5 C6. The generative music plays in

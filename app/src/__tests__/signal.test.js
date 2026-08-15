@@ -7,15 +7,27 @@ describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
     expect(heatWeight(-40)).toBe(1)
   })
   it('scales linearly across the band', () => {
-    expect(heatWeight(-97.5)).toBeCloseTo(0.5)   // midpoint of [-125,-70]
+    expect(heatWeight(-92.5)).toBeCloseTo(0.5)   // midpoint of [-115,-70]
+  })
+  // The band above -115 was tuned against real Locate clouds, so extending the
+  // weak end must not re-weight it — a wider linear span would have pulled
+  // every mid-strength point up and broadened the cloud everywhere (#282).
+  it('leaves the weights above -115 exactly as they were', () => {
+    expect(heatWeight(-80)).toBeCloseTo(35 / 45)
+    expect(heatWeight(-95)).toBeCloseTo(20 / 45)
+    expect(heatWeight(-110)).toBeCloseTo(5 / 45)
   })
   it('still separates receptions between -125 and -115 (#282)', () => {
     expect(heatWeight(-115)).toBeGreaterThan(heatWeight(-120))
     expect(heatWeight(-120)).toBeGreaterThan(heatWeight(-125))
   })
-  it('floors weak/absent signal at 0.05', () => {
-    expect(heatWeight(-125)).toBeCloseTo(0.05)   // (−125+125)/55 = 0 → floor
-    expect(heatWeight(-140)).toBe(0.05)
+  it('is continuous at the -115 hand-over', () => {
+    expect(heatWeight(-115)).toBeCloseTo(0.05)
+    expect(heatWeight(-114.99)).toBeCloseTo(0.05, 3)
+  })
+  it('floors the very weakest signal, and anything below the scale, at 0.01', () => {
+    expect(heatWeight(-125)).toBeCloseTo(0.01)
+    expect(heatWeight(-140)).toBe(0.01)
   })
 })
 

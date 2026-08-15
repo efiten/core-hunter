@@ -34,6 +34,12 @@ describe('signal — parity with app/src/signal.js', () => {
       expect(fillOpacity(t)).toBe(appFillOpacity(t))
     }
   })
+  // The fallback is the one value a per-tier sweep cannot reach, so it is
+  // exactly where the two copies can drift unnoticed.
+  it('falls back to the same opacity for an unknown tier', () => {
+    expect(fillOpacity('nonsense')).toBe(appFillOpacity('nonsense'))
+    expect(fillOpacity(undefined)).toBe(appFillOpacity(undefined))
+  })
 })
 
 describe('rssiTier — weak end below -110 (#282)', () => {

@@ -8,7 +8,7 @@ export function snrTier(snr) {
 }
 export function tierColorVar(tier) { return `--ch-sig-${tier}` }
 const OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.26, faint: 0.19, none: 0.15 }
-export function fillOpacity(tier) { return OPACITY[tier] ?? 0.18 }
+export function fillOpacity(tier) { return OPACITY[tier] ?? 0.15 }
 
 // effectivePlotOffset combines the per-device calibration offset with the active
 // attenuator setting. An attenuator lowers the measured RSSI, so its magnitude is
@@ -56,13 +56,19 @@ export function ageFade(rxAt, nowMs, windowMs) {
   return 1 - (1 - AGE_FADE_FLOOR) * frac
 }
 
-// heatWeight maps an RSSI (dBm) to a 0.05–1 weight for the map's Locate density
-// heatmap — the weak end (-125) → 0.05, the strong end (-70) → 1, clamped. A
-// small floor keeps weak-but-present receptions visible in the cloud. The weak
-// anchor sits at -125 rather than -115 so the fringe receptions the faint tier
-// exists for still differ in weight instead of all landing on the floor (#282).
+// heatWeight maps an RSSI (dBm) to a weight for the map's Locate density
+// heatmap: -115 → 0.05, -70 → 1, clamped.
+//
+// Below -115 it keeps descending on its own shallow ramp to 0.01 at -125
+// rather than flattening onto the floor, so the faint tier still separates in
+// the cloud (#282). Deliberately two segments and not one wider linear span:
+// the main band was tuned against real Locate clouds, and stretching it would
+// have re-weighted every mid-strength reception upward (a -90 point would go
+// 0.50 → 0.64), broadening the cloud everywhere to fix the fringe.
+const HEAT_FRINGE_DBM = -115
 export function heatWeight(rssi) {
-  return Math.max(0.05, Math.min(1, (rssi + 125) / 55))
+  if (rssi >= HEAT_FRINGE_DBM) return Math.max(0.05, Math.min(1, (rssi + 115) / 45))
+  return Math.max(0.01, 0.05 * (rssi + 125) / 10)
 }
 
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
