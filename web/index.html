@@ -20,6 +20,22 @@
     // normalized the URL/storage to the (still-empty) live selection, which
     // would otherwise wipe out a shared/saved hunter selection (#196).
     window.__initialHunter = initial('hunter', '')
+    // The ?v= buster covers the stylesheet, the manifest/icon and the two entry
+    // scripts — NOT the module graph behind them: `import './signal.js'`
+    // resolves without the query, so nothing imported is versioned (#347).
+    //
+    // That is safe only because the site is served with `Cache-Control:
+    // no-cache`, which makes the browser revalidate every asset against its
+    // ETag before use — measured 2026-08-15 on map.mesh-hunter.eu for
+    // index.html, map.js, signal.js and style.css. So a module can never be
+    // served stale against a fresh stylesheet, and the buster is belt and
+    // braces rather than the mechanism.
+    //
+    // If that nginx policy ever changes to a max-age, this becomes a real
+    // hazard: a fresh style.css with a cached signal.js resolves
+    // `--ch-sig-faint` to '', and Leaflet's canvas silently ignores an empty
+    // fillStyle — points inherit the previous colour instead of failing
+    // visibly. Version the imports (or keep no-cache) before that happens.
     const v = '?v=' + VERSION
     const css = document.createElement('link')
     css.rel = 'stylesheet'; css.href = 'style.css' + v
