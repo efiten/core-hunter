@@ -434,3 +434,20 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
     await expect(page.locator('.leaflet-popup-content')).toContainText('BE-HSS-DinX', { timeout: 1000 })
   }).toPass({ timeout: 10000 })
 })
+
+// #353: a dynamically created <script> defaults to async, so filters.js and
+// map.js raced. map.js calls window.currentHunters() from urlstate.register()
+// during evaluation, so when it won the race the module threw and the page was
+// dead — no map, no wiring, one console line. Insertion order is what the code
+// assumes, and async=false is what enforces it.
+test('the entry module scripts execute in insertion order, not whenever they load', async ({ page }) => {
+  await page.goto('/')
+  const entries = await page.evaluate(() => [...document.querySelectorAll('script[type="module"][src]')]
+    .map((s) => ({ src: s.getAttribute('src').split('?')[0], async: s.async })))
+  expect(entries.map((e) => e.src)).toEqual(['filters.js', 'map.js'])
+  for (const e of entries) expect(e.async).toBe(false)
+  // And the ordering actually held: map.js evaluated past the register() call
+  // that needs filters.js, so the picker getters exist.
+  expect(await page.evaluate(() => typeof window.currentHunters)).toBe('function')
+  expect(await page.evaluate(() => typeof window.currentTypes)).toBe('function')
+})

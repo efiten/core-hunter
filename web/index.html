@@ -29,9 +29,18 @@
       l.rel = rel; l.href = href + v
       document.head.appendChild(l)
     }
+    // async = false is load-bearing, not tidiness (#353). A dynamically
+    // created <script> defaults to async, so these two race: map.js evaluates
+    // whenever its own module graph finishes, which can be before filters.js
+    // has defined window.currentHunters/currentTypes. map.js calls those from
+    // urlstate.register() during evaluation, so losing the race throws
+    // "window.currentHunters is not a function" and kills the whole module —
+    // no map, no /api/auth/me, no wiring, a dead page with one console line.
+    // Setting async=false restores insertion-order execution for dynamically
+    // inserted module scripts, which is the ordering the code assumes.
     for (const src of ['filters.js', 'map.js']) {
       const s = document.createElement('script')
-      s.type = 'module'; s.src = src + v
+      s.type = 'module'; s.async = false; s.src = src + v
       document.body.appendChild(s)
     }
   </script>
