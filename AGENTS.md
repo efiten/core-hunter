@@ -24,12 +24,16 @@ tells you where a transmitter is. A relayed packet's RSSI/SNR describes the last
 forwarded it, not the target. Drive toward the strongest zero-hop heat to close in on the source.
 
 **"Direct" is not "authenticated" (#320).** The hop count and path are plaintext header fields with
-no signature or MAC over them — the firmware's only packet digest covers the payload type and
-payload, not the path (`Packet.cpp:41-50`), and the decoder verifies nothing but an Advert's own
-Ed25519 signature. Any node transmitting directly to the hunter can claim zero-hop or fabricate a
-relay path. The physics still hold (whatever it claims, it reached our antenna), and RSSI/SNR are
-measured by our own radio and cannot be forged — so the exposure is **misattribution, not
-mislocation**. See `docs/2026-08-15-hop-count-trust.md`.
+no signature or MAC over them. MeshCore does authenticate payloads (channel/direct MACs, an Advert's
+Ed25519 signature) but never routing metadata — and core-hunter does not verify Advert signatures
+today, since `decode.js` calls the synchronous decoder (#356). So any node transmitting directly to
+the hunter can claim zero-hop, fabricate a relay path, or replay another node's identity.
+
+RSSI/SNR are measured by our own radio and cannot be forged, so the map's **anonymous** coverage is
+sound. But every claim of the form *"node N was here"* — Locate, drift, per-sender coverage — rests
+on an identity the protocol does not authenticate: a forged sender id puts real measurements taken
+at the attacker's position into that node's set, which moves its estimate, not just its label. See
+`docs/2026-08-15-hop-count-trust.md`.
 
 **Position disclaimer (required in all position-bearing output):** position is *inferred* from radio
 measurements (RSSI, SNR) via mesh topology — **not** from GPS tracking of the target node. The GPS
