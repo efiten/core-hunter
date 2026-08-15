@@ -17,14 +17,25 @@ export function isFilterActive(filter) {
 // Friendly labels for the decoder's raw packet_type values — shared by the
 // filter chips, the receptions log, and map popups so the same reception
 // reads the same way everywhere (#174).
+//
+// Carries the decoder's FULL PayloadType set, pinned by a unit test: a type
+// that is captured but has no chip cannot be filtered for at all, and the
+// types missing before #341 were not rare — Control, Path and AnonRequest are
+// 22% of production receptions on their own.
 export const FILTER_PACKET_TYPES = [
   { value: 'Advert',      label: 'Advert' },
   { value: 'GroupText',   label: 'Channel' },
+  { value: 'GroupData',   label: 'Channel data' },
   { value: 'Response',    label: 'Response' },
   { value: 'Request',     label: 'Request' },
+  { value: 'AnonRequest', label: 'Anon req' },
   { value: 'TextMessage', label: 'Direct msg' },
   { value: 'Ack',         label: 'Ack' },
+  { value: 'Control',     label: 'Control' },
+  { value: 'Path',        label: 'Path' },
+  { value: 'Multipart',   label: 'Multipart' },
   { value: 'Trace',       label: 'Trace' },
+  { value: 'RawCustom',   label: 'Raw' },
 ]
 
 export function packetTypeLabel(rawType) {
