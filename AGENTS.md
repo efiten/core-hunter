@@ -23,6 +23,14 @@ node type. Improved successor to an earlier method. Two reused building blocks:
 tells you where a transmitter is. A relayed packet's RSSI/SNR describes the last repeater that
 forwarded it, not the target. Drive toward the strongest zero-hop heat to close in on the source.
 
+**"Direct" is not "authenticated" (#320).** The hop count and path are plaintext header fields with
+no signature or MAC over them — the firmware's only packet digest covers the payload type and
+payload, not the path (`Packet.cpp:41-50`), and the decoder verifies nothing but an Advert's own
+Ed25519 signature. Any node transmitting directly to the hunter can claim zero-hop or fabricate a
+relay path. The physics still hold (whatever it claims, it reached our antenna), and RSSI/SNR are
+measured by our own radio and cannot be forged — so the exposure is **misattribution, not
+mislocation**. See `docs/2026-08-15-hop-count-trust.md`.
+
 **Position disclaimer (required in all position-bearing output):** position is *inferred* from radio
 measurements (RSSI, SNR) via mesh topology — **not** from GPS tracking of the target node. The GPS
 coordinates stored with each reception are the **hunter phone's own position** at the moment of
