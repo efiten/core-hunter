@@ -7,8 +7,8 @@ export function snrTier(snr) {
   return 'cold'
 }
 export function tierColorVar(tier) { return `--ch-sig-${tier}` }
-const OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.24, none: 0.18 }
-export function fillOpacity(tier) { return OPACITY[tier] ?? 0.18 }
+const OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.26, faint: 0.19, none: 0.15 }
+export function fillOpacity(tier) { return OPACITY[tier] ?? 0.15 }
 
 // effectivePlotOffset combines the per-device calibration offset with the active
 // attenuator setting. An attenuator lowers the measured RSSI, so its magnitude is
@@ -17,6 +17,29 @@ export function fillOpacity(tier) { return OPACITY[tier] ?? 0.18 }
 // published RSSI stay raw.
 export function effectivePlotOffset(calibrationOffset = 0, attenuatorDb = 0) {
   return (calibrationOffset || 0) - (attenuatorDb || 0)
+}
+
+// The continuous weak..strong RSSI span, shared by the HUD thermal bar and the
+// ping pitch/gain (sound.js) so a reception sounds as hot as it looks. Kept in
+// one place because they drifted apart from the tier bands once already: the
+// weak anchor was -115, which pinned the whole sub -115 fringe — 13% of
+// production receptions — to the far left of the bar and the lowest ping (#282).
+export const RSSI_WEAK_DBM = -125
+export const RSSI_STRONG_DBM = -75
+
+// rssiFrac maps a calibrated RSSI onto 0..1 across that span, clamped.
+export function rssiFrac(rssi, offset = 0) {
+  if (rssi == null) return 0
+  const v = Math.max(RSSI_WEAK_DBM, Math.min(RSSI_STRONG_DBM, rssi + offset))
+  return (v - RSSI_WEAK_DBM) / (RSSI_STRONG_DBM - RSSI_WEAK_DBM)
+}
+
+// rssiToPct is the HUD thermal-bar marker position (0-100%). A reception with
+// no RSSI parks at 10% rather than flush against the weak end, so the marker
+// stays visible as a marker.
+export function rssiToPct(rssi, offset = 0) {
+  if (rssi == null) return 10
+  return Math.round(rssiFrac(rssi, offset) * 100)
 }
 
 // ageFade returns an opacity multiplier for a reception's age within the
@@ -33,15 +56,29 @@ export function ageFade(rxAt, nowMs, windowMs) {
   return 1 - (1 - AGE_FADE_FLOOR) * frac
 }
 
-// heatWeight maps an RSSI (dBm) to a 0.05–1 weight for the map's Locate density
-// heatmap — the weak end (-115) → 0.05, the strong end (-70) → 1, clamped. A
-// small floor keeps weak-but-present receptions visible in the cloud.
+// heatWeight maps an RSSI (dBm) to a weight for the map's Locate density
+// heatmap: -115 → 0.05, -70 → 1, clamped.
+//
+// Below -115 it keeps descending on its own shallow ramp to 0.01 at -125
+// rather than flattening onto the floor, so the faint tier still separates in
+// the cloud (#282). Deliberately two segments and not one wider linear span:
+// the main band was tuned against real Locate clouds, and stretching it would
+// have re-weighted every mid-strength reception upward (a -90 point would go
+// 0.50 → 0.64), broadening the cloud everywhere to fix the fringe.
+const HEAT_FRINGE_DBM = -115
 export function heatWeight(rssi) {
-  return Math.max(0.05, Math.min(1, (rssi + 115) / 45))
+  if (rssi >= HEAT_FRINGE_DBM) return Math.max(0.05, Math.min(1, (rssi + 115) / 45))
+  return Math.max(0.01, 0.05 * (rssi + 125) / 10)
 }
 
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.
+//
+// The weak end runs to -115/'faint' rather than stopping at -110 (#282): LoRa
+// decodes far below -110, and on production data 26% of all receptions — 35%
+// of the zero-hop ones direction-finding relies on — sat below it, i.e. one
+// flat colour over the fringe where coverage actually ends. The split is at
+// -115 because that halves the fringe almost exactly (13% / 13%).
 export function rssiTier(rssi, offset = 0) {
   if (rssi == null) return 'none'
   const v = rssi + offset
@@ -49,13 +86,14 @@ export function rssiTier(rssi, offset = 0) {
   if (v >= -90) return 'warm'
   if (v >= -100) return 'mid'
   if (v >= -110) return 'cool'
-  return 'cold'
+  if (v >= -115) return 'cold'
+  return 'faint'
 }
 
 // extrusionHeight maps an RSSI tier to a 3D hex-bar height in metres (#147
 // phase 2). Bucketed by the same fixed dBm bands as rssiTier/tierColorVar, so
 // a bar's height and colour always agree on the same tier.
-const EXTRUSION_HEIGHT = { hot: 90, warm: 68, mid: 48, cool: 30, cold: 15, none: 0 }
+const EXTRUSION_HEIGHT = { hot: 90, warm: 68, mid: 48, cool: 30, cold: 15, faint: 7, none: 0 }
 export function extrusionHeight(rssi, offset = 0) {
   return EXTRUSION_HEIGHT[rssiTier(rssi, offset)]
 }

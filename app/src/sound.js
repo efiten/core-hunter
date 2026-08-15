@@ -7,7 +7,8 @@
 //   rxtx — a morse dit per real zero-hop reception + the transmit pops, no
 //          bed/music; pitch (F harmonic series) and length scale with RSSI
 //          (hotter = higher/longer), same fixed dBm band as the HUD bar
-//          (-115..-75, calibration/attenuator offset applied)
+//          (RSSI_WEAK_DBM..RSSI_STRONG_DBM, calibration/attenuator offset
+//          applied)
 //   full — the surf/air soundbed + generative ambient music (Eno-style, never
 //          repeats), with the rx/tx sounds on top. The bed/music carry no
 //          information (atmosphere only), so the always-real rule holds.
@@ -16,6 +17,11 @@
 // old WebViews), mirroring the huntmap stub pattern.
 // Mix values (reverb wet/decay, music volume/density) were chosen by ear in
 // the #145 sound lab — see docs/2026-07-16-sound-modes.md.
+
+// rssiFrac is the HUD thermal bar's own weak..strong mapping, shared so a ping
+// "sounds as hot" as the reception looks on the map/HUD. `offset` throughout
+// this module is the plot offset (calibration + attenuator).
+import { rssiFrac } from './signal.js'
 
 export const SOUND_MODES = ['off', 'rxtx', 'full']
 
@@ -26,24 +32,20 @@ export function nextSoundMode(mode) {
   return SOUND_MODES[(Math.max(i, 0) + 1) % SOUND_MODES.length]
 }
 
-// Same band as the HUD's rssiToPct: weak -115 dBm .. strong -75 dBm. `offset`
-// is the plot offset (calibration + attenuator), so a ping "sounds as hot" as
-// the reception looks on the map/HUD.
-const WEAK = -115
-const STRONG = -75
-function rssiFrac(rssi, offset = 0) {
-  if (rssi == null) return 0
-  const calibrated = rssi + offset
-  return (Math.max(WEAK, Math.min(STRONG, calibrated)) - WEAK) / (STRONG - WEAK)
-}
-
 // RSSI → ping pitch on the HARMONIC SERIES of F2 (87.31 Hz), consonant
-// overtones only: F4 A4 C5 F5 G5 A5 C6. The generative music plays in
+// overtones only: F4 A4 C5 F5 G5 A5 C6 F6. The generative music plays in
 // F-pentatonic, and overtones of F physically cannot clash with it — that was
 // the fix for the first pentatonic attempt, a kalimba tuned to G, which fought
 // the music. Hotter signal = higher harmonic.
+//
+// F6 is the eighth step, added with the wider band of #282: the steps are
+// evenly spaced across weak..strong, so stretching the band from 40 dB to
+// 50 dB over seven steps would have coarsened each one from 6.7 to 8.3 dB —
+// swallowing a 7 dB gain at close range, which is exactly the change you hunt
+// by. Eight steps put it back at 7.1 dB. F6 is an octave of the root, so it
+// cannot clash with the music either.
 const HARM_ROOT_HZ = 87.31 // F2
-const HARMONICS = [4, 5, 6, 8, 9, 10, 12]
+const HARMONICS = [4, 5, 6, 8, 9, 10, 12, 16]
 export function harmFreq(rssi, offset = 0) {
   return HARM_ROOT_HZ * HARMONICS[Math.round(rssiFrac(rssi, offset) * (HARMONICS.length - 1))]
 }

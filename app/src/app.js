@@ -27,7 +27,7 @@ import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
 import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex } from './settings.js'
 import { sinceLabel } from './elapsed.js'
-import { effectivePlotOffset } from './signal.js'
+import { effectivePlotOffset, rssiToPct } from './signal.js'
 import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
@@ -146,17 +146,6 @@ const el = (id) => document.getElementById(id)
 // ---------------------------------------------------------------------------
 // HUD
 // ---------------------------------------------------------------------------
-
-// RSSI → continuous bar marker percent.
-// Maps calibrated RSSI from the weak end (-115 dBm) to the strong end (-75 dBm) → 0–100%.
-function rssiToPct(rssi, offset) {
-  if (rssi == null) return 10
-  const calibrated = rssi + offset
-  const WEAK = -115
-  const STRONG = -75
-  const clamped = Math.max(WEAK, Math.min(STRONG, calibrated))
-  return Math.round(((clamped - WEAK) / (STRONG - WEAK)) * 100)
-}
 
 function updateHud(rec) {
   // Hero: RSSI (big green readout)

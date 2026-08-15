@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight , withAlpha } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../signal.js'
 
 describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
   it('maps the strong end to 1 and clamps above', () => {
@@ -9,9 +9,25 @@ describe('heatWeight — RSSI → 0.05..1 Locate heatmap weight', () => {
   it('scales linearly across the band', () => {
     expect(heatWeight(-92.5)).toBeCloseTo(0.5)   // midpoint of [-115,-70]
   })
-  it('floors weak/absent signal at 0.05', () => {
-    expect(heatWeight(-115)).toBeCloseTo(0.05)   // (−115+115)/45 = 0 → floor
-    expect(heatWeight(-140)).toBe(0.05)
+  // The band above -115 was tuned against real Locate clouds, so extending the
+  // weak end must not re-weight it — a wider linear span would have pulled
+  // every mid-strength point up and broadened the cloud everywhere (#282).
+  it('leaves the weights above -115 exactly as they were', () => {
+    expect(heatWeight(-80)).toBeCloseTo(35 / 45)
+    expect(heatWeight(-95)).toBeCloseTo(20 / 45)
+    expect(heatWeight(-110)).toBeCloseTo(5 / 45)
+  })
+  it('still separates receptions between -125 and -115 (#282)', () => {
+    expect(heatWeight(-115)).toBeGreaterThan(heatWeight(-120))
+    expect(heatWeight(-120)).toBeGreaterThan(heatWeight(-125))
+  })
+  it('is continuous at the -115 hand-over', () => {
+    expect(heatWeight(-115)).toBeCloseTo(0.05)
+    expect(heatWeight(-114.99)).toBeCloseTo(0.05, 3)
+  })
+  it('floors the very weakest signal, and anything below the scale, at 0.01', () => {
+    expect(heatWeight(-125)).toBeCloseTo(0.01)
+    expect(heatWeight(-140)).toBe(0.01)
   })
 })
 
@@ -29,6 +45,12 @@ describe('thermal signal tiers (hot = strong)', () => {
     expect(fillOpacity('hot')).toBeGreaterThan(fillOpacity('cold'))
     expect(fillOpacity('none')).toBeLessThan(fillOpacity('cool'))
   })
+  // Opacity is the non-hue cue that carries the tier ramp for a colour-blind
+  // reader, so it has to keep falling monotonically as the tiers weaken.
+  it('has a strictly decreasing opacity ramp from hot to none', () => {
+    const ramp = ['hot', 'warm', 'mid', 'cool', 'cold', 'faint', 'none'].map(fillOpacity)
+    for (let i = 1; i < ramp.length; i++) expect(ramp[i]).toBeLessThan(ramp[i - 1])
+  })
 })
 
 describe('rssiTier — fixed dBm bands (hot = strong = close)', () => {
@@ -37,8 +59,19 @@ describe('rssiTier — fixed dBm bands (hot = strong = close)', () => {
     expect(rssiTier(-85)).toBe('warm')
     expect(rssiTier(-95)).toBe('mid')
     expect(rssiTier(-105)).toBe('cool')
-    expect(rssiTier(-120)).toBe('cold')
+    expect(rssiTier(-112)).toBe('cold')
+    expect(rssiTier(-120)).toBe('faint')
     expect(rssiTier(null)).toBe('none')
+  })
+  // LoRa decodes well below -110: 26% of production receptions (35% of the
+  // zero-hop ones the direction-finding actually relies on) used to collapse
+  // into one bucket at the fringe the map exists to describe (#282).
+  it('splits the sub -110 fringe at -115 instead of collapsing it', () => {
+    expect(rssiTier(-110)).toBe('cool')
+    expect(rssiTier(-111)).toBe('cold')
+    expect(rssiTier(-115)).toBe('cold')
+    expect(rssiTier(-116)).toBe('faint')
+    expect(rssiTier(-127)).toBe('faint')
   })
   it('applies calibration offset before banding', () => {
     // -92 + 5 = -87 → warm
@@ -51,7 +84,11 @@ describe('extrusionHeight — RSSI tier → 3D hex-bar height (metres)', () => {
     expect(extrusionHeight(-70)).toBeGreaterThan(extrusionHeight(-85))
     expect(extrusionHeight(-85)).toBeGreaterThan(extrusionHeight(-95))
     expect(extrusionHeight(-95)).toBeGreaterThan(extrusionHeight(-105))
-    expect(extrusionHeight(-105)).toBeGreaterThan(extrusionHeight(-120))
+    expect(extrusionHeight(-105)).toBeGreaterThan(extrusionHeight(-112))
+    expect(extrusionHeight(-112)).toBeGreaterThan(extrusionHeight(-120))
+  })
+  it('gives the faint tier a bar of its own, above no-signal', () => {
+    expect(extrusionHeight(-120)).toBeGreaterThan(extrusionHeight(null))
   })
   it('is 0 for a cell with no RSSI reading', () => {
     expect(extrusionHeight(null)).toBe(0)
@@ -59,6 +96,26 @@ describe('extrusionHeight — RSSI tier → 3D hex-bar height (metres)', () => {
   it('applies the calibration offset before banding, same as rssiTier', () => {
     // -92 + 5 = -87 → warm, same height as a direct -87 reading
     expect(extrusionHeight(-92, 5)).toBe(extrusionHeight(-87))
+  })
+})
+
+describe('rssiToPct — HUD thermal-bar marker position', () => {
+  it('puts the weak and strong anchors at the ends of the bar', () => {
+    expect(rssiToPct(RSSI_WEAK_DBM, 0)).toBe(0)
+    expect(rssiToPct(RSSI_STRONG_DBM, 0)).toBe(100)
+  })
+  it('clamps outside the band', () => {
+    expect(rssiToPct(-140, 0)).toBe(0)
+    expect(rssiToPct(-20, 0)).toBe(100)
+  })
+  it('still moves across the sub -115 fringe (#282)', () => {
+    expect(rssiToPct(-115, 0)).toBeGreaterThan(rssiToPct(-125, 0))
+  })
+  it('applies the plot offset before positioning', () => {
+    expect(rssiToPct(-105, 10)).toBe(rssiToPct(-95, 0))
+  })
+  it('parks a missing reading just inside the weak end, not flush against it', () => {
+    expect(rssiToPct(null, 0)).toBe(10)
   })
 })
 
