@@ -25,6 +25,17 @@ export const TRUSTED_ENCIRCLEMENT = 0.5
 
 function isCoord(v) { return typeof v === 'number' && Number.isFinite(v) }
 
+// drawableNodes keeps the registry rows that can actually be plotted: a
+// pubkey to attribute them to, and a finite position. A resolver can answer
+// with plenty of nodes and no coordinates at all — the resolve proxy strips
+// lat/lon below the member role — which is indistinguishable from an empty
+// registry as far as the map is concerned, and is what the "nothing to draw"
+// notice reports on (#307).
+export function drawableNodes(nodes) {
+  if (!Array.isArray(nodes)) return []
+  return nodes.filter((n) => n && n.pubkey && isCoord(n.lat) && isCoord(n.lon))
+}
+
 // inBounds tests a {lat, lon} against a map viewport box (edges inclusive).
 export function inBounds(pos, bounds) {
   if (!pos || !bounds) return false
