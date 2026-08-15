@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, openPicker } from './fixtures.js'
 
 // Time-range picker (#285).
 
@@ -15,8 +15,7 @@ test('the button labels the current range and the panel opens/closes', async ({ 
   // the absolute span rather than a quick-range name.
   await expect(page.locator('#tr-label')).toHaveText('00:00 → 23:59')
 
-  await page.click('#tr-toggle')
-  await expect(page.locator('#time-picker')).toBeVisible()
+  await openPicker(page, '#tr-toggle', '#time-picker')
   await expect(page.locator('#tr-quick .tr-item')).toHaveCount(12)
   await page.keyboard.press('Escape')
   await expect(page.locator('#time-picker')).toBeHidden()
@@ -26,7 +25,7 @@ test('picking a quick range stores the token, relabels, and requeries a resolved
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
   await page.goto('/?mode=points')
-  await page.click('#tr-toggle')
+  await openPicker(page, '#tr-toggle', '#time-picker')
   await page.locator('#tr-quick button', { hasText: 'Last 6 hours' }).click()
 
   await expect(page.locator('#tr-label')).toHaveText('Last 6 hours')
@@ -45,13 +44,13 @@ test('a token range in the URL is restored and resolved on load', async ({ page 
   await expect(page.locator('#tr-label')).toHaveText('Last 1 hour')
   await expect.poll(() => urls.some((u) => /from=\d{4}-\d{2}-\d{2}T/.test(u))).toBe(true)
   // The active quick range is marked in the list.
-  await page.click('#tr-toggle')
+  await openPicker(page, '#tr-toggle', '#time-picker')
   await expect(page.locator('#tr-quick .tr-item.active')).toHaveText('Last 1 hour')
 })
 
 test('the absolute panel pre-fills from a token and Apply switches to an absolute range', async ({ page }) => {
   await page.goto('/?mode=points&from=now-1h&to=now')
-  await page.click('#tr-toggle')
+  await openPicker(page, '#tr-toggle', '#time-picker')
   // datetime-local cannot show a token, so the fields show what it resolves to.
   await expect(page.locator('#tr-from')).not.toHaveValue('')
   await expect(page.locator('#tr-from')).not.toHaveValue('now-1h')
@@ -72,7 +71,7 @@ test('the absolute panel pre-fills from a token and Apply switches to an absolut
 test('copy absolute link freezes the range to timestamps', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/?mode=points&from=now-1h&to=now')
-  await page.click('#tr-toggle')
+  await openPicker(page, '#tr-toggle', '#time-picker')
   await page.click('#tr-copy')
   await expect(page.locator('#tr-copy')).toHaveText('Copied!')
 
@@ -96,7 +95,7 @@ test('a guest is told the range is clamped, not just shown a hidden row (#300)',
   // Hiding the >24h quick ranges stops a guest picking one, but a shared link
   // still lands here — and the server clamps to 24h regardless.
   await expect(page.locator('#tr-label')).toHaveText('Last 7 days (24 h max)')
-  await page.click('#tr-toggle')
+  await openPicker(page, '#tr-toggle', '#time-picker')
   await expect(page.locator('.tr-item', { hasText: 'Last 7 days' })).toBeHidden()
 })
 
