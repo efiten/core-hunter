@@ -5,7 +5,7 @@ import { locate, toLocatePoints } from './locate.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
-import { layerVisibility } from './maplayers.js'
+import { layerVisibility, pitchFor } from './maplayers.js'
 import { octagonRing, pillarRadiusM } from './pointmarker.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -33,7 +33,6 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 // "openmaptiles"/"building" source, already fetched for the 2D basemap, so 3D
 // adds no new data request. (Terrain was dropped — see docs/2026-07-11-3d-mode.md:
 // its AWS DEM tiles kept the map in a perpetual load loop and froze weaker GPUs.)
-const PITCH_3D = 60
 // Points-in-3D (#250): a small standing "pillar" per reception, same tier
 // height/colour as hex-3d's bars, so it reads clearly in the tilted view
 // instead of disappearing under the hex/building geometry (a flat circle
@@ -45,7 +44,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setLayerMode() {}, set3D() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -184,7 +183,7 @@ export function createHuntMap(containerId) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
-    // this block and set3D() read it, so a style reload and a FAB tap can no
+    // this block and setView() read it, so a style reload and a FAB tap can no
     // longer disagree about what is on screen.
     const vis = layerVisibility({ mode, mode3D })
     const shown = (id) => (vis[id] ? 'visible' : 'none')
@@ -505,7 +504,24 @@ export function createHuntMap(containerId) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
     }
   }
-  function setLayerMode(m) { mode = m; applyLayerVisibility(); draw() }
+  // setView(m, v) — the view FAB's one entry point (#336). The layer mode and
+  // the 2D/3D flag used to be set through two methods, each doing its own
+  // applyLayerVisibility() + draw(), so a single tap ran two full
+  // tessellate-and-upload passes over the whole record set. Nothing painted in
+  // between (both were synchronous within one task), so it was invisible — but
+  // it doubled the work on the one control designed to be used one-handed
+  // while driving. Assign both, then apply once.
+  function setView(m, v) {
+    mode = m
+    mode3D = !!v
+    applyLayerVisibility()
+    map.easeTo({ pitch: pitchFor(mode3D), duration: 500 })
+    // draw() is needed even when only the flag changed: the hidden collection's
+    // source is left at EMPTY (that is the point of the per-tick build guard),
+    // so revealing it without repopulating shows nothing until the next 1 Hz tick.
+    draw()
+    if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
+  }
   // Node-position layer (#197): the registry set is fetched once by app.js and
   // handed over whole; bounds filtering happens here per tick.
   function setNodePositions(nodes) { nodePositions = Array.isArray(nodes) ? nodes : []; draw() }
@@ -515,19 +531,6 @@ export function createHuntMap(containerId) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', nodeLayerOn ? 'visible' : 'none')
     }
     draw()
-  }
-  // set3D(v) — the 2D/3D FAB: tilts the camera, swaps the flat hex/points
-  // layers for their extruded twins, and shows 3D buildings (#147 phase 2,
-  // points added in #250).
-  function set3D(v) {
-    mode3D = !!v
-    map.easeTo({ pitch: mode3D ? PITCH_3D : 0, duration: 500 })
-    applyLayerVisibility()
-    // draw() as well, like setLayerMode: the hidden collection's source is left
-    // at EMPTY (that is the point of the per-tick build guard), so revealing it
-    // without repopulating shows nothing until the next 1 Hz tick.
-    draw()
-    if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
@@ -540,7 +543,7 @@ export function createHuntMap(containerId) {
     wireIsolate(popup, rec); wireIgnore(popup, rec)
   }
   function destroy() { map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setLayerMode, set3D, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
 }
 
 function popupHtml(r, selectedIds) {
