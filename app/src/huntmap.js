@@ -27,12 +27,14 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // can mount on it when the hosted basemap style is unreachable (see below).
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
 
-// 3D mode (#147 phase 2): the FAB just tilts the camera and swaps the flat hex
-// layer for its fill-extrusion twin — same 'hex' source, height added per
-// feature (extrusionHeight). Buildings reuse the OpenFreeMap style's own
-// "openmaptiles"/"building" source, already fetched for the 2D basemap, so 3D
-// adds no new data request. (Terrain was dropped — see docs/2026-07-11-3d-mode.md:
-// its AWS DEM tiles kept the map in a perpetual load loop and froze weaker GPUs.)
+// 3D mode (#147 phase 2): setView() tilts the camera (pitchFor, maplayers.js)
+// and swaps the flat hex layer for its fill-extrusion twin — same 'hex'
+// source, height added per feature (extrusionHeight). Buildings reuse the
+// OpenFreeMap style's own "openmaptiles"/"building" source, already fetched
+// for the 2D basemap, so 3D adds no new data request. (Terrain was dropped —
+// see docs/2026-07-11-3d-mode.md: its AWS DEM tiles kept the map in a
+// perpetual load loop and froze weaker GPUs.)
+
 // Points-in-3D (#250): a small standing "pillar" per reception, same tier
 // height/colour as hex-3d's bars, so it reads clearly in the tilted view
 // instead of disappearing under the hex/building geometry (a flat circle

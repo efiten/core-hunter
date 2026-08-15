@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { layerVisibility, pitchFor, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
+import { layerVisibility, pitchFor, PITCH_3D, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
 
 // #250/#266: which of the four signal layers is visible for a given
 // layer-mode / 2D-3D combination. Extracted from huntmap.js because that file
@@ -137,7 +137,8 @@ describe('pitchFor — camera tilt per view state', () => {
     expect(pitchFor(false)).toBe(0)
   })
   it('is tilted in 3D', () => {
-    expect(pitchFor(true)).toBeGreaterThan(0)
+    expect(pitchFor(true)).toBe(PITCH_3D)
+    expect(PITCH_3D).toBe(60)
   })
   it('tilts short of horizontal, so the horizon never enters the frame', () => {
     expect(pitchFor(true)).toBeLessThan(90)
@@ -145,11 +146,11 @@ describe('pitchFor — camera tilt per view state', () => {
   it('reads any truthy/falsy flag, since it comes from persisted state', () => {
     expect(pitchFor(undefined)).toBe(0)
     expect(pitchFor(null)).toBe(0)
-    expect(pitchFor(1)).toBe(pitchFor(true))
+    expect(pitchFor(1)).toBe(PITCH_3D)
   })
-  it('agrees with every VIEW_STATES entry', () => {
+  it('gives every VIEW_STATES entry the tilt its own flag asks for', () => {
     for (const s of VIEW_STATES) {
-      expect(pitchFor(s.mode3D)).toBe(s.mode3D ? pitchFor(true) : 0)
+      expect(pitchFor(s.mode3D)).toBe(s.mode3D ? PITCH_3D : 0)
     }
   })
 })
