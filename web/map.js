@@ -11,7 +11,7 @@ import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
-import { createMultiSelectPicker, wirePopover } from './multiselect.js'
+import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
@@ -1094,7 +1094,16 @@ document.getElementById('tr-copy').addEventListener('click', async (e) => {
 
 // Sync while still hidden: syncTimeUi() only writes the absolute fields when the
 // panel is closed, so the order matters — populate, then show.
-function openTimePicker() { syncTimeUi(); trPanel.hidden = false; trToggle.setAttribute('aria-expanded', 'true') }
+// Placed after unhiding, and right-aligned by preference: the panel is ~400px
+// of two columns, so on a wide bar it grows leftwards from the toggle. It flips
+// or shifts when that runs off a narrow screen (#372) — the old CSS `right: 0`
+// could not, and put the whole panel off the left edge of a phone.
+function openTimePicker() {
+  syncTimeUi()
+  trPanel.hidden = false
+  trToggle.setAttribute('aria-expanded', 'true')
+  placePopover(trToggle, trPanel, { align: 'right' })
+}
 function closeTimePicker() { trPanel.hidden = true; trToggle.setAttribute('aria-expanded', 'false') }
 trToggle.addEventListener('click', () => (trPanel.hidden ? openTimePicker() : closeTimePicker()))
 // Capture phase, same reason as elsewhere: a quick-range click re-renders rows
@@ -1105,6 +1114,10 @@ document.addEventListener('click', (e) => {
   closeTimePicker()
 }, true)
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !trPanel.hidden) closeTimePicker() })
+// A resize rewraps #bar and moves the toggle, so an open panel has to follow.
+window.addEventListener('resize', () => {
+  if (!trPanel.hidden) placePopover(trToggle, trPanel, { align: 'right' })
+})
 window.__syncTimeUi = syncTimeUi // test hook
 
 // Clear button: reset every filter to its default, drop the CS observer layers,

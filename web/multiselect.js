@@ -18,6 +18,8 @@
 // targetpicker.js's sender adapter and hunterpicker.js's hunter adapter are
 // the two current instances.
 
+import { popoverPosition } from './popoverPosition.js'
+
 const PAGE_SIZE = 12
 
 // Every row is treated as an id group, so the one-id adapters (hunters) and the
@@ -140,6 +142,21 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
   return { getSelected, setSelected, render, reset }
 }
 
+// placePopover puts an open panel where all of it is on screen (#372). The
+// panels are position:fixed, so left/top are viewport coordinates and the CSS
+// no longer anchors them to a toggle that moves when #bar wraps. Measure after
+// unhiding: a display:none panel has a zero rect.
+export function placePopover(toggleEl, panelEl, { align = 'left' } = {}) {
+  const { left, top } = popoverPosition(
+    toggleEl.getBoundingClientRect(),
+    panelEl.getBoundingClientRect(),
+    { width: window.innerWidth, height: window.innerHeight },
+    { align },
+  )
+  panelEl.style.left = `${left}px`
+  panelEl.style.top = `${top}px`
+}
+
 // wirePopover gives a toggle-button + panel the shared open/close shape
 // (#223's "toggle button reveals a panel"): outside-click and Escape both
 // close it. wrapEl scopes the outside-click check to this control's own
@@ -154,16 +171,24 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
 // by the time a bubble-phase document listener would run, e.target is already
 // detached and closest(wrapSelector) wrongly returns null, closing the panel
 // after every pick. Capture runs before that mutation happens.
-export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen }) {
+export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, align = 'left' }) {
   function open() {
     panelEl.hidden = false
     toggleEl.setAttribute('aria-expanded', 'true')
     if (onOpen) onOpen()
+    // After onOpen: it repopulates the rows, so the panel's height is only
+    // final once it has run (#372).
+    placePopover(toggleEl, panelEl, { align })
   }
   function close() {
     panelEl.hidden = true
     toggleEl.setAttribute('aria-expanded', 'false')
   }
+  // #bar wraps, so a resize moves the toggle to another row and the panel has
+  // to follow. Only while open: a measurement on a hidden panel is all zeroes.
+  window.addEventListener('resize', () => {
+    if (!panelEl.hidden) placePopover(toggleEl, panelEl, { align })
+  })
   toggleEl.addEventListener('click', () => (panelEl.hidden ? open() : close()))
   document.addEventListener('click', (e) => {
     if (panelEl.hidden) return
