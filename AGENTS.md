@@ -218,6 +218,13 @@ Traps that produce a test which cannot fail — all of these shipped in one revi
 - **An assertion that restates a literal.** "`VIEW_STATES` has exactly these 5 states in this order"
   re-types the array; it fails only when someone edits the array *and forgets to edit the test*,
   which is not the bug worth catching.
+- **A value the build or release process owns, retyped instead of imported.** The same instinct as
+  the one above, with a worse consequence: it is not permanently green, it goes red later, in
+  someone else's PR. `expect(seen).toBe('1.5.0')` where the code writes `VERSION` from
+  `web/version.js` passes today and fails the moment release-please rewrites that line — on the
+  release PR's own CI run, which is generated rather than authored, so nobody is looking for it.
+  Import the value and assert against it; the release bump then updates the assertion with the
+  code. Same for a version in `package.json`, a tag, or anything else a tool rewrites.
 
 A useful test names a behaviour that could plausibly break and would matter if it did. If you cannot
 describe the failure it would catch, it is not a test.
@@ -381,7 +388,14 @@ example to copy:
 - `battery_mv == 0` was treated as "empty" while firmware returns a literal `0` for boards with no
   VBAT sense at all (`src/helpers/ESP32Board.h` without `PIN_VBAT_READ`,
   `src/helpers/stm32/STM32Board.h` unconditionally), so the low-battery warning was permanently on
-  for every one of them.
+  for every one of them. Firmware agrees with itself here: its own auto-shutdown guard reads
+  `milliVolts > 0 && milliVolts < AUTO_SHUTDOWN_MILLIVOLTS` (`ui-new/UITask.cpp`), i.e. `0` is "not
+  a reading", not "empty".
+
+A rule this specific is only worth what the check behind it is: **grep the firmware for the
+constant before writing one.** `LOW_BATT_MILLIVOLTS` (3500, `ui-orig/UITask.cpp` only) was missed
+exactly that way — `app/src/battery.js` carried "firmware defines no low-battery threshold" for a
+release, which was true of the newer UI and wrong for the older one.
 
 **Where the authoritative value is a per-board build flag the app cannot read over the wire, show
 the raw measurement and omit the derived value** — "4020 mV" rather than a percentage computed from

@@ -36,12 +36,30 @@ const MV_EMPTY = 3000
 // (~4.3V) and well below a 2S pack's empty point (6000).
 const MULTI_CELL_MV = 5000
 
-// Ours, not firmware's — firmware defines no low-battery threshold. Expressed
-// as a percentage so it rides on the firmware curve above rather than being a
-// second, independent invented voltage: 20% is 3240mV on a 1S pack, and stays
-// meaningful if the endpoints ever change. Unknown percentage is not "low":
-// a multi-cell pack at 6100mV is genuinely flat, but we cannot tell, and a
-// warning that fires on a guess is the same failure as one that never fires.
+// Ours, and deliberately so — but "firmware defines no low-battery threshold",
+// as this comment used to claim, is wrong for half the fleet:
+//
+//   examples/companion_radio/ui-orig/UITask.cpp
+//     #ifndef LOW_BATT_MILLIVOLTS
+//       #define LOW_BATT_MILLIVOLTS 3500
+//     #endif
+//     low_batt = _board->getBattMilliVolts() < LOW_BATT_MILLIVOLTS;
+//
+// ui-new has no equivalent (grep: neither LOW_BATT nor low_batt), so a
+// companion on the newer UI genuinely has none, and the one that does has it as
+// a per-board build flag we cannot read over the wire — the §7 case exactly.
+//
+// The consequence is worth stating rather than hiding: 20% is 3240mV on a 1S
+// pack, i.e. 260mV BELOW firmware's ui-orig default, so on such a board this app
+// still calls a pack healthy while the companion's own screen shows it low.
+// Expressed as a percentage so it rides on the firmware curve above rather than
+// being a second, independent invented voltage, and stays meaningful if the
+// endpoints ever change. Whether to follow ui-orig's 3500mV where it applies is
+// a behaviour question, not a comment fix, and needs its own issue.
+//
+// Unknown percentage is not "low": a multi-cell pack at 6100mV is genuinely
+// flat, but we cannot tell, and a warning that fires on a guess is the same
+// failure as one that never fires.
 const LOW_BATTERY_PERCENT = 20
 
 export function parseStatsCore(bytes) {
