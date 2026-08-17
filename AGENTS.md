@@ -197,6 +197,31 @@ Follow **red → green** strictly:
 
 **Never write implementation before the failing test exists.**
 
+**Mutation-check every new test.** Red→green is only worth what "red" proved. For a brand-new
+module, red comes free from module resolution — that is the weakest possible form of it, and it
+proves nothing about the assertion. So before a test counts as written: **revert the fix (or break
+the one constant the test is about) and confirm the test goes red for the reason you intended.** A
+`Failed to load url … Does the file exist?` is **not** red. Neither is a suite that stays green with
+the code under test deleted.
+
+Traps that produce a test which cannot fail — all of these shipped in one review round:
+
+- **A synchronous fake hiding the ordering under test.** A stub that resolves immediately makes an
+  await-ordering bug invisible; the test passes with the await removed.
+- **An assertion already true from setup.** `expect(objects.some((o) => o.stopped)).toBe(true)` when
+  something in the fixture is already stopped before the code under test runs.
+- **Setup that stops the code under test from running at all.** `setMode('off')` returns early, so
+  the listener the test is about is never attached, and the assertion measures nothing.
+- **A tautology of the constant under test.** `expect(mvToPercent(3700)).toBe(50)` passes *because*
+  the endpoints are the ones being questioned — it restates the implementation instead of pinning
+  behaviour.
+- **An assertion that restates a literal.** "`VIEW_STATES` has exactly these 5 states in this order"
+  re-types the array; it fails only when someone edits the array *and forgets to edit the test*,
+  which is not the bug worth catching.
+
+A useful test names a behaviour that could plausibly break and would matter if it did. If you cannot
+describe the failure it would catch, it is not a test.
+
 Test locations:
 - `app/src/__tests__/` — Vitest; run with `npx vitest run`. No browser required.
 - `server/internal/*/` — `go test ./...` in `server/`.
@@ -231,6 +256,10 @@ Fix any findings from both stages, then proceed to the next task.
 Human contributors: keep PRs small and focused (one logical change), self-review against the spec
 before requesting review, then do a quality pass.
 
+This is the *per-task* review, and it is deliberately generic. The *per-push* one is §5.4, which
+lists the specific failure classes this project keeps producing; run that one once, over the whole
+diff, immediately before pushing.
+
 ### 5.3 Verify before claiming done
 
 Before marking a task or PR complete:
@@ -242,6 +271,43 @@ Before marking a task or PR complete:
 3. For the app, serve over a secure context and do a manual smoke-test if BLE hardware is available.
 
 Do not claim "done" based on intent. Run the commands and confirm green output.
+
+### 5.4 Pre-push self-review
+
+The last step before pushing a PR: read your own diff against this list. Every item below is a
+blocker that was found in review more than once — on 2026-07-29 six of seven open PRs were sent back,
+and almost every blocker was one of these seven, not something novel. Reading them here is cheaper
+than being told again.
+
+1. **Cause vs. symptom.** Does this fix the defect, or hide it? Clipping an overflowing label with
+   CSS when the real bug is the label lookup makes the bug *less visible and still present* — and it
+   stops being reported. Time-boxing a `z-index` overlap to two seconds is not fixing the overlap.
+   If you are treating a symptom knowingly, say so in the PR and link the cause.
+2. **Layout claims, computed rather than assumed.** If the PR says "it ellipsises", "it fits at
+   360px", "it wraps" — compute it. Common misses: `text-overflow` does nothing on an anonymous flex
+   item (the parent is `display: inline-flex`), a removed element's `bottom:`/`z-index` rule left
+   behind holds its space, `min-width: 0` on exactly one flex item makes that item absorb the entire
+   deficit, and a bare `#id` selector loses to an `#id element` one already in the sheet.
+3. **Async state flips.** A guard cannot observe a state that flips on a later tick. Calling
+   `resumeCue()` on the same tick as `ctx.resume()` drops the cue in exactly the case the change
+   exists for. Rendering from data that arrives later needs a re-render when it does.
+4. **Unhappy-path guards.** Does the feature still work when the *unrelated* call fails? A list that
+   renders only inside the success branch of another fetch disappears for an unrelated outage. If
+   every sibling on a path has a guard and yours does not, that is not simplification.
+5. **Stale references after a removal.** Grep for what you deleted: selectors, selector lists naming
+   a removed id, `aria-label`s for controls that no longer exist, and header comments now
+   contradicting the code ("falls back to index 0" above a `return 1`).
+6. **Identity rendering.** Never present a raw 64-hex pubkey or a 2-hex path hash as a name — in
+   visible text, in a `title` tooltip, or anywhere else (`app/src/feed.js`, `app/src/names.js`, and
+   §7's prefix-attribution rule). An id is an id; show it as one.
+7. **Parity when replacing a control.** Replacing a native control means re-providing what it did:
+   all options reachable (scrolling, not just the first page), type-ahead, and an on-screen trace of
+   the active selection once the panel is closed. List what the old control did before deciding the
+   new one is done.
+
+Then the mechanical pass: tests and build green (§5.3), every new test mutation-checked (§5.1), no
+secrets or local paths in the diff (§7), colours via tokens (§7), and the issue referenced with a
+closing keyword (§5.0).
 
 ---
 
@@ -300,6 +366,28 @@ Never guess byte layouts, field positions, or flag values. Only parse fields tha
 parser (`meshpacket.js`) already exposes based on confirmed firmware knowledge. If a field's byte
 layout is not confirmed from MeshCore firmware source, defer it: plumb the field as `null` /
 `"unknown"` and leave a comment. Do not fill it with a guessed value.
+
+**This covers constants, thresholds, unit conversions, curves and sentinel values too** — not only
+layouts. A number that only means something because the firmware says so is a firmware fact, and
+inventing one produces a confidently wrong reading rather than an obvious bug. Two real examples,
+both caught in review of #323 — `app/src/battery.js` carries the resolution and is the worked
+example to copy:
+
+- A 3200–4200 mV battery curve was invented. Firmware defines the endpoints as **per-board build
+  flags** — `BATT_MIN_MILLIVOLTS` / `BATT_MAX_MILLIVOLTS` in `examples/companion_radio/ui-*/
+  UITask.cpp`, `#ifndef`-guarded to 3000/4200, and the T-Beam 1W variant overrides them to
+  6000/8400 for its 2S pack (`variants/lilygo_tbeam_1w/platformio.ini`). On that board a full pack
+  reads as flat.
+- `battery_mv == 0` was treated as "empty" while firmware returns a literal `0` for boards with no
+  VBAT sense at all (`src/helpers/ESP32Board.h` without `PIN_VBAT_READ`,
+  `src/helpers/stm32/STM32Board.h` unconditionally), so the low-battery warning was permanently on
+  for every one of them.
+
+**Where the authoritative value is a per-board build flag the app cannot read over the wire, show
+the raw measurement and omit the derived value** — "4020 mV" rather than a percentage computed from
+endpoints we are guessing, and nothing at all where the sentinel says the board cannot measure it.
+Same principle as plumbing `sender_role` through as `null`: an absent value is honest, a guessed one
+is not.
 
 Currently deferred (firmware-gated):
 - `sender_role` — advert role byte decode is deferred until the byte layout is confirmed. It is
