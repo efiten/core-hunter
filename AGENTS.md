@@ -33,7 +33,9 @@ RSSI/SNR are measured by our own radio and cannot be forged, so the map's **anon
 sound. But every claim of the form *"node N was here"* — Locate, drift, per-sender coverage — rests
 on an identity the protocol does not authenticate: a forged sender id puts real measurements taken
 at the attacker's position into that node's set, which moves its estimate, not just its label. See
-`docs/2026-08-15-hop-count-trust.md`.
+`docs/2026-08-15-hop-count-trust.md`, and `docs/2026-08-17-fake-hop-detection.md` for why no
+heuristic detector for a forged hop count is worth building (#321) — measured against real traffic,
+every candidate is either indistinguishable from honest behaviour or needs data we do not record.
 
 **Position disclaimer (required in all position-bearing output):** position is *inferred* from radio
 measurements (RSSI, SNR) via mesh topology — **not** from GPS tracking of the target node. The GPS
