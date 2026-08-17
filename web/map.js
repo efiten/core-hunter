@@ -146,11 +146,16 @@ window.addEventListener('resize', setMapTop)
 // the server version land later still -- and each one wraps another row, so one
 // measurement is stale within a second of load and only a resize repaired it.
 //
-// Deliberately not wired to #map, which keeps the one-shot timing above: that
-// measurement lands before the initial setView, and re-running invalidateSize
-// afterwards moves the centre coordinate by half the size change whatever `pan`
-// is set to, which walks the neutral world view off its mark (#218). The bar
-// paints above the map, so those stale pixels are hidden rather than harmful.
+// Deliberately not wired to #map, which stays on the resize-driven path above:
+// it follows the bar when the window changes, and not when the bar's own
+// content grows. That asymmetry is the point. invalidateSize moves the centre
+// coordinate by half the size change whatever `pan` is set to, so running it
+// for every late arrival during load walks the neutral world view off its mark
+// (#218) -- 0.14 degrees with pan on, 13 with it off, measured. A user-driven
+// resize is a different case: it already re-runs invalidateSize today, and
+// holding the visible content still across it is the wanted behaviour. What
+// #map loses by staying put is a few stale pixels behind the bar, which paints
+// above it. What #rx-log lost was every click on #ch-version.
 const publishBarHeight = () => {
   document.documentElement.style.setProperty('--ch-bar-h', `${bar.offsetHeight}px`)
 }
