@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  shouldShowOnboarding, useSpotlight, ONBOARDING_CALLOUTS, ONBOARDING_BASICS,
+  shouldShowOnboarding, ONBOARDING_CALLOUTS, ONBOARDING_BASICS,
   ONBOARDING_TAGLINE, ONBOARDING_DISCLAIMER, ONBOARDING_TITLE,
 } from './onboarding.js'
 
@@ -60,16 +60,3 @@ describe('panel copy', () => {
   })
 })
 
-describe('useSpotlight', () => {
-  // The panel is min(380px, 100vw-48px) and centred, so on a phone it covers
-  // the space the floating boxes would need. 760 is where a 380px panel stops
-  // taking half the width.
-  it('keeps the floating callouts on a desktop-width window', () => {
-    expect(useSpotlight(1280)).toBe(true)
-    expect(useSpotlight(760)).toBe(true)
-  })
-  it('falls back to the in-panel list on a phone', () => {
-    expect(useSpotlight(759)).toBe(false)
-    expect(useSpotlight(390)).toBe(false)
-  })
-})

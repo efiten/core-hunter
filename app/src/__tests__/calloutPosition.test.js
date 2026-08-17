@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calloutPosition, unionRect, avoidOverlap } from '../calloutPosition.js'
+import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from '../calloutPosition.js'
 
 const rect = (o) => ({ left: 0, top: 0, right: 0, bottom: 0, ...o })
 const vp = { width: 400, height: 800 }
@@ -71,11 +71,45 @@ describe('avoidOverlap', () => {
       .toEqual({ top: 358, left: 0 })
   })
 
-  it('does not push a box off the bottom of the viewport', () => {
-    expect(avoidOverlap(box(700, 0), [box(690, 0)], viewport).top).toBe(692)
+  // Was 692 before: settling downward and clamping to the viewport at the end
+  // put the box back inside the blocker it had just cleared (690..790), because
+  // the clamp does not know what it is clamping into. Going up is the only
+  // placement that is both on screen and clear.
+  it('goes above the blocker when there is no room below', () => {
+    const placed = avoidOverlap(box(700, 0), [box(690, 0)], viewport)
+    expect(placed.top).toBe(582)
+    expect(overlapsAny({ ...placed, width: 200, height: 100 }, [box(690, 0)])).toBe(false)
+  })
+
+  it('keeps the box where it belongs when neither direction has room, and says so', () => {
+    // A blocker taller than the viewport can be escaped in no direction. The
+    // anchored position is the least bad answer — parking the box somewhere
+    // arbitrary would point it at nothing — and overlapsAny is what lets the
+    // caller notice and stop drawing boxes at all.
+    const tall = [{ top: 0, left: 0, width: 400, height: 800 }]
+    const placed = avoidOverlap(box(300, 0), tall, viewport)
+    expect(placed).toEqual({ top: 300, left: 0 })
+    expect(overlapsAny({ ...placed, width: 200, height: 100 }, tall)).toBe(true)
   })
 
   it('ignores a box that only overlaps vertically, in another column', () => {
     expect(avoidOverlap(box(100, 0), [box(100, 250)], viewport)).toEqual({ top: 100, left: 0 })
+  })
+})
+
+describe('overlapsAny', () => {
+  const b = (top, left, width = 200, height = 100) => ({ top, left, width, height })
+  it('is false for an empty blocker list', () => {
+    expect(overlapsAny(b(0, 0), [])).toBe(false)
+  })
+  it('separates touching edges from a real overlap', () => {
+    // Exactly adjacent is not overlapping — otherwise a box placed at
+    // blocker.bottom + gap would report a collision it just resolved.
+    expect(overlapsAny(b(100, 0), [b(0, 0)])).toBe(false)
+    expect(overlapsAny(b(99, 0), [b(0, 0)])).toBe(true)
+  })
+  it('needs both axes to overlap', () => {
+    expect(overlapsAny(b(50, 0), [b(0, 200)])).toBe(false)
+    expect(overlapsAny(b(50, 199), [b(0, 0)])).toBe(true)
   })
 })

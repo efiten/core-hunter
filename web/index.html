@@ -147,7 +147,7 @@
     </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
-    <button id="help-btn" title="How this map works" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-onboarding">?</button>
+    <button id="help-btn" title="How this map works" aria-label="How this map works" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-onboarding">?</button>
     <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>
@@ -181,7 +181,11 @@
        app's splash does it; the toolbar is lifted above the scrim so the tour
        highlights live controls rather than a picture of them. -->
   <div id="wb-scrim" hidden></div>
-  <aside id="wb-onboarding" hidden>
+  <!-- role="dialog" without aria-modal on purpose: the toolbar is deliberately
+       left usable through the scrim, so telling assistive tech the rest of the
+       page is inert would be a lie. Focus still moves in and back out, matching
+       whatsnew.js (#363). -->
+  <aside id="wb-onboarding" role="dialog" aria-labelledby="wb-title" hidden>
     <div class="wb-callout" id="wb-co-filters"></div>
     <div class="wb-callout" id="wb-co-layers"></div>
     <div class="wb-callout" id="wb-co-account"></div>

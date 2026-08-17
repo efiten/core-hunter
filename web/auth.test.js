@@ -42,11 +42,15 @@ describe('role helpers', () => {
   // captures in full (httpapi/api.go: ownsCompanion -> exact, full history) and
   // degrades only other hunters' data. Say which is which, and that only an
   // admin can lift it.
-  it('tells a hunter that their own captures are exact and only other hunters are degraded', () => {
+  it('tells a hunter how to reach their own captures in full, and who lifts the rest', () => {
     const n = guestNotice('hunter')
-    expect(n).toMatch(/your own/i)
-    expect(n).toMatch(/other hunters/i)
+    expect(n).toMatch(/your own companion/i)
     expect(n).toMatch(/admin/i)
+    // The qualification is the point (#316 review): /api/heatmap only exempts
+    // own rows behind a single-hunter filter, and hex is the cold default, so
+    // an unqualified "your own companion in full" is wrong on the layer a
+    // hunter lands on. The copy must say what to do, not just what exists.
+    expect(n).toMatch(/filter to your own companion/i)
   })
   it('does not promise a guest any exact data — they have no companion of their own', () => {
     expect(guestNotice('guest')).not.toMatch(/your own/i)

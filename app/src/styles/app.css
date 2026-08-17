@@ -405,6 +405,9 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 
 .splash-panel { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
   width: min(300px, calc(100vw - 48px)); z-index: 561; padding: 18px; text-align: center;
+  /* The short-screen fallback moves the callout copy inside, so the panel can
+     outgrow the viewport — scroll it rather than clipping the disclaimer off. */
+  max-height: calc(100vh - 24px); overflow-y: auto;
   background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 16px;
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .splash-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; }
@@ -412,6 +415,10 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   background: color-mix(in srgb, var(--ch-accent) 18%, transparent); color: var(--ch-accent); }
 .splash-panel h1 { margin: 0; font-size: 22px; font-weight: 600; }
 .splash-tagline { margin: 0 0 13px; font-size: 12.5px; line-height: 1.45; color: var(--ch-muted); }
+.splash-callout-list { margin: 0 0 13px; padding: 0; list-style: none; text-align: left;
+  font-size: 11.5px; line-height: 1.45; color: var(--ch-muted); }
+.splash-callout-list[hidden] { display: none; }
+.splash-callout-list li { margin: 7px 0; padding-left: 9px; border-left: 2px solid var(--ch-accent); }
 .splash-basics { list-style: none; margin: 0; padding: 13px 0; text-align: left;
   display: flex; flex-direction: column; gap: 9px;
   border-top: 1px solid var(--ch-border); border-bottom: 1px solid var(--ch-border); }

@@ -123,6 +123,34 @@ test('the account callout and the guest notice both name the hunter → member s
   await expect(page.locator('#guest-notice')).toContainText(/admin/i)
 })
 
+// The band review found: wide enough that the old fixed 760px fallback did not
+// trip, narrow enough that the centre panel still reached the boxes — all three
+// sat behind it with their text clipped. Neither of the other viewports here
+// (1280 and 420) covers it, which is why it survived.
+for (const [w, h] of [[760, 800], [800, 800], [900, 700], [1024, 700]]) {
+  test(`no callout is left behind the panel at ${w}x${h}`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h })
+    await bootstrap(page, false)
+    await page.goto('/')
+    await expect(page.locator('#wb-onboarding')).toBeVisible()
+    const bad = await page.evaluate(() => {
+      const panel = document.querySelector('.wb-panel').getBoundingClientRect()
+      return ['wb-co-filters', 'wb-co-layers', 'wb-co-account'].filter((id) => {
+        const el = document.getElementById(id)
+        if (el.hidden) return false
+        const r = el.getBoundingClientRect()
+        return r.left < panel.right && r.right > panel.left && r.top < panel.bottom && r.bottom > panel.top
+      })
+    })
+    expect(bad).toEqual([])
+    // Whatever the placement decided, the copy is readable exactly once: either
+    // in boxes or in the panel, never in neither.
+    const inlineShown = await page.locator('#wb-inline').isVisible()
+    const boxesShown = await page.locator('#wb-co-filters').isVisible()
+    expect(inlineShown).toBe(!boxesShown)
+  })
+}
+
 test('a phone-width window drops the floating callouts into the panel', async ({ page }) => {
   // The centred panel is most of a narrow viewport, so three boxes beside the
   // toolbar would sit behind it — the copy moves inside instead.
@@ -141,4 +169,47 @@ test('a phone-width window drops the floating callouts into the panel', async ({
   await page.setViewportSize({ width: 1280, height: 800 })
   await expect(page.locator('#wb-co-filters')).toBeVisible()
   await expect(page.locator('#wb-inline')).toBeHidden()
+})
+
+test('focus moves into the tour and back to the ? button', async ({ page }) => {
+  await bootstrap(page, false)
+  await page.goto('/')
+  await expect(page.locator('#wb-onboarding')).toBeVisible()
+  await expect(page.locator('#wb-got-it')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#wb-onboarding')).toBeHidden()
+  await expect(page.locator('#help-btn')).toBeFocused()
+})
+
+test('using a ringed control closes the tour instead of blocking it', async ({ page }) => {
+  // The tour rings live controls and invites you to use them; a callout used to
+  // sit over the popover the hunter picker opens, so its rows were unclickable
+  // underneath the box that had just described them.
+  await page.route('**/api/hunters*', (r) => r.fulfill({
+    json: { hunters: [{ hunter_pubkey: 'abc123def456', hunter_name: 'ON8AR', count: 42 }] },
+  }))
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
+  await bootstrap(page, false)
+  await page.goto('/')
+  await expect(page.locator('#wb-onboarding')).toBeVisible()
+
+  await page.click('#hp-toggle')
+  await expect(page.locator('#wb-onboarding')).toBeHidden()
+  await expect(page.locator('#hunter-picker')).toBeVisible()
+  // And the rows it lists are actually clickable, which is the thing that failed.
+  await page.locator('#hp-list .tl-row').first().click({ timeout: 5000 })
+  await expect(page.locator('#hp-list .tl-row').first()).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('a callout never swallows a click meant for the map', async ({ page }) => {
+  await bootstrap(page, false)
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await expect(page.locator('#wb-co-filters')).toBeVisible()
+  const passesThrough = await page.evaluate(() => {
+    const r = document.getElementById('wb-co-filters').getBoundingClientRect()
+    const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+    return at && at.id !== 'wb-co-filters'
+  })
+  expect(passesThrough).toBe(true)
 })

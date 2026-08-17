@@ -7,7 +7,7 @@
 // Adapted for a browsing context: there is no BLE pairing, no GPS and no
 // capture here, so the basics are about reading someone else's coverage rather
 // than producing your own.
-import { calloutPosition, unionRect, avoidOverlap } from './calloutPosition.js'
+import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
 
 const SEEN_KEY = 'ch-onboarding-seen'
 
@@ -43,14 +43,14 @@ export const ONBOARDING_CALLOUTS = [
     targets: ['layer-toggle', 'locate-toggle', 'cs-adverts', 'cs-relays', 'f-nodepos'],
     side: 'below',
     align: 'left',
-    text: 'Switch points/hex/both, run Locate for an origin estimate, and overlay CoreScope adverts and relays or the nodes’ own advertised positions.',
+    text: 'Switch points/hex/both. Locate — an origin estimate from the readings around a node — and the CoreScope and node-position overlays appear here once you are a verified member.',
   },
   {
     id: 'wb-co-account',
     targets: ['auth-btn'],
     side: 'below',
     align: 'right',
-    text: 'Registering in the app makes you a hunter: your own captures in full, everyone else’s coarse and 24 h. An admin verifies you as a member for the full history, Locate and the CoreScope layers.',
+    text: 'Registering in the app makes you a hunter: filter to your own companion and you see its captures in full, everyone else stays coarse and 24 h. An admin verifies you as a member for the full history, Locate and the CoreScope layers.',
   },
 ]
 
@@ -69,51 +69,57 @@ function saveSeen() {
   try { localStorage.setItem(SEEN_KEY, '1') } catch (_) {}
 }
 
-// Below this width the spotlight is abandoned: the centre panel alone is wider
-// than half the viewport, so three floating boxes beside a wrapped toolbar
-// would sit behind it. The callout copy moves into the panel instead — the
-// same words, in a layout that fits.
-export const SPOTLIGHT_MIN_WIDTH = 760
-
-export function useSpotlight(viewportWidth) {
-  return viewportWidth >= SPOTLIGHT_MIN_WIDTH
-}
-
 // Anchors every callout to its targets' current position, exactly as the app's
 // positionCallouts() does. Re-run on resize while the overlay is open, because
 // the toolbar wraps to a second row on a narrow window and every anchor moves.
-export function positionCallouts(doc = document, view = window) {
-  const viewport = { width: view.innerWidth, height: view.innerHeight }
-  const inline = doc.getElementById('wb-inline')
-  if (!useSpotlight(viewport.width)) {
-    for (const co of ONBOARDING_CALLOUTS) {
-      const box = doc.getElementById(co.id)
-      if (box) box.hidden = true
-    }
-    if (inline) inline.hidden = false
-    return
-  }
-  if (inline) inline.hidden = true
-  const placed = []
+//
+// Blockers are the centre panel and every callout already placed. The panel
+// half was missing until review: between roughly 760 and 1000 px the panel is
+// wide enough to reach the boxes but the window is not narrow enough to trip
+// the old fixed-width fallback, so all three sat behind it with their text
+// clipped mid-sentence — a band neither e2e viewport covered.
+//
+// There is no width constant any more. Whether the spotlight is usable is a
+// question about the space that actually exists, so it is asked of the
+// placement: if any box cannot be put somewhere clear, the copy goes into the
+// panel instead. That answers 760x800 and 900x700 without guessing where the
+// boundary lies.
+export function positionCallouts() {
+  const viewport = { width: window.innerWidth, height: window.innerHeight }
+  const panel = document.querySelector('.wb-panel')
+  const blockers = panel ? [panel.getBoundingClientRect()] : []
+  const boxes = []
+  let spotlight = true
   for (const co of ONBOARDING_CALLOUTS) {
-    const box = doc.getElementById(co.id)
+    const box = document.getElementById(co.id)
     if (!box) continue
+    boxes.push(box)
+    // Un-hide before measuring: a `hidden` box has a 0x0 rect, so a pass that
+    // ran after the fallback kicked in would find nothing overlapping anything
+    // and switch the spotlight back on, then off again on the next pass. The
+    // decision below re-hides it in the same synchronous pass, so nothing paints
+    // in between.
+    box.hidden = false
     const rects = co.targets
-      .map((id) => doc.getElementById(id))
+      .map((id) => document.getElementById(id))
       .filter((elm) => elm && elm.getBoundingClientRect)
       .map((elm) => elm.getBoundingClientRect())
       .filter((r) => r.width > 0 || r.height > 0)
-    if (!rects.length) { box.hidden = true; continue }
-    box.hidden = false
+    if (!rects.length) continue
     const size = box.getBoundingClientRect()
     const anchored = calloutPosition(unionRect(rects), viewport, size, co)
     const { top, left } = avoidOverlap(
-      { ...anchored, width: size.width, height: size.height }, placed, viewport,
+      { ...anchored, width: size.width, height: size.height }, blockers, viewport,
     )
+    const placed = { top, left, width: size.width, height: size.height }
     box.style.top = `${top}px`
     box.style.left = `${left}px`
-    placed.push({ top, left, width: size.width, height: size.height })
+    if (overlapsAny(placed, blockers)) spotlight = false
+    blockers.push(placed)
   }
+  for (const box of boxes) box.hidden = !spotlight
+  const inline = document.getElementById('wb-inline')
+  if (inline) inline.hidden = spotlight
 }
 
 // initOnboarding fills the static copy, wires the "?" button and the dismiss
@@ -190,6 +196,10 @@ export function initOnboarding() {
     setSpots(true)
     reposition()
     if (bar) barWatch.observe(bar, { childList: true, subtree: true, characterData: true, attributes: true })
+    // Focus into the tour, and back to the opener on close — the pattern
+    // whatsnew.js landed in #363. Without it a keyboard user on a first run is
+    // left on <body>, with "Got it" behind the whole toolbar in tab order.
+    document.getElementById('wb-got-it').focus()
   }
 
   function close() {
@@ -200,9 +210,19 @@ export function initOnboarding() {
     setSpots(false)
     barWatch.disconnect()
     saveSeen()
+    help.focus()
   }
 
   help.addEventListener('click', () => (overlay.hidden ? open() : close()))
+  // Operating a ringed control closes the tour. The controls stay live above
+  // the scrim on purpose, but a callout sits over the popovers they open (the
+  // hunter picker's rows were unclickable underneath one), and a tour that
+  // blocks the control it is pointing at is worse than one that steps aside.
+  if (bar) {
+    bar.addEventListener('click', (e) => {
+      if (!overlay.hidden && !help.contains(e.target)) close()
+    })
+  }
   document.getElementById('wb-close').addEventListener('click', close)
   document.getElementById('wb-got-it').addEventListener('click', close)
   // Clicking the dimmed map dismisses; clicking a callout, the panel or one of

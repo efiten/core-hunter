@@ -56,6 +56,18 @@ describe('SPLASH_CALLOUTS', () => {
   })
 })
 
+describe('SPLASH_CALLOUTS.fabs copy', () => {
+  // SPLASH_CALLOUTS above only asserts the keys exist and are non-empty, so
+  // dropping a button from the copy stayed green while leaving a ringed,
+  // spotlit control unexplained — which is half of what #371 was about. Keyed
+  // on each control's distinguishing word, not on the phrasing, so the sentence
+  // can still be rewritten.
+  const copy = SPLASH_CALLOUTS.fabs.toLowerCase()
+  it.each(['view', 'discover', 'compass', 'sound', 'node positions'])('names the %s control', (word) => {
+    expect(copy).toContain(word)
+  })
+})
+
 describe('SPLASH_FAB_IDS', () => {
   // The spotlight lives in three files that must name the same buttons: this
   // list, the union positionCallouts() anchors the callout to, and the CSS that
@@ -67,6 +79,18 @@ describe('SPLASH_FAB_IDS', () => {
 
   it('names buttons that exist in index.html', () => {
     for (const id of SPLASH_FAB_IDS) expect(html).toContain(`id="${id}"`)
+  })
+
+  // The copy lists the buttons bottom-to-top, so the order of this list is
+  // load-bearing — and the ring test below compares sorted sets, which cannot
+  // see order. The CSS `bottom:` offsets are where the real order lives.
+  it('is ordered bottom-to-top, matching the offsets in app.css', () => {
+    const offsets = SPLASH_FAB_IDS.map((id) => {
+      const rule = css.split('}').find((b) => b.includes(`#${id} {`) && b.includes('bottom:'))
+      expect(rule, `#${id} has a bottom: offset`).toBeTruthy()
+      return Number(/\+\s*(\d+)px\)/.exec(rule)[1])
+    })
+    expect(offsets).toEqual([...offsets].sort((a, b) => a - b))
   })
 
   it('matches the set of FABs the onboarding CSS rings', () => {

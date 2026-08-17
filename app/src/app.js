@@ -41,7 +41,7 @@ import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { drawableNodes } from './nodelayer.js'
-import { calloutPosition, unionRect, avoidOverlap } from './calloutPosition.js'
+import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, shouldPing, createSoundEngine } from './sound.js'
@@ -337,6 +337,10 @@ function initSplashContent() {
   el('splash-basics').replaceChildren(
     ...SPLASH_BASICS.map((b) => { const li = document.createElement('li'); li.textContent = b; return li })
   )
+  // Same three strings as the callouts, for the short-screen fallback below.
+  el('splash-callout-list').replaceChildren(
+    ...Object.values(SPLASH_CALLOUTS).map((c) => { const li = document.createElement('li'); li.textContent = c; return li })
+  )
 }
 
 // Paused-capture banner (#199) — a brief glance shown after returning from a
@@ -407,30 +411,51 @@ function positionCallouts() {
   // The glass panel is centred and nearly full-width on a phone, so a callout
   // anchored beside a tall control stack lands behind it and its text is
   // unreadable — the FAB callout grew into exactly that when #nodepos-toggle
-  // joined the group (#316). Treat the panel as a blocker to slide clear of.
+  // joined the group (#316, #371). The panel and every callout already placed
+  // are blockers: without the second half the three boxes slide clear of the
+  // panel and onto each other instead.
   const panel = document.querySelector('.splash-panel')
   const blockers = panel ? [panel.getBoundingClientRect()] : []
   const place = (id, targetRect, opts) => {
     const callout = el(id)
-    if (!callout) return
+    if (!callout) return true
+    // Un-hide before measuring: a `hidden` callout measures 0x0, so the pass
+    // after a fallback would see nothing overlapping and turn the spotlight back
+    // on, then off again next pass. Re-hidden below in the same pass.
+    callout.hidden = false
     const size = callout.getBoundingClientRect()
     const anchored = calloutPosition(targetRect, viewport, size, opts)
-    const { top, left } = avoidOverlap(
-      { ...anchored, width: size.width, height: size.height }, blockers, viewport,
-    )
+    const box = { ...anchored, width: size.width, height: size.height }
+    const { top, left } = avoidOverlap(box, blockers, viewport)
+    const placed = { top, left, width: size.width, height: size.height }
     callout.style.top = `${top}px`
     callout.style.left = `${left}px`
+    blockers.push(placed)
+    return !overlapsAny(placed, blockers.slice(0, -1))
   }
   const controls = el('topbar-controls')
-  if (controls) place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' })
   const menuBtn = el('settings-btn')
-  if (menuBtn) place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' })
   // The whole ringed FAB stack, so the callout is anchored beside all of it —
   // #nodepos-toggle was spotlit by the CSS but missing here, which put the box
   // below a button it was also highlighting (#316). SPLASH_FAB_IDS is the one
   // list; splash.test.js pins the CSS against it.
   const fabs = SPLASH_FAB_IDS.map(el).filter(Boolean)
-  if (fabs.length) place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' })
+  const fits = [
+    controls && place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' }),
+    menuBtn && place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' }),
+    fabs.length && place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' }),
+  ]
+  // Below roughly 700px of height the panel fills the middle and there is no
+  // free space left to slide a box into — measured at 360x640 and 375x667,
+  // where all three ended up stacked at the bottom pointing at nothing. Rather
+  // than guess a breakpoint, ask the placement: if a box could not be put
+  // anywhere clear, the spotlight has no room and the copy goes in the panel.
+  const spotlight = fits.every((ok) => ok !== false)
+  for (const id of ['co-controls', 'co-menu', 'co-fabs']) {
+    const callout = el(id)
+    if (callout) callout.hidden = !spotlight
+  }
+  el('splash-callout-list').hidden = spotlight
 }
 
 // (Re-)starts the GPS watch, e.g. on connect or after the user retries
@@ -1443,8 +1468,11 @@ function buildSettingsSheet() {
         // Registering gives you the hunter role, and there is no self-service
         // path past it (#316) — the web map degrades every other hunter's data
         // to 24 h / ~1 km / anonymised until an admin verifies you as a member.
-        // Your own companion's captures are full-detail from the start.
-        accMsg("Account created — you are a hunter: your own companion's captures are full detail on the web map. Seeing other hunters in full needs an admin to verify you as a member.", true)
+        // "Filter to it" is not decoration: /api/heatmap only exempts your own
+        // rows when the request names exactly one hunter you own, and the web's
+        // cold default is the heatmap, so unfiltered your own captures are
+        // windowed too (server/internal/httpapi/api.go).
+        accMsg("Account created — you are a hunter: on the web map, filter to your own companion to see its captures in full. Seeing other hunters in full needs an admin to verify you as a member.", true)
       }
       else if (r.status === 409) accMsg('That username is taken.')
       else if (r.status === 429) accMsg('Too many attempts — wait a minute.')

@@ -211,11 +211,18 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #wb-scrim[hidden] { display:none; }
 #wb-onboarding { position:fixed; inset:0; z-index:720; pointer-events:none; }
 #wb-onboarding[hidden] { display:none; }
-#wb-onboarding > * { pointer-events:auto; }
+/* Named, not `> *`: the callouts must stay click-through (they are text over
+   live controls, and a blanket `#wb-onboarding > *` outranks `.wb-callout` on
+   specificity, so the class could not opt out). Only the two things you
+   actually press take events. */
+#wb-onboarding > .wb-panel, #wb-onboarding > .wb-close { pointer-events:auto; }
 body.wb-onboarding-on #bar { z-index:710; }
 #bar .wb-spot { box-shadow:0 0 0 2px var(--ch-accent); border-radius:6px; }
 /* top/left are computed per callout in onboarding.js against the real target
    elements, so the boxes follow a wrapped toolbar instead of guessing. */
+/* A callout is text, never a target: it must not swallow clicks meant for what
+   is under it (#316 review: the hunter picker's rows). It inherits
+   pointer-events:none from the container above — see the note there. */
 .wb-callout { position:fixed; max-width:230px; padding:9px 11px;
   border:1px solid var(--ch-accent); border-radius:10px; background:var(--ch-surface);
   -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
@@ -244,8 +251,9 @@ body.wb-onboarding-on #bar { z-index:710; }
   padding:9px 20px; font:inherit; font-weight:600; cursor:pointer; }
 /* Bottom-right, not top-right: the toolbar is lifted above the scrim and can
    wrap to two rows, so a top-anchored close button would sit on top of the very
-   controls the tour is pointing at. */
-.wb-close { position:fixed; bottom:16px; right:16px;
+   controls the tour is pointing at. Raised clear of Leaflet's attribution
+   strip, which it landed on at 16px (#316 review). */
+.wb-close { position:fixed; bottom:40px; right:16px;
   width:32px; height:32px; border-radius:50%; border:1px solid var(--ch-border);
   background:var(--ch-surface); color:var(--ch-text); font-size:14px; line-height:1; cursor:pointer; }
 #map { position:fixed; inset:0; top:48px; }

@@ -35,29 +35,54 @@ export function calloutPosition(targetRect, viewport, calloutSize, opts = {}) {
   }
 }
 
-// Pushes a callout below any box it would cover — a sibling callout already
+// Does this rect overlap any of the blockers? Exported because a caller that
+// cannot place a box clear of them needs to know — the spotlight falls back to
+// listing its copy in the panel rather than drawing boxes over it.
+export function overlapsAny(rect, blockers) {
+  return blockers.some((b) => rect.left < b.left + b.width && rect.left + rect.width > b.left
+    && rect.top < b.top + b.height && rect.top + rect.height > b.top)
+}
+
+// Moves a callout clear of any box it would cover — a sibling callout already
 // placed, or the centre panel. Several controls can sit within a few dozen
 // pixels of each other (the website's toolbar is one wrapping strip; the app's
 // FAB stack is taller than the gap to its glass panel), so boxes anchored to
 // them land on top of one another and the text underneath is unreadable.
 //
+// Tries below first, then above. Going only downward and clamping to the
+// viewport at the end puts the box back on the blocker it just cleared whenever
+// the bottom is close — the clamp does not know what it is clamping into.
+// When neither direction has room the anchored position is returned unchanged
+// (clamped on screen): a box that overlaps where it belongs beats one parked
+// somewhere arbitrary, and `overlapsAny` lets the caller detect the case and
+// stop drawing boxes altogether.
+//
 // `blockers` are {top,left,width,height} — DOMRects work as-is.
 export function avoidOverlap(rect, blockers, viewport, gap = 8, margin = 8) {
-  let top = rect.top
   const { left, width, height } = rect
-  // Blockers can chain (moved under A, now hitting B) and are not sorted, so a
+  const at = (top) => ({ top, left, width, height })
+  const fits = (top) => top >= margin && top + height <= viewport.height - margin
+  // Blockers can chain (moved past A, now hitting B) and are not sorted, so a
   // single sweep can leave the box on one it already passed. Re-check until a
-  // pass moves nothing; bounded, since every move is downward.
-  for (let pass = 0; pass <= blockers.length; pass++) {
-    let moved = false
-    for (const b of blockers) {
-      const hit = left < b.left + b.width && left + width > b.left
-        && top < b.top + b.height && top + height > b.top
-      if (hit) { top = b.top + b.height + gap; moved = true }
+  // pass moves nothing; bounded, since every move is in the same direction.
+  const settle = (down) => {
+    let top = rect.top
+    for (let pass = 0; pass <= blockers.length; pass++) {
+      let moved = false
+      for (const b of blockers) {
+        if (!overlapsAny(at(top), [b])) continue
+        top = down ? b.top + b.height + gap : b.top - gap - height
+        moved = true
+      }
+      if (!moved) break
     }
-    if (!moved) break
+    return top
   }
-  return { top: Math.min(top, viewport.height - height - margin), left }
+  for (const down of [true, false]) {
+    const top = settle(down)
+    if (fits(top) && !overlapsAny(at(top), blockers)) return { top, left }
+  }
+  return { top: Math.max(margin, Math.min(rect.top, viewport.height - height - margin)), left }
 }
 
 // Bounding box enclosing every given rect — used to anchor one callout to a
