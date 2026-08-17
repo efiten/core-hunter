@@ -7,6 +7,7 @@ import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchFor } from './maplayers.js'
 import { octagonRing, pillarRadiusM } from './pointmarker.js'
+import { skyForHour, currentHour } from './sky.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -179,8 +180,31 @@ export function createHuntMap(containerId) {
       if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
     }, 12000)
   }
+  // Sky (#397). setStyle DROPS the sky — measured against the bundled 4.7.1:
+  // getSky() returns null after a style swap — so this cannot be a one-off at
+  // construction. It is re-applied from addOverlays, which is the one hook that
+  // runs on every style load: initial, theme switch (applyBasemap) and the bare
+  // fallback. Guarded on the method existing so an older MapLibre degrades to
+  // the previous no-sky behaviour rather than throwing during init.
+  function applySky() {
+    if (typeof map.setSky !== 'function') return
+    // setSky THROWS while a style is still loading — measured: with
+    // isStyleLoaded() false it dies on "Cannot read properties of undefined
+    // (reading 'transition')". addOverlays only runs post-load, but the minute
+    // timer below is independent and can fire mid-swap (applyBasemap →
+    // setStyle → loading), so it needs the guard. Nothing is lost by skipping:
+    // addOverlays re-applies the sky as soon as that style finishes.
+    if (!map.isStyleLoaded()) return
+    map.setSky(skyForHour(currentHour(), cssVar('--ch-basemap') || 'dark'))
+  }
+  // The clock moves during a hunt — a session that starts at dusk would keep a
+  // dusk sky at midnight. Once a minute is far finer than the palette changes
+  // (the tightest stop gap is 1.5 h) and costs one paint-property write.
+  const skyTimer = setInterval(applySky, 60000)
+
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
+    applySky()
     for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
@@ -544,7 +568,7 @@ export function createHuntMap(containerId) {
       .setLngLat([rec.lon, rec.lat]).setHTML(popupHtml(rec, lastSelected)).addTo(map)
     wireIsolate(popup, rec); wireIgnore(popup, rec)
   }
-  function destroy() { map.remove() }
+  function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
   return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
 }
 
