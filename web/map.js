@@ -855,13 +855,20 @@ async function drawNodePositions() {
   const gen = ++nodePosGen
   const note = document.getElementById('nodepos-note')
   if (note) note.hidden = !nodePosCb.checked
-  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole)) {
+  // locateActive for the same reason drawObserverPoints() checks it: Locate is a
+  // focus view and it suppresses refresh() for the whole session, so anything
+  // that repaints into it stays there until Locate is switched off. This draw
+  // re-enters itself when its /api/resolve calls settle, and activateLocate()
+  // clears the layer without bumping nodePosGen or unchecking the box, so a
+  // resolve landing a moment later walked through every guard (#390).
+  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole) || locateActive) {
     nodePosLayer.clearLayers(); nodePosSig = null
     return
   }
   const { points } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
-  // A newer draw started (or the layer was switched off) while we were waiting.
-  if (gen !== nodePosGen || !nodePosCb.checked) return
+  // A newer draw started, the layer was switched off, or Locate took over while
+  // we were waiting.
+  if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
   const bySender = groupSenderPoints(points)
   // groupSenderPoints reduces each reception to {lat,lon,rssi}, so the kind has
   // to be read off the raw rows: collect the ids that are in the pubkey
