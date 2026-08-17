@@ -1,8 +1,10 @@
 # Should the autoping distance gate adapt to speed?
 
 Spike outcome for #319. Written 2026-08-17 against `app/src/autoping.js` as it
-stands (`INTERVAL_MS = 10000`, `MOVE_THRESHOLD_M = 50`, `STAGGER_MS = 1500`) and
-measured on the production hunter database — 150,034 receptions from 59 hunters,
+stands — `INTERVAL_MS = 10000` (line 10), `MOVE_THRESHOLD_M = 50` (11), the
+`pendingTargets > 0` skip (21), the interval and distance gates (23 and 25),
+`STAGGER_MS = 1500` (33) and `cycleSpanMs` (43) — and measured on the production
+hunter database — 150,034 receptions from 59 hunters,
 2026-06-29 → 2026-08-16. Hunter positions throughout; nothing here is a target's
 position.
 
@@ -12,8 +14,8 @@ position.
 shrink with speed.
 
 **No — and the premise inverts what the gate already does.** `shouldAutoFire`
-fires on *either* condition, so the distance gate does not delay anything at
-speed: it makes the cycle fire **sooner**. It is already speed-adaptive, in the
+fires on *either* condition (lines 23 and 25), so the distance gate does not
+delay anything at speed: it makes the cycle fire **sooner**. It is already speed-adaptive, in the
 direction the issue wants. The constraint at speed is not that pings are too far
 apart; it is that a fixed distance divided by a rising speed is a rising *rate*,
 which the transmit budget and the cycle's own stagger both refuse to deliver.
@@ -36,25 +38,43 @@ answering properly; not worth rushing.
 ## What the current gate does at speed
 
 `min(10 s, 50 m / v)` — the distance gate becomes the binding one above
-**18 km/h** and dominates from there:
+**18 km/h** and dominates from there. A cycle is not one frame, though: it is the
+discover broadcast **plus one trace-ping per selected target**, so the airtime
+per cycle is `(N + 1) × 46 ms`, and the period is `max(50 m / v, N × 1.5 s)`
+because of the stagger (below). Duty for the whole cycle:
 
-| speed | period | frames/min (discover only) | duty at 46 ms airtime |
-|---|---|---|---|
-| 20 km/h | 9.0 s | 6.7 | 0.51% |
-| 30 km/h | 6.0 s | 10.0 | 0.77% |
-| 40 km/h | 4.5 s | 13.3 | **1.02%** |
-| 50 km/h | 3.6 s | 16.7 | **1.28%** |
-| 90 km/h | 2.0 s | 30.0 | **2.30%** |
-| 120 km/h | 1.5 s | 40.0 | **3.07%** |
+| speed | period (N=0) | N=0 | N=1 | N=3 | N=5 |
+|---|---|---|---|---|---|
+| stationary (interval-bound) | 10 s | 0.46% | 0.92% | **1.84%** | **2.76%** |
+| 20 km/h | 9.0 s | 0.51% | **1.02%** | **2.04%** | **3.07%** |
+| 30 km/h | 6.0 s | 0.77% | **1.53%** | **3.07%** | **3.68%** |
+| 40 km/h | 4.5 s | **1.02%** | **2.04%** | **4.09%** | **3.68%** |
+| 50 km/h | 3.6 s | **1.28%** | **2.56%** | **4.09%** | **3.68%** |
+| 90 km/h | 2.0 s | **2.30%** | **4.60%** | **4.09%** | **3.68%** |
+| 120 km/h | 1.5 s | **3.07%** | **6.13%** | **4.09%** | **3.68%** |
+
+(Bold is over the 1% the module assumes. The N=3 and N=5 columns stop rising
+because the stagger floor takes over — above 40 km/h for three targets and above
+24 km/h for five, the cycle cannot repeat faster than it can be sent, so speed
+stops mattering and only the target count does. Every cell is
+`(N + 1) × 46 ms / max(50 m / v, N × 1.5 s)`, computed rather than typed.)
 
 The 46 ms figure and the 1% comparison are `autoping.js`'s own stated budget —
-"10 s alone is ~0.46% duty cycle … comfortable headroom below a 1% sub-band". By
-that same budget, **the headroom is gone at about 40 km/h today**, before any
-change. Which sub-band actually applies depends on the configured frequency,
-which is a firmware/config fact the app does not read (§7), so this is stated
-against the module's own assumption rather than as a regulatory claim — but the
-direction is unambiguous, and lowering the threshold at speed moves it the wrong
-way. At 25 m above 30 km/h the table's last three rows double.
+"10 s alone is ~0.46% duty cycle … comfortable headroom below a 1% sub-band".
+Two things follow, and the first is not what the issue is about:
+
+1. **The budget is exhausted by target count before it is exhausted by speed.**
+   A five-target hunt sits at ~2.8% while **parked**, nearly 3× the figure the
+   module claims headroom under. The zero-target sweep — the only configuration
+   the "headroom is gone at ~40 km/h" reading describes — is the *best* case.
+2. **Lowering the threshold moves every one of those numbers the wrong way.** At
+   a 25 m gate the 30 km/h row goes to ~1.53% for a bare discover, so the halved
+   threshold is over the module's budget from about **20 km/h**, not from 40.
+
+Which sub-band actually applies depends on the configured frequency, which is a
+firmware/config fact the app does not read (§7), so this is stated against the
+module's own assumption rather than as a regulatory claim — but the direction is
+unambiguous.
 
 ## Where a smaller threshold would have no effect at all
 
@@ -71,7 +91,10 @@ floors the cadence as soon as one target is selected:
 | 5 | 7.5 s | 187 m | stagger |
 
 A multi-target hunt at speed already samples every 100-190 m, and no threshold
-below 50 m changes that by a metre. The only case a smaller threshold would
+below 50 m changes that by a metre. Worth noting the stagger's double role, since
+it appears twice in this doc with opposite signs: here it is the reason the
+proposed change would do nothing, and in the duty table above it is also the only
+thing keeping a multi-target cycle from being far worse than it already is. The only case a smaller threshold would
 actually speed up is the zero-target discover-only sweep — the one case that
 sends a single frame per cycle and therefore has the *most* budget to lose from
 firing more often. The change would land exactly where it is least wanted.
@@ -106,9 +129,12 @@ and for a multi-target hunt it would not change the sampling at all.
 Two things this spike found that are worth their own issues if anyone wants to
 act on them — both are the *opposite* change, and neither is in #319's scope:
 
-- **A minimum period between cycles** (a duty-cycle floor), so the distance gate
-  cannot run the radio past the transmit budget at speed. That is the constraint
-  the current design leaves unbounded.
+- **A minimum period between cycles** (a duty-cycle floor). Not a hypothetical:
+  by the module's own figures the design is already over its stated budget in
+  ordinary multi-target use **standing still** (1.8% at three targets, 2.8% at
+  five), and the distance gate then compounds it with speed. This is the
+  measured constraint the current design leaves unbounded, and it is the one
+  place a change would actually buy something.
 - **A position for the reception rather than for the hand-off** — carrying the
   fix forward per frame is not possible (the RX-log frame has no timestamp), but
   a backlog drain could at least be *marked*, so a batch of receptions sharing
