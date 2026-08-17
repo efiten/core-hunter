@@ -37,10 +37,10 @@ import { selectedRepeaterIds, senderList, expandSelection, idPrefix, selectionKe
 import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { drawableNodes } from './nodelayer.js'
-import { calloutPosition, unionRect } from './calloutPosition.js'
+import { calloutPosition, unionRect, avoidOverlap } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, shouldPing, createSoundEngine } from './sound.js'
@@ -395,10 +395,20 @@ function refreshSplash() {
 // correct across different screen sizes. Re-run on resize while visible.
 function positionCallouts() {
   const viewport = { width: window.innerWidth, height: window.innerHeight }
+  // The glass panel is centred and nearly full-width on a phone, so a callout
+  // anchored beside a tall control stack lands behind it and its text is
+  // unreadable — the FAB callout grew into exactly that when #nodepos-toggle
+  // joined the group (#316). Treat the panel as a blocker to slide clear of.
+  const panel = document.querySelector('.splash-panel')
+  const blockers = panel ? [panel.getBoundingClientRect()] : []
   const place = (id, targetRect, opts) => {
     const callout = el(id)
     if (!callout) return
-    const { top, left } = calloutPosition(targetRect, viewport, callout.getBoundingClientRect(), opts)
+    const size = callout.getBoundingClientRect()
+    const anchored = calloutPosition(targetRect, viewport, size, opts)
+    const { top, left } = avoidOverlap(
+      { ...anchored, width: size.width, height: size.height }, blockers, viewport,
+    )
     callout.style.top = `${top}px`
     callout.style.left = `${left}px`
   }
@@ -406,7 +416,11 @@ function positionCallouts() {
   if (controls) place('co-controls', controls.getBoundingClientRect(), { side: 'below', align: 'left' })
   const menuBtn = el('settings-btn')
   if (menuBtn) place('co-menu', menuBtn.getBoundingClientRect(), { side: 'below', align: 'right' })
-  const fabs = [el('layer-toggle'), el('discover-btn'), el('recenter-btn'), el('sound-toggle')].filter(Boolean)
+  // The whole ringed FAB stack, so the callout is anchored beside all of it —
+  // #nodepos-toggle was spotlit by the CSS but missing here, which put the box
+  // below a button it was also highlighting (#316). SPLASH_FAB_IDS is the one
+  // list; splash.test.js pins the CSS against it.
+  const fabs = SPLASH_FAB_IDS.map(el).filter(Boolean)
   if (fabs.length) place('co-fabs', unionRect(fabs.map((b) => b.getBoundingClientRect())), { side: 'left' })
 }
 
@@ -1388,7 +1402,15 @@ function buildSettingsSheet() {
       }
       const r = await postAuth('/api/auth/register',
         buildRegisterBody({ username, password, email, companionPubkey: state.rxPubkey }))
-      if (r.ok) { closeAccForm(); await refreshAccount(); accMsg('Account created — logged in.', true) }
+      if (r.ok) {
+        closeAccForm()
+        await refreshAccount()
+        // Registering gives you the hunter role, and there is no self-service
+        // path past it (#316) — the web map degrades every other hunter's data
+        // to 24 h / ~1 km / anonymised until an admin verifies you as a member.
+        // Your own companion's captures are full-detail from the start.
+        accMsg("Account created — you are a hunter: your own companion's captures are full detail on the web map. Seeing other hunters in full needs an admin to verify you as a member.", true)
+      }
       else if (r.status === 409) accMsg('That username is taken.')
       else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
       else accMsg('Registration failed — check your connection.')

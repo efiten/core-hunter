@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_TAGLINE, APP_NAME } from '../splash.js'
+import { readFileSync } from 'node:fs'
+import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from '../splash.js'
 
 describe('splashState', () => {
   it('hides once a GPS fix has been acquired, regardless of other state', () => {
@@ -52,6 +53,32 @@ describe('SPLASH_CALLOUTS', () => {
   it('has copy for the three control groups', () => {
     expect(Object.keys(SPLASH_CALLOUTS).sort()).toEqual(['controls', 'fabs', 'menu'])
     for (const k of Object.keys(SPLASH_CALLOUTS)) expect(SPLASH_CALLOUTS[k].length).toBeGreaterThan(0)
+  })
+})
+
+describe('SPLASH_FAB_IDS', () => {
+  // The spotlight lives in three files that must name the same buttons: this
+  // list, the union positionCallouts() anchors the callout to, and the CSS that
+  // lifts and rings them. #316 was exactly that drift — #nodepos-toggle was
+  // ringed by the CSS and absent from the union — so the invariant is checked
+  // against the real files rather than restated.
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
+  const css = readFileSync(new URL('../styles/app.css', import.meta.url), 'utf8')
+
+  it('names buttons that exist in index.html', () => {
+    for (const id of SPLASH_FAB_IDS) expect(html).toContain(`id="${id}"`)
+  })
+
+  it('matches the set of FABs the onboarding CSS rings', () => {
+    // The ring rule (box-shadow) is the spotlight; the topbar entries in it are
+    // the two non-FAB targets, which have their own callouts.
+    const rule = css.split('}')
+      .map((block) => block.split('{'))
+      .find(([sel, decls]) => sel?.includes('body.onboarding') && decls?.includes('box-shadow'))
+    expect(rule).toBeTruthy()
+    const ringed = [...rule[0].matchAll(/#([a-z0-9-]+)/g)].map((m) => m[1])
+      .filter((id) => id !== 'topbar-controls' && id !== 'settings-btn')
+    expect([...ringed].sort()).toEqual([...SPLASH_FAB_IDS].sort())
   })
 })
 

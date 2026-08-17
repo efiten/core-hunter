@@ -9,7 +9,12 @@ test.beforeEach(async ({ page }) => {
   // a pick made in one navigation is restored on the next. Start every test from
   // a clean store, otherwise assertions depend on whether save() happened to run
   // before the following goto.
-  await page.addInitScript(() => { try { localStorage.clear() } catch (_) {} })
+  //
+  // The urlstate key only, not localStorage.clear(): this runs on every
+  // navigation, after the fixture's own init script, so a blanket clear also
+  // wipes the onboarding flag fixtures.js sets — and the first-run tour is a
+  // scrim that swallows the very clicks these tests make (#316).
+  await page.addInitScript(() => { try { localStorage.removeItem('ch-state') } catch (_) {} })
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
 })

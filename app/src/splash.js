@@ -44,10 +44,19 @@ export const SPLASH_BASICS = [
   'Listens only — nothing sent unless you enable Discover',
 ]
 
+// The FAB stack the onboarding spotlight lifts, rings and points its `fabs`
+// callout at, bottom-to-top. One list so the three places that have to agree —
+// the callout copy below, positionCallouts()'s union in app.js, and the
+// body.onboarding rules in styles/app.css — cannot drift apart again: #316
+// found #nodepos-toggle ringed by the CSS but missing from the union, so the
+// callout was anchored below a button it was also spotlighting.
+export const SPLASH_FAB_IDS = ['layer-toggle', 'discover-btn', 'recenter-btn', 'sound-toggle', 'nodepos-toggle']
+
 // Spotlight callouts (was #119, updated for the #128 topbar). Each points at a
 // live control group revealed through the scrim.
 export const SPLASH_CALLOUTS = {
   controls: 'Select repeaters or senders and filter for traffic type. Use Locate to estimate the origin position.',
-  menu: 'Settings and connection. Register your companion to contribute to the shared coverage map.',
-  fabs: 'Compass mode · toggle auto-discover — pings selected repeaters too · view: one 5-state cycle through points/hex/both in 2D and 3D · sound pings',
+  menu: 'Settings, connection and your account. Registering makes you a hunter and puts your captures on the shared coverage map.',
+  // Listed bottom-to-top, in the order the buttons actually stack.
+  fabs: 'View: points/hex/both in 2D and 3D · auto-discover, which pings selected repeaters too · compass mode · sound pings · node positions: ▲ advertised, ● our estimate',
 }

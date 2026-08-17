@@ -37,4 +37,18 @@ describe('role helpers', () => {
     expect(guestNotice('hunter')).toMatch(/member/i)
     expect(guestNotice('hunter')).not.toMatch(/log in/i)
   })
+  // #316: the hunter copy used to read as if everything were degraded, which is
+  // wrong and discouraging — the server gives a hunter their OWN companion's
+  // captures in full (httpapi/api.go: ownsCompanion -> exact, full history) and
+  // degrades only other hunters' data. Say which is which, and that only an
+  // admin can lift it.
+  it('tells a hunter that their own captures are exact and only other hunters are degraded', () => {
+    const n = guestNotice('hunter')
+    expect(n).toMatch(/your own/i)
+    expect(n).toMatch(/other hunters/i)
+    expect(n).toMatch(/admin/i)
+  })
+  it('does not promise a guest any exact data — they have no companion of their own', () => {
+    expect(guestNotice('guest')).not.toMatch(/your own/i)
+  })
 })

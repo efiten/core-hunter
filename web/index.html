@@ -147,6 +147,7 @@
     </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
     <button id="theme-toggle" title="Toggle light/dark">🌙</button>
+    <button id="help-btn" title="How this map works" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-onboarding">?</button>
     <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>
@@ -168,6 +169,28 @@
       </div>
     </form>
   </div>
+  <!-- First-run onboarding (#316). The callouts are positioned from
+       onboarding.js against the real controls they point at, the same way the
+       app's splash does it; the toolbar is lifted above the scrim so the tour
+       highlights live controls rather than a picture of them. -->
+  <div id="wb-scrim" hidden></div>
+  <aside id="wb-onboarding" hidden>
+    <div class="wb-callout" id="wb-co-filters"></div>
+    <div class="wb-callout" id="wb-co-layers"></div>
+    <div class="wb-callout" id="wb-co-account"></div>
+    <div class="wb-panel">
+      <h1 id="wb-title"></h1>
+      <p id="wb-tagline" class="wb-tagline"></p>
+      <ul id="wb-basics" class="wb-basics"></ul>
+      <!-- Narrow viewports get the callout copy inside the panel instead:
+           there is no room beside the toolbar for three floating boxes, and the
+           panel would cover them. -->
+      <ul id="wb-inline" class="wb-inline" hidden></ul>
+      <p id="wb-disclaimer" class="wb-disclaimer"></p>
+      <button type="button" id="wb-got-it" class="wb-got-it">Got it</button>
+    </div>
+    <button type="button" id="wb-close" class="wb-close" aria-label="Close">✕</button>
+  </aside>
   <div id="map"></div>
   <div id="rx-log"></div>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -180,6 +203,10 @@
       .then((r) => r.json())
       .then((d) => { if (d.server) el.textContent = `web v${VERSION} · srv v${d.server}`; })
       .catch(() => {});
+  </script>
+  <script type="module">
+    import { initOnboarding } from './onboarding.js';
+    initOnboarding();
   </script>
   <script type="module">
     import { nodeCountsText } from './nodecounts.js';

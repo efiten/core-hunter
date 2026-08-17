@@ -25,7 +25,12 @@ export function isDegradedFor(role) {
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
-    return 'Hunter view: last 24 h, coarse ~1 km positions, hunters anonymised. Ask an admin for member verification to see more.'
+    // Your own companion's captures come back exact and full-history from the
+    // server (httpapi/api.go, ownsCompanion); only other hunters are windowed,
+    // coarsened and pseudonymised. The old copy said "hunter view: last 24 h"
+    // flat out, which understated what a hunter already has and left the way
+    // past it unstated (#316).
+    return 'Hunter view: your own companion in full. Other hunters: last 24 h, coarse ~1 km positions, anonymised — an admin verifies you as a member to see everyone in full.'
   }
   return 'Guest view: last 24 h, coarse ~1 km positions, hunters anonymised. Log in to see more.'
 }
