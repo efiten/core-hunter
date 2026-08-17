@@ -40,7 +40,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    #sp-toggle/#sender-picker) and the hunter picker (#hp-toggle/#hunter-picker).
    .tl-* rules below are ported as-is from app/src/styles/app.css for exact
    visual parity with app's target sheet. */
-.ms-wrap { position: relative; display: inline-flex; }
+/* No position: relative any more -- the panel is fixed and placed from JS
+   (#372), so a relative wrapper would only look like it still anchored it. */
+.ms-wrap { display: inline-flex; }
 .ms-toggle { padding: 5px 6px; }
 .ms-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
 /* position:fixed with left/top written by placePopover (#372): #bar wraps, so
@@ -91,7 +93,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .tl-time { flex: 0 0 auto; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 /* ---- Time-range picker (#285) ----
    Quick ranges beside an absolute From/To panel, after Grafana's shape. */
-.tr-wrap { position: relative; display: inline-flex; }
+.tr-wrap { display: inline-flex; } /* see .ms-wrap: nothing to anchor now */
 #tr-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
 /* Right-aligned by preference, but placed from JS (placePopover, #372): the old
    `right: 0` assumed the toggle "sits well into the bar", which stops being

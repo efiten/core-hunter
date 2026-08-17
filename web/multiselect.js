@@ -146,6 +146,15 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
 // panels are position:fixed, so left/top are viewport coordinates and the CSS
 // no longer anchors them to a toggle that moves when #bar wraps. Measure after
 // unhiding: a display:none panel has a zero rect.
+//
+// These stay viewport coordinates even though #bar carries backdrop-filter,
+// which per Filter Effects 2 makes it the containing block for its fixed
+// descendants -- measured, Chromium applies that for backdrop-filter as well as
+// for filter. It makes no difference here because #bar is itself fixed at the
+// viewport origin with no border and no transform, so its padding box starts at
+// (0,0) and the two frames coincide for a px left/top. popover.spec.js pins that
+// assumption; the day #bar gains a border, a transform or an offset, this needs
+// to correct by the delta between the written value and the resulting rect.
 export function placePopover(toggleEl, panelEl, { align = 'left' } = {}) {
   const { left, top } = popoverPosition(
     toggleEl.getBoundingClientRect(),

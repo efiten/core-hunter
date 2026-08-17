@@ -68,3 +68,42 @@ test('an open panel follows the toggle when a resize rewraps the bar', async ({ 
   const toggle = await page.locator('#tr-toggle').boundingBox()
   expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
 })
+
+// #bar carries backdrop-filter, which per Filter Effects 2 makes it the
+// containing block for its fixed-position descendants — the panels. Measured in
+// this Chromium, the rule is applied for backdrop-filter as well as for filter:
+// a fixed child of a filtered box at (100,50) renders at (100,50), not (0,0).
+//
+// placePopover writes viewport coordinates regardless, which is only safe
+// because #bar's padding box starts at the viewport origin: fixed at top/left 0,
+// no border, no transform. Those three are the assumption, so they are what this
+// pins. If any of them changes, placePopover has to correct by the delta between
+// the value it writes and the rect that results.
+test('#bar is the containing block for the panels, and its frame coincides with the viewport', async ({ page }) => {
+  await page.goto('/')
+  const m = await page.evaluate(() => {
+    const bar = document.getElementById('bar')
+    const cs = getComputedStyle(bar)
+    const r = bar.getBoundingClientRect()
+    // Does the containing-block rule apply in this engine at all?
+    const host = document.createElement('div')
+    host.style.cssText = 'position:absolute;left:100px;top:50px;width:200px;height:200px;backdrop-filter:blur(8px)'
+    const child = document.createElement('div')
+    child.style.cssText = 'position:fixed;left:0;top:0;width:10px;height:10px'
+    host.appendChild(child); document.body.appendChild(host)
+    const c = child.getBoundingClientRect()
+    host.remove()
+    return {
+      ruleApplies: c.left === 100 && c.top === 50,
+      backdrop: cs.backdropFilter,
+      origin: [r.left, r.top],
+      border: [cs.borderLeftWidth, cs.borderTopWidth],
+      transform: cs.transform,
+    }
+  })
+  expect(m.backdrop, '#bar still carries a backdrop-filter').not.toBe('none')
+  expect(m.ruleApplies, 'a backdrop-filtered box is the containing block for fixed children').toBe(true)
+  expect(m.origin, "#bar's box starts at the viewport origin").toEqual([0, 0])
+  expect(m.border, '#bar has no border to offset its padding box').toEqual(['0px', '0px'])
+  expect(m.transform, '#bar is untransformed').toBe('none')
+})
