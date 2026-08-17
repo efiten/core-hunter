@@ -26,47 +26,102 @@ measured against what real traffic already does.
 
 ## Candidate 1 — implausibly weak signal for a claimed zero-hop
 
-**Dead.** The two populations are the same distribution. RSSI deciles:
+**Dead — and precisely where it would have to work.** RSSI deciles:
 
 | decile | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 |---|---|---|---|---|---|---|---|---|---|
 | `hops = 0` (n=21,537) | -117 | -114 | -111 | -108 | -102 | -94 | -74 | -64 | -48 |
 | `hops > 0` (n=128,497) | -116 | -111 | -108 | -104 | -94 | -62 | -52 | -44 | -32 |
 
-30% of *genuine* zero-hop receptions sit below -111 dBm — the fringe the RSSI
-scale was extended for (#282/#344) — and relayed traffic is just as weak just as
-often. Any threshold that flags "too weak to be zero-hop" flags a third of the
-real fringe, which is the part of the map direction-finding needs most.
+The two populations are **not** identical, and it is worth being exact about
+where they differ. From decile 5 up they diverge by 8 to 32 dB, always the same
+way: relayed traffic is *stronger*. That is what repeaters are — better
+antennas, more power, mains supply, sited high — and it has nothing to do with
+forgery.
+
+Deciles 1-4 are the ones that matter, and there they are within 3-4 dB
+(-117/-116, -114/-111, -111/-108, -108/-104). The weak tail is the only place a
+"too weak to be zero-hop" threshold could live, and that is exactly the range
+where the two are indistinguishable: 30% of *genuine* zero-hop receptions sit
+below -111 dBm — the fringe the RSSI scale was extended for (#282/#344) — and
+relayed traffic is just as weak just as often. Any such threshold flags a third
+of the real fringe, which is the part of the map direction-finding needs most.
+
+The divergence higher up does dispose of the mirror-image detector — "too
+*strong* to be a claimed zero-hop" — but in the wrong direction for a defender:
+a forger transmitting into our antenna from close by produces a strong
+reception, which is what an honest close transmitter produces too. Strength is
+evidence of proximity, never of provenance.
 
 ## Candidate 2 — cross-check the claimed path against known topology (#279)
 
-**Dead for detection, and it is our own data that shows why.** A path entry is a
-2-3 byte hash appended by the forwarder, so it collides by accident: 1 in 256 for
-the 2-byte case. Taking the widest geographic spread of any identity's zero-hop
-receptions, the single largest in the whole dataset is **143 km, for the 2-byte
-`direct_hash` id `77`** (551 rows, 4 hunters). That is not an attacker; that is
-one prefix standing for several nodes — precisely the ambiguity AGENTS.md §7
-already refuses to treat as an identity. A topology cross-check would spend its
-alerts on prefix collisions.
+The population first, because it is easy to measure the wrong one. A path entry
+is a hash the forwarder appends: 1-3 bytes as the protocol produces it, but
+`classifyReception` refuses anything under 2 bytes (`app/src/meshpacket.js`,
+`last.length >= 4`), so what capture keeps is 2-3 bytes. These are the `relay`
+sender kind, and they exist **only** on the `hops > 0` branch — a query filtered
+to `hops = 0` contains no path hash at all, by construction.
+
+Measured over the population that does contain them (128,497 rows, 382 ids):
+312 two-byte ids, 63 three-byte, plus 19 rows carrying a 1-byte id, all inside
+one two-hour window on 2026-07-22 — an anomaly against the guard rather than a
+standing part of the traffic.
+
+**Collisions are expected, not hypothetical.** Two bytes is 1 in 65,536 per
+pair, but the question is how many pairs there are: with 312 distinct 2-byte
+relay ids in the window, the expected number of colliding pairs is
+312 × 311 / 2 / 65,536 ≈ **0.74**. About one collision in the current population,
+which is the honest form of the argument — the earlier draft of this doc quoted
+1 in 256, which is the *1-byte* rate, in a paragraph about 2-byte ids.
+
+**And there is no anomaly for a topology check to find.** The widest geographic
+spread of any relay id's receptions is 37 km (`4eea`, 15 rows, 3 hunters); p90 is
+11 km and nothing exceeds 50 km. Every one of those is inside what a well-sited
+repeater's coverage explains, so a topology cross-check has nothing to alert on
+that is not also ordinary. It would need a curated prefix→relay registry
+(#279's subject) to say more, and that registry is what would be doing the work,
+not the check.
+
+### The one geographic impossibility in the data is a different id class
+
+The widest spread anywhere in the dataset is **143 km, for the 1-byte
+`direct_hash` id `77`** — and every part of that sentence matters:
+
+- `direct_hash` is `d.sourceHash` on a **zero-hop** packet, not a path entry, so
+  it is not evidence about forwarder hashes at all;
+- it is 1 byte (`77` is two hex characters), i.e. 1 in 256;
+- that branch of `classifyReception` applies **no length guard** — the `>= 2
+  bytes` refusal lives only on the FLOOD path branch, so a 1-byte id becomes a
+  sender identity, a captured reception and a Locate target.
+
+The shape of it is textbook collision: 549 of the 551 rows sit in a ~6 km area
+around 51.1°N heard by three hunters, and 2 rows come from a fourth hunter
+143 km away. A detector's job would be to find those two rows among 551 —
+whereas a length guard on that branch drops the whole class for free. That is
+#369's territory, and candidate 2's data is the best argument for it here.
 
 ## Candidate 3 — spatial coherence of one identity over time
 
-*"An impersonator transmitting from elsewhere makes that node's zero-hop
-receptions bimodal."* True in principle, unusable in practice: **legitimate nodes
-already move.**
+*"An impersonator transmitting from elsewhere makes that node's receptions
+bimodal."* True in principle, unusable in practice: **legitimate nodes already
+move.** Measured over both identity populations, since they behave differently:
 
-| zero-hop spread per identity | senders (of 327) |
-|---|---|
-| > 5 km | 47 (14%) |
-| > 10 km | 12 (4%) |
-| > 25 km | 1 (0.3%) |
-| > 100 km | 1 (0.3%) |
+| spread per identity | zero-hop ids (327) | relay ids (382) |
+|---|---|---|
+| > 5 km | 47 (14%) | 68 (18%) |
+| > 10 km | 12 (4%) | 44 (12%) |
+| > 25 km | 1 (0.3%) | 8 (2%) |
+| > 50 km | 1 (0.3%) | 0 |
+| > 100 km | 1 (0.3%) | 0 |
 
 A threshold low enough to catch an impersonator a few km away (5-10 km) fires on
-14% of all senders, most of them companions in cars — mobile transmitters are the
-normal case for this project, not the exception. A threshold high enough to avoid
-them (>25 km) has exactly one hit in six weeks, and that hit is candidate 2's
-prefix collision.
+14-18% of all identities. Most of the zero-hop ones are companions in cars —
+mobile transmitters are the normal case for this project, not the exception —
+and the relay ones are repeaters heard across their own coverage by up to ten
+hunters. A threshold high enough to avoid them (>25 km) leaves 8 relay ids whose
+widest spread is 37 km, all explicable as coverage, and exactly one zero-hop id:
+the 1-byte `direct_hash` collision above, which is a classifier gap rather than
+something to detect at runtime.
 
 ## Candidate 4 — half-duplex simultaneity
 
@@ -128,8 +183,9 @@ Then the five wider cases show what the alert list would actually contain:
 - 40 copies of one repeater's advert over 47 min at 8 hops.
 - one 296 s pair at 10 hops.
 
-Four of the five are one broken clock. A replay detector on this network is a
-stuck-clock detector, and 11% of Adverts come from clocks like that.
+Three of the five are the same node with a broken clock, and its 121 copies are
+most of the volume. A replay detector on this network is a stuck-clock detector,
+and 11% of Adverts come from clocks like that.
 
 ## Decision
 
@@ -149,9 +205,18 @@ What remains, and is already done or already stated:
 - **AGENTS.md §1 and `docs/2026-08-15-hop-count-trust.md` already say the honest
   thing**: anonymous coverage is sound, every *"node N was here"* claim rests on
   an unauthenticated identity. That statement is the mitigation.
-- **AGENTS.md §7's prefix rules do more against this than any detector would.**
-  Candidates 2 and 3 both terminated on a 2-byte id standing for several nodes;
-  refusing short prefixes as identities is what keeps that out of Locate.
+- **The cheap buildable thing is a classifier guard, not a detector.** "No
+  detector is worth building" and "there is a one-line fix in the classifier"
+  are compatible conclusions, and only the first was in this spike's scope. The
+  single geographic impossibility in six weeks of data is a 1-byte
+  `direct_hash` id, and that branch of `classifyReception` has no length guard
+  at all, while the FLOOD path branch beside it refuses anything under 2 bytes.
+  See #369.
+- **AGENTS.md §7's prefix rules are not what would have caught it**, and should
+  not be read as such: they govern whether a short id may *merge onto a longer
+  one* (`feed.js` strict, `targetpicker.js` looser per #331). They say nothing
+  about a 1-byte id standing on its own row as its own identity, which is what
+  `77` does — 551 rows, 4 hunters, handed to Locate as one target.
 
 Worth revisiting only if the inputs change: a shared time base across hunters
 (candidate 4 becomes observable), MeshCore adding per-hop authentication or
@@ -168,7 +233,13 @@ Read-only, against the ingestor's SQLite database:
 SELECT rssi FROM hunter_receptions WHERE hops = 0  AND rssi IS NOT NULL ORDER BY rssi;
 SELECT rssi FROM hunter_receptions WHERE hops > 0  AND rssi IS NOT NULL ORDER BY rssi;
 
--- candidates 2 and 3: zero-hop geographic spread per identity
+-- candidate 2: the path-hash population. sender_kind='relay' is the ONLY one
+-- that carries a forwarder hash, and it exists only above zero hops — filtering
+-- to hops = 0 (as the first draft of this doc did) excludes every one of them.
+SELECT sender_id, LENGTH(sender_id)/2 AS id_bytes, hunter_pubkey, lat, lon
+FROM hunter_receptions WHERE sender_kind = 'relay' AND lat IS NOT NULL;
+
+-- candidate 3: the same, for the zero-hop identity population
 SELECT sender_id, sender_kind, hunter_pubkey, rx_at, lat, lon, raw
 FROM hunter_receptions WHERE hops = 0 AND sender_id <> '' AND lat IS NOT NULL;
 
