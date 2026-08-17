@@ -18,10 +18,13 @@ export function isDegradedFor(role) {
   return !atLeast(role, 'member')
 }
 // Server-side gating (degradeFilter/applyGuestWindowCap, httpapi/api.go +
-// degrade.go) applies the same 24h/500-row/coarse-position/anonymised-hunter
-// limits to guest AND hunter roles alike -- both are below "member". The
-// call to action differs: a guest isn't logged in yet, but a hunter already
-// is and needs member verification instead (#174).
+// degrade.go) windows, caps, coarsens and pseudonymises everything a
+// sub-member caller sees -- with one exception this comment used to miss: a
+// caller's OWN linked companions come back exact and full-history
+// (ownsCompanion in the /api/points and /api/heatmap handlers). A guest has no
+// companion, so for them it really is all degraded; a hunter has one.
+// The call to action differs too: a guest isn't logged in yet, but a hunter
+// already is and needs member verification instead (#174).
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
