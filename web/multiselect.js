@@ -147,23 +147,41 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
 // no longer anchors them to a toggle that moves when #bar wraps. Measure after
 // unhiding: a display:none panel has a zero rect.
 //
-// These stay viewport coordinates even though #bar carries backdrop-filter,
-// which per Filter Effects 2 makes it the containing block for its fixed
-// descendants -- measured, Chromium applies that for backdrop-filter as well as
-// for filter. It makes no difference here because #bar is itself fixed at the
-// viewport origin with no border and no transform, so its padding box starts at
-// (0,0) and the two frames coincide for a px left/top. popover.spec.js pins that
-// assumption; the day #bar gains a border, a transform or an offset, this needs
-// to correct by the delta between the written value and the resulting rect.
-export function placePopover(toggleEl, panelEl, { align = 'left' } = {}) {
+// #bar carries backdrop-filter, which per Filter Effects 2 makes it the
+// containing block for its fixed descendants, so a written left/top is not
+// necessarily a viewport coordinate. Engines disagree about the rule and this
+// is a phone bug: Chromium applies it (popover.spec.js measures that), WebKit
+// is the engine CI cannot reach. Today it happens not to matter, because #bar
+// is fixed at the viewport origin with no border and no transform, so its
+// padding box starts at (0,0) and the frames coincide.
+//
+// Rather than rest on that, the position is read back once and corrected by the
+// delta. That makes the result frame-independent in either engine, and survives
+// #bar later gaining a border, an offset or a transform. One extra rect read
+// per open, and the correction is skipped entirely when the delta is subpixel
+// noise (fractional DPR, browser zoom), so the common path still writes once.
+//
+// A single correction is exact for a translated frame. It would not be for a
+// SCALED one (a transform: scale ancestor), where the delta itself changes with
+// the value written -- #bar has no transform, and popover.spec.js pins that.
+//
+// viewport is injectable for tests: web/ has no jsdom, and this is the one part
+// worth pinning without one. Production call sites omit it.
+export function placePopover(toggleEl, panelEl, { align = 'left', viewport } = {}) {
+  const vp = viewport || { width: window.innerWidth, height: window.innerHeight }
   const { left, top } = popoverPosition(
     toggleEl.getBoundingClientRect(),
     panelEl.getBoundingClientRect(),
-    { width: window.innerWidth, height: window.innerHeight },
+    vp,
     { align },
   )
   panelEl.style.left = `${left}px`
   panelEl.style.top = `${top}px`
+
+  const r = panelEl.getBoundingClientRect()
+  const dx = r.left - left, dy = r.top - top
+  if (Math.abs(dx) > 0.5) panelEl.style.left = `${left - dx}px`
+  if (Math.abs(dy) > 0.5) panelEl.style.top = `${top - dy}px`
 }
 
 // wirePopover gives a toggle-button + panel the shared open/close shape
