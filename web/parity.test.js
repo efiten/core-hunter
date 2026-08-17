@@ -16,6 +16,8 @@ import * as web from './locate.js'
 import * as app from '../app/src/locate.js'
 import * as webNames from './names.js'
 import * as appNames from '../app/src/names.js'
+import * as webChangelog from './changelog.js'
+import * as appChangelog from '../app/src/changelog.js'
 import { setConfig } from '../app/src/config.js'
 
 // ~15 m and ~70 m north of the origin point: the first collapses under the
@@ -209,5 +211,71 @@ describe('names — parity of the shared matching core', () => {
       expect(webNames.cachedName(key.toUpperCase())).toBe(webNames.cachedName(key))
       expect(appNames.cachedName(key.toUpperCase())).toBe(appNames.cachedName(key))
     })
+  })
+})
+
+// changelog.js (#284) is the third duplicated module. It is pure text-in /
+// data-out, so parity is checked by running one fixture through both copies —
+// a fixture built so that every transformation the parser performs is
+// load-bearing: a compare-link header AND a bare one, a commit link to drop, an
+// issue link to keep, an escaped entity, a nested link, and a release with a
+// header but no bullets.
+const CHANGELOG = `# Changelog
+
+## [1.7.0](https://github.com/efiten/core-hunter/compare/app-v1.6.0...app-v1.7.0) (2026-08-15)
+
+
+### Features
+
+* **app,web:** carry the decoder's full packet-type set ([#343](https://github.com/efiten/core-hunter/issues/343)) ([e924935](https://github.com/efiten/core-hunter/commit/e924935728c677241dafe369ef18508223a9c339))
+
+
+### Tests
+
+* **web:** pin app&lt;-&gt;web parity ([#238](https://github.com/efiten/core-hunter/issues/238) option 2) ([#359](https://github.com/efiten/core-hunter/issues/359)) ([473e84e](https://github.com/efiten/core-hunter/commit/473e84e9293309bf8c2feefa42b4bb427bf990c3))
+
+## [1.6.5](https://github.com/efiten/core-hunter/compare/app-v1.6.0...app-v1.6.5) (2026-08-10)
+
+## 0.1.0 (2026-06-29)
+
+
+### Features
+
+* **app:** first cut ([#8](https://github.com/efiten/core-hunter/issues/8)) ([7af52b7](https://github.com/efiten/core-hunter/commit/7af52b76c0635cc11a11165133bcca746576a4c2)), closes [#3](https://github.com/efiten/core-hunter/issues/3)
+`
+
+describe('changelog — parity between the app and web copies', () => {
+  it('parses the same releases, sections and item text', () => {
+    expect(webChangelog.parseChangelog(CHANGELOG))
+      .toEqual(appChangelog.parseChangelog(CHANGELOG))
+    // Pinned literally too, so a drift that happens to be symmetric (both
+    // copies edited the same wrong way) still has to be deliberate.
+    expect(webChangelog.parseChangelog(CHANGELOG)).toEqual([
+      {
+        version: '1.7.0',
+        date: '2026-08-15',
+        sections: [
+          { title: 'Features', items: ["app,web: carry the decoder's full packet-type set (#343)"] },
+          { title: 'Tests', items: ['web: pin app<->web parity (#238 option 2) (#359)'] },
+        ],
+      },
+      {
+        version: '0.1.0',
+        date: '2026-06-29',
+        sections: [{ title: 'Features', items: ['app: first cut (#8), closes #3'] }],
+      },
+    ])
+  })
+
+  it('agrees on the badge and the new-release count', () => {
+    const rel = webChangelog.parseChangelog(CHANGELOG)
+    for (const seen of [null, '', '0.1.0', '1.7.0', '9.9.9']) {
+      expect(webChangelog.hasUnseen('1.7.0', seen)).toBe(appChangelog.hasUnseen('1.7.0', seen))
+      expect(webChangelog.unseenCount(rel, seen)).toBe(appChangelog.unseenCount(rel, seen))
+    }
+    // The values themselves, not just their agreement.
+    expect(webChangelog.hasUnseen('1.7.0', '0.1.0')).toBe(true)
+    expect(webChangelog.hasUnseen('1.7.0', null)).toBe(false)
+    expect(webChangelog.unseenCount(rel, '0.1.0')).toBe(1)
   })
 })

@@ -43,6 +43,17 @@ export function loadViewIndex() {
   return i === -1 ? 1 : i
 }
 
+// Version whose "what's new" panel the user last acknowledged (#284), or null
+// when they never have — a first run records the running version silently, so
+// nobody is shown releases from before they arrived.
+export function loadChangelogSeen() {
+  return readStored('core-hunter-changelog-seen')
+}
+
+export function saveChangelogSeen(version) {
+  try { localStorage.setItem('core-hunter-changelog-seen', version) } catch (_) {}
+}
+
 // isSettingsActive reports whether any setting under the Settings sheet
 // differs from its default — i.e. something that changes behaviour is on.
 // Drives the settings button's active-dot, mirroring isFilterActive (filters.js).

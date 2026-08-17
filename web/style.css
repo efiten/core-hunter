@@ -168,7 +168,32 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .lc-warn { color: var(--ch-sig-warm); }
 #status { color:var(--ch-muted); margin-left:auto; }
 #sf-counts { color:var(--ch-muted); font-size:12px; }
-#ch-version { color:var(--ch-muted); font-size:12px; }
+/* The footer version is the "what's new" trigger (#284): a button styled as the
+   plain muted text it was, with the unseen-release dot as a sibling of the text
+   span so the server-version fetch can rewrite the text without losing it.
+   `#bar #ch-version`, not `#ch-version`: the bar styles every button it
+   contains (`#bar button`, one id + one type) and that outranks a bare id
+   selector, so the plain-text look has to be claimed at the same weight. */
+#bar #ch-version { display:inline-flex; align-items:center; gap:5px; padding:0; border:none;
+  background:none; font:inherit; color:var(--ch-muted); font-size:12px; cursor:pointer; }
+.wn-dot { width:7px; height:7px; border-radius:50%; background:var(--ch-accent-2); }
+.wn-card { max-width:520px; max-height:70vh; }
+.wn-card h4 { margin:0; }
+/* min-height:0 is what makes the scroll happen: .lc-card is a column flex
+   container, and a flex item defaults to min-height:auto — it refuses to shrink
+   below its content, so the list would push past the card's 70vh instead of
+   scrolling inside it. */
+.wn-body { min-height:0; overflow-y:auto; }
+.wn-version { display:flex; align-items:baseline; gap:8px; margin:14px 0 2px;
+  font-size:14px; color:var(--ch-text); }
+.wn-version:first-child { margin-top:0; }
+.wn-date { font-size:12px; font-weight:400; color:var(--ch-muted); }
+.wn-new { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--ch-bg); background:var(--ch-accent-2); border-radius:999px; padding:1px 7px; }
+.wn-section { margin:8px 0 2px; font-size:12px; font-weight:600; color:var(--ch-muted); }
+.wn-items { margin:0; padding-left:18px; }
+.wn-items li { margin:3px 0; font-size:13px; line-height:1.45; color:var(--ch-text); }
+.wn-more { display:block; margin:14px 0 4px; font-size:12.5px; color:var(--ch-accent-2); }
 #map { position:fixed; inset:0; top:48px; }
 #locate-toggle.on { background: var(--ch-sig-warm); color: var(--ch-bg); }
 #locate-info { position: fixed; right: 12px; bottom: 12px; z-index: 650; max-width: 264px;
