@@ -44,7 +44,12 @@ jobs:
       - run: npx eslint .
       - run: npx vitest run
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
+        # --fail-on-flaky-tests, not retries: 0 (#367): a test that fails first
+        # and passes on the retry used to report green, which is how #361 hid a
+        # 12%-of-loads race for months. The retry still runs, so
+        # trace: 'on-first-retry' still produces the only artefact a rare race
+        # ever leaves, but needing it now fails the build.
+      - run: npx playwright test --fail-on-flaky-tests
 
   nameresolver:
     name: nameresolver — vitest
