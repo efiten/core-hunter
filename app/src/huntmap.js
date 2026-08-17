@@ -73,7 +73,13 @@ export function createHuntMap(containerId) {
   try {
     map = new maplibregl.Map({
       container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
-      attributionControl: false, dragRotate: true, pitchWithRotate: false, maxPitch: MAX_PITCH,
+      // pitchWithRotate governs the MOUSE path only (ctrl/right-drag); touch
+      // pitch is a separate handler that already defaults on. Left false, a
+      // desktop browser has no tilt gesture at all, so raising maxPitch alone
+      // changed nothing there even though a phone could already tilt. Setting
+      // it true reverses docs/2026-07-11-3d-mode.md's "not a free-tilt 3D
+      // explorer" for mouse input only -- see docs/2026-08-17-free-tilt.md.
+      attributionControl: false, dragRotate: true, pitchWithRotate: true, maxPitch: MAX_PITCH,
     })
   } catch (e) { return stub }
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
