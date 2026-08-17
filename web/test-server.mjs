@@ -11,6 +11,7 @@ const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.webmanifest': 'application/manifest+json',
+  '.md': 'text/markdown', // CHANGELOG.md — read by the "what's new" panel (#284)
 }
 
 createServer(async (req, res) => {

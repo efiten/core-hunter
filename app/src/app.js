@@ -26,7 +26,8 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
-import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex } from './settings.js'
+import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from './settings.js'
+import { parseChangelog, hasUnseen, unseenCount } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct } from './signal.js'
 import { createReceptionLog } from './receptionlog.js'
@@ -78,6 +79,14 @@ function saveAttenuator(db) {
 function saveSoundMode(mode) {
   try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
 }
+
+// "What's new" (#284). The version acknowledged *before* this session, read
+// once at boot: opening the panel acknowledges the running version, and this
+// has to keep pointing at where the user was so the panel can still mark which
+// releases are new to them. A first run records the running version silently —
+// someone opening the app for the first time has no "since you were last here".
+const whatsNewSeen = loadChangelogSeen()
+if (!whatsNewSeen) saveChangelogSeen(__APP_VERSION__)
 
 // Row cap for the surfaces that are not window-scoped (the receptions log's
 // "all" mode, the target list) — see docs/2026-07-22-retention-and-bounded-reads.md.
@@ -1199,9 +1208,11 @@ function buildSettingsSheet() {
         Light theme
       </label>
       <div class="ss-version-row">
+        <button id="ss-whatsnew-btn" class="ss-whatsnew" type="button" aria-expanded="false" aria-controls="ss-whatsnew">What's new<span id="ss-whatsnew-dot" class="ss-whatsnew-dot" hidden aria-hidden="true"></span></button>
         <span id="ss-update-status" class="ss-update-status" hidden></span>
         <button id="ss-reload-btn" class="ss-reload" type="button">Reload</button>
       </div>
+      <div id="ss-whatsnew" class="ss-whatsnew-panel" hidden></div>
       </div>
       <div class="ss-panel" id="ss-panel-about" role="tabpanel" aria-labelledby="ss-tab-about" hidden>
         <div class="ss-about-brand">
@@ -1241,6 +1252,30 @@ function buildSettingsSheet() {
   // Reload drops the live BLE/MQTT session on purpose — it's the deliberate
   // way to pick up a new build now that pull-to-refresh is disabled (#132).
   el('ss-reload-btn').addEventListener('click', () => location.reload())
+
+  el('ss-whatsnew-btn').addEventListener('click', async () => {
+    const panel = el('ss-whatsnew')
+    const open = panel.hidden
+    panel.hidden = !open
+    el('ss-whatsnew-btn').setAttribute('aria-expanded', String(open))
+    if (!open) return
+    saveChangelogSeen(__APP_VERSION__)
+    refreshWhatsNewBadge()
+    try {
+      renderWhatsNew(panel, await loadReleases(), whatsNewSeen)
+    } catch (_) {
+      // Offline with the chunk not yet cached. The link still works once the
+      // connection is back, and the panel says so rather than staying blank.
+      panel.replaceChildren()
+      const msg = document.createElement('a')
+      msg.className = 'wn-more'
+      msg.href = RELEASES_URL
+      msg.target = '_blank'
+      msg.rel = 'noopener'
+      msg.textContent = 'Changelog unavailable offline — read the releases on GitHub'
+      panel.appendChild(msg)
+    }
+  })
 
   el('ss-conn-btn').addEventListener('click', () => {
     if (state.connected) {
@@ -1437,6 +1472,87 @@ async function checkForUpdate() {
   status.textContent = stale ? `v${latest} available` : ''
   status.hidden = !stale
   btn.classList.toggle('ss-reload-update', stale)
+}
+
+// ---------------------------------------------------------------------------
+// "What's new" — changelog reader in the Settings version row (#284)
+// ---------------------------------------------------------------------------
+
+// How many releases the panel lists. The rest are one tap away on GitHub —
+// CHANGELOG.md only grows, and 25 releases of collapsed commit subjects is a
+// scroll, not a summary.
+const WHATSNEW_LIMIT = 10
+const RELEASES_URL = 'https://github.com/efiten/core-hunter/releases'
+
+let whatsNewReleases = null
+
+// The changelog is imported dynamically so it lands in its own chunk, fetched
+// the first time the panel is opened rather than on every cold start.
+async function loadReleases() {
+  if (!whatsNewReleases) {
+    whatsNewReleases = parseChangelog((await import('../CHANGELOG.md?raw')).default)
+  }
+  return whatsNewReleases
+}
+
+// Built as DOM rather than innerHTML: the items are changelog prose that has
+// been through link-stripping, so they are text, not markup.
+function renderWhatsNew(panel, releases, seen) {
+  const fresh = unseenCount(releases, seen)
+  panel.replaceChildren()
+  releases.slice(0, WHATSNEW_LIMIT).forEach((rel, i) => {
+    const head = document.createElement('h4')
+    head.className = 'wn-version'
+    head.textContent = `v${rel.version}`
+    if (rel.date) {
+      const date = document.createElement('span')
+      date.className = 'wn-date'
+      date.textContent = rel.date
+      head.appendChild(date)
+    }
+    if (i < fresh) {
+      const tag = document.createElement('span')
+      tag.className = 'wn-new'
+      tag.textContent = 'new'
+      head.appendChild(tag)
+    }
+    panel.appendChild(head)
+    for (const section of rel.sections) {
+      const title = document.createElement('h5')
+      title.className = 'wn-section'
+      title.textContent = section.title
+      panel.appendChild(title)
+      const list = document.createElement('ul')
+      list.className = 'wn-items'
+      for (const item of section.items) {
+        const li = document.createElement('li')
+        li.textContent = item
+        list.appendChild(li)
+      }
+      panel.appendChild(list)
+    }
+  })
+  const more = document.createElement('a')
+  more.className = 'wn-more'
+  more.href = RELEASES_URL
+  more.target = '_blank'
+  more.rel = 'noopener'
+  more.textContent = releases.length > WHATSNEW_LIMIT
+    ? `Older releases (${releases.length - WHATSNEW_LIMIT} more) on GitHub`
+    : 'All releases on GitHub'
+  panel.appendChild(more)
+}
+
+// The dot is on the button inside the Settings sheet, so it is re-evaluated
+// whenever that sheet opens. It reads storage rather than `whatsNewSeen` so
+// acknowledging clears it within the same session.
+function refreshWhatsNewBadge() {
+  const unseen = hasUnseen(__APP_VERSION__, loadChangelogSeen())
+  el('ss-whatsnew-dot').hidden = !unseen
+  el('ss-whatsnew-btn').setAttribute(
+    'aria-label',
+    unseen ? `What's new in v${__APP_VERSION__} — updated since you last looked` : `What's new in v${__APP_VERSION__}`,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -2001,6 +2117,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       refreshConnState()
       refreshAccount()
       checkForUpdate()
+      refreshWhatsNewBadge()
     }
   })
 

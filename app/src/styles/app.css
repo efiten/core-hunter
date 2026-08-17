@@ -358,6 +358,25 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 13px; font-family: system-ui, sans-serif; cursor: pointer; }
 /* When a newer build is live, pull the eye to the reload button. */
 .ss-reload-update { border-color: var(--ch-accent-2); color: var(--ch-accent-2); }
+/* "What's new" changelog reader (#284). The dot marks a release this browser
+   has not acknowledged; the panel expands in place under the version row, so it
+   scrolls with the sheet instead of stacking another overlay on it. */
+.ss-whatsnew { display: inline-flex; align-items: center; gap: 6px; padding: 0;
+  border: none; background: none; color: var(--ch-accent-2);
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ss-whatsnew-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ch-accent-2); }
+.ss-whatsnew-panel { margin-top: 12px; padding-top: 10px; max-height: 46vh; overflow-y: auto;
+  border-top: 1px solid var(--ch-border); }
+.wn-version { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 2px;
+  font-size: 14px; color: var(--ch-text); }
+.wn-version:first-child { margin-top: 0; }
+.wn-date { font-size: 12px; font-weight: 400; color: var(--ch-muted); }
+.wn-new { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ch-bg); background: var(--ch-accent-2); border-radius: 999px; padding: 1px 7px; }
+.wn-section { margin: 8px 0 2px; font-size: 12px; font-weight: 600; color: var(--ch-muted); }
+.wn-items { margin: 0; padding-left: 18px; }
+.wn-items li { margin: 3px 0; font-size: 13px; line-height: 1.45; color: var(--ch-text); }
+.wn-more { display: block; margin: 14px 0 4px; font-size: 12.5px; color: var(--ch-accent-2); }
 
 /* ---- Onboarding splash / spotlight overlay (until first GPS fix; re-openable via "?") ----
    A translucent scrim dims the map; the live topbar + FAB controls are lifted

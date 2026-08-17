@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex } from '../settings.js'
+import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -89,5 +89,30 @@ describe('loadViewIndex', () => {
   it('returns 1 instead of throwing when storage access throws', () => {
     vi.stubGlobal('localStorage', throwingStorage())
     expect(loadViewIndex()).toBe(1)
+  })
+})
+
+describe('changelog seen-version (#284)', () => {
+  it('returns the acknowledged version', () => {
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-changelog-seen': '1.6.0' }))
+    expect(loadChangelogSeen()).toBe('1.6.0')
+  })
+  it('returns null when nothing was acknowledged yet', () => {
+    vi.stubGlobal('localStorage', storageWith({}))
+    expect(loadChangelogSeen()).toBe(null)
+  })
+  it('returns null instead of throwing when storage access throws', () => {
+    vi.stubGlobal('localStorage', throwingStorage())
+    expect(loadChangelogSeen()).toBe(null)
+  })
+  it('writes the version under the key the loader reads', () => {
+    const written = {}
+    vi.stubGlobal('localStorage', { getItem: (k) => written[k] ?? null, setItem: (k, v) => { written[k] = v } })
+    saveChangelogSeen('1.7.0')
+    expect(loadChangelogSeen()).toBe('1.7.0')
+  })
+  it('does not throw when storage refuses the write', () => {
+    vi.stubGlobal('localStorage', throwingStorage())
+    expect(() => saveChangelogSeen('1.7.0')).not.toThrow()
   })
 })

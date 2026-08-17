@@ -152,7 +152,7 @@
     <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>
     <span id="sf-counts"></span>
-    <span id="ch-version"></span>
+    <button id="ch-version" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="whatsnew-modal"><span id="ch-version-text"></span><span id="wn-dot" class="wn-dot" hidden aria-hidden="true"></span></button>
   </header>
   <div id="locate-info" hidden></div>
   <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>
@@ -168,6 +168,13 @@
         <button id="login-cancel" type="button">Cancel</button>
       </div>
     </form>
+  </div>
+  <div id="whatsnew-modal" class="lc-modal" hidden>
+    <div class="lc-card wn-card" role="dialog" aria-modal="true" aria-labelledby="wn-title">
+      <h4 id="wn-title">What's new</h4>
+      <div id="wn-body" class="wn-body"></div>
+      <div class="lc-actions"><button id="wn-close" type="button">Close</button></div>
+    </div>
   </div>
   <!-- First-run onboarding (#316). The callouts are positioned from
        onboarding.js against the real controls they point at, the same way the
@@ -197,8 +204,12 @@
   <script type="module">
     import { VERSION } from './version.js';
     import { API_BASE } from './config.js';
-    const el = document.getElementById('ch-version');
+    import { initWhatsNew } from './whatsnew.js';
+    // Only the text span is rewritten by the server-version fetch — the dot is
+    // a sibling, so it survives (#284).
+    const el = document.getElementById('ch-version-text');
     el.textContent = 'web v' + VERSION;
+    initWhatsNew();
     fetch(`${API_BASE}/api/version`)
       .then((r) => r.json())
       .then((d) => { if (d.server) el.textContent = `web v${VERSION} · srv v${d.server}`; })
