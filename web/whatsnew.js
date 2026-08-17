@@ -85,16 +85,27 @@ export function initWhatsNew() {
   // here", and a badge on their very first load would be noise.
   const seen = loadSeen()
   if (!seen) saveSeen(VERSION)
-  const unseen = hasUnseen(VERSION, seen)
-  dot.hidden = !unseen
-  btn.title = unseen ? `What's new in v${VERSION} — updated since you last looked` : "What's new"
+  function refreshBadge() {
+    const unseen = hasUnseen(VERSION, loadSeen())
+    dot.hidden = !unseen
+    // Re-read storage rather than close over the boot value: opening the panel
+    // acknowledges the version, and a title still reading "updated since you
+    // last looked" next to a hidden dot is the two halves disagreeing.
+    btn.title = unseen ? `What's new in v${VERSION} — updated since you last looked` : "What's new"
+  }
+  refreshBadge()
 
   let releases = null
   async function open() {
     modal.hidden = false
     btn.setAttribute('aria-expanded', 'true')
     saveSeen(VERSION)
-    dot.hidden = true
+    refreshBadge()
+    // aria-modal tells assistive tech the page behind is inert, so focus has to
+    // actually move — otherwise a keyboard user is left tabbing through a page
+    // they have just been told is not there. Same as login.js, which focuses
+    // its first field on open.
+    document.getElementById('wn-close').focus()
     if (releases) return
     try {
       const res = await fetch(`CHANGELOG.md?v=${VERSION}`)
@@ -119,6 +130,9 @@ export function initWhatsNew() {
   function close() {
     modal.hidden = true
     btn.setAttribute('aria-expanded', 'false')
+    // Back to the control that opened it, so Escape or Close does not drop the
+    // keyboard user at the top of the document.
+    btn.focus()
   }
 
   btn.addEventListener('click', open)

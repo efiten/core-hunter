@@ -73,6 +73,14 @@ export function hasUnseen(current, seen) {
 // was acknowledged, and 0 when the acknowledged version is not in the file at
 // all (a dev build ahead of the last release) — there is no position to count
 // from, and guessing one would mark every release new.
+//
+// So this and hasUnseen can disagree, and deliberately: an acknowledged version
+// that is not in the changelog badges the trigger (the running build differs
+// from what you last saw) and then marks nothing as new (there is no position to
+// count from). The reader sees a dot and an unmarked list. That is the honest
+// pair — the alternative is a dot that never appears for a dev build, or a list
+// where everything is new because we guessed a position — and it is only
+// reachable off a release, where "which entries are new" has no answer anyway.
 export function unseenCount(releases, seen) {
   if (!seen) return 0
   const i = releases.findIndex((r) => r.version === seen)

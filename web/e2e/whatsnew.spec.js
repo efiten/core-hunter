@@ -1,4 +1,8 @@
 import { test, expect, clickUntil } from './fixtures.js'
+// The deployed version, imported rather than retyped: release-please rewrites
+// version.js on every web release without touching this spec, so a literal
+// '1.5.0' here would go red on the release PR's own CI run (AGENTS.md §5.1).
+import { VERSION } from '../version.js'
 
 // A stand-in CHANGELOG.md so the assertions about which releases are marked new
 // do not move every time the real file gains a release. The real file is
@@ -67,7 +71,7 @@ test('a first visit gets no badge, and is recorded so the next one does not eith
   // Recorded rather than left empty: without this, the first release after the
   // visit would look like "new since you were last here" to someone who has
   // never seen any of them.
-  expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-seen'))).toBe('1.5.0')
+  expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-seen'))).toBe(VERSION)
 
   await page.reload()
   await expect(page.locator('#wn-dot')).toBeHidden()
@@ -100,7 +104,7 @@ test('opening the panel acknowledges the running version and clears the badge fo
   await page.goto('/')
   await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
   await expect(page.locator('#wn-dot')).toBeHidden()
-  expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-seen'))).toBe('1.5.0')
+  expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-seen'))).toBe(VERSION)
 
   await page.reload()
   await expect(page.locator('#wn-dot')).toBeHidden()
@@ -123,6 +127,29 @@ test('the panel closes on the Close button, on the scrim and on Escape', async (
   await clickUntil(page, '#ch-version', () => modal.isVisible())
   await page.keyboard.press('Escape')
   await expect(modal).toBeHidden()
+})
+
+test('focus moves into the dialog and back out again', async ({ page }) => {
+  // The card declares aria-modal, which tells assistive tech the rest of the
+  // page is inert — so focus has to actually be inside it, and has to come back
+  // to the trigger on close rather than being dropped at the document top.
+  await serveFixture(page)
+  await bootstrap(page, '1.4.0')
+  await page.goto('/')
+  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await expect(page.locator('#wn-close')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#whatsnew-modal')).toBeHidden()
+  await expect(page.locator('#ch-version')).toBeFocused()
+})
+
+test('acknowledging clears the tooltip as well as the dot', async ({ page }) => {
+  await serveFixture(page)
+  await bootstrap(page, '1.4.0')
+  await page.goto('/')
+  await expect(page.locator('#ch-version')).toHaveAttribute('title', /updated since you last looked/)
+  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await expect(page.locator('#ch-version')).toHaveAttribute('title', "What's new")
 })
 
 test('the server-version fetch rewrites the version text without dropping the badge', async ({ page }) => {
