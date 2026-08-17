@@ -206,7 +206,13 @@ export function createHuntMap(containerId) {
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
     // bare fallback, hence the source guard.
     if (map.getSource('openmaptiles') && !map.getLayer('buildings-3d')) {
-      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+      // minzoom 13, not 14: OpenFreeMap's own TileJSON declares the `building`
+      // vector layer at minzoom 13 (verified against tiles.openfreemap.org),
+      // so 14 threw away a whole zoom level of geometry that was already in the
+      // fetched tiles. 13 is the floor -- there is no building geometry below
+      // it. Most visible at high pitch, where the far half of the view sits
+      // below the current zoom (#395).
+      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 13,
         layout: { visibility: mode3D ? 'visible' : 'none' },
         paint: { 'fill-extrusion-color': cssVar('--ch-building'),
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
