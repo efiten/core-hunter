@@ -29,6 +29,11 @@ type Config struct {
 	MailFrom         string   `json:"mailFrom"`
 	BootstrapAdmin   string   `json:"bootstrapAdmin"`   // username promoted to admin on startup if it exists
 	ResolveUpstreams []string `json:"resolveUpstreams"` // SF7/SF8 resolve URLs proxied by /api/resolve
+	// Bulk registry URLs proxied by /api/nodes/positions (#377). Separate from
+	// ResolveUpstreams rather than derived from it: the two are sibling paths on
+	// the same services today, but deriving one from the other by string surgery
+	// would break silently the first time a registry is hosted anywhere else.
+	NodePositionUpstreams []string `json:"nodePositionUpstreams"`
 }
 
 func Load(path string) (Config, error) {

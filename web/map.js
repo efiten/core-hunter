@@ -1,8 +1,8 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPoints, estimateFor, driftPresentation, circleRing, isRegistryIdKind } from './nodelayer.js'
+import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
@@ -851,6 +851,21 @@ let nodePosGen = 0
 // _lastSig guard in the app.
 let nodePosSig = null
 
+// Fetches the registry slice for the current viewport from the server's bulk
+// proxy (#377). Same-origin, member-gated server-side; a failure returns null
+// and the caller leaves the layer alone rather than emptying it.
+async function fetchNodeRegistry() {
+  const b = map.getBounds()
+  const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(',')
+  try {
+    const r = await fetch(`${API_BASE}/api/nodes/positions?bbox=${encodeURIComponent(bbox)}`, { credentials: 'same-origin' })
+    if (!r.ok) return null
+    return await r.json()
+  } catch (_) {
+    return null
+  }
+}
+
 async function drawNodePositions() {
   const gen = ++nodePosGen
   const note = document.getElementById('nodepos-note')
@@ -859,63 +874,37 @@ async function drawNodePositions() {
     nodePosLayer.clearLayers(); nodePosSig = null
     return
   }
-  const { points } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
+  // The registry is what decides which nodes are drawn (#377). It used to be
+  // the filtered reception set, which meant the layer could only ever show
+  // nodes this filter happened to match — the website, with the bigger screen
+  // and the multi-hunter picture, was a strict subset of the app on the one
+  // layer where it should be a superset. The receptions are still fetched, but
+  // now only to pair an estimate onto a node the registry already places.
+  const [registry, pointsRes] = await Promise.all([
+    fetchNodeRegistry(),
+    fetchPointsPaged(qs(), { maxTotal: 25000 }),
+  ])
   // A newer draw started (or the layer was switched off) while we were waiting.
   if (gen !== nodePosGen || !nodePosCb.checked) return
-  const bySender = groupSenderPoints(points)
-  // groupSenderPoints reduces each reception to {lat,lon,rssi}, so the kind has
-  // to be read off the raw rows: collect the ids that are in the pubkey
-  // namespace at all before the grouped points lose it (#296).
-  const registryIds = new Set(
-    points.filter((pt) => isRegistryIdKind(pt.sender_kind))
-      .map((pt) => String(pt.sender_id).toLowerCase()))
+  if (!registry) return   // registry unreachable: leave the last good layer up
+  const points = pointsRes.points
 
-  // Resolve any sender we have not looked up yet, then redraw once — same
-  // fill-only, at-most-once-per-key pattern the name lookups already use.
-  const unresolved = [...bySender.keys()].filter((k) => isResolvableId(k) && cachedPosition(k) === undefined)
-  if (unresolved.length) {
-    Promise.all(unresolved.map((k) => resolveName(k))).then(() => { if (nodePosCb.checked) drawNodePositions() })
-  }
+  // Only a full-pubkey reception may pair with a registry node. A discover
+  // reply carries a 2+ byte PREFIX, and this side is handed a viewport slice,
+  // so "unique among the nodes on screen" is a weaker claim than the app's
+  // "unique in the whole registry" — a prefix ambiguous two towns over would
+  // look unique here. AGENTS.md §7 keeps the website out of prefix-to-identity
+  // resolution (#296), and having a registry slice does not change that.
+  const pairable = points.filter((pt) => isRegistryIdKind(pt.sender_kind) && isFullPubkey(String(pt.sender_id)))
+  const draw = nodeRows(registry.nodes, groupSenderPoints(pairable))
+    // estimate-only cannot occur here (every row has an advertised position by
+    // construction), but 'none' can if a registry row arrives unplottable.
+    .filter((r) => r.p.kind !== 'none')
 
-  // Resolve everything first so the signature covers the whole rendered set.
-  const draw = []
-  for (const [id, pts] of bySender) {
-    // Two gates, for two different reasons (#296).
-    //
-    // Kind: only advert/discover ids live in the pubkey namespace at all. This
-    // side never consulted sender_kind before, so a 64-hex id of ANY kind was
-    // accepted — a full-length relay path element or a channel name that
-    // happens to be 64 hex would have been looked up as a node.
-    //
-    // Full pubkey: unlike the app, this side has no local registry to check a
-    // prefix against. Its only source of uniqueness is the resolver, and
-    // resolve.go returns the FIRST upstream reporting a non-empty name with
-    // ambiguous=false — a per-registry claim, so a prefix that is unique in one
-    // upstream and absent from another comes back "unique" while naming the
-    // wrong node. The app can refuse ambiguity exactly (groupSenderPointsForNodes);
-    // here we cannot, so prefixes are not trusted at all. Deliberately stricter,
-    // not an oversight.
-    const advertised = (registryIds.has(id) && isFullPubkey(id) ? cachedPosition(id) : null) || null
-    const est = estimateFor(pts)
-    const p = driftPresentation({ advertised, estimate: est })
-    // estimate-only adds nothing here: the points themselves already show it,
-    // and Locate draws the centroid properly. Only advertised positions are new.
-    if (p.kind === 'none' || p.kind === 'estimate-only') continue
-    draw.push({ id, advertised, est, p, name: cachedName(id) })
-  }
-
-  // No dedupe pass here, deliberately (#272 blocker 5). The duplicate it would
-  // target — one node drawing two overlapping markers under a full pubkey and
-  // a relay prefix — cannot occur once blocker 4's gate is in place: a
-  // non-full-pubkey id gets advertised = null, driftPresentation then returns
-  // 'estimate-only', and the loop above skips it. So every entry that reaches
-  // here is a distinct full pubkey, and two distinct full pubkeys are two
-  // physically distinct nodes by definition.
-  //
-  // Deduping on coordinates would therefore only ever fire on genuinely
-  // different nodes that happen to share a position — two repeaters on one
-  // mast, which is ordinary in a mesh — and would silently hide one of them.
-  // If a dedupe is ever needed it must key on identity, never on coordinates.
+  // No dedupe pass: every row is keyed by a distinct full pubkey from the
+  // registry, and two distinct pubkeys are two physically distinct nodes. A
+  // coordinate-based dedupe would only ever fire on two repeaters sharing a
+  // mast, which is ordinary in a mesh, and would hide one of them (#272).
   const deduped = draw
 
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
@@ -931,7 +920,7 @@ async function drawNodePositions() {
     // The name rides on the map next to the ▲, not just in the popup: the
     // layer is opt-in, so it can afford the labels while it is on. Only the ▲
     // is labelled — the ● is the same node.
-    const label = `<span class="np-label">${esc(name || id.slice(0, 6))}</span>`
+    const label = `<span class="np-label">${esc(name || cachedName(id) || id.slice(0, 6))}</span>`
     L.marker([advertised.lat, advertised.lon], {
       icon: L.divIcon({ className: 'np-advert-icon', html: `<div class="np-advert" style="color:${color}">▲${label}</div>`, iconSize: [14, 16] }),
     }).bindPopup(html).addTo(nodePosLayer)

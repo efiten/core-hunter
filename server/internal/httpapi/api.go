@@ -124,6 +124,7 @@ type Deps struct {
 	Auth    *AuthAPI
 	Admin   *AdminAPI
 	Resolve *ResolveAPI
+	Nodes   *NodesAPI
 }
 
 func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *store.CSReader, deps *Deps) {
@@ -253,6 +254,9 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		mux.HandleFunc("/api/auth/link-companion", deps.Auth.LinkCompanion)
 		mux.HandleFunc("/api/auth/reset-request", deps.Auth.ResetRequest)
 		mux.HandleFunc("/api/auth/reset", deps.Auth.Reset)
+	}
+	if deps.Nodes != nil {
+		mux.HandleFunc("/api/nodes/positions", deps.Nodes.Positions)
 	}
 	if deps.Resolve != nil {
 		mux.HandleFunc("/api/resolve", deps.Resolve.Resolve)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, isRegistryIdKind } from './nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, isRegistryIdKind, drawableNodes, nodeRows } from './nodelayer.js'
 import { haversineM } from './locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -188,5 +188,68 @@ describe('isRegistryIdKind — which ids live in the pubkey namespace (#296)', (
     expect(isRegistryIdKind('direct_hash')).toBe(false)
     expect(isRegistryIdKind('channel_name')).toBe(false)
     expect(isRegistryIdKind(undefined)).toBe(false)
+  })
+})
+
+describe('drawableNodes', () => {
+  it('keeps only rows with a pubkey and a finite position', () => {
+    const rows = drawableNodes([
+      { pubkey: 'aa', lat: 51, lon: 4 },
+      { pubkey: 'bb', lat: null, lon: 4 },     // resolver knows it, has no position
+      { pubkey: '', lat: 51, lon: 4 },          // no identity to attribute it to
+      { pubkey: 'cc', lat: NaN, lon: 4 },
+      null,
+    ])
+    expect(rows.map((r) => r.pubkey)).toEqual(['aa'])
+  })
+  it('is empty for a non-array', () => {
+    expect(drawableNodes(undefined)).toEqual([])
+  })
+})
+
+describe('nodeRows — registry slice paired with our own receptions (#377)', () => {
+  const NODES = [
+    { pubkey: 'AA'.repeat(32), name: 'Repeater-Zuid', lat: 51.0, lon: 4.0 },
+    { pubkey: 'bb'.repeat(32), name: 'Never-heard', lat: 51.5, lon: 4.5 },
+  ]
+  // Receptions around the first node only, keyed as groupSenderPoints keys them.
+  const heard = new Map([[ 'aa'.repeat(32), [
+    { lat: 51.0005, lon: 4.0, rssi: -70 },
+    { lat: 50.9995, lon: 4.0, rssi: -72 },
+    { lat: 51.0, lon: 4.0007, rssi: -75 },
+    { lat: 51.0, lon: 3.9993, rssi: -78 },
+  ]]])
+
+  it('draws every registry node in the slice, heard or not', () => {
+    // The whole point of #377: a node nobody in this filter heard still gets
+    // its advertised position drawn. Before, the layer could only ever show
+    // nodes present in the filtered reception set.
+    const rows = nodeRows(NODES, heard)
+    expect(rows.map((r) => r.name)).toEqual(['Repeater-Zuid', 'Never-heard'])
+    expect(rows.every((r) => r.advertised.lat != null)).toBe(true)
+  })
+
+  it('pairs an estimate only where we have receptions for that node', () => {
+    const rows = nodeRows(NODES, heard)
+    expect(rows[0].est).not.toBeNull()
+    expect(rows[1].est).toBeNull()
+    expect(rows[1].p.kind).toBe('advertised-only')
+  })
+
+  it('lower-cases the registry pubkey, since reception ids arrive lower-cased', () => {
+    // NODES[0] is upper-case on purpose: a case mismatch would silently make
+    // every node look unheard, which is the same empty layer #377 is fixing.
+    expect(nodeRows(NODES, heard)[0].id).toBe('aa'.repeat(32))
+    expect(nodeRows(NODES, heard)[0].est).not.toBeNull()
+  })
+
+  it('draws the advertised position with no receptions at all', () => {
+    const rows = nodeRows(NODES, new Map())
+    expect(rows).toHaveLength(2)
+    expect(rows.every((r) => r.p.kind === 'advertised-only')).toBe(true)
+  })
+
+  it('skips registry rows that cannot be plotted', () => {
+    expect(nodeRows([{ pubkey: 'aa', lat: null, lon: 4 }], new Map())).toEqual([])
   })
 })
