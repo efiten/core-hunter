@@ -175,3 +175,51 @@ test('the registry slice follows the viewport, not the reception filter (#377)',
   const bbox = new URL(urls[urls.length - 1]).searchParams.get('bbox')
   expect(bbox, 'bbox=minLat,minLon,maxLat,maxLon').toMatch(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/)
 })
+
+// #390: a draw that lands after Locate is on walks through every other guard and
+// repaints markers into the focus view — activateLocate() clears the layer
+// without bumping nodePosGen or unchecking the box, and refresh() is suppressed
+// for the whole Locate session, so nothing clears them again until Locate is
+// switched off. Held responses instead of parallel-load luck: this is the flake
+// in "the layer comes back after a Locate round-trip", made deterministic.
+//
+// Re-pointed for #377. The original reproduction held /api/resolve, because the
+// draw used to re-enter itself when its per-id position lookups settled. That
+// path is gone — positions now arrive with the registry — so the window this
+// holds open is the one that remains: the registry/points fetch the draw awaits
+// before it paints. Same guard, same failure, a live reproduction rather than a
+// vacuous pass.
+function holdable(page, urlPattern, body) {
+  let release
+  const held = new Promise((res) => { release = res })
+  return page.route(urlPattern, async (r) => {
+    await held
+    await r.fulfill({ json: body })
+  }).then(() => release)
+}
+
+test('a registry fetch that lands after Locate does not repaint the layer into the focus view (#390)', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: ring(51, 4, 250, 8) } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({
+    json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0 },
+  }))
+  const releaseRegistry = await holdable(page, '**/api/nodes/positions*',
+    { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }] })
+
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  // The registry is in flight, so the draw is parked on its await and nothing
+  // is on the map yet.
+  await expect(page.locator('.np-advert')).toHaveCount(0)
+
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  releaseRegistry()
+  // The draw resumes inside focus mode and must stay out of it.
+  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await page.waitForTimeout(600)
+  expect(await page.locator('.np-advert').count(), 'no marker repainted into focus mode').toBe(0)
+
+  // And the layer still comes back when Locate is switched off.
+  await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === 0)
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+})
