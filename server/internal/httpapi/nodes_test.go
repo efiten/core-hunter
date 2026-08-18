@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -265,5 +266,102 @@ func TestNodePositionsSaysWhenUnconfigured(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "not_configured") {
 		t.Fatalf("the error must name the cause: %s", w.Body.String())
+	}
+}
+
+func TestNodePositionsDoesNotBlockOnASlowRefresh(t *testing.T) {
+	// The mutex used to be held across the upstream fetch, so every member
+	// request arriving after the TTL expired queued behind one slow registry
+	// while a serviceable set sat in memory. A warm cache must answer at once.
+	release := make(chan struct{})
+	var hits int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) > 1 {
+			<-release // second and later fetches hang until the test says so
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, twoNodes)
+	}))
+	defer up.Close()
+	defer close(release)
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Nanosecond}
+
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
+	if len(decodeNodes(t, w).Nodes) != 1 {
+		t.Fatalf("warm-up: %s", w.Body.String())
+	}
+	// The clock has to have moved past the TTL. time.Since can return exactly 0
+	// inside one tick on Windows, which reads as "not due yet" against a
+	// nanosecond TTL — the same reason TestNodePositionsRefetchesAfterTTL sleeps.
+	time.Sleep(time.Millisecond)
+
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		w2 := httptest.NewRecorder()
+		h.Positions(w2, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
+		done <- w2
+	}()
+	select {
+	case w2 := <-done:
+		res := decodeNodes(t, w2)
+		if len(res.Nodes) != 1 || !res.Stale {
+			t.Fatalf("a warm cache must be served immediately and marked stale: %+v", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("request blocked on the in-flight refresh instead of serving the cached set")
+	}
+}
+
+func TestNodePositionsFetchesOnceOnAColdConcurrentStart(t *testing.T) {
+	// A cold start under load must not become one upstream fetch per caller.
+	var hits int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		time.Sleep(50 * time.Millisecond) // wide enough for the others to pile up
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, twoNodes)
+	}))
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Minute}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+			if w.Code != 200 {
+				t.Errorf("concurrent cold request: %d %s", w.Code, w.Body.String())
+			}
+		}()
+	}
+	wg.Wait()
+	if hits != 1 {
+		t.Fatalf("upstream fetched %d times for one cold start, want 1", hits)
+	}
+}
+
+func TestNodePositionsSaysWhenTheRegistryIsEmpty(t *testing.T) {
+	// Every upstream answers, and between them they know no positioned node.
+	// That is a broken registry, not a world with no nodes in it — and the
+	// layer cannot tell an empty answer from "nothing in view" (#398 review).
+	var hits int32
+	up := registryUpstream(&hits, `{"count":0,"nodes":[]}`)
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Minute}
+
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "registry_empty") {
+		t.Fatalf("got %d %s, want 503 registry_empty", w.Code, w.Body.String())
+	}
+	// And it does not re-ask on every request while that answer is fresh.
+	for i := 0; i < 3; i++ {
+		h.Positions(httptest.NewRecorder(), nodesReq("50,3,54,7", Auth{Role: "member"}))
+	}
+	if hits != 1 {
+		t.Fatalf("upstream fetched %d times, want 1 — an empty answer must not be retried per request", hits)
 	}
 }

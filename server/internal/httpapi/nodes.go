@@ -57,10 +57,16 @@ type NodesAPI struct {
 	// Cap on nodes returned per request; zero means defaultNodeCap.
 	Cap int
 
-	mu       sync.Mutex
-	cache    []nodePosition
-	fetched  time.Time
-	haveData bool
+	mu         sync.Mutex
+	fetchMu    sync.Mutex
+	cache      []nodePosition
+	fetched    time.Time
+	haveData   bool
+	refreshing bool
+	// True when the last completed fetch succeeded but returned nothing. An
+	// upstream answering 200 with an empty registry is a broken upstream, not a
+	// world with no nodes in it, and the layer cannot tell the difference.
+	emptyUpstream bool
 }
 
 func (h *NodesAPI) ttl() time.Duration {
@@ -85,22 +91,77 @@ func (h *NodesAPI) client() *http.Client {
 }
 
 // registry returns the cached node set, refreshing it when the TTL has passed.
-// `stale` is true when a refresh was due but failed and the previous set is
-// being served anyway — a registry a few minutes old beats an empty layer, and
-// the caller is told which it got.
+//
+// The mutex is never held across the upstream fetch. It used to be, which meant
+// every member request arriving after the TTL expired queued behind one slow
+// registry — up to the client timeout — while a perfectly serviceable set sat in
+// memory. A warm cache is now served immediately and refreshed in the
+// background; only a cold one blocks, and then only one caller fetches while the
+// rest wait for that same result.
+//
+// `stale` says the answer did not come from a fresh fetch: either a refresh is
+// still running, or the last one failed. Both are cases where a registry a few
+// minutes old beats an empty layer, and the caller is told which it got.
 func (h *NodesAPI) registry() (nodes []nodePosition, stale bool, ok bool) {
 	h.mu.Lock()
+	cache, fetched, have, empty := h.cache, h.fetched, h.haveData, h.emptyUpstream
+	if have && time.Since(fetched) < h.ttl() {
+		h.mu.Unlock()
+		return cache, false, true
+	}
+	if have {
+		// Warm but due: hand back what we have and refresh behind the request.
+		if !h.refreshing {
+			h.refreshing = true
+			go func() { h.refreshOnce(); h.mu.Lock(); h.refreshing = false; h.mu.Unlock() }()
+		}
+		h.mu.Unlock()
+		return cache, true, true
+	}
+	if empty && time.Since(fetched) < h.ttl() {
+		// A recent fetch succeeded and returned nothing. Do not hammer the
+		// upstreams once per request while that is true.
+		h.mu.Unlock()
+		return nil, false, false
+	}
+	h.mu.Unlock()
+
+	h.refreshOnce()
+
+	h.mu.Lock()
 	defer h.mu.Unlock()
+	return h.cache, false, h.haveData
+}
+
+// refreshOnce fetches the registry and stores it, with at most one fetch in
+// flight: a cold start under concurrent load must not become one upstream
+// request per caller. Callers that arrive during a fetch wait for it and then
+// read the result the first one stored.
+func (h *NodesAPI) refreshOnce() {
+	h.fetchMu.Lock()
+	defer h.fetchMu.Unlock()
+	// Someone else may have filled it while this caller waited for the lock.
+	h.mu.Lock()
 	if h.haveData && time.Since(h.fetched) < h.ttl() {
-		return h.cache, false, true
+		h.mu.Unlock()
+		return
 	}
+	h.mu.Unlock()
+
 	fresh, err := h.fetchAll()
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	if err != nil {
-		// Only the cold-cache case is a failure the caller has to see.
-		return h.cache, true, h.haveData
+		return // keep whatever is cached; the caller reports it as stale
 	}
-	h.cache, h.fetched, h.haveData = fresh, time.Now(), true
-	return h.cache, false, true
+	if len(fresh) == 0 {
+		// Every upstream answered, and between them they know no positioned
+		// node. Treat that as unusable rather than caching an empty registry
+		// the layer would render as "nothing here" (#398 review).
+		h.fetched, h.emptyUpstream = time.Now(), true
+		return
+	}
+	h.cache, h.fetched, h.haveData, h.emptyUpstream = fresh, time.Now(), true, false
 }
 
 // fetchAll merges every upstream, first one wins on a duplicate pubkey — the
@@ -181,6 +242,15 @@ func (h *NodesAPI) Positions(w http.ResponseWriter, r *http.Request) {
 	}
 	nodes, stale, have := h.registry()
 	if !have {
+		h.mu.Lock()
+		empty := h.emptyUpstream
+		h.mu.Unlock()
+		if empty {
+			// Reachable and answering, with nothing in it. Distinct from an
+			// unreachable one, and both are distinct from "nothing in view".
+			writeErr(w, 503, "registry_empty")
+			return
+		}
 		writeErr(w, 503, "registry_unavailable")
 		return
 	}
