@@ -15,6 +15,13 @@
   --ch-sig-hot:#d11f1f; --ch-sig-warm:#e07000; --ch-sig-mid:#c79100; --ch-sig-cool:#1577c0; --ch-sig-cold:#3a44b8; --ch-sig-faint:#6a2fb0; --ch-sig-none:#9aa3ad;
   --ch-accent:#0e9f7e; --ch-accent-2:#b4530a;
 }
+/* Bar height as a layout token, not a theme one, so it is defined once outside
+   both palettes. #bar is flex-wrap, so its height depends on its content, and
+   #rx-log hangs off it. map.js republishes this whenever the bar resizes (#386).
+   48px is the single-row value, used until it does and on any page that ships
+   this stylesheet without map.js -- without a fallback the calc() in #rx-log
+   would be invalid and the ticker would lose its offset entirely. */
+:root { --ch-bar-h: 48px; }
 * { box-sizing: border-box; }
 html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
 #bar { position:fixed; top:0; left:0; right:0; z-index:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
@@ -144,7 +151,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 /* pointer-events:none on the container, re-enabled on .rx-hd/.rx-ln below: the
    ticker is a transparent overlay on the map, so its box (and .rx-list's 180px
    of empty padding) must not swallow drag/wheel before Leaflet sees them. */
-#rx-log { position: fixed; top: 52px; right: 0; width: 214px; z-index: 620;
+#rx-log { position: fixed; top: calc(var(--ch-bar-h) + 4px); right: 0; width: 214px; z-index: 620;
   padding: 0 10px; pointer-events: none;
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 .rx-hd { display: flex; align-items: center; justify-content: space-between;
@@ -200,6 +207,8 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .wn-items { margin:0; padding-left:18px; }
 .wn-items li { margin:3px 0; font-size:13px; line-height:1.45; color:var(--ch-text); }
 .wn-more { display:block; margin:14px 0 4px; font-size:12.5px; color:var(--ch-accent-2); }
+/* map.js overwrites this inline, once, before the initial setView -- see there
+   for why the map deliberately does not follow the bar's later growth (#218). */
 #map { position:fixed; inset:0; top:48px; }
 #locate-toggle.on { background: var(--ch-sig-warm); color: var(--ch-bg); }
 #locate-info { position: fixed; right: 12px; bottom: 12px; z-index: 650; max-width: 264px;
