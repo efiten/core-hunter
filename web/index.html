@@ -137,7 +137,13 @@
     <span id="f-types"></span>
     <label class="cs-cb"><input type="checkbox" id="f-direct" /> Direct only</label>
     <button id="layer-toggle">points</button>
-    <button id="locate-toggle">Locate</button>
+    <!-- hidden until the role is known (#270): applyLocateGate() is then the
+         single owner of this button's visibility, setting it on every role
+         change. Shipping it visible made it live during the boot window, where
+         activateLocate() silently returns on the role gate ('guest' default)
+         with no retry, and a guest saw a working-looking control until the
+         gate caught up. -->
+    <button id="locate-toggle" hidden>Locate</button>
     <span class="cs-layer-toggle">
       <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
       <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
