@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing } from './receptionticker.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing } from './receptionticker.js'
 
 // rxView/rxActiveIndex/rxFade are ported verbatim from app/src/receptionlog.js
 // (#238 explicitly excludes this file from the shared-core extraction, since
@@ -209,5 +209,26 @@ describe('newestInRing', () => {
       rec({ rx_at: '2026-07-22T10:01:00Z' }),
     ], ring)
     expect(out.rx_at).toBe('2026-07-22T10:01:00Z')
+  })
+})
+
+// rxLineHeight (#322) — ported from app/src/receptionlog.js with the same
+// fallback, since both stylesheets ship the same row height. See the parity
+// suite for the assertion that the two copies and the two stylesheets agree.
+describe('rxLineHeight — row height parsed from the CSS variable', () => {
+  it('parses a px value', () => {
+    expect(rxLineHeight('26px')).toBe(26)
+    expect(rxLineHeight(' 26px ')).toBe(26)
+  })
+  it('accepts a bare number and a fractional value', () => {
+    expect(rxLineHeight('26')).toBe(26)
+    expect(rxLineHeight('25.5px')).toBe(25.5)
+  })
+  it('falls back to the shipped row height when the variable is absent or unusable', () => {
+    expect(rxLineHeight('')).toBe(26)
+    expect(rxLineHeight(null)).toBe(26)
+    expect(rxLineHeight('inherit')).toBe(26)
+    expect(rxLineHeight('0px')).toBe(26)
+    expect(rxLineHeight('-4px')).toBe(26)
   })
 })

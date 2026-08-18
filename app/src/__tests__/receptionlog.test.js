@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -49,5 +49,29 @@ describe('rxFade — playhead-relative opacity (6 above, 3 below, faster below)'
     expect(rxFade(1)).toBeCloseTo(2 / 3)
     expect(rxFade(3)).toBe(0)
     expect(rxFade(5)).toBe(0)
+  })
+})
+
+// rxLineHeight (#322): the row height now lives in CSS as --ch-rx-line-h and
+// the component reads it, instead of both sides hardcoding 20 and drifting.
+// The fallback matters: if the variable is missing (an old cached stylesheet,
+// a test DOM with no styles) the playhead maths must still use the value the
+// stylesheet ships, not 0 — a 0 here divides scrollTop by zero in
+// rxActiveIndex and pins every row to the lane.
+describe('rxLineHeight — row height parsed from the CSS variable', () => {
+  it('parses a px value', () => {
+    expect(rxLineHeight('26px')).toBe(26)
+    expect(rxLineHeight(' 26px ')).toBe(26)
+  })
+  it('accepts a bare number and a fractional value', () => {
+    expect(rxLineHeight('26')).toBe(26)
+    expect(rxLineHeight('25.5px')).toBe(25.5)
+  })
+  it('falls back to the shipped row height when the variable is absent or unusable', () => {
+    expect(rxLineHeight('')).toBe(26)
+    expect(rxLineHeight(null)).toBe(26)
+    expect(rxLineHeight('inherit')).toBe(26)
+    expect(rxLineHeight('0px')).toBe(26)
+    expect(rxLineHeight('-4px')).toBe(26)
   })
 })
