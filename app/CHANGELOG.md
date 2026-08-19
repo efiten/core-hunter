@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/efiten/core-hunter/compare/app-v1.10.0...app-v1.11.0) (2026-08-19)
+
+
+### Features
+
+* **app,server:** draw SF8 nodes on the position layer too ([#430](https://github.com/efiten/core-hunter/issues/430)) ([863c3ac](https://github.com/efiten/core-hunter/commit/863c3ac7f82a2e0ebe503e8ad9f005b8cdcf7b2e)), closes [#418](https://github.com/efiten/core-hunter/issues/418)
+
 ## [1.10.0](https://github.com/efiten/core-hunter/compare/app-v1.9.0...app-v1.10.0) (2026-08-19)
 
 
