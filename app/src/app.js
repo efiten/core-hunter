@@ -27,7 +27,7 @@ import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
 import { connectButton } from './connectstate.js'
-import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from './settings.js'
 import { parseChangelog, hasUnseen, unseenCount } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct } from './signal.js'
@@ -119,6 +119,10 @@ const state = {
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
   soundMode: loadSoundMode(),
+  // Unread release notes (#421). Lives on state so the settings button's dot
+  // stays a question about state, not about storage: refreshWhatsNewBadge is
+  // the one place that re-reads the acknowledgement and writes it here.
+  unseenChangelog: hasUnseen(__APP_VERSION__, whatsNewSeen),
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
@@ -276,7 +280,8 @@ function syncPopoverTriggers() {
 }
 
 // Light the settings button's badge when a setting differs from default
-// (attenuator non-zero). Call wherever state.attenuatorDb changes.
+// (attenuator non-zero) or release notes are unread (#421). Call wherever
+// state.attenuatorDb or state.unseenChangelog changes.
 function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
@@ -1180,6 +1185,10 @@ function renderIgnoreList(listEl) {
   }
 }
 
+// Set by buildSettingsSheet, so the settings button can open the sheet on a
+// chosen tab (#421). The sheet is built once at boot, before any open.
+let settingsSelectTab = () => {}
+
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
@@ -1187,6 +1196,7 @@ function buildSettingsSheet() {
       <div class="sheet-head">
         <div class="ss-tabs" role="tablist" aria-label="Settings sections">
           <button type="button" class="ss-tab active" id="ss-tab-settings" role="tab" aria-selected="true" aria-controls="ss-panel-settings">Settings</button>
+          <button type="button" class="ss-tab" id="ss-tab-whatsnew" role="tab" aria-selected="false" aria-controls="ss-panel-whatsnew">What's new<span id="ss-whatsnew-dot" class="ss-whatsnew-dot" hidden aria-hidden="true"></span></button>
           <button type="button" class="ss-tab" id="ss-tab-about" role="tab" aria-selected="false" aria-controls="ss-panel-about">About</button>
         </div>
         <button class="sheet-close" id="ss-close" aria-label="Close">
@@ -1249,11 +1259,12 @@ function buildSettingsSheet() {
         Light theme
       </label>
       <div class="ss-version-row">
-        <button id="ss-whatsnew-btn" class="ss-whatsnew" type="button" aria-expanded="false" aria-controls="ss-whatsnew">What's new<span id="ss-whatsnew-dot" class="ss-whatsnew-dot" hidden aria-hidden="true"></span></button>
         <span id="ss-update-status" class="ss-update-status" hidden></span>
         <button id="ss-reload-btn" class="ss-reload" type="button">Reload</button>
       </div>
-      <div id="ss-whatsnew" class="ss-whatsnew-panel" hidden></div>
+      </div>
+      <div class="ss-panel" id="ss-panel-whatsnew" role="tabpanel" aria-labelledby="ss-tab-whatsnew" hidden>
+        <div id="ss-whatsnew" class="ss-whatsnew-panel"></div>
       </div>
       <div class="ss-panel" id="ss-panel-about" role="tabpanel" aria-labelledby="ss-tab-about" hidden>
         <div class="ss-about-brand">
@@ -1294,12 +1305,11 @@ function buildSettingsSheet() {
   // way to pick up a new build now that pull-to-refresh is disabled (#132).
   el('ss-reload-btn').addEventListener('click', () => location.reload())
 
-  el('ss-whatsnew-btn').addEventListener('click', async () => {
+  // Showing the tab *is* the acknowledgement, so this runs on tab activation
+  // rather than on a click: the sheet can open straight onto it
+  // (initialSettingsTab), and that path has to clear the dot too.
+  async function showWhatsNew() {
     const panel = el('ss-whatsnew')
-    const open = panel.hidden
-    panel.hidden = !open
-    el('ss-whatsnew-btn').setAttribute('aria-expanded', String(open))
-    if (!open) return
     saveChangelogSeen(__APP_VERSION__)
     refreshWhatsNewBadge()
     try {
@@ -1316,7 +1326,7 @@ function buildSettingsSheet() {
       msg.textContent = 'Changelog unavailable offline — read the releases on GitHub'
       panel.appendChild(msg)
     }
-  })
+  }
 
   el('ss-conn-btn').addEventListener('click', () => {
     if (state.connected) {
@@ -1363,19 +1373,24 @@ function buildSettingsSheet() {
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
 
-  // Tab switching (#203): one panel at a time. Both panels stay in the DOM so
+  // Tab switching (#203): one panel at a time. All panels stay in the DOM so
   // each keeps its own scroll position independently.
-  function selectTab(which) {
-    for (const k of ['settings', 'about']) {
+  settingsSelectTab = function selectTab(which) {
+    for (const k of ['settings', 'whatsnew', 'about']) {
       const on = k === which
       el('ss-tab-' + k).classList.toggle('active', on)
       el('ss-tab-' + k).setAttribute('aria-selected', String(on))
       el('ss-panel-' + k).classList.toggle('active', on)
       el('ss-panel-' + k).hidden = !on
     }
+    // Not awaited: the tab is already switched and the panel renders into
+    // itself when the chunk lands. Its own catch handles the offline case, so
+    // there is no rejection to leak.
+    if (which === 'whatsnew') void showWhatsNew()
   }
-  el('ss-tab-settings').addEventListener('click', () => selectTab('settings'))
-  el('ss-tab-about').addEventListener('click', () => selectTab('about'))
+  el('ss-tab-settings').addEventListener('click', () => settingsSelectTab('settings'))
+  el('ss-tab-whatsnew').addEventListener('click', () => settingsSelectTab('whatsnew'))
+  el('ss-tab-about').addEventListener('click', () => settingsSelectTab('about'))
 
   // Replaces the old topbar "?" button (#281): closes the sheet so the
   // walkthrough it re-opens isn't hidden behind it.
@@ -1519,7 +1534,7 @@ async function checkForUpdate() {
 }
 
 // ---------------------------------------------------------------------------
-// "What's new" — changelog reader in the Settings version row (#284)
+// "What's new" — changelog reader in its own Settings tab (#284, #421)
 // ---------------------------------------------------------------------------
 
 // How many releases the panel lists. The rest are one tap away on GitHub —
@@ -1587,16 +1602,19 @@ function renderWhatsNew(panel, releases, seen) {
   panel.appendChild(more)
 }
 
-// The dot is on the button inside the Settings sheet, so it is re-evaluated
-// whenever that sheet opens. It reads storage rather than `whatsNewSeen` so
-// acknowledging clears it within the same session.
+// The dot is on the What's new tab, and the same unread state lights the
+// settings button on the HUD (#421) — that button is the only signal there is
+// before the sheet is open. Reads storage rather than `whatsNewSeen` so
+// acknowledging clears both within the same session.
 function refreshWhatsNewBadge() {
   const unseen = hasUnseen(__APP_VERSION__, loadChangelogSeen())
   el('ss-whatsnew-dot').hidden = !unseen
-  el('ss-whatsnew-btn').setAttribute(
+  el('ss-tab-whatsnew').setAttribute(
     'aria-label',
     unseen ? `What's new in v${__APP_VERSION__} — updated since you last looked` : `What's new in v${__APP_VERSION__}`,
   )
+  state.unseenChangelog = unseen
+  refreshSettingsIndicator()
 }
 
 // ---------------------------------------------------------------------------
@@ -2198,6 +2216,9 @@ window.addEventListener('DOMContentLoaded', async () => {
       refreshAccount()
       checkForUpdate()
       refreshWhatsNewBadge()
+      // Before the badge refresh this would read the flag the previous open
+      // left behind; after it, state.unseenChangelog is the current answer.
+      settingsSelectTab(initialSettingsTab(state))
     }
   })
 
