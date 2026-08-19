@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/efiten/core-hunter/compare/web-v1.6.0...web-v1.7.0) (2026-08-19)
+
+
+### Features
+
+* **app,web:** make the receptions ticker readable at a glance ([#404](https://github.com/efiten/core-hunter/issues/404)) ([c48a974](https://github.com/efiten/core-hunter/commit/c48a9748c5aee14b87e13e4f0374609e45546070)), closes [#322](https://github.com/efiten/core-hunter/issues/322)
+
 ## [1.6.0](https://github.com/efiten/core-hunter/compare/web-v1.5.0...web-v1.6.0) (2026-08-18)
 
 
