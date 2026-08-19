@@ -28,7 +28,20 @@
 :root { --ch-rx-line-h: 26px; }
 * { box-sizing: border-box; }
 html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
-#bar { position:fixed; top:0; left:0; right:0; z-index:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+/* z-index 630, above #rx-log's 620. The bar's own popovers -- the sender and
+   hunter pickers and the time range -- are DOM children of #bar, so they paint
+   in its stacking context, and at 600 they sat UNDER the receptions ticker.
+   Since #322 widened the ticker to a full-width band its rows overlap the
+   top-left panels, and .rx-ln takes pointer events: measured at 1280x720, the
+   sender picker's second row (y 227..275) sits under the first ticker row
+   (237..263) and elementFromPoint returns .rx-ln, so the row cannot be clicked.
+   Font-metric dependent, which is why CI's Linux fonts do not see it.
+   The old ordering came from #224 -- the ticker above the bar so a wrapped bar
+   could not steal its clicks -- and #386/#388 removed that reason by deriving
+   the ticker's offset from the bar's real height, so the two no longer overlap
+   vertically at all. What is left is the panels hanging below the bar, and
+   those must win. */
+#bar { position:fixed; top:0; left:0; right:0; z-index:630; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }

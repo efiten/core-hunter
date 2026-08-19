@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, openPicker } from './fixtures.js'
 
 // #386: #bar is flex-wrap and keeps growing after load — the packet chips
 // render, the role notice arrives with /api/auth/me, the node counts and the
@@ -56,3 +56,50 @@ for (const [w, h] of [[1280, 720], [1280, 800]]) {
     await expect(page.locator('#whatsnew-modal')).toBeVisible()
   })
 }
+
+// #322 widened the ticker into a full-width band, and .rx-ln takes pointer
+// events, so the bar's own popovers — DOM children of #bar, painting in its
+// stacking context — started losing clicks to it. Measured at 1280x720: the
+// sender picker's second row sat under the first ticker row and
+// elementFromPoint returned .rx-ln. Font-metric dependent, which is why it
+// reproduced locally and not on CI's fonts, so this asserts the ordering
+// itself as well as the click.
+const TICK = {
+  lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: 'aa11bb22', sender_label: 'NEO7HI',
+  hunter_pubkey: 'h1', hunter_name: 'Hunter 1', packet_type: 'Advert', rx_at: '2026-07-22T14:59:55Z',
+}
+
+test('a bar popover stays clickable over a populated ticker', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.route('**/api/points*', (r) => r.fulfill({
+    json: { points: [TICK, { ...TICK, sender_id: 'cc33dd44', sender_label: 'Charlie', rx_at: '2026-07-22T14:59:58Z' }] },
+  }))
+  await page.goto('/?mode=points')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  await expect(page.locator('#rx-log .rx-ln').first()).toBeVisible()
+
+  // Every row, not just the first: the overlap only reaches the ones far
+  // enough down the panel to meet the ticker's playhead lane.
+  const rows = page.locator('#tp-list .tl-row')
+  for (let i = 0; i < await rows.count(); i++) {
+    const hit = await rows.nth(i).evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const at = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+      return at ? at.closest('.tl-row') !== null : false
+    })
+    expect(hit, `picker row ${i} is the top element at its own centre`).toBe(true)
+  }
+  // And an unforced click lands, which is what the user does.
+  await rows.nth(1).click({ timeout: 5000 })
+  await expect(rows.nth(1)).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('the bar paints above the ticker, which is what keeps its popovers usable', async ({ page }) => {
+  await page.goto('/')
+  const z = await page.evaluate(() => ({
+    bar: Number(getComputedStyle(document.getElementById('bar')).zIndex),
+    rx: Number(getComputedStyle(document.getElementById('rx-log')).zIndex),
+  }))
+  expect(z.bar).toBeGreaterThan(z.rx)
+})
