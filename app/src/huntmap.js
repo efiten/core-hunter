@@ -82,7 +82,11 @@ export function createHuntMap(containerId) {
 
   // Follow releases when the user drags; native bearing gesture reports back via
   // onGestureRotate (guarded so our own setBearing calls don't count as user input).
-  map.on('dragstart', () => { if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) } })
+  // Any deliberate "look somewhere else" gesture releases follow, or the next
+  // GPS fix jumpTo's the camera straight back (setPosition). Shared by the drag
+  // handler and by focusReception (#309), which is the same intent by tap.
+  function releaseFollow() { if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) } }
+  map.on('dragstart', releaseFollow)
   map.on('rotate', () => { if (rotateCb && !settingBearing) rotateCb(map.getBearing()) })
   // Hex resolution depends on zoom — rebuild once the zoom settles.
   map.on('zoomend', () => draw())
@@ -234,7 +238,13 @@ export function createHuntMap(containerId) {
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
     // bare fallback, hence the source guard.
     if (map.getSource('openmaptiles') && !map.getLayer('buildings-3d')) {
-      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 14,
+      // minzoom 13, not 14: OpenFreeMap's own TileJSON declares the `building`
+      // vector layer at minzoom 13 (verified against tiles.openfreemap.org),
+      // so 14 threw away a whole zoom level of geometry that was already in the
+      // fetched tiles. 13 is the floor -- there is no building geometry below
+      // it. Most visible at high pitch, where the far half of the view sits
+      // below the current zoom (#395).
+      map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 13,
         layout: { visibility: mode3D ? 'visible' : 'none' },
         paint: { 'fill-extrusion-color': cssVar('--ch-building'),
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
@@ -565,12 +575,16 @@ export function createHuntMap(containerId) {
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
   function applyBasemap() { overlaysReady = false; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }   // re-add overlays after the style swap (+ fallback if it fails)
+  // Pan to a reception, no popup: the ticker row that triggers this (#309) sits
+  // over the map on a phone, and a popup on top of it would cover the very list
+  // the user is scrubbing. The highlight ring (setHighlight, driven by the
+  // ticker's own onActiveChange) is what marks the record; this only moves the
+  // camera there. A record with no fix is silently ignored — its point is not
+  // on the map to pan to.
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
+    releaseFollow()
     centerOn(rec.lat, rec.lon)
-    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px' })
-      .setLngLat([rec.lon, rec.lat]).setHTML(popupHtml(rec, lastSelected)).addTo(map)
-    wireIsolate(popup, rec); wireIgnore(popup, rec)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
   return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
