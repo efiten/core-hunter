@@ -61,7 +61,12 @@ function lineMeta(r) {
 // createReceptionLog builds the log inside `rootId` and returns
 // { render, focusRecord }. onActiveChange(record|null) fires whenever the
 // reception on the playhead changes (app wires it to the map highlight).
-export function createReceptionLog(rootId, { onActiveChange } = {}) {
+// onRowActivate(record) fires ONLY on a deliberate row tap (#309), which is
+// what the app pans the map on. It is deliberately not onActiveChange: that
+// one also fires on plain scroll, and on the map->ticker direction, where
+// focusRecord rolls the playhead after a marker tap — panning there would
+// move the camera off a marker the user just chose.
+export function createReceptionLog(rootId, { onActiveChange, onRowActivate } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { render() {}, focusRecord() {} }
   root.innerHTML = '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span></div><div class="rx-list" id="rx-list"></div>'
@@ -130,7 +135,12 @@ export function createReceptionLog(rootId, { onActiveChange } = {}) {
 
   list.addEventListener('click', (e) => {
     const l = e.target.closest('.rx-ln')
-    if (l) toLane(Number(l.dataset.idx))
+    if (!l) return
+    const idx = Number(l.dataset.idx)
+    toLane(idx)
+    // After toLane, so the highlight (via onActiveChange) is already on this
+    // record when the camera moves.
+    if (onRowActivate && view[idx]) onRowActivate(view[idx])
   })
   list.addEventListener('scroll', () => { follow = atBottom(); paint() })
   const toggle = () => { mode = mode === 'filtered' ? 'all' : 'filtered'; follow = true; rebuild() }

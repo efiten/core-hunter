@@ -18,6 +18,8 @@
 // targetpicker.js's sender adapter and hunterpicker.js's hunter adapter are
 // the two current instances.
 
+import { popoverPosition } from './popoverPosition.js'
+
 const PAGE_SIZE = 12
 
 // Every row is treated as an id group, so the one-id adapters (hunters) and the
@@ -140,6 +142,48 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
   return { getSelected, setSelected, render, reset }
 }
 
+// placePopover puts an open panel where all of it is on screen (#372). The
+// panels are position:fixed, so left/top are viewport coordinates and the CSS
+// no longer anchors them to a toggle that moves when #bar wraps. Measure after
+// unhiding: a display:none panel has a zero rect.
+//
+// #bar carries backdrop-filter, which per Filter Effects 2 makes it the
+// containing block for its fixed descendants, so a written left/top is not
+// necessarily a viewport coordinate. Engines disagree about the rule and this
+// is a phone bug: Chromium applies it (popover.spec.js measures that), WebKit
+// is the engine CI cannot reach. Today it happens not to matter, because #bar
+// is fixed at the viewport origin with no border and no transform, so its
+// padding box starts at (0,0) and the frames coincide.
+//
+// Rather than rest on that, the position is read back once and corrected by the
+// delta. That makes the result frame-independent in either engine, and survives
+// #bar later gaining a border, an offset or a transform. One extra rect read
+// per open, and the correction is skipped entirely when the delta is subpixel
+// noise (fractional DPR, browser zoom), so the common path still writes once.
+//
+// A single correction is exact for a translated frame. It would not be for a
+// SCALED one (a transform: scale ancestor), where the delta itself changes with
+// the value written -- #bar has no transform, and popover.spec.js pins that.
+//
+// viewport is injectable for tests: web/ has no jsdom, and this is the one part
+// worth pinning without one. Production call sites omit it.
+export function placePopover(toggleEl, panelEl, { align = 'left', viewport } = {}) {
+  const vp = viewport || { width: window.innerWidth, height: window.innerHeight }
+  const { left, top } = popoverPosition(
+    toggleEl.getBoundingClientRect(),
+    panelEl.getBoundingClientRect(),
+    vp,
+    { align },
+  )
+  panelEl.style.left = `${left}px`
+  panelEl.style.top = `${top}px`
+
+  const r = panelEl.getBoundingClientRect()
+  const dx = r.left - left, dy = r.top - top
+  if (Math.abs(dx) > 0.5) panelEl.style.left = `${left - dx}px`
+  if (Math.abs(dy) > 0.5) panelEl.style.top = `${top - dy}px`
+}
+
 // wirePopover gives a toggle-button + panel the shared open/close shape
 // (#223's "toggle button reveals a panel"): outside-click and Escape both
 // close it. wrapEl scopes the outside-click check to this control's own
@@ -154,16 +198,24 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
 // by the time a bubble-phase document listener would run, e.target is already
 // detached and closest(wrapSelector) wrongly returns null, closing the panel
 // after every pick. Capture runs before that mutation happens.
-export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen }) {
+export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, align = 'left' }) {
   function open() {
     panelEl.hidden = false
     toggleEl.setAttribute('aria-expanded', 'true')
     if (onOpen) onOpen()
+    // After onOpen: it repopulates the rows, so the panel's height is only
+    // final once it has run (#372).
+    placePopover(toggleEl, panelEl, { align })
   }
   function close() {
     panelEl.hidden = true
     toggleEl.setAttribute('aria-expanded', 'false')
   }
+  // #bar wraps, so a resize moves the toggle to another row and the panel has
+  // to follow. Only while open: a measurement on a hidden panel is all zeroes.
+  window.addEventListener('resize', () => {
+    if (!panelEl.hidden) placePopover(toggleEl, panelEl, { align })
+  })
   toggleEl.addEventListener('click', () => (panelEl.hidden ? open() : close()))
   document.addEventListener('click', (e) => {
     if (panelEl.hidden) return

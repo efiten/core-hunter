@@ -1985,6 +1985,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   // playhead to it (two-way sync).
   state.rxLog = createReceptionLog('rx-log', {
     onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null) },
+    // Tapping a row pans the map to that reception (#309). Without this the
+    // highlight ring was drawn at coordinates that could be off-screen, so the
+    // tap looked like it did nothing.
+    onRowActivate: (rec) => { if (state.map) state.map.focusReception(rec) },
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
 
