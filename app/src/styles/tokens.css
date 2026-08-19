@@ -45,3 +45,12 @@
   --ch-border:    rgba(0,0,0,0.10);
   --ch-building:  #cfc7b6;   /* 3D-mode building extrusions (#147) */
 }
+
+/* ---- Geometry, not colour: the same in both themes ----
+   The receptions ticker's row height (#322). It lives here, on :root, because
+   receptionlog.js reads it through getComputedStyle(document.documentElement) —
+   scoped to #rx-log the declaration is invisible to that read and the module
+   silently falls back instead of following the stylesheet. The list height,
+   playhead offset and bottom padding are all derived from it in app.css, and
+   web/parity.test.js pins this value against web/style.css's copy. */
+:root { --ch-rx-line-h: 26px; }

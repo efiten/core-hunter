@@ -22,6 +22,10 @@
    this stylesheet without map.js -- without a fallback the calc() in #rx-log
    would be invalid and the ticker would lose its offset entirely. */
 :root { --ch-bar-h: 48px; }
+/* Ticker row height (#322), on :root because receptionticker.js reads it via
+   getComputedStyle(document.documentElement); scoped to #rx-log it is invisible
+   to that read. Mirrors app/src/styles/tokens.css; parity.test.js pins both. */
+:root { --ch-rx-line-h: 26px; }
 * { box-sizing: border-box; }
 html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
 #bar { position:fixed; top:0; left:0; right:0; z-index:600; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
@@ -154,7 +158,6 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    ticker is a transparent overlay on the map, so its box (and .rx-list's empty
    padding) must not swallow drag/wheel before Leaflet sees them. */
 #rx-log { position: fixed; top: calc(var(--ch-bar-h) + 4px); left: 0; right: 0; z-index: 620;
-  --ch-rx-line-h: 26px;
   padding: 0 24px; pointer-events: none;
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
@@ -182,9 +185,12 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 /* ch, not px: 26px/32px were sized for 12px type and hold "15m" and "-105"
    with a few px to spare. At 15px they overflow and the RSSI value collides
-   with the sender beside it. In ch they hold their longest value at any size. */
+   with the sender beside it. In ch they hold their contents at any type size.
+   .rx-tm is 4ch, not 3: relTime's hours bucket has no upper bound, so the
+   widest quick range (Last 30 days) reaches "720h". 4ch covers every quick
+   range; an absolute range past ~416 days would still clip. */
 .rx-gt { width: 2ch; flex: none; color: var(--ch-accent); font-weight: 700; }
-.rx-tm { width: 3ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+.rx-tm { width: 4ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-rs { width: 4ch; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
