@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.0](https://github.com/efiten/core-hunter/compare/app-v1.9.0...app-v1.10.0) (2026-08-19)
+
+
+### Features
+
+* **app,web:** give the website an onboarding tour, and say what a hunter is ([#379](https://github.com/efiten/core-hunter/issues/379)) ([ea7bb21](https://github.com/efiten/core-hunter/commit/ea7bb21440613c15ab34728cde7dc71db71362a6)), closes [#316](https://github.com/efiten/core-hunter/issues/316) [#371](https://github.com/efiten/core-hunter/issues/371)
+* **app:** add a time-of-day sky, so near-horizontal pitch stops reading as broken ([#401](https://github.com/efiten/core-hunter/issues/401)) ([f199dec](https://github.com/efiten/core-hunter/commit/f199dec5ba5d19203e44c7f484115923f7419a72)), closes [#397](https://github.com/efiten/core-hunter/issues/397)
+* **app:** raise the tilt ceiling to 85 so the camera can look along the ground ([#399](https://github.com/efiten/core-hunter/issues/399)) ([b5d1a23](https://github.com/efiten/core-hunter/commit/b5d1a232149c0158947bc8c1533ae5760a9dc97e)), closes [#333](https://github.com/efiten/core-hunter/issues/333)
+
+
+### Bug Fixes
+
+* **app:** stop the FAB progress ring lighting a segment when sound is off ([#414](https://github.com/efiten/core-hunter/issues/414)) ([77e5a1f](https://github.com/efiten/core-hunter/commit/77e5a1f5a147d317e096dee4d185a59df3722eeb)), closes [#373](https://github.com/efiten/core-hunter/issues/373)
+
 ## [1.9.0](https://github.com/efiten/core-hunter/compare/app-v1.8.0...app-v1.9.0) (2026-08-19)
 
 

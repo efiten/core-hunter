@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.0](https://github.com/efiten/core-hunter/compare/web-v1.7.0...web-v1.8.0) (2026-08-19)
+
+
+### Features
+
+* **app,web:** give the website an onboarding tour, and say what a hunter is ([#379](https://github.com/efiten/core-hunter/issues/379)) ([ea7bb21](https://github.com/efiten/core-hunter/commit/ea7bb21440613c15ab34728cde7dc71db71362a6)), closes [#316](https://github.com/efiten/core-hunter/issues/316) [#371](https://github.com/efiten/core-hunter/issues/371)
+* **server,web:** draw node positions from the registry, not from what you heard ([#398](https://github.com/efiten/core-hunter/issues/398)) ([a4ac33b](https://github.com/efiten/core-hunter/commit/a4ac33b60e5062ca6697deb1cf514de7db52c923)), closes [#377](https://github.com/efiten/core-hunter/issues/377)
+
+
+### Bug Fixes
+
+* **web:** put the bar's popovers back above the receptions ticker ([#417](https://github.com/efiten/core-hunter/issues/417)) ([c4e13c7](https://github.com/efiten/core-hunter/commit/c4e13c79e6749ef872523345ba263c4096c9433d))
+
 ## [1.7.0](https://github.com/efiten/core-hunter/compare/web-v1.6.0...web-v1.7.0) (2026-08-19)
 
 
