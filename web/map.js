@@ -11,7 +11,7 @@ import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
-import { createMultiSelectPicker, wirePopover } from './multiselect.js'
+import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
@@ -128,18 +128,39 @@ const MODES = ['points', 'hex', 'both']
 let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
 const bar = document.getElementById('bar')
 document.getElementById('layer-toggle').textContent = mode
-// #rx-log (#224) shares this: it also sits below the bar, and a wrapped bar
-// (more filter chips than fit on one line, or a narrow viewport) grows taller
-// than any fixed offset would assume -- keep both in sync with the bar's
-// actual rendered height, not a guessed constant.
+// A wrapped bar -- more filter chips than fit on one line, or a narrow viewport
+// -- grows taller than any fixed offset would assume, so the map's top comes
+// from the bar's actual rendered height rather than a guessed constant.
 const setMapTop = () => {
   document.getElementById('map').style.top = bar.offsetHeight + 'px'
-  const rxLog = document.getElementById('rx-log')
-  if (rxLog) rxLog.style.top = (bar.offsetHeight + 4) + 'px'
   map.invalidateSize()
 }
 setMapTop()
 window.addEventListener('resize', setMapTop)
+
+// #rx-log (#224) sits below the bar too, but it is published as a token and
+// observed, because it is the one whose staleness steals clicks: at z-index 620
+// over the bar's 600 it sat on the bar's last row and swallowed everything meant
+// for #ch-version (#386). The bar keeps growing after module load -- the packet
+// chips render, the role notice arrives with /api/auth/me, the node counts and
+// the server version land later still -- and each one wraps another row, so one
+// measurement is stale within a second of load and only a resize repaired it.
+//
+// Deliberately not wired to #map, which stays on the resize-driven path above:
+// it follows the bar when the window changes, and not when the bar's own
+// content grows. That asymmetry is the point. invalidateSize moves the centre
+// coordinate by half the size change whatever `pan` is set to, so running it
+// for every late arrival during load walks the neutral world view off its mark
+// (#218) -- 0.14 degrees with pan on, 13 with it off, measured. A user-driven
+// resize is a different case: it already re-runs invalidateSize today, and
+// holding the visible content still across it is the wanted behaviour. What
+// #map loses by staying put is a few stale pixels behind the bar, which paints
+// above it. What #rx-log lost was every click on #ch-version.
+const publishBarHeight = () => {
+  document.documentElement.style.setProperty('--ch-bar-h', `${bar.offsetHeight}px`)
+}
+publishBarHeight()
+new ResizeObserver(publishBarHeight).observe(bar)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
@@ -855,13 +876,20 @@ async function drawNodePositions() {
   const gen = ++nodePosGen
   const note = document.getElementById('nodepos-note')
   if (note) note.hidden = !nodePosCb.checked
-  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole)) {
+  // locateActive for the same reason drawObserverPoints() checks it: Locate is a
+  // focus view and it suppresses refresh() for the whole session, so anything
+  // that repaints into it stays there until Locate is switched off. This draw
+  // re-enters itself when its /api/resolve calls settle, and activateLocate()
+  // clears the layer without bumping nodePosGen or unchecking the box, so a
+  // resolve landing a moment later walked through every guard (#390).
+  if (!nodePosCb.checked || !canSeeObserverPoints(currentRole) || locateActive) {
     nodePosLayer.clearLayers(); nodePosSig = null
     return
   }
   const { points } = await fetchPointsPaged(qs(), { maxTotal: 25000 })
-  // A newer draw started (or the layer was switched off) while we were waiting.
-  if (gen !== nodePosGen || !nodePosCb.checked) return
+  // A newer draw started, the layer was switched off, or Locate took over while
+  // we were waiting.
+  if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
   const bySender = groupSenderPoints(points)
   // groupSenderPoints reduces each reception to {lat,lon,rssi}, so the kind has
   // to be read off the raw rows: collect the ids that are in the pubkey
@@ -1094,7 +1122,16 @@ document.getElementById('tr-copy').addEventListener('click', async (e) => {
 
 // Sync while still hidden: syncTimeUi() only writes the absolute fields when the
 // panel is closed, so the order matters — populate, then show.
-function openTimePicker() { syncTimeUi(); trPanel.hidden = false; trToggle.setAttribute('aria-expanded', 'true') }
+// Placed after unhiding, and right-aligned by preference: the panel is ~400px
+// of two columns, so on a wide bar it grows leftwards from the toggle. It flips
+// or shifts when that runs off a narrow screen (#372) — the old CSS `right: 0`
+// could not, and put the whole panel off the left edge of a phone.
+function openTimePicker() {
+  syncTimeUi()
+  trPanel.hidden = false
+  trToggle.setAttribute('aria-expanded', 'true')
+  placePopover(trToggle, trPanel, { align: 'right' })
+}
 function closeTimePicker() { trPanel.hidden = true; trToggle.setAttribute('aria-expanded', 'false') }
 trToggle.addEventListener('click', () => (trPanel.hidden ? openTimePicker() : closeTimePicker()))
 // Capture phase, same reason as elsewhere: a quick-range click re-renders rows
@@ -1105,6 +1142,10 @@ document.addEventListener('click', (e) => {
   closeTimePicker()
 }, true)
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !trPanel.hidden) closeTimePicker() })
+// A resize rewraps #bar and moves the toggle, so an open panel has to follow.
+window.addEventListener('resize', () => {
+  if (!trPanel.hidden) placePopover(trToggle, trPanel, { align: 'right' })
+})
 window.__syncTimeUi = syncTimeUi // test hook
 
 // Clear button: reset every filter to its default, drop the CS observer layers,

@@ -67,6 +67,32 @@ test('Locate is hidden for guests, shown for members', async ({ page }) => {
   await expect(page.locator('#locate-toggle')).toBeVisible()
 })
 
+// #270: the gate above only holds once /api/auth/me has resolved. Until then
+// currentRole is the 'guest' boot default, and activateLocate() returns on the
+// role gate with no retry — so a member clicking Locate in that window is
+// silently ignored, and a guest sees a working-looking button until
+// applyLocateGate() hides it. The suite stopped seeing this when clickUntil
+// (#352) started retrying past it, which is why the test holds the response
+// open rather than racing it.
+test('Locate is not live during the boot window, before the role is known (#270)', async ({ page }) => {
+  let release
+  const roleHeld = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/points*', r => r.fulfill({ json: { points: [], truncated: false } }))
+  await page.route('**/api/heatmap*', r => r.fulfill({ json: { type: 'FeatureCollection', features: [] } }))
+  await page.route('**/api/hunters*', r => r.fulfill({ json: { hunters: [] } }))
+  await page.route('**/api/auth/me', async (r) => {
+    await roleHeld
+    await r.fulfill({ json: { role: 'member', username: 'm' } })
+  })
+
+  await page.goto('/')
+  // Role still unresolved: the button must not be on screen at all.
+  await expect(page.locator('#locate-toggle')).toBeHidden()
+
+  release()
+  await expect(page.locator('#locate-toggle')).toBeVisible()
+})
+
 // A small spread of synthetic receptions (same shape as locate.spec.js) so the
 // solver has enough points to produce a centroid/strongest marker.
 const LOCATE_POINTS = [

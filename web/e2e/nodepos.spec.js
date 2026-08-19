@@ -135,3 +135,41 @@ test('a 64-hex id of a non-registry kind is not looked up as a node (#296)', asy
   await expect(page.locator('#nodepos-note')).toBeVisible()
   await expect(page.locator('.np-advert')).toHaveCount(0)
 })
+
+// #390: drawNodePositions() redraws when its /api/resolve calls settle, and
+// activateLocate() clears the layer without bumping nodePosGen or unchecking the
+// box — so a resolve that lands after Locate is on walks through every guard and
+// repaints markers into the focus view. refresh() is suppressed for the whole
+// Locate session, so nothing clears them again until Locate is switched off.
+// Held responses instead of parallel-load luck: this is the flake in "the layer
+// comes back after a Locate round-trip", made deterministic.
+function holdable(page, urlPattern, body) {
+  let release
+  const held = new Promise((res) => { release = res })
+  return page.route(urlPattern, async (r) => {
+    await held
+    await r.fulfill({ json: body })
+  }).then(() => release)
+}
+
+test('a resolve that lands after Locate does not repaint the layer into the focus view (#390)', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: ring(51, 4, 250, 8) } }))
+  const releaseResolve = await holdable(page, '**/api/resolve*',
+    { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0 })
+
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  // No position cached yet, so nothing is drawn and the resolve is in flight.
+  await expect(page.locator('.np-advert')).toHaveCount(0)
+
+  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  releaseResolve()
+  // The redraw the resolve fires must find focus mode and stay out of it.
+  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await page.waitForTimeout(600)
+  expect(await page.locator('.np-advert').count(), 'no marker repainted into focus mode').toBe(0)
+
+  // And the layer still comes back when Locate is switched off.
+  await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === 0)
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+})
