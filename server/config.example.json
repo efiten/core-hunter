@@ -4,5 +4,7 @@
   "mqttPassword": "<set me>",
   "mqttTopic": "meshcore/hunter/+/packets",
   "dbPath": "/app/data/hunter.db",
-  "httpAddr": ":8090"
+  "httpAddr": ":8090",
+  "resolveUpstreams": ["https://<resolver-host>/sf7/api/nodes/resolve", "https://<resolver-host>/sf8/api/nodes/resolve"],
+  "nodePositionUpstreams": ["https://<resolver-host>/sf7/api/nodes/positions", "https://<resolver-host>/sf8/api/nodes/positions"]
 }

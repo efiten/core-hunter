@@ -94,7 +94,11 @@ func main() {
 	authAPI := &httpapi.AuthAPI{Store: st, CookieSecure: cfg.CookieSecure, Limiter: limiter, Mailer: mailer, BaseURL: cfg.BaseURL}
 	adminAPI := &httpapi.AdminAPI{Store: st, Mailer: mailer, BaseURL: cfg.BaseURL}
 	resolveAPI := &httpapi.ResolveAPI{Upstreams: cfg.ResolveUpstreams, Client: &http.Client{Timeout: 5 * time.Second}}
-	deps := &httpapi.Deps{Auth: authAPI, Admin: adminAPI, Resolve: resolveAPI}
+	// Longer timeout than the resolve proxy: this fetches the whole registry
+	// (~1.3 MB per upstream), and it does so once per TTL for every visitor
+	// rather than once per request (#377).
+	nodesAPI := &httpapi.NodesAPI{Upstreams: cfg.NodePositionUpstreams, Client: &http.Client{Timeout: 30 * time.Second}}
+	deps := &httpapi.Deps{Auth: authAPI, Admin: adminAPI, Resolve: resolveAPI, Nodes: nodesAPI}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
