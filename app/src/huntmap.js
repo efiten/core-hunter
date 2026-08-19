@@ -195,6 +195,10 @@ export function createHuntMap(containerId) {
     // setStyle → loading), so it needs the guard. Nothing is lost by skipping:
     // addOverlays re-applies the sky as soon as that style finishes.
     if (!map.isStyleLoaded()) return
+    // || 'dark' matches styleFor()'s rule for the same token: empty means the
+    // stylesheet has not applied, and the app's default is the dark basemap.
+    // sky.js caps only on the exact string 'dark', so this is what decides
+    // that a missing token gets the capped palette rather than the light one.
     map.setSky(skyForHour(currentHour(), cssVar('--ch-basemap') || 'dark'))
   }
   // The clock moves during a hunt — a session that starts at dusk would keep a

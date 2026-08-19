@@ -8,6 +8,18 @@
 // worse than none. Ported from the #293/#333 prototype, where the palette was
 // evaluated on device; the theme cap below is the one part that is new.
 
+// The palette is written as literal hex, and it is the only colour in the app
+// that is. AGENTS.md's "colours via CSS variables only" is scoped to component
+// stylesheets, and this is neither a stylesheet nor a UI surface: it is nine
+// stops x three channels feeding MapLibre paint properties, which no rule can
+// read from CSS anyway, and as tokens it would be 27 names nobody would ever
+// theme individually. The consequence, stated rather than left to be
+// discovered: the light theme gets this same palette. Only the dark cap below
+// is theme-aware, so what the sky follows is the clock, and the theme changes
+// nothing except a brightness ceiling. That is deliberate — the sky above a
+// map is the same sky at 14:00 whichever basemap is under it — but it does
+// mean a light-theme user at night gets a night sky, not a light-theme sky.
+//
 // Anchor colours across the day. Between them everything is interpolated, so
 // the sky changes continuously instead of snapping between four looks.
 export const SKY_STOPS = [
@@ -51,8 +63,16 @@ function capLuma(hex, maxLuma) {
 }
 
 // hour is a float, 0..24 (13.5 = 13:30); values outside wrap. theme is the
-// --ch-basemap token: anything other than 'dark' is treated as light, so a
-// missing or unknown token cannot black out the sky.
+// --ch-basemap token, and only the exact string 'dark' caps: an unknown value
+// is treated as light, so a token this module has never heard of degrades to
+// the uncapped palette rather than to a hard-coded guess.
+//
+// A *missing* token is the caller's decision, not this module's. huntmap.js
+// resolves it before calling — cssVar('--ch-basemap') || 'dark' — the same
+// expression styleFor() already uses to pick the basemap, because a token that
+// reads empty means the stylesheet has not applied and the app's own default
+// is dark. So in the app a missing token gets the capped palette; here, passed
+// through raw, it would get the light one.
 export function skyForHour(hour, theme) {
   const h = ((hour % 24) + 24) % 24
   let a = SKY_STOPS[0], b = SKY_STOPS[SKY_STOPS.length - 1]
