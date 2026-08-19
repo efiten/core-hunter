@@ -5,7 +5,7 @@ import { locate, toLocatePoints } from './locate.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
-import { layerVisibility, pitchFor } from './maplayers.js'
+import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM } from './pointmarker.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -27,13 +27,13 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // can mount on it when the hosted basemap style is unreachable (see below).
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
 
-// 3D mode (#147 phase 2): setView() tilts the camera (pitchFor, maplayers.js)
-// and swaps the flat hex layer for its fill-extrusion twin — same 'hex'
-// source, height added per feature (extrusionHeight). Buildings reuse the
-// OpenFreeMap style's own "openmaptiles"/"building" source, already fetched
-// for the 2D basemap, so 3D adds no new data request. (Terrain was dropped —
-// see docs/2026-07-11-3d-mode.md: its AWS DEM tiles kept the map in a
-// perpetual load loop and froze weaker GPUs.)
+// 3D mode (#147 phase 2): setView() tilts the camera (pitchTransition,
+// maplayers.js) and swaps the flat hex layer for its fill-extrusion twin —
+// same 'hex' source, height added per feature (extrusionHeight). Buildings
+// reuse the OpenFreeMap style's own "openmaptiles"/"building" source, already
+// fetched for the 2D basemap, so 3D adds no new data request. (Terrain was
+// dropped — see docs/2026-07-11-3d-mode.md: its AWS DEM tiles kept the map in
+// a perpetual load loop and froze weaker GPUs.)
 
 // Ceiling for the two-finger tilt gesture (#333). MapLibre's own default
 // maxPitch is 60 — the same value the FAB eases to (PITCH_3D, maplayers.js) —
@@ -42,7 +42,10 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 // (86+ throws "maxPitch must be less than or equal to 85"); 90 is not offered
 // because a camera level with the horizon projects to infinity.
 // PITCH_3D deliberately stays 60: the FAB is the introduction to 3D, and the
-// gesture is what takes you the rest of the way.
+// gesture is what takes you the rest of the way. Those two compose because
+// setView() only eases when a tap crosses the 2D/3D line (pitchTransition) --
+// cycling between 3D states leaves a gesture-set angle where it is, and
+// leaving 3D is what puts the camera back to a known one.
 const MAX_PITCH = 85
 // Points-in-3D (#250): a small standing "pillar" per reception, same tier
 // height/colour as hex-3d's bars, so it reads clearly in the tilted view
@@ -528,11 +531,16 @@ export function createHuntMap(containerId) {
   // between (both were synchronous within one task), so it was invisible — but
   // it doubled the work on the one control designed to be used one-handed
   // while driving. Assign both, then apply once.
+  // Pitch: only a tap that crosses the 2D/3D line moves the camera
+  // (pitchTransition, maplayers.js). Easing on every tap threw away any angle
+  // the tilt gesture had set, which is three of the five steps in the cycle.
   function setView(m, v) {
+    const was3D = mode3D
     mode = m
     mode3D = !!v
     applyLayerVisibility()
-    map.easeTo({ pitch: pitchFor(mode3D), duration: 500 })
+    const pitch = pitchTransition(was3D, mode3D)
+    if (pitch !== null) map.easeTo({ pitch, duration: 500 })
     // draw() is needed even when only the flag changed: the hidden collection's
     // source is left at EMPTY (that is the point of the per-tick build guard),
     // so revealing it without repopulating shows nothing until the next 1 Hz tick.
