@@ -13,14 +13,23 @@ const GAP = 4 // px gap between segments, in SVG user units
 // Pure geometry: one entry per segment, in draw order. `filled` = segments
 // from 0 through `current` (inclusive) — a genuine progress fill, not just a
 // single active-segment marker.
-export function ringSegments(current, total) {
+//
+// offIndex names the one state, if any, that is *off* rather than at position
+// zero (#373): at that index nothing is filled, because off is the absence of
+// a progress position and a lit segment there reads as "1 of 3 active" while
+// the feature is doing nothing. It is opt-in per call site, not a rule about
+// index 0 — of the three FABs that use this ring, only sound has an off state.
+// The compass's `following` and the view FAB's `points 2D` are both *on* at
+// index 0, so their single filled segment is correct and must not change.
+export function ringSegments(current, total, { offIndex } = {}) {
   if (total < 2) return []
+  const off = current === offIndex
   const segLen = (CIRCUMFERENCE - total * GAP) / total
   const segs = []
   for (let i = 0; i < total; i++) {
     segs.push({
       index: i,
-      filled: i <= current,
+      filled: !off && i <= current,
       dasharray: `${segLen} ${CIRCUMFERENCE - segLen}`,
       dashoffset: -(i * (segLen + GAP)),
     })
@@ -32,8 +41,8 @@ export function ringSegments(current, total) {
 // matches the button's own 46x46 box; see .fab-ring in app.css for the
 // absolute-position overlay). Rotated -90deg so segment 0 starts at 12
 // o'clock instead of stroke-dasharray's default 3 o'clock zero-angle.
-export function fabRingSvg(current, total) {
-  const segs = ringSegments(current, total)
+export function fabRingSvg(current, total, opts) {
+  const segs = ringSegments(current, total, opts)
   if (!segs.length) return ''
   const circles = segs.map((s) =>
     `<circle cx="23" cy="23" r="${RADIUS}" fill="none" stroke-width="2" stroke-linecap="round" ` +
