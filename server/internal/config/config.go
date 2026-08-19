@@ -33,6 +33,11 @@ type Config struct {
 	// ResolveUpstreams rather than derived from it: the two are sibling paths on
 	// the same services today, but deriving one from the other by string surgery
 	// would break silently the first time a registry is hosted anywhere else.
+	//
+	// Two shapes are accepted (#418): our nameresolver's /api/nodes/positions,
+	// and a CoreScope /api/nodes, which has no /positions route. A CoreScope URL
+	// must carry the ?limit= it should ask for per page — that is what opts it
+	// into paging, and it caps a page at 2000 rows.
 	NodePositionUpstreams []string `json:"nodePositionUpstreams"`
 }
 

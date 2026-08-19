@@ -3,6 +3,9 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -38,15 +41,45 @@ type nodePositionsResponse struct {
 	Stale bool `json:"stale,omitempty"`
 }
 
-// The upstream payload (nameresolver's /api/nodes/positions, and the
-// CoreScope-compatible shape behind the same path).
+// The two registry shapes this proxies, decoded through one struct (#418):
+//
+//	nameresolver  GET .../api/nodes/positions  → {count, nodes:[{pubkey,name,lat,lon}]}
+//	CoreScope     GET .../api/nodes?limit=2000 → {total, nodes:[{public_key,name,lat,lon,…}]}
+//
+// CoreScope has no /positions route at all, which is why the website's layer
+// covered SF7 only until this landed. Its /api/nodes carries the same three
+// facts under a different key, so the difference is a field name and a page
+// size rather than missing data.
+//
+// lat/lon are pointers to keep "absent" distinct from 0 — 0,0 is a real
+// coordinate off West Africa, the trap §9 records for the ingestor's gps.
+type upstreamNode struct {
+	Pubkey    string   `json:"pubkey"`
+	PublicKey string   `json:"public_key"`
+	Name      string   `json:"name"`
+	Lat       *float64 `json:"lat"`
+	Lon       *float64 `json:"lon"`
+}
+
+func (u upstreamNode) key() string {
+	if u.Pubkey != "" {
+		return u.Pubkey
+	}
+	return u.PublicKey
+}
+
 type upstreamPositions struct {
-	Nodes []nodePosition `json:"nodes"`
+	Nodes []upstreamNode `json:"nodes"`
 }
 
 const (
 	defaultNodeCacheTTL = 10 * time.Minute
 	defaultNodeCap      = 20000
+	// Pages walked per upstream before giving up. CoreScope's ~2,500 nodes are
+	// two pages of 2000; the cap is the backstop against an upstream that
+	// always answers a full page, where the layer would rather be short than
+	// leave the fetch running.
+	maxRegistryPages = 20
 )
 
 type NodesAPI struct {
@@ -174,41 +207,89 @@ func (h *NodesAPI) fetchAll() ([]nodePosition, error) {
 	var out []nodePosition
 	var firstErr error
 	for _, up := range h.Upstreams {
-		resp, err := h.client().Get(up)
+		rows, err := h.fetchUpstream(up)
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
-		if resp.StatusCode != 200 {
-			resp.Body.Close()
-			if firstErr == nil {
-				firstErr = errUpstreamStatus
-			}
-			continue
-		}
-		var body upstreamPositions
-		err = json.NewDecoder(resp.Body).Decode(&body)
-		resp.Body.Close()
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		for _, n := range body.Nodes {
-			if n.Pubkey == "" || (n.Lat == 0 && n.Lon == 0) || seen[n.Pubkey] {
+		for _, n := range rows {
+			k := n.key()
+			if k == "" || n.Lat == nil || n.Lon == nil || (*n.Lat == 0 && *n.Lon == 0) || seen[k] {
 				continue
 			}
-			seen[n.Pubkey] = true
-			out = append(out, n)
+			seen[k] = true
+			out = append(out, nodePosition{Pubkey: k, Name: n.Name, Lat: *n.Lat, Lon: *n.Lon})
 		}
 	}
 	if out == nil && firstErr != nil {
 		return nil, firstErr
 	}
 	return out, nil
+}
+
+// pageSize reads the `limit` the configured URL asks for. Its presence is what
+// opts an upstream into paging: the nameresolver returns its whole registry in
+// one answer and must stay one request, while CoreScope caps a page and
+// answers `offset`. Operator-controlled rather than sniffed, so a registry that
+// changes its paging is a config edit and not a code change.
+func pageSize(raw string) int {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(u.Query().Get("limit"))
+	if n < 1 {
+		return 0
+	}
+	return n
+}
+
+// fetchUpstream walks one registry, following `offset` while it keeps handing
+// back full pages. A short page ends it — no total is needed, and CoreScope's
+// `total` cannot serve as one anyway: it reports the page size, not the set.
+func (h *NodesAPI) fetchUpstream(raw string) ([]upstreamNode, error) {
+	limit := pageSize(raw)
+	var all []upstreamNode
+	for page := 0; page < maxRegistryPages; page++ {
+		target := raw
+		if limit > 0 && page > 0 {
+			sep := "?"
+			if strings.Contains(raw, "?") {
+				sep = "&"
+			}
+			target = raw + sep + "offset=" + strconv.Itoa(page*limit)
+		}
+		rows, err := h.fetchPage(target)
+		if err != nil {
+			if page == 0 {
+				return nil, err
+			}
+			break // keep what the earlier pages gave
+		}
+		all = append(all, rows...)
+		if limit == 0 || len(rows) < limit {
+			break
+		}
+	}
+	return all, nil
+}
+
+func (h *NodesAPI) fetchPage(target string) ([]upstreamNode, error) {
+	resp, err := h.client().Get(target)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, errUpstreamStatus
+	}
+	var body upstreamPositions
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, err
+	}
+	return body.Nodes, nil
 }
 
 type upstreamStatusError struct{}

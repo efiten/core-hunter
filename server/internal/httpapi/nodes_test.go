@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,6 +21,14 @@ func registryUpstream(hits *int32, body string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(hits, 1)
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("offset") != "" {
+			// This stand-in speaks the whole-registry shape, so a second page is
+			// empty. Without that, code that paged when it should not would spin
+			// on the same rows until the page cap and hang the suite instead of
+			// failing it.
+			fmt.Fprint(w, `{"nodes":[]}`)
+			return
+		}
 		fmt.Fprint(w, body)
 	}))
 }
@@ -363,5 +372,144 @@ func TestNodePositionsSaysWhenTheRegistryIsEmpty(t *testing.T) {
 	}
 	if hits != 1 {
 		t.Fatalf("upstream fetched %d times, want 1 — an empty answer must not be retried per request", hits)
+	}
+}
+
+// CoreScope (the SF8 registry) has no /positions route at all, but its
+// /api/nodes does carry lat/lon — under `public_key` rather than `pubkey`, 50
+// rows at a time, capped at 2000 per page with an `offset` to walk them (#418,
+// measured against the live service 2026-08-19). Supporting that shape is what
+// puts SF8 nodes back on the map; the alternative was an upstream feature
+// request for a route the data does not need.
+const csPage = `{"total":2,"nodes":[
+	{"public_key":"cs01","name":"Smuty","lat":51.09,"lon":6.98,"role":"repeater","advert_count":1477},
+	{"public_key":"cs02","name":"Venlo","lat":51.37,"lon":6.17}]}`
+
+func TestNodePositionsAcceptsTheCoreScopeShape(t *testing.T) {
+	var hits int32
+	up := registryUpstream(&hits, csPage)
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	res := decodeNodes(t, w)
+	if len(res.Nodes) != 2 {
+		t.Fatalf("public_key rows must be read: %+v", res.Nodes)
+	}
+	byKey := map[string]nodePosition{}
+	for _, n := range res.Nodes {
+		byKey[n.Pubkey] = n
+	}
+	if byKey["cs01"].Name != "Smuty" || byKey["cs01"].Lat != 51.09 {
+		t.Fatalf("fields lost mapping public_key -> pubkey: %+v", byKey["cs01"])
+	}
+}
+
+func TestNodePositionsMergesTheTwoRegistryShapes(t *testing.T) {
+	// The same node in both registries, named differently, plus one each. The
+	// nameresolver comes first in config order, so it wins the conflict.
+	var h1, h2 int32
+	sf7 := registryUpstream(&h1, `{"count":2,"nodes":[
+		{"pubkey":"shared","name":"FromSF7","lat":51.2,"lon":4.4},
+		{"pubkey":"only7","name":"Only7","lat":51.3,"lon":4.5}]}`)
+	sf8 := registryUpstream(&h2, `{"total":2,"nodes":[
+		{"public_key":"shared","name":"FromSF8","lat":51.9,"lon":4.9},
+		{"public_key":"only8","name":"Only8","lat":51.4,"lon":4.6}]}`)
+	defer sf7.Close()
+	defer sf8.Close()
+	h := &NodesAPI{Upstreams: []string{sf7.URL, sf8.URL}, Client: sf7.Client()}
+
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	res := decodeNodes(t, w)
+	if len(res.Nodes) != 3 {
+		t.Fatalf("want shared + only7 + only8, got %+v", res.Nodes)
+	}
+	for _, n := range res.Nodes {
+		if n.Pubkey == "shared" && n.Name != "FromSF7" {
+			t.Fatalf("first upstream must still win a conflict across shapes: %+v", n)
+		}
+	}
+}
+
+func TestNodePositionsWalksPagesWhenTheURLAsksForThem(t *testing.T) {
+	// CoreScope caps a page at its `limit` and answers `offset`. The config URL
+	// carrying ?limit= is what opts an upstream into paging — the nameresolver
+	// has no limit and returns everything, so it must stay a single request.
+	var reqs int32
+	rows := []string{`{"public_key":"a","lat":51,"lon":4}`, `{"public_key":"b","lat":51,"lon":4}`,
+		`{"public_key":"c","lat":51,"lon":4}`, `{"public_key":"d","lat":51,"lon":4}`, `{"public_key":"e","lat":51,"lon":4}`}
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&reqs, 1)
+		off, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+		lim, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		if lim == 0 {
+			lim = 2
+		}
+		end := off + lim
+		if end > len(rows) {
+			end = len(rows)
+		}
+		page := []string{}
+		if off < len(rows) {
+			page = rows[off:end]
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"total":%d,"nodes":[%s]}`, len(page), strings.Join(page, ","))
+	}))
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL + "/api/nodes?limit=3"}, Client: up.Client()}
+
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	res := decodeNodes(t, w)
+	if len(res.Nodes) != 5 {
+		t.Fatalf("paging must reach every row: got %d", len(res.Nodes))
+	}
+	// 3 then 2: the short page ends it. Pinned against the page size the URL
+	// asks for, not a round number, so a hardcoded stride fails here.
+	if reqs != 2 {
+		t.Fatalf("3+2 rows is 2 requests, got %d", reqs)
+	}
+}
+
+func TestNodePositionsDoesNotPageAnUpstreamWithoutALimit(t *testing.T) {
+	var hits int32
+	up := registryUpstream(&hits, twoNodes)
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+
+	h.Positions(httptest.NewRecorder(), nodesReq("50,3,54,7", Auth{Role: "member"}))
+	if hits != 1 {
+		t.Fatalf("an upstream with no ?limit= returns everything at once: %d requests", hits)
+	}
+}
+
+func TestNodePositionsStopsPagingAtTheCap(t *testing.T) {
+	// An upstream that always answers a full page would otherwise be walked
+	// forever. The cap bounds it; the layer would rather be short than hang.
+	var reqs int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&reqs, 1)
+		// Past the cap the upstream stops answering, so a missing cap fails this
+		// test instead of hanging it: without the bound the loop is infinite,
+		// and a test that never returns is a worse signal than a red one.
+		if int(n) > maxRegistryPages+2 {
+			w.WriteHeader(500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"nodes":[{"public_key":"k%d","lat":51,"lon":4},{"public_key":"j%d","lat":51,"lon":4}]}`, n, n)
+	}))
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL + "?limit=2"}, Client: up.Client()}
+
+	h.Positions(httptest.NewRecorder(), nodesReq("50,3,54,7", Auth{Role: "member"}))
+	if reqs > int32(maxRegistryPages) {
+		t.Fatalf("paging ran %d times, cap is %d", reqs, maxRegistryPages)
+	}
+	if reqs < 2 {
+		t.Fatalf("it should page at least twice before the cap: %d", reqs)
 	}
 }
