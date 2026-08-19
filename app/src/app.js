@@ -41,6 +41,7 @@ import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
 import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { drawableNodes } from './nodelayer.js'
+import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
@@ -1662,9 +1663,9 @@ function cycleView() {
 
 // Registry nodes that know their own position, fetched once per session and
 // filtered to the viewport client-side (AGENTS.md §7: no per-packet API calls).
-// The bulk endpoint only exists on our own nameresolver — third-party CoreScope
-// resolvers implement the resolve contract but not this — so a 404 or a network
-// error just means that resolver contributes nothing.
+// Two registry shapes answer this: our nameresolver's /positions, and — for a
+// CoreScope resolver, which has no such route — its paged /api/nodes (#418).
+// A resolver that answers neither just contributes nothing.
 let nodePosOn = false, nodePosLoaded = false, nodePosAttempted = false, nodePosCount = 0
 
 // Single-flight: toggling the layer off and on during a slow fetch used to
@@ -1678,6 +1679,33 @@ function loadNodePositions() {
   return nodePosInFlight
 }
 
+// One resolver's positioned nodes, whichever shape it speaks. /positions first
+// because it is one request for the whole registry; the paged collection is the
+// fallback for a resolver that 404s it. Returns null when the resolver answered
+// nothing at all, which is what separates "unreachable" from "empty" below.
+async function fetchRegistry(resolverUrl) {
+  const direct = positionsUrl(resolverUrl)
+  if (direct) {
+    const res = await fetch(direct).catch(() => null)
+    if (res && res.ok) return normalizeNodes(await res.json())
+  }
+  const rows = []
+  for (let page = 0; page < MAX_REGISTRY_PAGES; page++) {
+    const url = nodesPageUrl(resolverUrl, page * REGISTRY_PAGE)
+    if (!url) return null
+    const res = await fetch(url).catch(() => null)
+    if (!res || !res.ok) return page === 0 ? null : rows
+    const j = await res.json()
+    const got = Array.isArray(j && j.nodes) ? j.nodes.length : 0
+    rows.push(...normalizeNodes(j))
+    // Against the row count of the page, not the count after dropping
+    // unplottable rows: a page full of nodes with no position is still a full
+    // page, and stopping there would cut the walk short of the ones that have.
+    if (!morePages(got, page)) break
+  }
+  return rows
+}
+
 async function fetchNodePositions() {
   const cfg = getConfig()
   const resolvers = (cfg && cfg.resolvers) || []
@@ -1685,16 +1713,14 @@ async function fetchNodePositions() {
   let anyAnswered = false
   for (const r of resolvers) {
     try {
-      const url = r.url.replace(/\/resolve$/, '/positions')
-      const res = await fetch(url)
-      if (!res.ok) continue
-      const j = await res.json()
+      const nodes = await fetchRegistry(r.url)
+      if (nodes === null) continue
       anyAnswered = true
-      for (const n of drawableNodes(j.nodes || [])) {
+      for (const n of drawableNodes(nodes)) {
         byPubkey.set(String(n.pubkey).toLowerCase(), n)
       }
     } catch (_) {
-      // resolver unreachable or has no bulk endpoint — skip it
+      // resolver unreachable or answered something unparseable — skip it
     }
   }
   // Only latch when something actually answered. A run where every resolver
