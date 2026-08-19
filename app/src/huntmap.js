@@ -6,7 +6,7 @@ import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor,
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { octagonRing, pillarRadiusM } from './pointmarker.js'
+import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { skyForHour, currentHour } from './sky.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -130,10 +130,14 @@ export function createHuntMap(containerId) {
   // for it, same limitation noted on hex-3d), but fill-extrusion-color IS
   // per-feature — so tier opacity and age-fade ride in the colour's alpha
   // instead of being dropped (#302).
+  // collapsePillars first (#402): coincident octagons are coplanar side walls in
+  // one depth pass, which z-fights. It also drops the unpositioned records this
+  // loop used to skip itself, so there is no second guard here. The flat 2D
+  // layer is deliberately left uncollapsed -- circles have no side walls, so it
+  // has overplotting but not this defect.
   function buildPoints3DFC(records, nowMs) {
     const feats = []
-    for (const r of records) {
-      if (r.lat == null || r.lon == null) continue
+    for (const r of collapsePillars(records)) {
       const tier = rssiTier(r.rssi, currentOffset())
       const fade = ageFade(r.rx_at, nowMs, timeWindowMs)
       const ring = octagonRing(r.lat, r.lon, pillarRadiusM(r.lat, map.getZoom(), POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))

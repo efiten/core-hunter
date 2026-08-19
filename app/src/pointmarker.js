@@ -52,3 +52,69 @@ export function pillarRadiusM(lat, zoom, baseM, minPx) {
   const floor = minPx * metresPerPixel(lat, zoom)
   return floor > baseM ? floor : baseM
 }
+
+// Merge distance for coincident pillars (#402). 10 m is dedupeSpatial's cell
+// (locate.js), reused deliberately: both answer "these samples are one place,
+// not several", and a hunter standing still is exactly the case each was
+// written for. Comfortably wider than the 3 m pillar radius, so anything left
+// standing after a collapse cannot overlap its neighbour's footprint.
+export const PILLAR_MERGE_M = 10
+
+// Collapses receptions that share a position down to one pillar each (#402).
+// Every record used to become its own octagon, so a stationary hunter's dozen
+// samples drew a dozen coincident extrusions: coplanar side walls in a single
+// depth pass, which z-fights — a column striped by tier colour, restriping as
+// the camera moves. #302 made it louder rather than quieter, since translucent
+// extrusions fight more visibly than opaque ones.
+//
+// Strongest sample wins, which is what buildHexFC and dedupeSpatial already do,
+// and the survivor is the record itself at its own coordinates: this layer's
+// whole point is showing where a reception actually was, so snapping it to a
+// cell centre would trade one defect for a worse one. Keeping the record also
+// keeps its id, so a tap still resolves through lastRecords to the log row it
+// always did (#130, #309).
+//
+// Why not dedupeSpatial itself: it bins to a grid and keeps one per cell, which
+// leaves the defect standing whenever a cluster straddles a cell boundary — two
+// samples a metre apart, two cells, two overlapping pillars. For weighting an
+// estimate that costs nothing; here it is the whole bug. So the grid is only an
+// index: a record is dropped when a stronger survivor already sits within
+// cellM, and the 3x3 neighbourhood is what makes the boundary case behave like
+// the middle of a cell. Bounded work per record, unlike an all-pairs scan.
+export function collapsePillars(records, cellM = PILLAR_MERGE_M) {
+  const placed = records.filter((r) => r.lat != null && r.lon != null)
+  if (placed.length < 2) return placed
+  // Strongest first, so the record a cluster collapses onto is decided by
+  // signal rather than by arrival order. Missing rssi sorts weakest instead of
+  // dropping the record — no rssi still means it was heard here.
+  const byStrength = [...placed].sort((a, b) => (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity))
+  const mPerDegLat = 111320
+  const mPerDegLon = 111320 * Math.cos((placed[0].lat * Math.PI) / 180)
+  const cellOf = (r) => [Math.round((r.lon * mPerDegLon) / cellM), Math.round((r.lat * mPerDegLat) / cellM)]
+  const withinM = (a, b) => {
+    const dx = (a.lon - b.lon) * mPerDegLon
+    const dy = (a.lat - b.lat) * mPerDegLat
+    return dx * dx + dy * dy <= cellM * cellM
+  }
+  // A list per cell, not one record: a 10 m cell is 14 m across the diagonal,
+  // so two survivors legitimately share a cell whenever they sit in opposite
+  // corners, and keying by cell alone would drop one of them.
+  const kept = new Map()
+  const out = []
+  for (const r of byStrength) {
+    const [cx, cy] = cellOf(r)
+    let merged = false
+    for (let dx = -1; dx <= 1 && !merged; dx++) {
+      for (let dy = -1; dy <= 1 && !merged; dy++) {
+        const near = kept.get((cx + dx) + ':' + (cy + dy))
+        if (near && near.some((k) => withinM(k, r))) merged = true
+      }
+    }
+    if (merged) continue
+    const key = cx + ':' + cy
+    const cell = kept.get(key)
+    if (cell) cell.push(r); else kept.set(key, [r])
+    out.push(r)
+  }
+  return out
+}
