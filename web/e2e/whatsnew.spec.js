@@ -58,6 +58,11 @@ function bootstrap(page, seenVersion) {
       if (sessionStorage.getItem('e2e-booted')) return
       sessionStorage.setItem('e2e-booted', '1')
       localStorage.clear()
+      // Re-set what the shared fixture put there: this script runs after it, so
+      // the clear above also wipes the onboarding flag, and the first-run tour
+      // would open over these tests — it takes focus on open (#316), which is
+      // exactly what the focus assertions below measure.
+      localStorage.setItem('ch-onboarding-seen', '1')
       if (v) localStorage.setItem('ch-whatsnew-seen', v)
     } catch (_) {}
   }, seenVersion)

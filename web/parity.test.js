@@ -18,6 +18,8 @@ import * as webNames from './names.js'
 import * as appNames from '../app/src/names.js'
 import * as webChangelog from './changelog.js'
 import * as appChangelog from '../app/src/changelog.js'
+import * as webCallout from './calloutPosition.js'
+import * as appCallout from '../app/src/calloutPosition.js'
 import { setConfig } from '../app/src/config.js'
 import { readFileSync } from 'node:fs'
 import * as webTicker from './receptionticker.js'
@@ -404,5 +406,54 @@ describe('receptions ticker CSS parity (#322)', () => {
       expect(decl(block, '.rx-ln', 'content-visibility'), name + ': .rx-ln content-visibility').toBeNull()
       expect(decl(block, '.rx-list', 'pointer-events'), name + ': .rx-list').toBe('none')
     }
+  })
+})
+
+// calloutPosition.js is the fourth duplicated module (#316 gave web an
+// onboarding overlay built on the app's spotlight geometry). Pure maths, so
+// parity is checked by running the cases where a constant is load-bearing: each
+// side, the align variants, and a target close enough to an edge that the
+// clamp — not the requested position — decides the answer.
+describe('calloutPosition — parity between the app and web copies', () => {
+  const viewport = { width: 400, height: 800 }
+  const size = { width: 150, height: 60 }
+  const target = { left: 100, top: 200, right: 260, bottom: 240 }
+  const CASES = [
+    ['below/left', target, { side: 'below', align: 'left' }],
+    ['below/right', target, { side: 'below', align: 'right' }],
+    ['above', target, { side: 'above' }],
+    ['left', target, { side: 'left' }],
+    ['right', target, { side: 'right' }],
+    // Clamped on every edge: without these, the margin and the viewport terms
+    // are dead code and any of them could drift unnoticed.
+    ['clamped top-left', { left: 2, top: 2, right: 20, bottom: 20 }, { side: 'above' }],
+    ['clamped bottom-right', { left: 380, top: 780, right: 398, bottom: 798 }, { side: 'right' }],
+    ['custom gap/margin', target, { side: 'below', gap: 24, margin: 40 }],
+  ]
+  it.each(CASES)('agrees on %s', (_label, rect, opts) => {
+    expect(webCallout.calloutPosition(rect, viewport, size, opts))
+      .toEqual(appCallout.calloutPosition(rect, viewport, size, opts))
+  })
+
+  it('agrees on sliding a box clear of the ones already placed', () => {
+    const vp = { width: 1280, height: 800 }
+    const b = (top, left, width = 200, height = 100) => ({ top, left, width, height })
+    // Ordered so the far blocker is checked before the near one: the box is
+    // pushed into a blocker it has already passed, which only the repeat pass
+    // resolves. A single-sweep copy answers 188 here.
+    for (const blockers of [[], [b(80, 0)], [b(250, 0), b(80, 0)], [b(100, 400)]]) {
+      expect(webCallout.avoidOverlap(b(100, 0), blockers, vp))
+        .toEqual(appCallout.avoidOverlap(b(100, 0), blockers, vp))
+    }
+    expect(webCallout.avoidOverlap(b(100, 0), [b(250, 0), b(80, 0)], vp)).toEqual({ top: 358, left: 0 })
+  })
+
+  it('agrees on the union of a control cluster', () => {
+    const rects = [
+      { left: 10, top: 10, right: 40, bottom: 30 },
+      { left: 30, top: 50, right: 90, bottom: 70 },
+    ]
+    expect(webCallout.unionRect(rects)).toEqual(appCallout.unionRect(rects))
+    expect(webCallout.unionRect(rects)).toEqual({ left: 10, top: 10, right: 90, bottom: 70, width: 80, height: 60 })
   })
 })

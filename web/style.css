@@ -229,6 +229,68 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .wn-items { margin:0; padding-left:18px; }
 .wn-items li { margin:3px 0; font-size:13px; line-height:1.45; color:var(--ch-text); }
 .wn-more { display:block; margin:14px 0 4px; font-size:12.5px; color:var(--ch-accent-2); }
+/* ---- First-run onboarding overlay (#316) ----
+   Mirrors the app's splash: a scrim over the map, the live toolbar lifted
+   through it with the pointed-at controls ringed (.wb-spot, applied from
+   onboarding.js's own target lists), a callout beside each group, and a centre
+   panel with the tagline, basics and the position disclaimer. Below .lc-modal
+   (1000) so a login dialog still wins. */
+/* Three layers, and they have to be three ELEMENTS: z-index only orders
+   siblings within a stacking context, so callouts nested inside a z-indexed
+   scrim can never rise above the toolbar the scrim sits under. Scrim 700 <
+   toolbar 710 < tour 720, all siblings of body. The tour container passes
+   clicks through; only its boxes take them, so the map stays reachable. */
+#wb-scrim { position:fixed; inset:0; z-index:700;
+  background:color-mix(in srgb, var(--ch-bg) 55%, transparent);
+  -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
+#wb-scrim[hidden] { display:none; }
+#wb-onboarding { position:fixed; inset:0; z-index:720; pointer-events:none; }
+#wb-onboarding[hidden] { display:none; }
+/* Named, not `> *`: the callouts must stay click-through (they are text over
+   live controls, and a blanket `#wb-onboarding > *` outranks `.wb-callout` on
+   specificity, so the class could not opt out). Only the two things you
+   actually press take events. */
+#wb-onboarding > .wb-panel, #wb-onboarding > .wb-close { pointer-events:auto; }
+body.wb-onboarding-on #bar { z-index:710; }
+#bar .wb-spot { box-shadow:0 0 0 2px var(--ch-accent); border-radius:6px; }
+/* top/left are computed per callout in onboarding.js against the real target
+   elements, so the boxes follow a wrapped toolbar instead of guessing. */
+/* A callout is text, never a target: it must not swallow clicks meant for what
+   is under it (#316 review: the hunter picker's rows). It inherits
+   pointer-events:none from the container above — see the note there. */
+.wb-callout { position:fixed; max-width:230px; padding:9px 11px;
+  border:1px solid var(--ch-accent); border-radius:10px; background:var(--ch-surface);
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  color:var(--ch-text); font-size:12px; line-height:1.45; }
+.wb-callout[hidden] { display:none; }
+.wb-panel { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(380px, calc(100vw - 48px)); padding:20px; text-align:center;
+  /* The narrow layout moves the callout copy inside, so the panel can outgrow a
+     short viewport — scroll it rather than clipping the Got it button off. */
+  max-height:calc(100vh - 24px); overflow-y:auto;
+  background:var(--ch-surface); border:1px solid var(--ch-border); border-radius:16px;
+  -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); }
+.wb-panel h1 { margin:0 0 10px; font-size:22px; font-weight:600; }
+.wb-tagline { margin:0 0 14px; font-size:13px; line-height:1.5; color:var(--ch-muted); }
+.wb-basics { margin:0 0 14px; padding:0; list-style:none; text-align:left;
+  font-size:13px; line-height:1.5; }
+.wb-basics li { position:relative; padding-left:18px; margin:6px 0; }
+.wb-basics li::before { content:'›'; position:absolute; left:4px; color:var(--ch-accent); }
+.wb-inline { margin:0 0 14px; padding:0; list-style:none; text-align:left;
+  font-size:12px; line-height:1.45; color:var(--ch-muted); }
+.wb-inline[hidden] { display:none; }
+.wb-inline li { margin:7px 0; padding-left:10px; border-left:2px solid var(--ch-accent); }
+.wb-disclaimer { margin:0 0 16px; padding-top:12px; border-top:1px solid var(--ch-border);
+  font-size:11.5px; line-height:1.5; color:var(--ch-muted); text-align:left; }
+.wb-got-it { background:var(--ch-accent); color:var(--ch-bg); border:none; border-radius:10px;
+  padding:9px 20px; font:inherit; font-weight:600; cursor:pointer; }
+/* Bottom-right, not top-right: the toolbar is lifted above the scrim and can
+   wrap to two rows, so a top-anchored close button would sit on top of the very
+   controls the tour is pointing at. Raised clear of Leaflet's attribution
+   strip, which it landed on at 16px (#316 review). */
+.wb-close { position:fixed; bottom:40px; right:16px;
+  width:32px; height:32px; border-radius:50%; border:1px solid var(--ch-border);
+  background:var(--ch-surface); color:var(--ch-text); font-size:14px; line-height:1; cursor:pointer; }
 /* map.js overwrites this inline, once, before the initial setView -- see there
    for why the map deliberately does not follow the bar's later growth (#218). */
 #map { position:fixed; inset:0; top:48px; }

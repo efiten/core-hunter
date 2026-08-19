@@ -41,6 +41,13 @@ function cdnBody(url) {
 
 export const test = base.extend({
   page: async ({ page }, use) => {
+    // The first-run onboarding tour (#316) is a scrim over the map: it would
+    // swallow every map click in every other spec. Mark it seen by default —
+    // onboarding.spec.js clears storage in its own init script, which runs
+    // after this one, so the tour is still exercised where it is the subject.
+    await page.addInitScript(() => {
+      try { localStorage.setItem('ch-onboarding-seen', '1') } catch (_) {}
+    })
     for (const pattern of BLOCKED) await page.route(pattern, (r) => r.abort())
     for (const url of CDN) {
       const contentType = url.endsWith('.css') ? 'text/css' : 'application/javascript'

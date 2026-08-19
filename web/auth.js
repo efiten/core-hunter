@@ -18,14 +18,29 @@ export function isDegradedFor(role) {
   return !atLeast(role, 'member')
 }
 // Server-side gating (degradeFilter/applyGuestWindowCap, httpapi/api.go +
-// degrade.go) applies the same 24h/500-row/coarse-position/anonymised-hunter
-// limits to guest AND hunter roles alike -- both are below "member". The
-// call to action differs: a guest isn't logged in yet, but a hunter already
-// is and needs member verification instead (#174).
+// degrade.go) windows, caps, coarsens and pseudonymises everything a
+// sub-member caller sees. A caller's own linked companions are exempt, but
+// NOT unconditionally, and the difference decides what this copy may promise:
+//
+//   /api/points   unfiltered: own rows exact + full history, everyone else
+//                 windowed/capped/pseudonymised (the handler's default branch)
+//   /api/heatmap  the exemption is `ownFull := len(f.Hunter) == 1 &&
+//                 ownsCompanion(...)` — unfiltered, own rows take the 24 h
+//                 window and the z>12 cap with everyone else's; degradePoints
+//                 only spares them the coordinate snap and the pseudonym
+//
+// The website's cold default mode is hex (map.js), i.e. the heatmap, so a
+// hunter on first load is on the layer where their own captures are NOT in
+// full until they filter the hunter picker to themselves. Hence "once you
+// filter to it" in the notice — an unqualified "your own companion in full"
+// is wrong on the surface they actually land on.
+//
+// The call to action differs too: a guest isn't logged in yet, but a hunter
+// already is and needs member verification instead (#174).
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
-    return 'Hunter view: last 24 h, coarse ~1 km positions, hunters anonymised. Ask an admin for member verification to see more.'
+    return 'Hunter view: last 24 h, coarse ~1 km positions, anonymised — filter to your own companion to see it in full. An admin verifies you as a member to see everyone in full.'
   }
   return 'Guest view: last 24 h, coarse ~1 km positions, hunters anonymised. Log in to see more.'
 }
