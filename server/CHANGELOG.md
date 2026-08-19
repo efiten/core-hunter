@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/efiten/core-hunter/compare/server-v1.1.1...server-v1.2.0) (2026-08-19)
+
+
+### Features
+
+* **server,web:** draw node positions from the registry, not from what you heard ([#398](https://github.com/efiten/core-hunter/issues/398)) ([a4ac33b](https://github.com/efiten/core-hunter/commit/a4ac33b60e5062ca6697deb1cf514de7db52c923)), closes [#377](https://github.com/efiten/core-hunter/issues/377)
+
 ## [1.1.1](https://github.com/efiten/core-hunter/compare/server-v1.1.0...server-v1.1.1) (2026-08-15)
 
 
