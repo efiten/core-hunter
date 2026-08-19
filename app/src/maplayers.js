@@ -57,6 +57,18 @@ export function nextViewIndex(i) {
 export const PITCH_3D = 60
 export function pitchFor(mode3D) { return mode3D ? PITCH_3D : 0 }
 
+// Which FAB taps are allowed to move the camera (#333). The FAB and the tilt
+// gesture (huntmap.js, maxPitch 85) both write pitch, and they only compose if
+// the FAB stops overwriting an angle the user chose: a tap that stays on one
+// side of the 2D/3D line leaves the camera alone and returns null. Crossing
+// the line still eases to the fixed pitch, so the FAB stays the introduction
+// to 3D, and flat is never more than one crossing away. Three of the five
+// steps in the VIEW_STATES cycle are same-side, and none of them is a request
+// for a different tilt -- they change which layers are drawn.
+export function pitchTransition(was3D, is3D) {
+  return !!was3D === !!is3D ? null : pitchFor(is3D)
+}
+
 export function layerVisibility({ mode, mode3D } = {}) {
   // Unknown/absent mode follows the app's cold default rather than hiding
   // everything, so a corrupt persisted value can't produce a blank map.
