@@ -1786,8 +1786,11 @@ function updateSoundIcon() {
   // off/rxtx/full is a 3-state cycle, which is exactly what fabring.js says
   // earns one. Without it this FAB was the one multi-state control whose next
   // tap you could not predict.
+  // offIndex (#373): 'off' is index 0 of the cycle but it is not progress
+  // position 0, so the ring shows no accent at all there. Only this FAB passes
+  // it -- the compass and view FABs have on states at index 0.
   const idx = SOUND_MODES.indexOf(state.soundMode)
-  btn.innerHTML = fabRingSvg(idx, SOUND_MODES.length) + SOUND_ICONS[state.soundMode]
+  btn.innerHTML = fabRingSvg(idx, SOUND_MODES.length, { offIndex: SOUND_MODES.indexOf('off') }) + SOUND_ICONS[state.soundMode]
   btn.setAttribute('aria-label', SOUND_LABELS[state.soundMode])
   btn.classList.toggle('on', state.soundMode !== 'off')
 }

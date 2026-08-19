@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.7.0](https://github.com/efiten/core-hunter/compare/web-v1.6.0...web-v1.7.0) (2026-08-19)
+
+
+### Features
+
+* **app,web:** make the receptions ticker readable at a glance ([#404](https://github.com/efiten/core-hunter/issues/404)) ([c48a974](https://github.com/efiten/core-hunter/commit/c48a9748c5aee14b87e13e4f0374609e45546070)), closes [#322](https://github.com/efiten/core-hunter/issues/322)
+
+## [1.6.0](https://github.com/efiten/core-hunter/compare/web-v1.5.0...web-v1.6.0) (2026-08-18)
+
+
+### Features
+
+* **app,web:** show what changed in a release behind a version badge ([#363](https://github.com/efiten/core-hunter/issues/363)) ([3a3dcf1](https://github.com/efiten/core-hunter/commit/3a3dcf128502790e5e1ecda0b3a3a0808a143752)), closes [#284](https://github.com/efiten/core-hunter/issues/284)
+
+
+### Bug Fixes
+
+* **web:** hide Locate until the role is known ([#393](https://github.com/efiten/core-hunter/issues/393)) ([412daa4](https://github.com/efiten/core-hunter/commit/412daa4ef2096bfc098ff83208782379969dfaa2)), closes [#270](https://github.com/efiten/core-hunter/issues/270)
+* **web:** keep bar popovers on screen whatever the toggle's position ([#385](https://github.com/efiten/core-hunter/issues/385)) ([29ce125](https://github.com/efiten/core-hunter/commit/29ce1258113e0cbc94d6688433885e64eccb446a)), closes [#372](https://github.com/efiten/core-hunter/issues/372)
+* **web:** keep node positions out of the Locate focus view ([#391](https://github.com/efiten/core-hunter/issues/391)) ([7eb0f6c](https://github.com/efiten/core-hunter/commit/7eb0f6c16055b01a254474bdb774df8bf582958e)), closes [#390](https://github.com/efiten/core-hunter/issues/390)
+* **web:** keep the receptions ticker off the bar's last row ([#388](https://github.com/efiten/core-hunter/issues/388)) ([92addc4](https://github.com/efiten/core-hunter/commit/92addc49e3a4952a0d83c3bd109b3688f86ef869)), closes [#386](https://github.com/efiten/core-hunter/issues/386)
+
 ## [1.5.0](https://github.com/efiten/core-hunter/compare/web-v1.4.0...web-v1.5.0) (2026-08-15)
 
 

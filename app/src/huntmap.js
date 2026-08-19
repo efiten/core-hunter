@@ -5,8 +5,9 @@ import { locate, toLocatePoints } from './locate.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
-import { layerVisibility, pitchFor } from './maplayers.js'
+import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM } from './pointmarker.js'
+import { skyForHour, currentHour } from './sky.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -27,14 +28,26 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // can mount on it when the hosted basemap style is unreachable (see below).
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
 
-// 3D mode (#147 phase 2): setView() tilts the camera (pitchFor, maplayers.js)
-// and swaps the flat hex layer for its fill-extrusion twin — same 'hex'
-// source, height added per feature (extrusionHeight). Buildings reuse the
-// OpenFreeMap style's own "openmaptiles"/"building" source, already fetched
-// for the 2D basemap, so 3D adds no new data request. (Terrain was dropped —
-// see docs/2026-07-11-3d-mode.md: its AWS DEM tiles kept the map in a
-// perpetual load loop and froze weaker GPUs.)
+// 3D mode (#147 phase 2): setView() tilts the camera (pitchTransition,
+// maplayers.js) and swaps the flat hex layer for its fill-extrusion twin —
+// same 'hex' source, height added per feature (extrusionHeight). Buildings
+// reuse the OpenFreeMap style's own "openmaptiles"/"building" source, already
+// fetched for the 2D basemap, so 3D adds no new data request. (Terrain was
+// dropped — see docs/2026-07-11-3d-mode.md: its AWS DEM tiles kept the map in
+// a perpetual load loop and froze weaker GPUs.)
 
+// Ceiling for the two-finger tilt gesture (#333). MapLibre's own default
+// maxPitch is 60 — the same value the FAB eases to (PITCH_3D, maplayers.js) —
+// so without this the gesture bottomed out exactly where the FAB left off and
+// the camera could never look along the ground. 85 is MapLibre's hard maximum
+// (86+ throws "maxPitch must be less than or equal to 85"); 90 is not offered
+// because a camera level with the horizon projects to infinity.
+// PITCH_3D deliberately stays 60: the FAB is the introduction to 3D, and the
+// gesture is what takes you the rest of the way. Those two compose because
+// setView() only eases when a tap crosses the 2D/3D line (pitchTransition) --
+// cycling between 3D states leaves a gesture-set angle where it is, and
+// leaving 3D is what puts the camera back to a known one.
+const MAX_PITCH = 85
 // Points-in-3D (#250): a small standing "pillar" per reception, same tier
 // height/colour as hex-3d's bars, so it reads clearly in the tilted view
 // instead of disappearing under the hex/building geometry (a flat circle
@@ -64,7 +77,13 @@ export function createHuntMap(containerId) {
   try {
     map = new maplibregl.Map({
       container: containerId, style: styleFor(), center: [4, 51], zoom: 14,
-      attributionControl: false, dragRotate: true, pitchWithRotate: false,
+      // pitchWithRotate governs the MOUSE path only (ctrl/right-drag); touch
+      // pitch is a separate handler that already defaults on. Left false, a
+      // desktop browser has no tilt gesture at all, so raising maxPitch alone
+      // changed nothing there even though a phone could already tilt. Setting
+      // it true reverses docs/2026-07-11-3d-mode.md's "not a free-tilt 3D
+      // explorer" for mouse input only -- see docs/2026-08-17-free-tilt.md.
+      attributionControl: false, dragRotate: true, pitchWithRotate: true, maxPitch: MAX_PITCH,
     })
   } catch (e) { return stub }
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
@@ -183,8 +202,35 @@ export function createHuntMap(containerId) {
       if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
     }, 12000)
   }
+  // Sky (#397). setStyle DROPS the sky — measured against the bundled 4.7.1:
+  // getSky() returns null after a style swap — so this cannot be a one-off at
+  // construction. It is re-applied from addOverlays, which is the one hook that
+  // runs on every style load: initial, theme switch (applyBasemap) and the bare
+  // fallback. Guarded on the method existing so an older MapLibre degrades to
+  // the previous no-sky behaviour rather than throwing during init.
+  function applySky() {
+    if (typeof map.setSky !== 'function') return
+    // setSky THROWS while a style is still loading — measured: with
+    // isStyleLoaded() false it dies on "Cannot read properties of undefined
+    // (reading 'transition')". addOverlays only runs post-load, but the minute
+    // timer below is independent and can fire mid-swap (applyBasemap →
+    // setStyle → loading), so it needs the guard. Nothing is lost by skipping:
+    // addOverlays re-applies the sky as soon as that style finishes.
+    if (!map.isStyleLoaded()) return
+    // || 'dark' matches styleFor()'s rule for the same token: empty means the
+    // stylesheet has not applied, and the app's default is the dark basemap.
+    // sky.js caps only on the exact string 'dark', so this is what decides
+    // that a missing token gets the capped palette rather than the light one.
+    map.setSky(skyForHour(currentHour(), cssVar('--ch-basemap') || 'dark'))
+  }
+  // The clock moves during a hunt — a session that starts at dusk would keep a
+  // dusk sky at midnight. Once a minute is far finer than the palette changes
+  // (the tightest stop gap is 1.5 h) and costs one paint-property write.
+  const skyTimer = setInterval(applySky, 60000)
+
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
+    applySky()
     for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
@@ -523,11 +569,16 @@ export function createHuntMap(containerId) {
   // between (both were synchronous within one task), so it was invisible — but
   // it doubled the work on the one control designed to be used one-handed
   // while driving. Assign both, then apply once.
+  // Pitch: only a tap that crosses the 2D/3D line moves the camera
+  // (pitchTransition, maplayers.js). Easing on every tap threw away any angle
+  // the tilt gesture had set, which is three of the five steps in the cycle.
   function setView(m, v) {
+    const was3D = mode3D
     mode = m
     mode3D = !!v
     applyLayerVisibility()
-    map.easeTo({ pitch: pitchFor(mode3D), duration: 500 })
+    const pitch = pitchTransition(was3D, mode3D)
+    if (pitch !== null) map.easeTo({ pitch, duration: 500 })
     // draw() is needed even when only the flag changed: the hidden collection's
     // source is left at EMPTY (that is the point of the per-tick build guard),
     // so revealing it without repopulating shows nothing until the next 1 Hz tick.
@@ -558,7 +609,7 @@ export function createHuntMap(containerId) {
     releaseFollow()
     centerOn(rec.lat, rec.lon)
   }
-  function destroy() { map.remove() }
+  function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
   return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
 }
 

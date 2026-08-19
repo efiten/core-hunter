@@ -40,7 +40,8 @@ func TestLoadAuthExplicit(t *testing.T) {
 	body := `{"mqttUrl":"wss://x/ws","cookieSecure":false,"baseUrl":"https://map.mesh-hunter.eu",` +
 		`"brevoSmtpHost":"smtp-relay.brevo.com","brevoSmtpPort":587,"brevoUser":"u","brevoApiKey":"k",` +
 		`"mailFrom":"no-reply@mesh-hunter.eu","bootstrapAdmin":"efite",` +
-		`"resolveUpstreams":["https://a/resolve","https://b/resolve"]}`
+		`"resolveUpstreams":["https://a/resolve","https://b/resolve"],` +
+		`"nodePositionUpstreams":["https://a/positions","https://b/positions"]}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestLoadAuthExplicit(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	if c.CookieSecure || c.BaseURL != "https://map.mesh-hunter.eu" || c.BrevoSmtpPort != 587 ||
-		c.BootstrapAdmin != "efite" || len(c.ResolveUpstreams) != 2 {
+		c.BootstrapAdmin != "efite" || len(c.ResolveUpstreams) != 2 || len(c.NodePositionUpstreams) != 2 {
 		t.Fatalf("fields not parsed: %+v", c)
 	}
 }

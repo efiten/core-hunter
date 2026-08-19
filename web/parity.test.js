@@ -21,6 +21,9 @@ import * as appChangelog from '../app/src/changelog.js'
 import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
 import { setConfig } from '../app/src/config.js'
+import { readFileSync } from 'node:fs'
+import * as webTicker from './receptionticker.js'
+import * as appTicker from '../app/src/receptionlog.js'
 
 // ~15 m and ~70 m north of the origin point: the first collapses under the
 // 10 m default dedupe cell only if that default is still 10 m-ish, the second
@@ -279,6 +282,130 @@ describe('changelog — parity between the app and web copies', () => {
     expect(webChangelog.hasUnseen('1.7.0', '0.1.0')).toBe(true)
     expect(webChangelog.hasUnseen('1.7.0', null)).toBe(false)
     expect(webChangelog.unseenCount(rel, '0.1.0')).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Receptions ticker CSS (#322)
+// ---------------------------------------------------------------------------
+// The ticker is two hand-kept copies (app/src/styles/app.css and web/style.css)
+// of the same block, and nothing caught drift between them: the assertions
+// above only reach .js modules. The row height now lives in one variable per
+// stylesheet with the rest of the geometry derived from it, so these tests pin
+// two different things:
+//
+//   1. the two stylesheets agree — the drift guard #238 left unbuilt for CSS
+//   2. the geometry is *derived*, not restated — a literal `height: 260px`
+//      would satisfy (1) and still rot the moment the row height changes
+//
+// and the last one closes the loop the variable exists for: the JS copies read
+// the same number the CSS ships.
+const APP_CSS = readFileSync(new URL('../app/src/styles/app.css', import.meta.url), 'utf8')
+const WEB_CSS = readFileSync(new URL('./style.css', import.meta.url), 'utf8')
+const APP_TOKENS = readFileSync(new URL('../app/src/styles/tokens.css', import.meta.url), 'utf8')
+
+// Comments are stripped before any of this parses: these blocks are heavily
+// commented, and a comment that names a selector or a property (this file's own
+// ".rx-tm is 4ch, not 3" note did exactly that) otherwise satisfies a match and
+// returns the neighbouring rule's value.
+const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+
+// The ticker block only — matching over the whole file would let a value from
+// an unrelated rule satisfy an assertion.
+function tickerBlock(rawCss) {
+  const css = stripComments(rawCss)
+  const start = css.indexOf('#rx-log')
+  expect(start).toBeGreaterThan(-1)
+  const end = css.indexOf('.rx-ln.act .rx-tm', start)
+  expect(end).toBeGreaterThan(start)
+  return css.slice(start, end)
+}
+
+const decl = (block, selector, prop) => {
+  const rule = new RegExp('(^|\\})[^{}]*\\' + selector + '\\b[^{}]*\\{([^}]*)\\}', 'm').exec(block)
+  if (!rule) return null
+  const m = new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)', 'm').exec(rule[2])
+  return m ? m[1].trim() : null
+}
+
+describe('receptions ticker CSS parity (#322)', () => {
+  const app = tickerBlock(APP_CSS)
+  const web = tickerBlock(WEB_CSS)
+
+  // Both modules read the variable with
+  // getComputedStyle(document.documentElement).getPropertyValue(), so a
+  // declaration scoped to #rx-log resolves to '' at runtime and the module
+  // silently takes its fallback — the layout still looks right, which is what
+  // makes it worth a test. The first shipped version of this block had exactly
+  // that bug: declared on #rx-log, read from :root, never once succeeding.
+  // Split on the closing brace rather than matching rules with a global regex:
+  // a pattern anchored on the *previous* rule's '}' consumes that brace, so two
+  // adjacent :root rules (which is exactly how style.css declares --ch-bar-h and
+  // this one) only ever yield the first.
+  const rootDecl = (rawCss) => {
+    for (const chunk of stripComments(rawCss).split('}')) {
+      const i = chunk.indexOf('{')
+      if (i < 0) continue
+      const head = chunk.slice(0, i)
+      const m = /--ch-rx-line-h:\s*([^;]+);/.exec(chunk.slice(i + 1))
+      if (m && /(^|,)\s*(:root|html)\b/.test(head)) return m[1].trim()
+    }
+    return null
+  }
+
+  it('declares the row height where the modules actually read it', () => {
+    const appVar = rootDecl(APP_TOKENS)
+    const webVar = rootDecl(WEB_CSS)
+    expect(appVar, 'tokens.css must declare --ch-rx-line-h on :root').not.toBeNull()
+    expect(webVar, 'style.css must declare --ch-rx-line-h on :root').not.toBeNull()
+    expect(appVar).toBe(webVar)
+    // and it must not also be shadowed by a scoped copy in the ticker block,
+    // which is where it started and where the read cannot see it. Matches a
+    // declaration only — var(--ch-rx-line-h) references are the point of it.
+    const redeclares = (block) => /(^|[;{\s])--ch-rx-line-h\s*:/.test(block)
+    expect(redeclares(app), 'app ticker block must not re-declare it').toBe(false)
+    expect(redeclares(web), 'web ticker block must not re-declare it').toBe(false)
+    // The fallback baked into both modules must be the value the CSS ships,
+    // so a stylesheet that fails to load still lays out at the right pitch.
+    expect(appTicker.rxLineHeight('')).toBe(appTicker.rxLineHeight(appVar))
+    expect(webTicker.rxLineHeight('')).toBe(webTicker.rxLineHeight(webVar))
+    expect(appTicker.rxLineHeight(appVar)).toBe(webTicker.rxLineHeight(webVar))
+  })
+
+  it('derives the list geometry from the variable rather than restating it', () => {
+    for (const [name, block] of [['app', app], ['web', web]]) {
+      const height = decl(block, '.rx-list', 'height')
+      const padTop = decl(block, '.rx-list', 'scroll-padding-top')
+      expect(height, name + ': .rx-list height').toMatch(/calc\(\s*10\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+      expect(padTop, name + ': .rx-list scroll-padding-top').toMatch(/calc\(\s*6\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+      // 6 lanes above the playhead and 3 below is what rxFade's divisors
+      // encode; the padding is the same geometry expressed in CSS.
+      expect(decl(block, '.rx-ln', 'height')).toBe('var(--ch-rx-line-h)')
+    }
+  })
+
+  it('scales the fixed columns with the type instead of pinning them to pixels', () => {
+    // At 12px the shipped 26px/32px held "15m" and "-105" with a few px spare.
+    // At 15px they do not, and the RSSI value collides with the sender beside
+    // it — so the widths are expressed in characters.
+    for (const [name, block] of [['app', app], ['web', web]]) {
+      // 4ch, not 3: relTime's hours bucket is unbounded and the widest quick
+      // range (Last 30 days) reaches "720h".
+      expect(decl(block, '.rx-tm', 'width'), name + ': .rx-tm').toBe('4ch')
+      expect(decl(block, '.rx-rs', 'width'), name + ': .rx-rs').toBe('4ch')
+      expect(decl(block, '.rx-gt', 'width'), name + ': .rx-gt').toBe('2ch')
+    }
+  })
+
+  it('keeps the row hit area to its own text so the band passes drags to the map', () => {
+    // A full-width row is a full-width click target. content-visibility must
+    // stay off the row: with contain-intrinsic-size's zero width, max-content
+    // resolves to zero and the row never paints at all.
+    for (const [name, block] of [['app', app], ['web', web]]) {
+      expect(decl(block, '.rx-ln', 'width'), name + ': .rx-ln width').toBe('max-content')
+      expect(decl(block, '.rx-ln', 'content-visibility'), name + ': .rx-ln content-visibility').toBeNull()
+      expect(decl(block, '.rx-list', 'pointer-events'), name + ': .rx-list').toBe('none')
+    }
   })
 })
 

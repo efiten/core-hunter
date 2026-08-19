@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.9.0](https://github.com/efiten/core-hunter/compare/app-v1.8.0...app-v1.9.0) (2026-08-19)
+
+
+### Features
+
+* **app,web:** make the receptions ticker readable at a glance ([#404](https://github.com/efiten/core-hunter/issues/404)) ([c48a974](https://github.com/efiten/core-hunter/commit/c48a9748c5aee14b87e13e4f0374609e45546070)), closes [#322](https://github.com/efiten/core-hunter/issues/322)
+
+## [1.8.0](https://github.com/efiten/core-hunter/compare/app-v1.7.0...app-v1.8.0) (2026-08-18)
+
+
+### Features
+
+* **app,web:** show what changed in a release behind a version badge ([#363](https://github.com/efiten/core-hunter/issues/363)) ([3a3dcf1](https://github.com/efiten/core-hunter/commit/3a3dcf128502790e5e1ecda0b3a3a0808a143752)), closes [#284](https://github.com/efiten/core-hunter/issues/284)
+
+
+### Bug Fixes
+
+* **app:** draw 3D buildings from z13, the zoom the source declares ([#400](https://github.com/efiten/core-hunter/issues/400)) ([7a727f9](https://github.com/efiten/core-hunter/commit/7a727f9aaf7a67e3a510084096643fad0d5db749)), closes [#395](https://github.com/efiten/core-hunter/issues/395)
+* **app:** pan the map when a receptions-ticker row is tapped ([#392](https://github.com/efiten/core-hunter/issues/392)) ([940d03e](https://github.com/efiten/core-hunter/commit/940d03e77f9a0c39c8e3c028c81911cd019391df)), closes [#309](https://github.com/efiten/core-hunter/issues/309)
+
+
+### Documentation
+
+* make the pre-push self-review concrete, mutation-check new tests, widen §7 ([#364](https://github.com/efiten/core-hunter/issues/364)) ([e4c7051](https://github.com/efiten/core-hunter/commit/e4c7051b0f248befac8d5872e3680f672e534194)), closes [#334](https://github.com/efiten/core-hunter/issues/334)
+
 ## [1.7.0](https://github.com/efiten/core-hunter/compare/app-v1.6.0...app-v1.7.0) (2026-08-15)
 
 

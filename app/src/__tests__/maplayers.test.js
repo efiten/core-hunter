@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { layerVisibility, pitchFor, PITCH_3D, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
+import { layerVisibility, pitchFor, pitchTransition, PITCH_3D, VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from '../maplayers.js'
 
 // #250/#266: which of the four signal layers is visible for a given
 // layer-mode / 2D-3D combination. Extracted from huntmap.js because that file
@@ -152,5 +152,37 @@ describe('pitchFor — camera tilt per view state', () => {
     for (const s of VIEW_STATES) {
       expect(pitchFor(s.mode3D)).toBe(s.mode3D ? PITCH_3D : 0)
     }
+  })
+})
+
+// Which FAB taps may move the camera (#333). The tilt gesture and the FAB both
+// write pitch, and before this they did not compose: every tap eased back to
+// PITCH_3D, so an angle set by gesture survived only until the next tap — and
+// the 5-state cycle spends three of its five steps moving between two 3D
+// states, none of which asked for a different tilt.
+describe('pitchTransition — which FAB taps move the camera', () => {
+  it('eases to the fixed tilt when entering 3D', () => {
+    expect(pitchTransition(false, true)).toBe(PITCH_3D)
+  })
+  it('eases flat when leaving 3D, so flat is always one crossing away', () => {
+    expect(pitchTransition(true, false)).toBe(0)
+  })
+  it('leaves a gesture-set tilt alone when the tap stays inside 3D', () => {
+    expect(pitchTransition(true, true)).toBeNull()
+  })
+  it('leaves the camera alone when the tap stays inside 2D', () => {
+    expect(pitchTransition(false, false)).toBeNull()
+  })
+  it('reads any truthy/falsy flag, since both sides come from persisted state', () => {
+    expect(pitchTransition(undefined, 1)).toBe(PITCH_3D)
+    expect(pitchTransition(1, null)).toBe(0)
+    expect(pitchTransition(undefined, null)).toBeNull()
+  })
+  it('moves the camera exactly twice per full cycle of VIEW_STATES', () => {
+    const moved = VIEW_STATES.filter((s, i) => {
+      const prev = VIEW_STATES[(i + VIEW_STATES.length - 1) % VIEW_STATES.length]
+      return pitchTransition(prev.mode3D, s.mode3D) !== null
+    })
+    expect(moved.map(viewKey)).toEqual(['points2d', 'hex3d'])
   })
 })

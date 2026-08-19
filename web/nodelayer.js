@@ -48,6 +48,17 @@ export function nodesInView(nodes, bounds) {
   return nodes.filter((n) => inBounds(n, bounds))
 }
 
+// drawableNodes keeps the registry rows that can actually be plotted: a pubkey
+// to attribute them to, and a finite position. A registry can answer with
+// plenty of nodes and no coordinates at all — /api/nodes/positions drops those
+// server-side, but a node whose coordinates arrive as null over any other path
+// is indistinguishable from an empty registry as far as the map is concerned.
+// Ported from app/src/nodelayer.js (#307), unchanged.
+export function drawableNodes(nodes) {
+  if (!Array.isArray(nodes)) return []
+  return nodes.filter((n) => n && n.pubkey && isCoord(n.lat) && isCoord(n.lon))
+}
+
 // driftPresentation decides how one node is drawn, given its advertised
 // position and our locate() result for it. Returns a `kind` plus, where both
 // positions exist, the drift distance and which circle (if any) to draw:
@@ -143,4 +154,39 @@ export function circleRing(centre, radiusM, steps = 48) {
   }
   ring.push(ring[0])
   return ring
+}
+
+// nodeRows turns one registry slice plus our own receptions into the rows the
+// map draws: one per registry node, paired with an estimate where we have
+// heard that node ourselves (#377).
+//
+// Which receptions may pair is deliberately NOT the app's rule. The app owns
+// the whole registry, so groupSenderPointsForNodes can attribute a discover
+// PREFIX to a node and refuse the ambiguous ones by checking the prefix against
+// every node it knows. This side is handed a viewport slice, so "unique here"
+// is a weaker claim than "unique in the registry" — a prefix ambiguous two
+// towns over would look unique on screen. AGENTS.md §7 settles it: the website
+// never resolves a prefix to a node identity (#296), and bulk-fetching a slice
+// does not license loosening that. So only a full-pubkey reception pairs, which
+// is exactly what this side already did before it had any registry at all.
+//
+// `bySender` is groupSenderPoints()'s Map, keyed by the raw sender_id.
+export function nodeRows(nodes, bySender, estimate = estimateFor) {
+  const rows = []
+  for (const n of drawableNodes(nodes)) {
+    const key = String(n.pubkey).toLowerCase()
+    // estimateFor already answers null for an empty set, so there is no
+    // no-receptions branch here — a node we never heard simply gets a null
+    // estimate and driftPresentation calls it advertised-only.
+    const est = estimate((bySender && bySender.get(key)) || [])
+    const advertised = { lat: n.lat, lon: n.lon }
+    rows.push({
+      id: key,
+      name: n.name || '',
+      advertised,
+      est,
+      p: driftPresentation({ advertised, estimate: est }),
+    })
+  }
+  return rows
 }

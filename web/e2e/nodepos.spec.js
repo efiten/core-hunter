@@ -16,10 +16,17 @@ const ring = (lat, lon, rM, n) => Array.from({ length: n }, (_, i) => {
   }
 })
 
-// advertised sits `driftLat` north of the estimate centre; resolve serves it.
-function routes(page, { lat, lon, points }) {
+// The advertised position sits north of the estimate centre. Since #377 it
+// comes from the server's bulk registry proxy rather than from a per-id
+// /api/resolve lookup: the layer is now registry-first, so what it draws no
+// longer depends on the filtered reception set. /api/resolve stays stubbed
+// because the rest of the page still resolves names through it.
+function routes(page, { lat, lon, points, nodes }) {
   return Promise.all([
     page.route('**/api/points*', (r) => r.fulfill({ json: { points } })),
+    page.route('**/api/nodes/positions*', (r) => r.fulfill({
+      json: { nodes: nodes ?? [{ pubkey: SENDER, name: 'Repeater-Zuid', lat, lon }] },
+    })),
     page.route('**/api/resolve*', (r) => r.fulfill({
       json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat, lon },
     })),
@@ -119,30 +126,69 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
 
-test('a 64-hex id of a non-registry kind is not looked up as a node (#296)', async ({ page }) => {
+test('a 64-hex id of a non-registry kind does not become an estimate for a node (#296)', async ({ page }) => {
   // sender_id can be 64 hex without being a pubkey — a full-length relay path
-  // element, or an operator who named a channel that way. Only advert/discover
-  // ids live in the pubkey namespace, so this must draw nothing even though the
-  // resolver would happily return a position for it.
-  await page.route('**/api/points*', (r) => r.fulfill({
-    json: { points: ring(51, 4, 250, 8).map((p) => ({ ...p, sender_kind: 'relay' })) },
-  }))
-  await page.route('**/api/resolve*', (r) => r.fulfill({
-    json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0 },
-  }))
+  // element, or an operator who named a channel that way. Since #377 the
+  // registry decides what is drawn, so the marker appears either way; what must
+  // not happen is those receptions pairing onto it as if we had heard the node.
+  // Asserting "nothing is drawn" would now pass for the wrong reason (an
+  // unstubbed registry answers nothing at all), so the registry IS stubbed here
+  // and the assertion is about the pairing.
+  await routes(page, {
+    lat: 51.0005,
+    lon: 4.0,
+    points: ring(51, 4, 250, 8).map((p) => ({ ...p, sender_kind: 'relay' })),
+  })
   await page.goto('/?mode=points')
   await page.check('#f-nodepos')
   await expect(page.locator('#nodepos-note')).toBeVisible()
-  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  // No ● and no connector: the relay receptions carried no attributable identity.
+  await expect(page.locator('.np-estimate')).toHaveCount(0)
 })
 
-// #390: drawNodePositions() redraws when its /api/resolve calls settle, and
-// activateLocate() clears the layer without bumping nodePosGen or unchecking the
-// box — so a resolve that lands after Locate is on walks through every guard and
-// repaints markers into the focus view. refresh() is suppressed for the whole
-// Locate session, so nothing clears them again until Locate is switched off.
-// Held responses instead of parallel-load luck: this is the flake in "the layer
-// comes back after a Locate round-trip", made deterministic.
+test('a node nobody in this filter heard is still drawn (#377)', async ({ page }) => {
+  // The acceptance criterion: with a filter matching zero receptions, the
+  // registry still places every node in view. Before #377 the layer derived its
+  // nodes from the filtered reception set, so this drew nothing at all.
+  await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
+  await expect(page.locator('.np-estimate')).toHaveCount(0)
+})
+
+test('the registry slice follows the viewport, not the reception filter (#377)', async ({ page }) => {
+  // One request per view, carrying the map's bbox — the bulk shape the server
+  // endpoint is built around, not a per-node lookup.
+  const urls = []
+  await page.route('**/api/nodes/positions*', (r) => {
+    urls.push(r.request().url())
+    return r.fulfill({ json: { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }] } })
+  })
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  expect(urls.length).toBeGreaterThan(0)
+  const bbox = new URL(urls[urls.length - 1]).searchParams.get('bbox')
+  expect(bbox, 'bbox=minLat,minLon,maxLat,maxLon').toMatch(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/)
+})
+
+// #390: a draw that lands after Locate is on walks through every other guard and
+// repaints markers into the focus view — activateLocate() clears the layer
+// without bumping nodePosGen or unchecking the box, and refresh() is suppressed
+// for the whole Locate session, so nothing clears them again until Locate is
+// switched off. Held responses instead of parallel-load luck: this is the flake
+// in "the layer comes back after a Locate round-trip", made deterministic.
+//
+// Re-pointed for #377. The original reproduction held /api/resolve, because the
+// draw used to re-enter itself when its per-id position lookups settled. That
+// path is gone — positions now arrive with the registry — so the window this
+// holds open is the one that remains: the registry/points fetch the draw awaits
+// before it paints. Same guard, same failure, a live reproduction rather than a
+// vacuous pass.
 function holdable(page, urlPattern, body) {
   let release
   const held = new Promise((res) => { release = res })
@@ -152,19 +198,23 @@ function holdable(page, urlPattern, body) {
   }).then(() => release)
 }
 
-test('a resolve that lands after Locate does not repaint the layer into the focus view (#390)', async ({ page }) => {
+test('a registry fetch that lands after Locate does not repaint the layer into the focus view (#390)', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: ring(51, 4, 250, 8) } }))
-  const releaseResolve = await holdable(page, '**/api/resolve*',
-    { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0 })
+  await page.route('**/api/resolve*', (r) => r.fulfill({
+    json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0 },
+  }))
+  const releaseRegistry = await holdable(page, '**/api/nodes/positions*',
+    { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }] })
 
   await page.goto('/?mode=points')
   await page.check('#f-nodepos')
-  // No position cached yet, so nothing is drawn and the resolve is in flight.
+  // The registry is in flight, so the draw is parked on its await and nothing
+  // is on the map yet.
   await expect(page.locator('.np-advert')).toHaveCount(0)
 
   await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
-  releaseResolve()
-  // The redraw the resolve fires must find focus mode and stay out of it.
+  releaseRegistry()
+  // The draw resumes inside focus mode and must stay out of it.
   await expect(page.locator('.np-advert')).toHaveCount(0)
   await page.waitForTimeout(600)
   expect(await page.locator('.np-advert').count(), 'no marker repainted into focus mode').toBe(0)

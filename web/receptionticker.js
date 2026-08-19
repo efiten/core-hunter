@@ -148,7 +148,19 @@ export function newestInRing(records, ring) {
 // DOM component
 // ---------------------------------------------------------------------------
 
-const LINE_H = 20   // must match .rx-ln height in style.css
+// Row height (#322). The stylesheet owns it as --ch-rx-line-h and the geometry
+// around it (list height, scroll padding) is derived from the same variable, so
+// there is one number instead of four kept in step by hand.
+// ROW_H is what style.css ships, used when the variable can't be read.
+const ROW_H = 26
+
+// rxLineHeight parses the variable's value. A missing or unusable value falls
+// back rather than yielding 0: rxActiveIndex divides scrollTop by this, and a 0
+// would pin every row to the playhead lane.
+export function rxLineHeight(raw) {
+  const n = parseFloat(raw)
+  return Number.isFinite(n) && n > 0 ? n : ROW_H
+}
 export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js's fetch limit
 
 // createReceptionTicker builds the log inside `rootId` and owns its own
@@ -177,6 +189,11 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   let view = []
   let nowMs = Date.now()
   let activeId = null
+
+  // Read once per instance rather than at module load: the stylesheet has to be
+  // applied before the variable resolves, and both components are constructed
+  // from DOM-ready code.
+  const LINE_H = rxLineHeight(cssVar('--ch-rx-line-h'))
 
   const key = (r) => receptionKey(r)
   const maxScroll = () => Math.max(0, (view.length - 1) * LINE_H)

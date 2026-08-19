@@ -442,30 +442,63 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   display: inline-flex; align-items: center; justify-content: center; }
 
 /* ---- Receptions log (#130) ----
-   Frameless, log-style tail over the map (top-right). Newest at the bottom; a
-   fixed playhead lane (scroll-padding-top / LANE) that lines snap to like a
-   combination-lock dial. No background panel — text-shadow carries legibility. */
-#rx-log { position: fixed; top: 52px; right: 0; width: 214px; z-index: 480;
-  padding: 0 10px;
-  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
-.rx-hd { display: flex; align-items: center; justify-content: space-between;
-  font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
-  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); }
+   Frameless, log-style tail over the map. Newest at the bottom; a fixed
+   playhead lane (scroll-padding-top / LANE) that lines snap to like a
+   combination-lock dial. No background panel — text-shadow carries legibility.
+
+   Sizing and layout are #322. The block runs the full width of the viewport
+   and centres its rows, rather than sitting in a 214px column on the right:
+   at 12px in that column a sender name got ~14 characters including its meta
+   text, so names ellipsed away and rows could not be told apart. Rows stay
+   left-aligned inside the centred block — centring each row would ragged both
+   edges and break the column grid that makes the log scannable at a glance.
+
+   The centred block has a fixed measure rather than hugging its longest row:
+   a max-content block re-centres every time a name resolves, sliding the whole
+   ticker ~50px sideways in the corner of the driver's eye.
+
+   --ch-rx-line-h is the one row-height number, declared on :root in tokens.css
+   because the module reads it through getComputedStyle(documentElement). The
+   list height, the playhead offset and the bottom padding are derived from it
+   here. web/style.css carries the same block; web/parity.test.js pins them. */
+#rx-log { position: fixed; top: 52px; left: 0; right: 0; z-index: 480;
+  padding: 0 24px; pointer-events: none;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
+.rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
+  width: min(680px, 100%); margin: 0 auto;
+  font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
+  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
-/* height 200 = LANE(6)+1+3 rows @ 20px; scroll-padding-top = LANE*20 = 120 */
-.rx-list { height: 200px; overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-  scroll-snap-type: y mandatory; scroll-padding-top: 120px; padding: 120px 0 60px; }
+/* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
+   6-above/3-below geometry rxFade's divisors encode. */
+.rx-list { width: min(680px, 100%); margin: 0 auto;
+  height: calc(10 * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+  scroll-snap-type: y mandatory; scroll-padding-top: calc(6 * var(--ch-rx-line-h));
+  padding: calc(6 * var(--ch-rx-line-h)) 0 calc(3 * var(--ch-rx-line-h));
+  pointer-events: none; /* the padding is dead space over the map; rows re-enable below */ }
 .rx-list::-webkit-scrollbar { display: none; }
-.rx-ln { display: flex; gap: 6px; height: 20px; line-height: 20px; white-space: nowrap; overflow: hidden;
+/* width: max-content keeps the click target on the text. Across a full-width
+   band a stretched row would swallow every drag and wheel the map needs.
+   content-visibility cannot come back with it: paired with
+   contain-intrinsic-size's zero width, max-content resolves to 0 and the row
+   never becomes renderable, so it never paints. */
+.rx-ln { display: flex; gap: 6px; height: var(--ch-rx-line-h); line-height: var(--ch-rx-line-h);
+  white-space: nowrap; overflow: hidden; width: max-content; max-width: 100%;
   cursor: pointer; scroll-snap-align: start; color: var(--ch-text);
-  text-shadow: 0 1px 2px var(--ch-bg); content-visibility: auto; contain-intrinsic-size: 0 20px; }
-.rx-gt { width: 16px; flex: none; color: var(--ch-accent); font-weight: 700; }
-.rx-tm { width: 26px; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
-.rx-rs { width: 32px; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.rx-sn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
+/* ch, not px: 26px/32px were sized for 12px type and hold "15m" and "-105"
+   with a few px to spare. At 15px they overflow and the RSSI value collides
+   with the sender beside it. In ch they hold their contents at any type size.
+   .rx-tm is 4ch, not 3: relTime's hours bucket has no upper bound, so the
+   widest quick range (Last 30 days) reaches "720h". 4ch covers every quick
+   range; an absolute range past ~416 days would still clip. */
+.rx-gt { width: 2ch; flex: none; color: var(--ch-accent); font-weight: 700; }
+.rx-tm { width: 4ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
+.rx-rs { width: 4ch; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
-.rx-nm { color: var(--ch-muted); font-size: 10px; margin-left: 3px; }
+.rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
 .rx-ln.act .rx-gt:before { content: '→'; }
 .rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
