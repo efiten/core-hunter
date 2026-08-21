@@ -223,69 +223,88 @@ describe('names — parity of the shared matching core', () => {
   })
 })
 
-// changelog.js (#284) is the third duplicated module. It is pure text-in /
-// data-out, so parity is checked by running one fixture through both copies —
-// a fixture built so that every transformation the parser performs is
-// load-bearing: a compare-link header AND a bare one, a commit link to drop, an
-// issue link to keep, an escaped entity, a nested link, and a release with a
-// header but no bullets.
-const CHANGELOG = `# Changelog
-
-## [1.7.0](https://github.com/efiten/core-hunter/compare/app-v1.6.0...app-v1.7.0) (2026-08-15)
-
-
-### Features
-
-* **app,web:** carry the decoder's full packet-type set ([#343](https://github.com/efiten/core-hunter/issues/343)) ([e924935](https://github.com/efiten/core-hunter/commit/e924935728c677241dafe369ef18508223a9c339))
-
-
-### Tests
-
-* **web:** pin app&lt;-&gt;web parity ([#238](https://github.com/efiten/core-hunter/issues/238) option 2) ([#359](https://github.com/efiten/core-hunter/issues/359)) ([473e84e](https://github.com/efiten/core-hunter/commit/473e84e9293309bf8c2feefa42b4bb427bf990c3))
-
-## [1.6.5](https://github.com/efiten/core-hunter/compare/app-v1.6.0...app-v1.6.5) (2026-08-10)
-
-## 0.1.0 (2026-06-29)
-
-
-### Features
-
-* **app:** first cut ([#8](https://github.com/efiten/core-hunter/issues/8)) ([7af52b7](https://github.com/efiten/core-hunter/commit/7af52b76c0635cc11a11165133bcca746576a4c2)), closes [#3](https://github.com/efiten/core-hunter/issues/3)
-`
+// changelog.js (#284, rewritten for #422) is the third duplicated module. It
+// stopped being a markdown parser and became the seen-state logic over a
+// hand-written changelog.json, so parity is checked on the four decisions that
+// have to agree — and the shipped data files are compared to each other too,
+// since "one shared changelog" is physically two copies.
 
 describe('changelog — parity between the app and web copies', () => {
-  it('parses the same releases, sections and item text', () => {
-    expect(webChangelog.parseChangelog(CHANGELOG))
-      .toEqual(appChangelog.parseChangelog(CHANGELOG))
-    // Pinned literally too, so a drift that happens to be symmetric (both
-    // copies edited the same wrong way) still has to be deliberate.
-    expect(webChangelog.parseChangelog(CHANGELOG)).toEqual([
-      {
-        version: '1.7.0',
-        date: '2026-08-15',
-        sections: [
-          { title: 'Features', items: ["app,web: carry the decoder's full packet-type set (#343)"] },
-          { title: 'Tests', items: ['web: pin app<->web parity (#238 option 2) (#359)'] },
-        ],
-      },
-      {
-        version: '0.1.0',
-        date: '2026-06-29',
-        sections: [{ title: 'Features', items: ['app: first cut (#8), closes #3'] }],
-      },
-    ])
+  const ENTRIES = [
+    { id: '2026-08-21-c', date: '2026-08-21', where: 'map', title: 'C', body: 'c' },
+    { id: '2026-08-20-b', date: '2026-08-20', where: 'both', title: 'B', body: 'b' },
+    { id: '2026-08-19-a', date: '2026-08-19', where: 'app', title: 'A', body: 'a' },
+  ]
+
+  it('exports exactly this set of names, all of it covered below', () => {
+    const expected = ['hasUnseenEntries', 'migratedSeenId', 'unseenEntryCount', 'whereLabel']
+    expect(Object.keys(webChangelog).sort()).toEqual(expected)
+    expect(Object.keys(appChangelog).sort()).toEqual(expected)
   })
 
-  it('agrees on the badge and the new-release count', () => {
-    const rel = webChangelog.parseChangelog(CHANGELOG)
-    for (const seen of [null, '', '0.1.0', '1.7.0', '9.9.9']) {
-      expect(webChangelog.hasUnseen('1.7.0', seen)).toBe(appChangelog.hasUnseen('1.7.0', seen))
-      expect(webChangelog.unseenCount(rel, seen)).toBe(appChangelog.unseenCount(rel, seen))
+  it('agrees on the badge and the new-entry count', () => {
+    // 'gone' is the case where the two answers deliberately differ, so a copy
+    // that defined one in terms of the other would be caught here too.
+    for (const seen of [null, '', '2026-08-19-a', '2026-08-21-c', 'gone']) {
+      expect(webChangelog.hasUnseenEntries(ENTRIES, seen), String(seen))
+        .toBe(appChangelog.hasUnseenEntries(ENTRIES, seen))
+      expect(webChangelog.unseenEntryCount(ENTRIES, seen), String(seen))
+        .toBe(appChangelog.unseenEntryCount(ENTRIES, seen))
     }
-    // The values themselves, not just their agreement.
-    expect(webChangelog.hasUnseen('1.7.0', '0.1.0')).toBe(true)
-    expect(webChangelog.hasUnseen('1.7.0', null)).toBe(false)
-    expect(webChangelog.unseenCount(rel, '0.1.0')).toBe(1)
+    // The values themselves, not just their agreement — two copies that both
+    // returned 0 and false would "agree" perfectly.
+    expect(webChangelog.unseenEntryCount(ENTRIES, '2026-08-19-a')).toBe(2)
+    expect(webChangelog.hasUnseenEntries(ENTRIES, '2026-08-19-a')).toBe(true)
+    expect(webChangelog.hasUnseenEntries(ENTRIES, null)).toBe(false)
+  })
+
+  it('agrees on the surface label, including a value neither knows', () => {
+    for (const where of ['app', 'map', 'both', 'nonsense', undefined]) {
+      expect(webChangelog.whereLabel(where), String(where)).toBe(appChangelog.whereLabel(where))
+    }
+    expect(webChangelog.whereLabel('both')).toBe('App and map')
+    expect(webChangelog.whereLabel('nonsense')).toBe('')
+  })
+
+  it('agrees on the migration, which is the one that can only run once', () => {
+    const newest = '2026-08-21-c'
+    const CASES = [['2026-08-19-a', '1.9.0'], [null, '1.9.0'], [null, null], [null, '']]
+    for (const [stored, legacy] of CASES) {
+      expect(webChangelog.migratedSeenId(stored, legacy, newest), `${stored}/${legacy}`)
+        .toBe(appChangelog.migratedSeenId(stored, legacy, newest))
+    }
+    // A reader from the old scheme must get the dot; a brand-new one must not.
+    // Asserted through the composition, because that is where the two copies
+    // could agree on a value that produces the wrong badge.
+    const migrated = webChangelog.migratedSeenId(null, '1.9.0', newest)
+    expect(webChangelog.hasUnseenEntries(ENTRIES, migrated)).toBe(true)
+    expect(webChangelog.unseenEntryCount(ENTRIES, migrated)).toBe(0)
+    expect(webChangelog.hasUnseenEntries(ENTRIES, webChangelog.migratedSeenId(null, null, newest))).toBe(false)
+  })
+
+  // The two changelog.json copies ship the same entries, for the same reason
+  // the modules do: neither deploy path can read a file outside its own
+  // directory, so "one shared changelog" is physically two files.
+  it('ships the same entries on both surfaces', () => {
+    const app = JSON.parse(readFileSync(new URL('../app/changelog.json', import.meta.url), 'utf8'))
+    const web = JSON.parse(readFileSync(new URL('./changelog.json', import.meta.url), 'utf8'))
+    expect(web).toEqual(app)
+    // Newest first, and every entry carries what the panel renders. An entry
+    // without an id is the case unseenEntryCount has to guard against, so it
+    // must not reach a shipped file.
+    expect(app.length).toBeGreaterThan(0)
+    for (const e of app) {
+      expect(e.id, JSON.stringify(e)).toMatch(/^\d{4}-\d{2}-\d{2}-/)
+      expect(e.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(['app', 'map', 'both']).toContain(e.where)
+      expect(typeof e.title).toBe('string')
+      expect(e.title.length).toBeGreaterThan(0)
+      expect(typeof e.body).toBe('string')
+      expect(e.body.length).toBeGreaterThan(0)
+    }
+    const ids = app.map((e) => e.id)
+    expect(new Set(ids).size, 'ids must be unique').toBe(ids.length)
+    expect([...ids].sort().reverse()).toEqual(ids)
   })
 })
 

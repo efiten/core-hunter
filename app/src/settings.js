@@ -43,15 +43,28 @@ export function loadViewIndex() {
   return i === -1 ? 1 : i
 }
 
-// Version whose "what's new" panel the user last acknowledged (#284), or null
-// when they never have — a first run records the running version silently, so
-// nobody is shown releases from before they arrived.
+// Id of the newest changelog entry the reader has acknowledged (#422), or null
+// when they never have — a first run records it silently, so nobody is shown
+// entries from before they arrived.
+//
+// A separate key from the pre-#422 one on purpose. That key held a VERSION
+// string and this one holds an entry id, and there is no reliable way to tell
+// '1.10.0' from a date-prefixed slug once they share a slot. Keeping them apart
+// is what lets migratedSeenId see the difference between "never been here" and
+// "was here under the old scheme".
 export function loadChangelogSeen() {
-  return readStored('core-hunter-changelog-seen')
+  return readStored('core-hunter-changelog-entry')
 }
 
-export function saveChangelogSeen(version) {
-  try { localStorage.setItem('core-hunter-changelog-seen', version) } catch (_) {}
+export function saveChangelogSeen(entryId) {
+  try { localStorage.setItem('core-hunter-changelog-entry', entryId) } catch (_) {}
+}
+
+// The pre-#422 acknowledgement: a version string, written by the panel that
+// listed releases. Read-only now, and only to answer "has this reader used the
+// old panel?". Never written again, so it ages out on its own.
+export function loadLegacyChangelogAck() {
+  return readStored('core-hunter-changelog-seen')
 }
 
 // isSettingsActive reports whether the settings button deserves its dot: any

@@ -1,43 +1,61 @@
-// "What's new" badge + panel (#284). The version in the footer gets a dot when
-// the deployed VERSION is newer than the one this browser last acknowledged;
-// clicking it opens the release notes parsed out of the CHANGELOG.md that
-// release-please already generates. Storage-guarded like urlstate.js — a
-// storage-hostile context loses the acknowledgement, not the page.
+// "What's new" badge + panel (#284, rewritten for #422). The version in the
+// footer gets a dot when changelog.json has an entry this browser has not
+// acknowledged; clicking it opens the notes.
 //
-// The changelog is fetched on first open rather than at load: it is 16 kB of
-// text nobody reads on a normal visit, and the badge itself only needs the two
-// version strings.
+// The source used to be the release-please CHANGELOG.md, and the panel read
+// like the commit log it was. It is a hand-written list of user-visible
+// changes now — see changelog.js. That also changes when it loads: the dot
+// asks whether the newest ENTRY is the acknowledged one, which is a question
+// about the file, so it is fetched at boot rather than on first open. The
+// curated file is a few kB where the raw changelog was 16.
 import { VERSION } from './version.js'
-import { parseChangelog, hasUnseen, unseenCount } from './changelog.js'
+import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 
-const SEEN_KEY = 'ch-whatsnew-seen'
-// The panel lists this many releases; the rest are one click away on GitHub.
+// Entry ids live under their own key. The pre-#422 key held a VERSION string,
+// and once the two share a slot there is no telling '1.8.0' from a
+// date-prefixed slug — which is exactly the distinction migratedSeenId needs.
+const SEEN_KEY = 'ch-whatsnew-entry'
+const LEGACY_KEY = 'ch-whatsnew-seen'
+// The panel lists this many entries; the rest are one click away on GitHub.
 const LIMIT = 10
 const RELEASES_URL = 'https://github.com/efiten/core-hunter/releases'
+const FEEDBACK_URL = 'https://github.com/efiten/core-hunter/issues/new'
 
 function loadSeen() {
   try { return localStorage.getItem(SEEN_KEY) } catch (_) { return null }
 }
 
-function saveSeen(version) {
-  try { localStorage.setItem(SEEN_KEY, version) } catch (_) {}
+function saveSeen(entryId) {
+  try { localStorage.setItem(SEEN_KEY, entryId) } catch (_) {}
 }
 
-// Built as DOM, not innerHTML: the items are changelog prose that has already
-// been stripped of its links, so they are text and are rendered as text.
-function renderReleases(body, releases, seen) {
-  const fresh = unseenCount(releases, seen)
+// Read-only, and only to answer "has this reader used the old panel?". Never
+// written again, so it ages out on its own.
+function loadLegacyAck() {
+  try { return localStorage.getItem(LEGACY_KEY) } catch (_) { return null }
+}
+
+// Built as DOM, not innerHTML: the entries are hand-written prose from a file
+// in the repo, and prose is rendered as text.
+function renderEntries(body, entries, seen) {
+  const fresh = unseenEntryCount(entries, seen)
   body.replaceChildren()
-  releases.slice(0, LIMIT).forEach((rel, i) => {
+
+  // Above the entries, not below them (#422): a reader who has just been told
+  // what changed is the one most likely to have an opinion about it, and a
+  // link under ten entries is a link nobody scrolls to.
+  const ask = document.createElement('a')
+  ask.className = 'wn-feedback'
+  ask.href = FEEDBACK_URL
+  ask.target = '_blank'
+  ask.rel = 'noopener'
+  ask.textContent = 'Found a bug, or want something? Open an issue on GitHub'
+  body.appendChild(ask)
+
+  entries.slice(0, LIMIT).forEach((entry, i) => {
     const head = document.createElement('h5')
     head.className = 'wn-version'
-    head.textContent = `v${rel.version}`
-    if (rel.date) {
-      const date = document.createElement('span')
-      date.className = 'wn-date'
-      date.textContent = rel.date
-      head.appendChild(date)
-    }
+    head.textContent = entry.title
     if (i < fresh) {
       const tag = document.createElement('span')
       tag.className = 'wn-new'
@@ -45,29 +63,34 @@ function renderReleases(body, releases, seen) {
       head.appendChild(tag)
     }
     body.appendChild(head)
-    for (const section of rel.sections) {
-      const title = document.createElement('h6')
-      title.className = 'wn-section'
-      title.textContent = section.title
-      body.appendChild(title)
-      const list = document.createElement('ul')
-      list.className = 'wn-items'
-      for (const item of section.items) {
-        const li = document.createElement('li')
-        li.textContent = item
-        list.appendChild(li)
-      }
-      body.appendChild(list)
+
+    const meta = document.createElement('div')
+    meta.className = 'wn-meta'
+    const date = document.createElement('span')
+    date.className = 'wn-date'
+    date.textContent = entry.date || ''
+    meta.appendChild(date)
+    const where = whereLabel(entry.where)
+    if (where) {
+      const tag = document.createElement('span')
+      tag.className = 'wn-where'
+      tag.textContent = where
+      meta.appendChild(tag)
     }
+    body.appendChild(meta)
+
+    const text = document.createElement('p')
+    text.className = 'wn-body-text'
+    text.textContent = entry.body || ''
+    body.appendChild(text)
   })
+
   const more = document.createElement('a')
   more.className = 'wn-more'
   more.href = RELEASES_URL
   more.target = '_blank'
   more.rel = 'noopener'
-  more.textContent = releases.length > LIMIT
-    ? `Older releases (${releases.length - LIMIT} more) on GitHub`
-    : 'All releases on GitHub'
+  more.textContent = 'Full technical history on GitHub'
   body.appendChild(more)
 }
 
@@ -79,52 +102,64 @@ export function initWhatsNew() {
   const modal = document.getElementById('whatsnew-modal')
   const body = document.getElementById('wn-body')
 
-  // Read once, before the first open acknowledges the running version: this is
-  // what tells the panel which releases are new to this reader. A first visit
-  // records the version silently — a new user has no "since you were last
-  // here", and a badge on their very first load would be noise.
+  // Read once, before the first open acknowledges the newest entry: this is
+  // what tells the panel which entries are new to this reader.
   const seen = loadSeen()
-  if (!seen) saveSeen(VERSION)
+  let entries = null
+
   function refreshBadge() {
-    const unseen = hasUnseen(VERSION, loadSeen())
+    const unseen = hasUnseenEntries(entries, loadSeen())
     dot.hidden = !unseen
     // Re-read storage rather than close over the boot value: opening the panel
-    // acknowledges the version, and a title still reading "updated since you
-    // last looked" next to a hidden dot is the two halves disagreeing.
-    btn.title = unseen ? `What's new in v${VERSION} — updated since you last looked` : "What's new"
+    // acknowledges the newest entry, and a title still reading "updated since
+    // you last looked" next to a hidden dot is the two halves disagreeing.
+    btn.title = unseen ? "What's new — updated since you last looked" : "What's new"
   }
   refreshBadge()
 
-  let releases = null
+  // Fetched at boot, because the dot depends on the file. A failure leaves the
+  // dot hidden and `entries` null; open() then renders the fallback link
+  // rather than an empty dialog.
+  const loaded = fetch(`changelog.json?v=${VERSION}`)
+    .then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.json() })
+    .then((json) => {
+      entries = Array.isArray(json) ? json : []
+      // A first visit records the newest id silently — a new reader has no
+      // "since you were last here". A reader carrying the old version-string
+      // acknowledgement stores nothing, so they get the dot once and find out
+      // the notes are readable now.
+      const migrated = migratedSeenId(seen, loadLegacyAck(), entries[0] && entries[0].id)
+      if (migrated && migrated !== seen) saveSeen(migrated)
+      refreshBadge()
+    })
+    .catch(() => {})
+
   async function open() {
     modal.hidden = false
     btn.setAttribute('aria-expanded', 'true')
-    saveSeen(VERSION)
-    refreshBadge()
     // aria-modal tells assistive tech the page behind is inert, so focus has to
     // actually move — otherwise a keyboard user is left tabbing through a page
     // they have just been told is not there. Same as login.js, which focuses
     // its first field on open.
     document.getElementById('wn-close').focus()
-    if (releases) return
-    try {
-      const res = await fetch(`CHANGELOG.md?v=${VERSION}`)
-      if (!res.ok) throw new Error(String(res.status))
-      releases = parseChangelog(await res.text())
-      renderReleases(body, releases, seen)
-    } catch (_) {
-      // The changelog is a static file next to index.html; a miss means a
-      // deploy that did not copy it, so say where the notes are instead of
-      // showing an empty dialog.
-      body.replaceChildren()
-      const link = document.createElement('a')
-      link.className = 'wn-more'
-      link.href = RELEASES_URL
-      link.target = '_blank'
-      link.rel = 'noopener'
-      link.textContent = 'Release notes on GitHub'
-      body.appendChild(link)
+    await loaded
+    if (entries && entries.length) {
+      if (entries[0].id) saveSeen(entries[0].id)
+      refreshBadge()
+      renderEntries(body, entries, seen)
+      return
     }
+    // changelog.json is a static file next to index.html; a miss means a deploy
+    // that did not copy it, so say where the notes are instead of showing an
+    // empty dialog.
+    body.replaceChildren()
+    const link = document.createElement('a')
+    link.className = 'wn-more'
+    link.href = RELEASES_URL
+    link.target = '_blank'
+    link.rel = 'noopener'
+    link.textContent = 'Release notes on GitHub'
+    body.appendChild(link)
   }
 
   function close() {

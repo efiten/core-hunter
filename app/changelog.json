@@ -1,0 +1,9 @@
+[
+  {
+    "id": "2026-08-21-readable-release-notes",
+    "date": "2026-08-21",
+    "where": "both",
+    "title": "Release notes in plain language",
+    "body": "This panel used to list commit subjects, so it read like a developer's log: scope prefixes, issue numbers, and a lot of entries about work nobody outside the code could see. From now on it carries one short note per change you can actually notice, and says whether it landed in the app, on the map, or both. The full technical history is still one click away on GitHub."
+  }
+]
