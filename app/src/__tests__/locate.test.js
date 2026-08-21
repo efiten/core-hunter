@@ -172,6 +172,84 @@ describe('densityGrid', () => {
     const { grid } = densityGrid([], { cols: 8, rows: 8 })
     expect(Math.max(...grid)).toBe(0)
   })
+
+  // --- kernel interior (#370) ---------------------------------------------
+  // The three tests above pin the grid's size, where it peaks and the empty
+  // case. Everything the kernel actually does — how sigma is chosen, how far
+  // the box is padded, how a strong reception differs from a weak one — could
+  // be changed without any of them noticing. These pin that interior, and each
+  // one is written so a single expression is load-bearing.
+  //
+  // bounds is what makes sigma observable at all: the box is padded by exactly
+  // 3 * baseSigma, so reading the padding back out of the returned bounds
+  // measures a value the function never returns directly.
+  const padLatM = ({ bounds }, points) =>
+    (bounds.maxLat - Math.max(...points.map((p) => p.lat))) * 111320
+
+  it('floors sigma at 30 m, so a tight cluster does not collapse to a point', () => {
+    // ~12 m across: spanM * 0.12 is ~1.4 m, far under the floor, so the floor
+    // is the only thing deciding the kernel here.
+    const tight = [
+      { lat: 51, lon: 4, rssi: -60 },
+      { lat: 51.00009, lon: 4.00009, rssi: -80 },
+    ]
+    // 3 * 30 m. A floor of 300 gives 900; a 1-sigma pad gives 30.
+    expect(padLatM(densityGrid(tight, { cols: 8, rows: 8 }), tight)).toBeCloseTo(90, 0)
+  })
+
+  it('takes sigma from the points own spread once that beats the floor', () => {
+    // ~4.83 km across, so sigma is 0.12 of it (580 m) and the floor is idle.
+    const wide = [
+      { lat: 51, lon: 4, rssi: -60 },
+      { lat: 51.03, lon: 4.05, rssi: -80 },
+    ]
+    const pad = padLatM(densityGrid(wide, { cols: 8, rows: 8 }), wide)
+    // 3 * 0.12 * 4833 m. Doubling the 0.12 gives 3480; a 1-sigma pad gives 580.
+    expect(pad).toBeCloseTo(1740, -1)
+    // And the floor is genuinely not in play, so this case pins the ratio
+    // rather than the floor: raising 30 to 300 must not move this number.
+    expect(pad / 3).toBeGreaterThan(300)
+  })
+
+  it('gives a strong reception a tighter kernel than a weak one', () => {
+    // Identical geometry, so sigma is the only difference between the two
+    // grids: baseSigma * (1.1 - 0.6 * w) is 0.5x at full weight and 1.1x at
+    // none. Both peak at 1 after normalisation, so the falloff is what shows.
+    const grid = (rssi) => densityGrid([{ lat: 51, lon: 4, rssi }], { cols: 9, rows: 9 }).grid
+    const strong = grid(-30)   // w = 1
+    const weak = grid(-110)    // w ~ 3e-6
+    const cell = 4 * 9 + 6     // two cells off the peak, same place in both
+    // Drop the tightening term and the two become the same grid, so this fails.
+    expect(strong[cell]).toBeLessThan(weak[cell] / 10)
+  })
+
+  it('normalises the peak to exactly 1, whatever the absolute weights', () => {
+    // Two sets whose raw densities differ by orders of magnitude: without the
+    // final divide, only one of them could come out at 1.
+    for (const rssi of [-30, -110]) {
+      const { grid } = densityGrid([{ lat: 51, lon: 4, rssi }], { cols: 8, rows: 8 })
+      expect(Math.max(...grid)).toBeCloseTo(1, 6)
+    }
+  })
+
+  it('lets a reception with no RSSI contribute nothing', () => {
+    // Pinned as behaviour, not as the `if (w === 0) continue` line: that guard
+    // is a short-circuit, not a rule. rssiWeight already answers 0 for a null,
+    // so the term it skips is `0 * exp(...)` and removing the guard changes no
+    // output at all. What matters — and what this catches — is a change to
+    // rssiWeight's null handling, which would silently place a point that
+    // carries no signal information.
+    const real = [{ lat: 51, lon: 4, rssi: -60 }, { lat: 51.01, lon: 4.01, rssi: -80 }]
+    // Strictly inside the real points' own bounding box, so the padded bounds
+    // are identical either way and the two grids are directly comparable. A
+    // null point outside it would move the box and change every cell for a
+    // reason that has nothing to do with weighting.
+    const withNulls = [...real, { lat: 51.005, lon: 4.005, rssi: null }, { lat: 51.004, lon: 4.004, rssi: NaN }]
+    const a = densityGrid(real, { cols: 8, rows: 8 })
+    const b = densityGrid(withNulls, { cols: 8, rows: 8 })
+    expect(b.bounds).toEqual(a.bounds)
+    expect([...b.grid]).toEqual([...a.grid])
+  })
 })
 
 import { locate } from '../locate.js'
