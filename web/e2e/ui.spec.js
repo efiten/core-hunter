@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, openPicker } from './fixtures.js'
+import { test, expect, mapSettled, openPicker, openSettings } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -12,6 +12,7 @@ test.beforeEach(async ({ page }) => {
 test('theme toggle flips data-theme, persists, reflects in URL, and swaps the glyph', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await openSettings(page)
   await expect(page.locator('#theme-toggle')).toHaveText('🌙')
 
   await page.click('#theme-toggle')
@@ -25,7 +26,9 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
   // Open a link carrying full state — a second viewer must see the same thing.
   await page.goto('/?theme=light&mode=hex&sender=4a2b&z=15')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await openSettings(page)
   await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await page.click('#ss-close')
   await expect(page.locator('#layer-toggle')).toHaveText('hex')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
   expect(await page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(15)
@@ -33,7 +36,9 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
 
 test('settings survive a reload via localStorage (no URL params)', async ({ page }) => {
   await page.goto('/')
+  await openSettings(page)
   await page.click('#theme-toggle') // -> light
+  await page.click('#ss-close')
   await page.click('#layer-toggle') // hex -> both
   await expect(page.locator('#layer-toggle')).toHaveText('both')
 

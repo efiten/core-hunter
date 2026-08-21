@@ -152,13 +152,16 @@
       <label class="cs-cb"><input type="checkbox" id="f-nodepos" /> Node positions</label>
     </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
-    <button id="theme-toggle" title="Toggle light/dark">🌙</button>
-    <button id="help-btn" title="How this map works" aria-label="How this map works" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-onboarding">?</button>
     <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>
     <span id="sf-counts"></span>
-    <button id="ch-version" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="whatsnew-modal"><span id="ch-version-text"></span><span id="wn-dot" class="wn-dot" hidden aria-hidden="true"></span></button>
+    <button id="settings-btn" type="button" title="Settings, release notes and about" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-modal">
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <line x1="3" y1="6" x2="17" y2="6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/>
+      </svg>
+      <span id="wn-dot" class="wn-dot" hidden aria-hidden="true"></span>
+    </button>
   </header>
   <div id="locate-info" hidden></div>
   <!-- Two surfaces for one layer (#376). The key names the glyphs while markers
@@ -185,11 +188,57 @@
       </div>
     </form>
   </div>
-  <div id="whatsnew-modal" class="lc-modal" hidden>
-    <div class="lc-card wn-card" role="dialog" aria-modal="true" aria-labelledby="wn-title">
-      <h4 id="wn-title">What's new</h4>
-      <div id="wn-body" class="wn-body"></div>
-      <div class="lc-actions"><button id="wn-close" type="button">Close</button></div>
+  <!-- Settings surface (#420). Web had no home for anything that was not a
+       filter, so theme, the walkthrough and the release notes all sat in #bar
+       and made it taller. Built on the same .lc-modal shell login already uses;
+       style.css turns it into a full-height sheet below the mobile breakpoint,
+       where a centred card with tabs has no room to breathe. -->
+  <div id="settings-modal" class="lc-modal" hidden>
+    <div class="lc-card ss-card" role="dialog" aria-modal="true" aria-labelledby="ss-tab-settings">
+      <div class="ss-head">
+        <div class="ss-tabs" role="tablist" aria-label="Settings sections">
+          <button type="button" class="ss-tab active" id="ss-tab-settings" role="tab" aria-selected="true" aria-controls="ss-panel-settings">Settings</button>
+          <button type="button" class="ss-tab" id="ss-tab-whatsnew" role="tab" aria-selected="false" aria-controls="ss-panel-whatsnew">What's new<span id="ss-whatsnew-dot" class="wn-dot" hidden aria-hidden="true"></span></button>
+          <button type="button" class="ss-tab" id="ss-tab-about" role="tab" aria-selected="false" aria-controls="ss-panel-about">About</button>
+        </div>
+        <button class="ss-close" id="ss-close" type="button" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
+          </svg>
+        </button>
+      </div>
+      <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
+        <label class="ss-row">
+          <span class="ss-row-label">Light theme</span>
+          <button id="theme-toggle" type="button" title="Toggle light/dark">🌙</button>
+        </label>
+      </div>
+      <div class="ss-panel" id="ss-panel-whatsnew" role="tabpanel" aria-labelledby="ss-tab-whatsnew" hidden>
+        <div id="wn-body" class="wn-body"></div>
+      </div>
+      <div class="ss-panel" id="ss-panel-about" role="tabpanel" aria-labelledby="ss-tab-about" hidden>
+        <div class="ss-about-name">Mesh-Hunter</div>
+        <p class="ss-about-desc">The shared coverage map: where MeshCore nodes have been heard, pooled from every hunter in the field.</p>
+        <nav class="ss-about-links">
+          <!-- Keeps the id the old topbar "?" carried, so onboarding.js wires
+               this without knowing it moved. The app made the same swap in
+               #281 and dropped its own "?" for an About entry. -->
+          <button type="button" id="help-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="wb-onboarding">
+            <span class="ss-link-title">How it works</span>
+            <span class="ss-link-desc">Re-open the walkthrough of the map, the filters and what the colours mean.</span>
+          </button>
+          <a href="https://mesh-hunter.eu" target="_blank" rel="noopener">
+            <span class="ss-link-title">mesh-hunter.eu</span>
+            <span class="ss-link-desc">The project — what it is and how to take part.</span>
+          </a>
+          <a href="https://github.com/efiten/core-hunter/issues/new" target="_blank" rel="noopener">
+            <span class="ss-link-title">Report a bug or request a feature</span>
+            <span class="ss-link-desc">Opens a new issue on GitHub.</span>
+          </a>
+        </nav>
+        <p class="ss-version"><span id="ch-version-text"></span></p>
+        <p class="ss-about-disclaimer">Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. The coordinates are the hunter's own position when it heard the node.</p>
+      </div>
     </div>
   </div>
   <!-- First-run onboarding (#316). The callouts are positioned from
@@ -225,11 +274,12 @@
     import { VERSION } from './version.js';
     import { API_BASE } from './config.js';
     import { initWhatsNew } from './whatsnew.js';
-    // Only the text span is rewritten by the server-version fetch — the dot is
-    // a sibling, so it survives (#284).
+    import { initSettingsSheet } from './settingssheet.js';
+    // The version text lives in the About tab since #420; the unread dot is on
+    // the settings button, so this fetch cannot clobber it (#284).
     const el = document.getElementById('ch-version-text');
     el.textContent = 'web v' + VERSION;
-    initWhatsNew();
+    initSettingsSheet(initWhatsNew());
     fetch(`${API_BASE}/api/version`)
       .then((r) => r.json())
       .then((d) => { if (d.server) el.textContent = `web v${VERSION} · srv v${d.server}`; })

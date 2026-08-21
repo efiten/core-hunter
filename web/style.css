@@ -216,17 +216,17 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .lc-warn { color: var(--ch-sig-warm); }
 #status { color:var(--ch-muted); margin-left:auto; }
 #sf-counts { color:var(--ch-muted); font-size:12px; }
-/* The footer version is the "what's new" trigger (#284): a button styled as the
-   plain muted text it was, with the unseen-release dot as a sibling of the text
-   span so the server-version fetch can rewrite the text without losing it.
-   `#bar #ch-version`, not `#ch-version`: the bar styles every button it
-   contains (`#bar button`, one id + one type) and that outranks a bare id
-   selector, so the plain-text look has to be claimed at the same weight. */
-#bar #ch-version { display:inline-flex; align-items:center; gap:5px; padding:0; border:none;
-  background:none; font:inherit; color:var(--ch-muted); font-size:12px; cursor:pointer; }
+/* The settings entry point (#420) replaces the version button as the bar's one
+   meta control, and inherits the unseen-release dot (#284). `#bar #settings-btn`,
+   not `#settings-btn`: the bar styles every button it contains (`#bar button`,
+   one id + one type) and that outranks a bare id selector, so anything this rule
+   wants back has to be claimed at the same weight.
+   position:relative so the dot can sit on the corner of the glyph. */
+#bar #settings-btn { position:relative; display:inline-flex; align-items:center;
+  padding:5px 7px; color:var(--ch-muted); cursor:pointer; }
+#bar #settings-btn:hover { color:var(--ch-text); }
 .wn-dot { width:7px; height:7px; border-radius:50%; background:var(--ch-accent-2); }
-.wn-card { max-width:520px; max-height:70vh; }
-.wn-card h4 { margin:0; }
+#bar #settings-btn .wn-dot { position:absolute; top:2px; right:2px; }
 /* min-height:0 is what makes the scroll happen: .lc-card is a column flex
    container, and a flex item defaults to min-height:auto — it refuses to shrink
    below its content, so the list would push past the card's 70vh instead of
@@ -415,3 +415,54 @@ body.wb-onboarding-on #bar { z-index:710; }
   background: var(--ch-surface); color: var(--ch-muted);
 }
 .leaflet-container .leaflet-control-attribution a { color: var(--ch-accent-2); }
+
+/* Settings sheet (#420). Two presentations of one element: a centred card on
+   desktop, a full-height sheet below the breakpoint. Web had nowhere to put a
+   non-filter control before this, so theme, the walkthrough and the release
+   notes all lived in #bar and made it taller.
+   max-height on the card, min-height:0 on the panel: .lc-card is a column flex
+   container and a flex item defaults to min-height:auto, so without it a long
+   changelog pushes past the card instead of scrolling inside it -- the same
+   trap .wn-body documented. */
+.ss-card { width: min(560px, 92vw); max-height: 78vh; padding: 0; gap: 0; }
+.ss-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 4px 12px 0; border-bottom: 1px solid var(--ch-border); }
+.ss-tabs { display: flex; gap: 14px; }
+.ss-tab { display: inline-flex; align-items: center; gap: 6px; border: none;
+  background: transparent; color: var(--ch-muted); font: inherit; font-size: 15px;
+  font-weight: 600; padding: 10px 2px; margin-bottom: -1px; cursor: pointer;
+  border-bottom: 2px solid transparent; }
+.ss-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
+.ss-close { border: none; background: transparent; color: var(--ch-muted);
+  padding: 6px; cursor: pointer; display: inline-flex; }
+.ss-close:hover { color: var(--ch-text); }
+.ss-panel { min-height: 0; overflow-y: auto; padding: 16px; }
+.ss-panel[hidden] { display: none; }
+.ss-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ss-row-label { font-size: 14px; }
+.ss-about-name { font-size: 17px; font-weight: 700; }
+.ss-about-desc { margin: 6px 0 14px; font-size: 13px; line-height: 1.5; color: var(--ch-muted); }
+.ss-about-links { display: flex; flex-direction: column; gap: 2px; }
+.ss-about-links > * { display: block; width: 100%; text-align: left; text-decoration: none;
+  background: transparent; border: none; border-radius: 8px; padding: 9px 10px;
+  color: var(--ch-text); font: inherit; cursor: pointer; }
+.ss-about-links > *:hover { background: var(--ch-input-bg); }
+.ss-link-title { display: block; font-size: 14px; font-weight: 600; }
+.ss-link-desc { display: block; font-size: 12px; line-height: 1.45; color: var(--ch-muted); }
+.ss-version { margin: 14px 0 0; font-size: 12px; color: var(--ch-muted); }
+.ss-about-disclaimer { margin: 10px 0 0; padding-top: 10px; font-size: 11.5px; line-height: 1.5;
+  color: var(--ch-muted); border-top: 1px solid var(--ch-border); }
+/* The changelog panel is the tab now, so the tab owns the padding and the
+   scrolling; .wn-body only has to stop being a min-height:auto flex item. */
+#ss-panel-whatsnew { padding: 0; }
+.wn-body { min-height: 0; padding: 16px; }
+
+/* Below this width a centred card with three tabs has no room: it becomes a
+   sheet anchored to the bottom, which is also where a thumb is. The first
+   breakpoint in this stylesheet -- see #423 for the bar itself, which is the
+   bigger half of the same problem. */
+@media (max-width: 640px) {
+  .lc-modal:has(.ss-card) { place-items: end stretch; }
+  .ss-card { width: 100%; max-height: 88vh; border-radius: 14px 14px 0 0;
+    border-bottom: none; }
+}

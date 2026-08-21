@@ -119,3 +119,17 @@ export async function clickUntil(page, selector, isDone) {
 }
 
 export { expect }
+
+// openSettings opens the settings sheet (#420) and, optionally, one of its
+// tabs. Both steps go through clickUntil for the same reason openPicker does:
+// #settings-btn is static markup, clickable the moment the document parses,
+// while settingssheet.js is still evaluating.
+//
+// Which tab an open lands on is decided by initialSettingsTab, so a spec that
+// seeds an unread acknowledgement gets 'whatsnew' whether it asked or not. A
+// fresh context has no acknowledgement, records the running version silently,
+// and therefore always opens on Settings.
+export async function openSettings(page, tab = 'settings') {
+  await clickUntil(page, '#settings-btn', () => page.locator('#settings-modal').isVisible())
+  if (tab) await clickUntil(page, `#ss-tab-${tab}`, () => page.locator(`#ss-panel-${tab}`).isVisible())
+}

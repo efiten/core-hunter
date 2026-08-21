@@ -1,4 +1,4 @@
-import { test, expect, clickUntil } from './fixtures.js'
+import { test, expect, openSettings } from './fixtures.js'
 
 // A stand-in changelog.json so the assertions about which entries are marked
 // new do not move every time the real file gains one. The real file is
@@ -67,7 +67,7 @@ test('an older acknowledged version badges the footer, and the panel marks what 
   await page.goto('/')
   await expect(page.locator('#wn-dot')).toBeVisible()
 
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await openSettings(page, null)
   const titles = page.locator('#wn-body .wn-version')
   await expect(titles).toHaveCount(3)
   // Only the entry published after the acknowledged one is new to this reader.
@@ -93,7 +93,7 @@ test('opening the panel acknowledges the running version and clears the badge fo
   await serveFixture(page)
   await bootstrap(page, { entry: '2026-08-08-middle' })
   await page.goto('/')
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await openSettings(page, null)
   await expect(page.locator('#wn-dot')).toBeHidden()
   expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-entry'))).toBe('2026-08-15-newest')
 
@@ -105,17 +105,17 @@ test('the panel closes on the Close button, on the scrim and on Escape', async (
   await serveFixture(page)
   await bootstrap(page, { entry: '2026-08-08-middle' })
   await page.goto('/')
-  const modal = page.locator('#whatsnew-modal')
+  const modal = page.locator('#settings-modal')
 
-  await clickUntil(page, '#ch-version', () => modal.isVisible())
-  await page.click('#wn-close')
+  await openSettings(page, null)
+  await page.click('#ss-close')
   await expect(modal).toBeHidden()
 
-  await clickUntil(page, '#ch-version', () => modal.isVisible())
+  await openSettings(page, null)
   await modal.click({ position: { x: 5, y: 5 } }) // the scrim, not the card
   await expect(modal).toBeHidden()
 
-  await clickUntil(page, '#ch-version', () => modal.isVisible())
+  await openSettings(page, null)
   await page.keyboard.press('Escape')
   await expect(modal).toBeHidden()
 })
@@ -127,20 +127,20 @@ test('focus moves into the dialog and back out again', async ({ page }) => {
   await serveFixture(page)
   await bootstrap(page, { entry: '2026-08-08-middle' })
   await page.goto('/')
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
-  await expect(page.locator('#wn-close')).toBeFocused()
+  await openSettings(page, null)
+  await expect(page.locator('#ss-close')).toBeFocused()
   await page.keyboard.press('Escape')
-  await expect(page.locator('#whatsnew-modal')).toBeHidden()
-  await expect(page.locator('#ch-version')).toBeFocused()
+  await expect(page.locator('#settings-modal')).toBeHidden()
+  await expect(page.locator('#settings-btn')).toBeFocused()
 })
 
 test('acknowledging clears the tooltip as well as the dot', async ({ page }) => {
   await serveFixture(page)
   await bootstrap(page, { entry: '2026-08-08-middle' })
   await page.goto('/')
-  await expect(page.locator('#ch-version')).toHaveAttribute('title', /updated since you last looked/)
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
-  await expect(page.locator('#ch-version')).toHaveAttribute('title', "What's new")
+  await expect(page.locator('#settings-btn')).toHaveAttribute('title', /updated since you last looked/)
+  await openSettings(page, null)
+  await expect(page.locator('#settings-btn')).toHaveAttribute('title', 'Settings, release notes and about')
 })
 
 test('the server-version fetch rewrites the version text without dropping the badge', async ({ page }) => {
@@ -163,7 +163,7 @@ test('the real changelog.json renders', async ({ page }) => {
   // hasUnseenEntries and unseenEntryCount deliberately disagree on.
   await bootstrap(page, { entry: 'gone-from-the-file' })
   await page.goto('/')
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await openSettings(page, null)
   await expect(page.locator('#wn-body .wn-version').first()).not.toHaveText('')
   await expect(page.locator('#wn-body .wn-body-text').first()).not.toHaveText('')
   // Rendered as prose, not as raw markdown: no leftover link syntax or bold
@@ -184,9 +184,9 @@ test('a reader carrying the old version acknowledgement gets the dot once', asyn
   // The old version string is carried into the new key. It is not an id in the
   // file, so it has no position: the dot shows and nothing is marked new.
   expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-entry'))).toBe('1.4.0')
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await openSettings(page, null)
   await expect(page.locator('#wn-body .wn-new')).toHaveCount(0)
-  await page.click('#wn-close')
+  await page.click('#ss-close')
 
   await expect(page.locator('#wn-dot')).toBeHidden()
   expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-entry'))).toBe('2026-08-15-newest')
@@ -202,7 +202,7 @@ test('a first-time reader is not badged, and the panel still works', async ({ pa
   await page.goto('/')
   await expect(page.locator('#wn-dot')).toBeHidden()
   expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-entry'))).toBe('2026-08-15-newest')
-  await clickUntil(page, '#ch-version', () => page.locator('#whatsnew-modal').isVisible())
+  await openSettings(page, null)
   await expect(page.locator('#wn-body .wn-version')).toHaveCount(3)
   await expect(page.locator('#wn-body .wn-new')).toHaveCount(0)
 })
