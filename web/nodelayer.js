@@ -2,12 +2,15 @@
 // view, and how a node's advertised position should be drawn against our own
 // RSSI estimate. No DOM, no Leaflet — the layer glue lives in map.js.
 //
-// DUPLICATED from app/src/nodelayer.js. web/ has no build step and its static
-// server refuses paths outside web/, so it cannot import a shared module yet.
-// This is the exact duplication the app+web merge decision
-// (docs/2026-07-12-app-web-merge-proposal.md, "B nu") exists to remove — both
-// copies must move into the shared core under #238. Keep them in sync until
-// then; any change here needs the same change there.
+// DUPLICATED from app/src/nodelayer.js. #238 asked whether to extract the two
+// copies into one shared module; the answer (2026-08-15, recorded in the header
+// of web/parity.test.js) is no — neither deploy path can ship a file outside
+// its own directory, since the app image builds with `app/` as its Docker
+// context and the website deploys as a flat file list. So the copies stay, and
+// parity.test.js is what makes a silent drift impossible rather than merely
+// unlikely. It pins what the two share; each side also has functions the other
+// does not (app: senderIdMatches, groupSenderPointsForNodes — web: nodeRows),
+// and those are intentional, not drift.
 //
 // The registry position is what the node itself advertised (appData.location),
 // relayed via the name resolver. It is operator-self-reported, so a gap between

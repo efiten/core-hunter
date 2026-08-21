@@ -22,6 +22,10 @@ import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
 import { setConfig } from '../app/src/config.js'
 import { readFileSync } from 'node:fs'
+import * as webLayer from './nodelayer.js'
+import * as appLayer from '../app/src/nodelayer.js'
+import * as webNotice from './nodeposnotice.js'
+import * as appNotice from '../app/src/nodeposnotice.js'
 import * as webTicker from './receptionticker.js'
 import * as appTicker from '../app/src/receptionlog.js'
 
@@ -455,5 +459,178 @@ describe('calloutPosition — parity between the app and web copies', () => {
     ]
     expect(webCallout.unionRect(rects)).toEqual(appCallout.unionRect(rects))
     expect(webCallout.unionRect(rects)).toEqual({ left: 10, top: 10, right: 90, bottom: 70, width: 80, height: 60 })
+  })
+})
+
+// nodelayer.js is the third duplicated module, and until #376 it was the one
+// with no parity block at all — the file both copies of the node-position layer
+// read on every draw. The two are a partial duplicate on purpose: each side has
+// functions the other has no use for, and only the shared core is pinned here.
+describe('nodelayer — parity of the shared core', () => {
+  const SHARED = ['TIGHT_DRIFT_M', 'TRUSTED_ENCIRCLEMENT', 'circleRing', 'drawableNodes',
+    'driftPresentation', 'estimateFor', 'groupSenderPoints', 'inBounds', 'isRegistryIdKind', 'nodesInView']
+
+  it('keeps the shared core present on both sides, and the divergence deliberate', () => {
+    const names = (m) => Object.keys(m).sort()
+    for (const n of SHARED) {
+      expect(webLayer[n], `web is missing ${n}`).toBeDefined()
+      expect(appLayer[n], `app is missing ${n}`).toBeDefined()
+    }
+    // Named, so growing a copy is a decision and not an accident: a new export
+    // on one side lands here or in SHARED, and either way this test says so.
+    expect(names(appLayer).filter((n) => !SHARED.includes(n)))
+      .toEqual(['groupSenderPointsForNodes', 'senderIdMatches'])
+    expect(names(webLayer).filter((n) => !SHARED.includes(n))).toEqual(['nodeRows'])
+  })
+
+  it('agrees on the drift threshold, at the boundary', () => {
+    // ~99 m and ~101 m north of the estimate: one each side of TIGHT_DRIFT_M,
+    // so a copy whose threshold moved by 2 m fails here. A 500 m fixture would
+    // pass whatever the threshold became.
+    const est = { centroid: { lat: 51, lon: 4 }, stats: { encirclement: 0.75, searchRadiusM: 300 } }
+    for (const m of [99, 101]) {
+      const advertised = { lat: 51 + m * M, lon: 4 }
+      expect(webLayer.driftPresentation({ advertised, estimate: est }))
+        .toEqual(appLayer.driftPresentation({ advertised, estimate: est }))
+    }
+    expect(webLayer.driftPresentation({ advertised: { lat: 51 + 99 * M, lon: 4 }, estimate: est }).kind).toBe('tight')
+    expect(webLayer.driftPresentation({ advertised: { lat: 51 + 101 * M, lon: 4 }, estimate: est }).kind).toBe('drifted')
+    expect(webLayer.TIGHT_DRIFT_M).toBe(appLayer.TIGHT_DRIFT_M)
+  })
+
+  it('agrees on when the geometry may be trusted, at the boundary', () => {
+    // 0.5 is the gate: at it the search radius is claimed, a hair under it the
+    // presentation falls back to an untrusted drift circle.
+    const advertised = { lat: 51 + 400 * M, lon: 4 }
+    const withEnc = (encirclement, searchRadiusM = 300) =>
+      ({ centroid: { lat: 51, lon: 4 }, stats: { encirclement, searchRadiusM } })
+    for (const e of [0.49, 0.5]) {
+      expect(webLayer.driftPresentation({ advertised, estimate: withEnc(e) }))
+        .toEqual(appLayer.driftPresentation({ advertised, estimate: withEnc(e) }))
+    }
+    expect(webLayer.driftPresentation({ advertised, estimate: withEnc(0.5) }).kind).toBe('drifted')
+    expect(webLayer.driftPresentation({ advertised, estimate: withEnc(0.49) }).kind).toBe('unverified')
+    // A searchRadiusM that is not a number must not be trusted either, however
+    // well encircled — otherwise a circle gets drawn from a NaN radius.
+    expect(webLayer.driftPresentation({ advertised, estimate: withEnc(1, null) }).kind).toBe('unverified')
+    expect(webLayer.TRUSTED_ENCIRCLEMENT).toBe(appLayer.TRUSTED_ENCIRCLEMENT)
+  })
+
+  it('agrees on the three degenerate presentations', () => {
+    const estimate = { centroid: { lat: 51, lon: 4 }, stats: { encirclement: 1, searchRadiusM: 100 } }
+    const advertised = { lat: 51, lon: 4 }
+    for (const args of [{}, { advertised }, { estimate },
+      { advertised: { lat: 51, lon: null }, estimate: null }]) {
+      expect(webLayer.driftPresentation(args)).toEqual(appLayer.driftPresentation(args))
+    }
+    expect(webLayer.driftPresentation({}).kind).toBe('none')
+    expect(webLayer.driftPresentation({ advertised }).kind).toBe('advertised-only')
+    expect(webLayer.driftPresentation({ estimate }).kind).toBe('estimate-only')
+  })
+
+  it('agrees on which registry rows can be drawn, and which ids may name one', () => {
+    const rows = [
+      { pubkey: 'aa', lat: 51, lon: 4 },
+      { pubkey: 'bb', lat: 51 },                 // half a position
+      { pubkey: 'cc', lat: '51', lon: '4' },     // strings are not coordinates
+      { lat: 51, lon: 4 },                       // nothing to attribute it to
+      { pubkey: 'dd', lat: NaN, lon: 4 },
+      null,
+    ]
+    expect(webLayer.drawableNodes(rows)).toEqual(appLayer.drawableNodes(rows))
+    expect(webLayer.drawableNodes(rows)).toHaveLength(1)
+    expect(webLayer.drawableNodes('nope')).toEqual(appLayer.drawableNodes('nope'))
+    for (const kind of ['advert_pubkey', 'discover_pubkey', 'relay', 'direct_hash', 'channel_name', undefined]) {
+      expect(webLayer.isRegistryIdKind(kind), kind).toBe(appLayer.isRegistryIdKind(kind))
+    }
+    expect(webLayer.isRegistryIdKind('advert_pubkey')).toBe(true)
+    expect(webLayer.isRegistryIdKind('relay')).toBe(false)
+  })
+
+  it('agrees on the viewport test, edges included', () => {
+    const bounds = { minLat: 50, minLon: 3, maxLat: 52, maxLon: 5 }
+    const pts = [
+      { lat: 50, lon: 3 }, { lat: 52, lon: 5 },          // exactly on both corners
+      { lat: 49.999, lon: 4 }, { lat: 51, lon: 5.001 },  // a hair outside each
+      { lat: 51, lon: 4 }, { lat: null, lon: 4 },
+    ]
+    for (const p of pts) expect(webLayer.inBounds(p, bounds), JSON.stringify(p)).toBe(appLayer.inBounds(p, bounds))
+    expect(webLayer.inBounds({ lat: 50, lon: 3 }, bounds)).toBe(true)   // inclusive, not exclusive
+    expect(webLayer.nodesInView(pts, bounds)).toEqual(appLayer.nodesInView(pts, bounds))
+    expect(webLayer.nodesInView(pts, bounds)).toHaveLength(3)
+    expect(webLayer.nodesInView(pts, null)).toEqual(appLayer.nodesInView(pts, null))
+  })
+
+  it('buckets receptions by sender identically, case folded, unlocated dropped', () => {
+    const recs = [
+      { sender_id: 'AA', lat: 51, lon: 4, rssi: -70 },
+      { sender_id: 'aa', lat: 51.001, lon: 4, rssi: -80 },   // same node, other case
+      { sender_id: 'bb', lat: 51, lon: 4, rssi: -60 },
+      { sender_id: 'cc', lat: null, lon: 4, rssi: -60 },     // no fix: no information
+      { lat: 51, lon: 4, rssi: -60 },
+    ]
+    const webOut = webLayer.groupSenderPoints(recs)
+    expect([...webOut]).toEqual([...appLayer.groupSenderPoints(recs)])
+    expect(webOut.get('aa')).toHaveLength(2)
+    expect(webOut.has('cc')).toBe(false)
+  })
+
+  it('estimates identically, including the too-few-inliers floor', () => {
+    // Two points is below the 3-inlier floor; the third crosses it. A fixture
+    // with only a big cluster would pass whatever the floor became.
+    const ring = [
+      { lat: 51, lon: 4, rssi: -60 },
+      { lat: 51 + 300 * M, lon: 4, rssi: -70 },
+      { lat: 51, lon: 4 + 300 * M, rssi: -80 },
+      { lat: 51 - 300 * M, lon: 4, rssi: -90 },
+    ]
+    expect(webLayer.estimateFor(ring.slice(0, 2))).toEqual(appLayer.estimateFor(ring.slice(0, 2)))
+    expect(webLayer.estimateFor(ring.slice(0, 2))).toBeNull()
+    expect(webLayer.estimateFor(ring)).toEqual(appLayer.estimateFor(ring))
+    expect(webLayer.estimateFor(ring).n).toBe(4)
+    expect(webLayer.estimateFor([])).toEqual(appLayer.estimateFor([]))
+  })
+
+  it('draws the same circle ring, and refuses the same degenerate ones', () => {
+    const centre = { lat: 51, lon: 4 }
+    expect(webLayer.circleRing(centre, 500)).toEqual(appLayer.circleRing(centre, 500))
+    expect(webLayer.circleRing(centre, 500)).toHaveLength(49)          // 48 steps, closed
+    expect(webLayer.circleRing(centre, 500, 6)).toEqual(appLayer.circleRing(centre, 500, 6))
+    for (const bad of [0, -1, null]) {
+      expect(webLayer.circleRing(centre, bad)).toEqual(appLayer.circleRing(centre, bad))
+      expect(webLayer.circleRing(centre, bad)).toEqual([])
+    }
+    expect(webLayer.circleRing(null, 500)).toEqual(appLayer.circleRing(null, 500))
+  })
+})
+
+// nodeposnotice.js is a partial port (#376): web needs states the app cannot
+// have — an unconfigured server, a role the server refuses — so only the lines
+// both surfaces show are shared. Those two are what AGENTS.md §7 requires on
+// screen, which is exactly why they must not drift apart.
+describe('nodeposnotice — parity of the two shared lines', () => {
+  it('shows the same key and the same empty-registry line', () => {
+    expect(webNotice.NODEPOS_KEY_TEXT).toBe(appNotice.NODEPOS_KEY_TEXT)
+    expect(webNotice.NODEPOS_EMPTY_TEXT).toBe(appNotice.NODEPOS_EMPTY_TEXT)
+    // §7's requirement is the glyph meaning, so pin the content too: a key that
+    // lost its ▲/● would still be "identical on both sides".
+    expect(webNotice.NODEPOS_KEY_TEXT).toMatch(/▲.*●/)
+  })
+
+  it('chooses between them the same way', () => {
+    for (const args of [undefined, {}, { registryEmpty: false }, { registryEmpty: true }]) {
+      expect(webNotice.nodePosKeyText(args)).toBe(appNotice.nodePosKeyText(args))
+    }
+    expect(webNotice.nodePosKeyText({ registryEmpty: true })).toBe(webNotice.NODEPOS_EMPTY_TEXT)
+  })
+
+  it('keeps web a strict superset — the app has no server to be unconfigured', () => {
+    for (const n of ['NODEPOS_KEY_TEXT', 'NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
+      expect(appNotice[n], n).toBeDefined()
+      expect(webNotice[n], n).toBeDefined()
+    }
+    expect(Object.keys(webNotice).filter((n) => !(n in appNotice)).sort())
+      .toEqual(['NODEPOS_GUEST_TEXT', 'NODEPOS_NONE_IN_VIEW_TEXT', 'NODEPOS_STALE_SUFFIX',
+        'NODEPOS_UNAVAILABLE_TEXT', 'NODEPOS_UNCONFIGURED_TEXT', 'nodePosPresentation', 'registryStatusFor'])
   })
 })

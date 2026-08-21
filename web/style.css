@@ -315,10 +315,18 @@ body.wb-onboarding-on #bar { z-index:710; }
 /* Node-position layer (#197). The disclaimer stays on screen for as long as the
    layer is drawn — it implies node locations, so a popup-only note is not
    enough (AGENTS.md §7). Sits left so it never covers #locate-info. */
-#nodepos-note { position: fixed; left: 12px; bottom: 12px; z-index: 650; max-width: 300px;
-  background: var(--ch-surface); color: var(--ch-muted); border: 1px solid var(--ch-border);
-  border-radius: 8px; padding: 8px 10px; font-size: 11px; line-height: 1.45;
-  backdrop-filter: blur(8px); pointer-events: none; }
+/* One anchored stack, column-reverse: the key is first in the DOM and last in
+   the visual order, so it holds the bottom corner while the note (hidden in
+   every state that drew nothing, #376) grows upward above it. Neither box
+   needs a magic offset for the other's height. */
+#nodepos-stack { position: fixed; left: 12px; bottom: 12px; z-index: 650; max-width: 300px;
+  display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
+#nodepos-note, #nodepos-key { background: var(--ch-surface); border: 1px solid var(--ch-border);
+  border-radius: 8px; font-size: 11px; line-height: 1.45; backdrop-filter: blur(8px); }
+#nodepos-note { color: var(--ch-muted); padding: 8px 10px; }
+/* Brighter than the note: it is the line AGENTS.md §7 requires on screen, and
+   in the empty states it is the only thing explaining what happened. */
+#nodepos-key { color: var(--ch-text); padding: 6px 10px; }
 .np-advert-icon { background: none; border: none; }
 .np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; cursor: pointer; }
 /* Absolute so the label never shifts the ▲ off its anchored coordinate. The

@@ -147,6 +147,61 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
   await expect(page.locator('.np-estimate')).toHaveCount(0)
 })
 
+// #376: the layer used to end in an empty state four different ways, all of
+// them silent. Each now says which one it was, and the disclaimer — which
+// asserts that advertised positions are on screen — appears only with markers
+// behind it.
+test('with markers on screen it names the glyphs and disclaims them', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('#nodepos-key')).toContainText('▲ advertised position')
+  await expect(page.locator('#nodepos-note')).toBeVisible()
+})
+
+for (const [label, fulfil, expected] of [
+  ['the registry holds no positions', { status: 503, json: { error: 'registry_empty' } }, 'No positions from the node registry'],
+  ['no registry is configured', { status: 503, json: { error: 'registry_not_configured' } }, 'no node registry configured'],
+  ['the registry is unreachable', { status: 503, json: { error: 'registry_unavailable' } }, 'Node registry unreachable'],
+  ['the server errors in a way we do not know', { status: 500, body: 'boom' }, 'Node registry unreachable'],
+  ['the view is empty but the registry answered', { json: { nodes: [] } }, 'No registry nodes in this view'],
+]) {
+  test(`says so when ${label} (#376)`, async ({ page }) => {
+    await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+    await page.route('**/api/nodes/positions*', (r) => r.fulfill(fulfil))
+    await page.goto('/?mode=points')
+    await page.check('#f-nodepos')
+    await expect(page.locator('#nodepos-key')).toContainText(expected, { timeout: 10000 })
+    // The disclaimer would claim positions are being shown. None are.
+    await expect(page.locator('#nodepos-note')).toBeHidden()
+    await expect(page.locator('.np-advert')).toHaveCount(0)
+  })
+}
+
+test('marks a registry the server could not refresh (#376)', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({
+    json: { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }], stale: true },
+  }))
+  await page.goto('/?mode=points')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  // Drawn, and dated: the positions are real, their age is not guaranteed.
+  await expect(page.locator('#nodepos-key')).toContainText('positions may be a few minutes old')
+  await expect(page.locator('#nodepos-note')).toBeVisible()
+})
+
+test('a guest who deep-links the layer is told it is the account (#376)', async ({ page }) => {
+  // The control is hidden below member, but urlstate binds the checkbox from
+  // ?nodepos=1 regardless — so this state is reachable and used to be silent.
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/?mode=points&nodepos=1')
+  await expect(page.locator('#nodepos-key')).toContainText('verified member account', { timeout: 10000 })
+  await expect(page.locator('#nodepos-note')).toBeHidden()
+})
+
 test('a node nobody in this filter heard is still drawn (#377)', async ({ page }) => {
   // The acceptance criterion: with a filter matching zero receptions, the
   // registry still places every node in view. Before #377 the layer derived its
