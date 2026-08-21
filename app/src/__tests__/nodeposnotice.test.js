@@ -1,15 +1,25 @@
 import { describe, it, expect } from 'vitest'
 import { nodePosNotice, nodePosKeyText, NODEPOS_KEY_TEXT, NODEPOS_EMPTY_TEXT, NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
-// AGENTS.md §7. The rule these tests exist to defend: while the node-position
-// layer is drawn, something on screen must say that ▲ is an operator-reported
-// position and ● is our RSSI inference. #306 asked for the prose to stop
-// covering the HUD; that is a reason to fade the prose, not the guarantee.
-// This lived in a code comment before, and a later PR deleted the comment.
-describe('nodePosNotice — the §7 guarantee', () => {
-  it('keeps the key on screen for as long as the layer is on', () => {
+// AGENTS.md §7. The rule these tests defend, as amended by #413: while the
+// node-position layer is drawn, what ▲ and ● mean is shown when the layer is
+// switched on and stays reachable afterwards — in the marker popups, which
+// carry the disclaimer in .np-caveat — rather than displayed permanently.
+//
+// It used to be permanent, and these tests said so in as many words. That was
+// not a bug: #306 had already pushed both notices out of the HUD and into
+// #toast-stack, and permanence was the deliberate half of that. #322 then made
+// the receptions ticker large enough to read at a glance while driving, and it
+// occupies the same band — so the permanent key cancelled out the thing #322
+// existed to deliver, for anyone with the layer on. See
+// docs/2026-08-21-nodepos-key-glance.md.
+describe('nodePosNotice — the §7 guarantee, as amended by #413', () => {
+  it('shows the key when the layer is switched on', () => {
     expect(nodePosNotice({ on: true, glanceExpired: false }).key).toBe(true)
-    expect(nodePosNotice({ on: true, glanceExpired: true }).key).toBe(true)
+  })
+
+  it('lets the key go once the glance has expired, clearing the ticker band', () => {
+    expect(nodePosNotice({ on: true, glanceExpired: true }).key).toBe(false)
   })
 
   it('shows nothing at all while the layer is off', () => {
@@ -17,12 +27,16 @@ describe('nodePosNotice — the §7 guarantee', () => {
     expect(nodePosNotice({ on: false, glanceExpired: true })).toEqual({ note: false, key: false })
   })
 
-  // The failure this is really guarding: someone adds a timer to the key too,
-  // and the ▲/● semantics go unlabelled a few seconds into every session.
-  it('never lets the key depend on the glance timer', () => {
-    for (const glanceExpired of [true, false]) {
-      expect(nodePosNotice({ on: true, glanceExpired }).key).toBe(nodePosNotice({ on: true }).key)
-    }
+  // The one line that does NOT fade, and the reason the two surfaces still
+  // differ. "No positions from the registry" is not a legend for glyphs on
+  // screen — there are none — it is the explanation for why the map is empty.
+  // Fading it puts #307's bug back: an empty registry and an empty area look
+  // identical again to anyone who looks a few seconds later.
+  it('keeps the empty-registry line up, because it explains an absence', () => {
+    expect(nodePosNotice({ on: true, glanceExpired: true, registryEmpty: true }).key).toBe(true)
+    expect(nodePosNotice({ on: true, glanceExpired: false, registryEmpty: true }).key).toBe(true)
+    // ...and only while the layer is on.
+    expect(nodePosNotice({ on: false, glanceExpired: true, registryEmpty: true }).key).toBe(false)
   })
 
   it('is total — both surfaces answer with a boolean for every input', () => {
@@ -45,8 +59,8 @@ describe('nodePosNotice — the glance', () => {
     expect(nodePosNotice({ on: true, glanceExpired: false }).note).toBe(true)
   })
 
-  it('hides the prose once the glance has expired, leaving the key', () => {
-    expect(nodePosNotice({ on: true, glanceExpired: true })).toEqual({ note: false, key: true })
+  it('hides both surfaces once the glance has expired', () => {
+    expect(nodePosNotice({ on: true, glanceExpired: true })).toEqual({ note: false, key: false })
   })
 
   // "Every time the view freshly (re-)appears", not just the first time: the
