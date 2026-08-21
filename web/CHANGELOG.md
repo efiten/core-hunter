@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.1](https://github.com/efiten/core-hunter/compare/web-v1.8.0...web-v1.8.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **web:** say which way the node-position layer came up empty ([#445](https://github.com/efiten/core-hunter/issues/445)) ([afd9c13](https://github.com/efiten/core-hunter/commit/afd9c13570648281b7c2a8aa5ec18544e6ac161b)), closes [#376](https://github.com/efiten/core-hunter/issues/376)
+* **web:** stop the onboarding tour covering the controls it is explaining ([#436](https://github.com/efiten/core-hunter/issues/436)) ([d9500d1](https://github.com/efiten/core-hunter/commit/d9500d11fd4bb90340869163b599f14162cc3608)), closes [#428](https://github.com/efiten/core-hunter/issues/428)
+
+
+### Tests
+
+* **app,web:** pin densityGrid's kernel, which nothing was holding ([#442](https://github.com/efiten/core-hunter/issues/442)) ([b1807dd](https://github.com/efiten/core-hunter/commit/b1807dde1ba4b70aa9997a5e64c8f77d74a95442)), closes [#370](https://github.com/efiten/core-hunter/issues/370)
+
 ## [1.8.0](https://github.com/efiten/core-hunter/compare/web-v1.7.0...web-v1.8.0) (2026-08-19)
 
 
