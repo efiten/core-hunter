@@ -3,6 +3,7 @@ import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
+import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
@@ -303,10 +304,13 @@ function applyObserverGate() {
   const npToggle = document.querySelector('.np-layer-toggle')
   if (npToggle) npToggle.hidden = !show
   if (!show) {
+    // Read before clearing: ?nodepos=1 binds the checkbox even for a guest,
+    // whose control is hidden, and that ask is the only thing separating "you
+    // cannot see this layer" from a line about a layer nobody wanted.
+    const asked = nodePosCb.checked
     nodePosCb.checked = false
     nodePosLayer.clearLayers(); nodePosSig = null
-    const note = document.getElementById('nodepos-note')
-    if (note) note.hidden = true
+    showNodePosNotice({ on: asked, member: false })
   }
   if (!show) {
     clearObserverLayers()
@@ -875,22 +879,44 @@ let nodePosSig = null
 // Fetches the registry slice for the current viewport from the server's bulk
 // proxy (#377). Same-origin, member-gated server-side; a failure returns null
 // and the caller leaves the layer alone rather than emptying it.
+//
+// The status rides along (#376). The server answers 403 below member and three
+// distinct 503s — not configured, reachable but empty, unreachable — because
+// they are three different things to a reader of the map, and a plain null here
+// would have flattened them back into one silent empty layer.
 async function fetchNodeRegistry() {
   const b = map.getBounds()
   const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(',')
   try {
     const r = await fetch(`${API_BASE}/api/nodes/positions?bbox=${encodeURIComponent(bbox)}`, { credentials: 'same-origin' })
-    if (!r.ok) return null
-    return await r.json()
+    const body = await r.json().catch(() => ({}))
+    const status = registryStatusFor(r.status, body && body.error)
+    if (status !== 'ok') return { status, nodes: [], stale: false }
+    return { status, nodes: body.nodes || [], stale: Boolean(body.stale), truncated: Boolean(body.truncated) }
   } catch (_) {
     return null
   }
 }
 
+// Both surfaces, from one decision (nodeposnotice.js). Called on every exit
+// path of a draw, including the early ones: a layer that returns without
+// saying why is the whole of #376.
+// `on` defaults to the checkbox, but the role branch passes it explicitly: it
+// clears the checkbox before it can explain itself, and "the account is why"
+// is precisely what a guest who deep-linked ?nodepos=1 needs to be told.
+function showNodePosNotice({ on = nodePosCb.checked, member = true, registry = null, drawn = 0 } = {}) {
+  const { note, key } = nodePosPresentation({ on, member, registry, drawn })
+  const noteEl = document.getElementById('nodepos-note')
+  const keyEl = document.getElementById('nodepos-key')
+  if (noteEl) noteEl.hidden = !note
+  if (keyEl) {
+    keyEl.hidden = !key
+    keyEl.textContent = key
+  }
+}
+
 async function drawNodePositions() {
   const gen = ++nodePosGen
-  const note = document.getElementById('nodepos-note')
-  if (note) note.hidden = !nodePosCb.checked
   // locateActive for the same reason drawObserverPoints() checks it: Locate is a
   // focus view and it suppresses refresh() for the whole session, so anything
   // that repaints into it stays there until Locate is switched off.
@@ -901,6 +927,10 @@ async function drawNodePositions() {
   // with #377; the fetch below is the window that remains.
   if (!nodePosCb.checked || !canSeeObserverPoints(currentRole) || locateActive) {
     nodePosLayer.clearLayers(); nodePosSig = null
+    // A guest can still reach this with ?nodepos=1, since urlstate binds the
+    // checkbox whether or not the control is on screen — and that is state 1
+    // of #376: an empty layer whose cause is the account, not the area.
+    showNodePosNotice({ member: canSeeObserverPoints(currentRole) })
     return
   }
   // The registry is what decides which nodes are drawn (#377). It used to be
@@ -920,7 +950,13 @@ async function drawNodePositions() {
   // and Locate suppresses refresh() for the whole session, so anything that
   // repaints into it stays until Locate is switched off.
   if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
-  if (!registry) return   // registry unreachable: leave the last good layer up
+  if (!registry || registry.status !== 'ok') {
+    // Leave the last good layer up — a transient failure should not wipe
+    // markers that are still the best thing we know — but say so, because
+    // markers under no explanation read as a working, current layer.
+    showNodePosNotice({ registry })
+    return
+  }
   const points = pointsRes.points
 
   // Only a full-pubkey reception may pair with a registry node. A discover
@@ -940,6 +976,12 @@ async function drawNodePositions() {
   // coordinate-based dedupe would only ever fire on two repeaters sharing a
   // mast, which is ordinary in a mesh, and would hide one of them (#272).
   const deduped = draw
+
+  // Before the signature short-circuit: `deduped` is what this draw would put
+  // on screen, and the notice must follow it even when the markers themselves
+  // are unchanged — a registry that went stale, or emptied, between two
+  // identical draws still changes what the layer may claim.
+  showNodePosNotice({ registry, drawn: deduped.length })
 
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),

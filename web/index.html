@@ -161,7 +161,17 @@
     <button id="ch-version" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="whatsnew-modal"><span id="ch-version-text"></span><span id="wn-dot" class="wn-dot" hidden aria-hidden="true"></span></button>
   </header>
   <div id="locate-info" hidden></div>
-  <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>
+  <!-- Two surfaces for one layer (#376). The key names the glyphs while markers
+       are drawn, and otherwise says which way the layer came up empty; the note
+       is the disclaimer, which only appears when there are positions to
+       disclaim. column-reverse in the stylesheet keeps the key pinned to the
+       bottom corner whether or not the note above it is showing, so neither
+       needs to know the other's height. role=status so a screen reader hears
+       the state change without the focus moving. -->
+  <div id="nodepos-stack">
+    <div id="nodepos-key" role="status" hidden></div>
+    <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>
+  </div>
   <div id="login-modal" class="lc-modal" hidden>
     <form id="login-form" class="lc-card">
       <h4>Log in</h4>
