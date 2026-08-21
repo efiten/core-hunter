@@ -96,12 +96,16 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .np-caveat { font-size: 11px; }
 
 /* AGENTS.md §7: the layer implies node locations, so what the glyphs mean is
-   on screen the whole time the layer is — not only inside a tapped popup.
+   shown when it is switched on and stays reachable in the marker popups
+   (.np-caveat) afterwards — amended by #413, see nodeposnotice.js and
+   docs/2026-08-21-nodepos-key-glance.md.
    Both live in #toast-stack rather than pinned at bottom:12px, where they sat
    over the hero RSSI readout in #hud (#306). Stacking is what that container
-   is for, so neither can overlap the HUD or the paused banner.
-   #nodepos-note is the full prose, shown as a 2s glance on each activation;
-   #nodepos-key is the permanent one-liner. See nodeposnotice.js. */
+   is for, so neither can overlap the HUD or the paused banner. That container
+   is pinned to the top, which is also where #322 put the enlarged receptions
+   ticker — the collision that made a permanent key untenable.
+   Both are a 2s glance now; the key outlives it only while it is reporting an
+   empty registry, which is an explanation rather than a legend. */
 #nodepos-note, #nodepos-key {
   padding: 7px 10px; border: 1px solid var(--ch-border); border-radius: 10px;
   background: var(--ch-surface); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);

@@ -1740,16 +1740,20 @@ async function fetchNodePositions() {
 let nodePosFadeTimer = null
 
 function applyNodePosNotices({ glanceExpired = false } = {}) {
-  const { note, key } = nodePosNotice({ on: nodePosOn, glanceExpired })
-  const noteEl = el('nodepos-note')
-  const keyEl = el('nodepos-key')
-  noteEl.textContent = SPLASH_DISCLAIMER
-  noteEl.hidden = !note
   // registryEmpty is only meaningful once the fetch has finished; until then
   // the glyph key is the honest line, since positions may still arrive (#307).
   // "Nothing came back" and "nobody answered" both mean nothing can be drawn,
   // and both are only knowable once a load attempt has finished.
-  keyEl.textContent = nodePosKeyText({ registryEmpty: nodePosAttempted && nodePosCount === 0 })
+  const registryEmpty = nodePosAttempted && nodePosCount === 0
+  // registryEmpty reaches nodePosNotice too, not only the text: that line is the
+  // one thing here that does not fade, because it explains why the map is blank
+  // rather than labelling glyphs that are on it (#413).
+  const { note, key } = nodePosNotice({ on: nodePosOn, glanceExpired, registryEmpty })
+  const noteEl = el('nodepos-note')
+  const keyEl = el('nodepos-key')
+  noteEl.textContent = SPLASH_DISCLAIMER
+  noteEl.hidden = !note
+  keyEl.textContent = nodePosKeyText({ registryEmpty })
   keyEl.hidden = !key
 }
 
