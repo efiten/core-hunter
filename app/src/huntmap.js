@@ -251,6 +251,10 @@ export function createHuntMap(containerId) {
     if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex',
       layout: { visibility: shown('hex-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+        // MapLibre shades extrusion sides darker toward their base by default
+        // (#412). On a building that reads as depth; on these it reads as a
+        // different tier, because colour is the signal the palette carries.
+        'fill-extrusion-vertical-gradient': false,
         'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.85 } })
     // Buildings reuse the hosted style's own vector source (already fetched for
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
@@ -264,6 +268,9 @@ export function createHuntMap(containerId) {
       // below the current zoom (#395).
       map.addLayer({ id: 'buildings-3d', type: 'fill-extrusion', source: 'openmaptiles', 'source-layer': 'building', minzoom: 13,
         layout: { visibility: mode3D ? 'visible' : 'none' },
+        // Keeps its vertical gradient, unlike the data layers (#412): a
+        // building is a shape, so shading is what makes it read as one. The
+        // data layers carry meaning in their colour, which is why they lose it.
         paint: { 'fill-extrusion-color': cssVar('--ch-building'),
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
           'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.75 } })
@@ -284,6 +291,10 @@ export function createHuntMap(containerId) {
     if (!map.getLayer('points-3d')) map.addLayer({ id: 'points-3d', type: 'fill-extrusion', source: 'points-3d',
       layout: { visibility: shown('points-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+        // Off for the same reason as hex-3d (#412): signal.js promises a bar's
+        // height and colour always agree on the same tier, and a default-on
+        // gradient darkens the sides until they do not.
+        'fill-extrusion-vertical-gradient': false,
         // 1, not 0.9: the per-feature alpha in fill-extrusion-color carries
         // tier opacity and age-fade, and a layer-wide value would multiply on
         // top of it (#302).
