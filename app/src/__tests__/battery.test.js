@@ -122,14 +122,32 @@ describe('multi-cell packs report voltage without a percentage', () => {
 })
 
 describe('isLowBattery', () => {
-  it('warns near the bottom of the firmware curve', () => {
-    expect(isLowBattery(3200)).toBe(true)   // 17%
-    expect(isLowBattery(3000)).toBe(true)   // 0%
+  it('warns below the firmware threshold', () => {
+    expect(isLowBattery(3200)).toBe(true)
+    expect(isLowBattery(3000)).toBe(true)
   })
 
   it('does not warn mid-pack', () => {
-    expect(isLowBattery(3700)).toBe(false)  // 58%
+    expect(isLowBattery(3700)).toBe(false)
     expect(isLowBattery(4200)).toBe(false)
+  })
+
+  // The whole point of #380: firmware's ui-orig flags low at 3500 mV, and this
+  // app used to sit 260 mV under it, calling a pack healthy after the
+  // companion's own screen had already warned. Both sides of the boundary, and
+  // the comparison is strictly-less to match `getBattMilliVolts() <
+  // LOW_BATT_MILLIVOLTS` — at exactly 3500 firmware does NOT warn.
+  it('agrees with the companion at the firmware boundary', () => {
+    expect(isLowBattery(3499)).toBe(true)
+    expect(isLowBattery(3500)).toBe(false)
+    expect(isLowBattery(3501)).toBe(false)
+  })
+
+  // The band this used to get wrong: above the old 20% mark (3240 mV) and
+  // below firmware's. Every value here was previously reported as fine while
+  // the companion was already showing low.
+  it('warns across the band the old 20% rule called healthy', () => {
+    for (const mv of [3250, 3300, 3400, 3499]) expect(isLowBattery(mv), `${mv} mV`).toBe(true)
   })
 
   it('is false for a non-finite reading (nothing to warn about yet)', () => {

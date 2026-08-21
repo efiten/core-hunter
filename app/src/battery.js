@@ -36,8 +36,7 @@ const MV_EMPTY = 3000
 // (~4.3V) and well below a 2S pack's empty point (6000).
 const MULTI_CELL_MV = 5000
 
-// Ours, and deliberately so — but "firmware defines no low-battery threshold",
-// as this comment used to claim, is wrong for half the fleet:
+// Firmware's number, not ours (#380):
 //
 //   examples/companion_radio/ui-orig/UITask.cpp
 //     #ifndef LOW_BATT_MILLIVOLTS
@@ -45,22 +44,29 @@ const MULTI_CELL_MV = 5000
 //     #endif
 //     low_batt = _board->getBattMilliVolts() < LOW_BATT_MILLIVOLTS;
 //
-// ui-new has no equivalent (grep: neither LOW_BATT nor low_batt), so a
-// companion on the newer UI genuinely has none, and the one that does has it as
-// a per-board build flag we cannot read over the wire — the §7 case exactly.
+// This module exists so the companion's own screen and this app do not disagree
+// about the same pack, and until now they did: the old rule warned at 20% of
+// the curve below, which is 3240mV on a 1S pack — 260mV UNDER firmware's — so
+// on a ui-orig board this app called a pack healthy after the companion had
+// already flagged it. That is the exact failure the module was written to
+// prevent, so firmware's threshold wins.
 //
-// The consequence is worth stating rather than hiding: 20% is 3240mV on a 1S
-// pack, i.e. 260mV BELOW firmware's ui-orig default, so on such a board this app
-// still calls a pack healthy while the companion's own screen shows it low.
-// Expressed as a percentage so it rides on the firmware curve above rather than
-// being a second, independent invented voltage, and stays meaningful if the
-// endpoints ever change. Whether to follow ui-orig's 3500mV where it applies is
-// a behaviour question, not a comment fix, and needs its own issue.
+// Two honest caveats, neither of which changes the answer:
 //
-// Unknown percentage is not "low": a multi-cell pack at 6100mV is genuinely
-// flat, but we cannot tell, and a warning that fires on a guess is the same
-// failure as one that never fires.
-const LOW_BATTERY_PERCENT = 20
+//   - ui-new has no equivalent (grep: neither LOW_BATT nor low_batt), so on a
+//     companion running the newer UI there is nothing to agree WITH and 3500 is
+//     our own choice, roughly 8 percentage points earlier than the old rule.
+//   - the define is #ifndef-guarded, i.e. a per-board build flag we cannot read
+//     over the wire (§7). 3500 is its default, not a reading.
+//
+// So this is firmware's default rather than a measurement, and it is not
+// claimed as more than that. What it is NOT is a second invented voltage: the
+// alternative was keeping a percentage of our own curve, which is further from
+// what the hardware does, not closer.
+//
+// Strictly-less, matching the firmware line above: at exactly 3500 the
+// companion does not warn, so neither do we.
+const LOW_BATT_MV = 3500
 
 export function parseStatsCore(bytes) {
   if (!bytes || bytes.length < 11) return null
@@ -98,9 +104,14 @@ export function mvToPercent(mv) {
   return Math.max(0, Math.min(100, Math.round(pct)))
 }
 
+// Unknown percentage is not "low": a multi-cell pack at 6100mV is genuinely
+// flat, but we cannot tell, and a warning that fires on a guess is the same
+// failure as one that never fires. mvToPercent is what knows that — it answers
+// null for a missing reading and for a pack whose endpoints we do not have —
+// so the threshold below only ever sees a 1S pack on the firmware curve.
 export function isLowBattery(mv) {
-  const pct = mvToPercent(mv)
-  return pct !== null && pct <= LOW_BATTERY_PERCENT
+  if (mvToPercent(mv) === null) return false
+  return mv < LOW_BATT_MV
 }
 
 const CMD_GET_STATS = 56
