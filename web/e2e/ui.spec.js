@@ -451,3 +451,40 @@ test('the entry module scripts execute in insertion order, not whenever they loa
   expect(await page.evaluate(() => typeof window.currentHunters)).toBe('function')
   expect(await page.evaluate(() => typeof window.currentTypes)).toBe('function')
 })
+
+test("Leaflet's own controls follow the theme instead of keeping their defaults", async ({ page }) => {
+  // #427: neither stylesheet had a rule for them, so the zoom buttons and the
+  // attribution strip stayed Leaflet white (#fff / rgba(255,255,255,.8)) on an
+  // #0b0e14 page -- the least important element on screen with the highest
+  // contrast on it.
+  //
+  // Computed values, not the presence of a rule: the attribution needed two
+  // classes to beat Leaflet's own `.leaflet-container .leaflet-control-
+  // attribution`, and a single-class rule recoloured the text while leaving
+  // the background white. A test that only checked the stylesheet would have
+  // passed that.
+  await page.goto('/')
+  const read = () => page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement)
+    const px = (v) => root.getPropertyValue(v).trim()
+    const zoom = getComputedStyle(document.querySelector('.leaflet-control-zoom a'))
+    const attr = getComputedStyle(document.querySelector('.leaflet-control-attribution'))
+    // Whitespace-stripped: the token ships as rgba(18,23,33,0.92) and
+    // getComputedStyle normalises it to rgba(18, 23, 33, 0.92). Same colour,
+    // different formatting.
+    const norm = (v) => v.replace(/\s+/g, '')
+    return { theme: document.documentElement.getAttribute('data-theme'), surface: norm(px('--ch-surface')),
+      zoomBg: norm(zoom.backgroundColor), zoomColor: norm(zoom.color), attrBg: norm(attr.backgroundColor) }
+  })
+
+  // Twice: once per theme, so both palettes are asserted rather than whichever
+  // one happens to be the default.
+  for (let pass = 0; pass < 2; pass++) {
+    const v = await read()
+    expect(v.zoomBg, `zoom background in ${v.theme}`).toBe(v.surface)
+    expect(v.attrBg, `attribution background in ${v.theme}`).toBe(v.surface)
+    expect(v.zoomBg, `zoom must not be Leaflet white in ${v.theme}`).not.toBe('rgb(255,255,255)')
+    await page.click('#theme-toggle')
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', v.theme)
+  }
+})
