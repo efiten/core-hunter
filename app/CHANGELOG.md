@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.11.1](https://github.com/efiten/core-hunter/compare/app-v1.11.0...app-v1.11.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **app:** collapse coincident receptions to one 3D pillar ([#419](https://github.com/efiten/core-hunter/issues/419)) ([f973714](https://github.com/efiten/core-hunter/commit/f973714f8ff954a88e813cc19e7456088d7fd05f))
+* **app:** let the node-position key fade, so it stops sitting on the ticker ([#444](https://github.com/efiten/core-hunter/issues/444)) ([fa58db2](https://github.com/efiten/core-hunter/commit/fa58db25955802aefa3d9fbf11ff760ea613e7e2)), closes [#413](https://github.com/efiten/core-hunter/issues/413)
+* **app:** stop MapLibre shading the tier colour out of the 3D bars ([#446](https://github.com/efiten/core-hunter/issues/446)) ([29e73dc](https://github.com/efiten/core-hunter/commit/29e73dc69c16333df00a2537c8bd60e5c72559c8))
+* **app:** warn on a low battery when the companion does, not 260 mV later ([#443](https://github.com/efiten/core-hunter/issues/443)) ([61bd271](https://github.com/efiten/core-hunter/commit/61bd2713016fe8a5d2446cd01f7dd40d9eb758ad)), closes [#380](https://github.com/efiten/core-hunter/issues/380)
+
+
+### Tests
+
+* **app,web:** pin densityGrid's kernel, which nothing was holding ([#442](https://github.com/efiten/core-hunter/issues/442)) ([b1807dd](https://github.com/efiten/core-hunter/commit/b1807dde1ba4b70aa9997a5e64c8f77d74a95442)), closes [#370](https://github.com/efiten/core-hunter/issues/370)
+
 ## [1.11.0](https://github.com/efiten/core-hunter/compare/app-v1.10.0...app-v1.11.0) (2026-08-19)
 
 
