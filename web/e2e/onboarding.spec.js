@@ -213,3 +213,34 @@ test('a callout never swallows a click meant for the map', async ({ page }) => {
   })
   expect(passesThrough).toBe(true)
 })
+
+test('no callout is placed over the bar it is describing', async ({ page }) => {
+  // #428: positionCallouts seeded its blocker list with the centre panel only,
+  // never #bar. Every callout is side:'below', so a box anchored to a control
+  // on the bar's first row was placed straight over the bar's second row --
+  // including #auth-btn, which is the target the third callout points at. The
+  // tour hid the controls it was explaining, and avoidOverlap could not help,
+  // because it was never told the bar was there.
+  await bootstrap(page, false)
+  await page.goto('/')
+  const overlay = page.locator('#wb-onboarding')
+  await expect(overlay).toBeVisible()
+
+  const boxes = page.locator('.wb-callout:not([hidden])')
+  const count = await boxes.count()
+  // Below the breakpoint the spotlight gives up and the copy goes inline, which
+  // is a different (correct) answer -- assert the overlap only when the
+  // spotlight is actually showing.
+  test.skip(count === 0, 'spotlight fell back to the inline panel at this size')
+
+  const overlaps = await page.evaluate(() => {
+    const bar = document.getElementById('bar').getBoundingClientRect()
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    return [...document.querySelectorAll('.wb-callout')]
+      .filter((el) => !el.hidden)
+      .map((el) => ({ id: el.id, over: hit(el.getBoundingClientRect(), bar) }))
+      .filter((c) => c.over)
+      .map((c) => c.id)
+  })
+  expect(overlaps, 'callouts sitting on top of #bar').toEqual([])
+})
