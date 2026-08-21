@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { octagonRing, pillarRadiusM } from '../pointmarker.js'
+import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from '../pointmarker.js'
 
 describe('octagonRing', () => {
   it('returns a closed ring of 9 points (octagon)', () => {
@@ -98,5 +98,92 @@ describe('octagonRing size is a circumradius, deliberately (#308)', () => {
 
   it('scales linearly with radiusM', () => {
     expect(distM(51, 4, octagonRing(51, 4, 20)[0])).toBeCloseTo(2 * distM(51, 4, octagonRing(51, 4, 10)[0]), 6)
+  })
+})
+
+// Collapsing coincident pillars (#402). A stationary or slow-moving hunter logs
+// many receptions within metres of each other; each became its own octagon at
+// the same place, and coplanar side walls in one depth pass z-fight — observed
+// as a column striped red/teal along its whole height, the stripes shifting
+// with the camera. The fix has to hold for GPS jitter, which is metres, not
+// zero.
+describe('collapsePillars', () => {
+  const rec = (id, lat, lon, rssi) => ({ id, lat, lon, rssi, rx_at: 1000 + id })
+
+  it('collapses exactly coincident receptions to one', () => {
+    const out = collapsePillars([rec(1, 52.0, 4.0, -100), rec(2, 52.0, 4.0, -60)])
+    expect(out).toHaveLength(1)
+  })
+  it('keeps the strongest sample, whatever order it arrives in', () => {
+    const weakFirst = collapsePillars([rec(1, 52.0, 4.0, -100), rec(2, 52.0, 4.0, -60)])
+    const strongFirst = collapsePillars([rec(2, 52.0, 4.0, -60), rec(1, 52.0, 4.0, -100)])
+    expect(weakFirst[0].id).toBe(2)
+    expect(strongFirst[0].id).toBe(2)
+  })
+  it('hands back the record itself, so the tap still resolves to a log row', () => {
+    const [survivor] = collapsePillars([rec(7, 52.0, 4.0, -70)])
+    expect(survivor).toEqual(rec(7, 52.0, 4.0, -70))
+  })
+  it('draws the survivor where it was heard, not at a cell centre', () => {
+    // Two records, so the collapse actually runs — a single one short-circuits
+    // and would pass no matter what the survivor's coordinates were rewritten to.
+    const [survivor, ...rest] = collapsePillars([
+      rec(1, 52.000031, 4.000047, -70),
+      rec(2, 52.000035, 4.000051, -90),
+    ])
+    expect(rest).toEqual([])
+    expect(survivor.lat).toBe(52.000031)
+    expect(survivor.lon).toBe(4.000047)
+  })
+  it('collapses receptions a few metres apart — GPS jitter, not a second position', () => {
+    const out = collapsePillars([rec(1, 52.0, 4.0, -70), rec(2, 52.0 + 3 / 111320, 4.0, -80)])
+    expect(out).toHaveLength(1)
+  })
+  it('keeps positions further apart than the merge distance', () => {
+    const out = collapsePillars([rec(1, 52.0, 4.0, -70), rec(2, 52.0 + 50 / 111320, 4.0, -80)])
+    expect(out).toHaveLength(2)
+  })
+  // The case plain grid binning gets wrong: two samples 1 m apart still land in
+  // different cells when they straddle a boundary, and two pillars 1 m apart
+  // with a 3 m radius overlap — which is the whole defect, unfixed.
+  it('collapses across a cell boundary, where a bare grid would not', () => {
+    const M_PER_DEG_LAT = 111320
+    const half = (Math.round(52 * M_PER_DEG_LAT / PILLAR_MERGE_M) + 0.5) * PILLAR_MERGE_M / M_PER_DEG_LAT
+    const out = collapsePillars([
+      rec(1, half - 0.5 / M_PER_DEG_LAT, 4.0, -70),
+      rec(2, half + 0.5 / M_PER_DEG_LAT, 4.0, -80),
+    ])
+    expect(out).toHaveLength(1)
+  })
+  // One 10 m cell is 14 m across the diagonal, so two records can share a cell
+  // and still be further apart than the merge distance. Keying survivors by
+  // cell alone loses one of them.
+  it('keeps both when one cell holds two positions further apart than the merge distance', () => {
+    // Built in cell units so both records provably land in the SAME cell:
+    // opposite corners at 0.4 of a cell from its centre, 11.3 m apart. 0.4 and
+    // not 0.49 — the module scales longitude by cos(lat) of the first record,
+    // which shifts a position by ~0.03 of a cell against the round number used
+    // here, enough to push a 0.49 corner into the next cell.
+    const M_PER_DEG_LAT = 111320
+    const M_PER_DEG_LON = 111320 * Math.cos((52 * Math.PI) / 180)
+    const cx = Math.round(4 * M_PER_DEG_LON / PILLAR_MERGE_M)
+    const cy = Math.round(52 * M_PER_DEG_LAT / PILLAR_MERGE_M)
+    const at = (fx, fy) => [(cy + fy) * PILLAR_MERGE_M / M_PER_DEG_LAT, (cx + fx) * PILLAR_MERGE_M / M_PER_DEG_LON]
+    const [latA, lonA] = at(0.4, 0.4)
+    const [latB, lonB] = at(-0.4, -0.4)
+    const out = collapsePillars([rec(1, latA, lonA, -70), rec(2, latB, lonB, -80)])
+    expect(out.map((r) => r.id).sort()).toEqual([1, 2])
+  })
+  it('drops records with no position, which cannot be drawn at all', () => {
+    const out = collapsePillars([rec(1, null, null, -70), rec(2, 52.0, 4.0, -80)])
+    expect(out.map((r) => r.id)).toEqual([2])
+  })
+  it('treats a missing rssi as weakest rather than dropping the record', () => {
+    expect(collapsePillars([{ id: 1, lat: 52.0, lon: 4.0 }])).toHaveLength(1)
+    const out = collapsePillars([{ id: 1, lat: 52.0, lon: 4.0 }, rec(2, 52.0, 4.0, -110)])
+    expect(out[0].id).toBe(2)
+  })
+  it('returns nothing for no input', () => {
+    expect(collapsePillars([])).toEqual([])
   })
 })
