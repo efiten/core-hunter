@@ -87,3 +87,49 @@ describe('nodePosKeyText — kept in step with the app copy', () => {
     expect(nodePosKeyText()).toBe(NODEPOS_KEY_TEXT)
   })
 })
+
+// #426: the disclaimer block is a quarter of a phone screen, over the part of
+// the map being read. On a wide screen the same corner costs nothing, so the
+// glance is scoped to narrow viewports rather than applied to web as a whole.
+describe('nodePosPresentation — the prose is a glance on a narrow screen', () => {
+  const drawn = { on: true, member: true, registry: { status: 'ok', stale: false }, drawn: 3 }
+
+  it('keeps the prose on a wide screen however long the layer is on', () => {
+    expect(nodePosPresentation({ ...drawn, narrow: false, glanceExpired: true }).note).toBe(true)
+    expect(nodePosPresentation({ ...drawn, narrow: false, glanceExpired: false }).note).toBe(true)
+  })
+
+  it('shows it on a narrow screen and then lets it go', () => {
+    expect(nodePosPresentation({ ...drawn, narrow: true, glanceExpired: false }).note).toBe(true)
+    expect(nodePosPresentation({ ...drawn, narrow: true, glanceExpired: true }).note).toBe(false)
+  })
+
+  // §7: the key is the half that must stay, so the glance must not reach it.
+  it('never takes the key with it', () => {
+    for (const glanceExpired of [true, false]) {
+      const r = nodePosPresentation({ ...drawn, narrow: true, glanceExpired })
+      expect(r.key, String(glanceExpired)).toContain('▲')
+    }
+  })
+
+  // Every other branch already answers note:false, so the glance must not turn
+  // one of them back on -- a guest or an unreachable registry has no prose to
+  // show in the first place.
+  it('cannot switch the prose on for a state that has none', () => {
+    const off = [
+      { on: false },
+      { on: true, member: false },
+      { on: true, registry: { status: 'empty' } },
+      { on: true, registry: { status: 'unavailable' } },
+      { on: true, registry: { status: 'ok' }, drawn: 0 },
+    ]
+    for (const base of off) {
+      expect(nodePosPresentation({ ...base, narrow: true, glanceExpired: false }).note,
+        JSON.stringify(base)).toBe(false)
+    }
+  })
+
+  it('defaults to no glance, so a caller that does not opt in is unaffected', () => {
+    expect(nodePosPresentation(drawn).note).toBe(true)
+  })
+})

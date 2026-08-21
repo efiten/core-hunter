@@ -3,7 +3,7 @@ import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
-import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
+import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
@@ -904,8 +904,39 @@ async function fetchNodeRegistry() {
 // `on` defaults to the checkbox, but the role branch passes it explicitly: it
 // clears the checkbox before it can explain itself, and "the account is why"
 // is precisely what a guest who deep-linked ?nodepos=1 needs to be told.
+// Narrow enough that the disclaimer block is a quarter of the map (#426).
+// matchMedia rather than innerWidth: it re-answers on rotation without this
+// having to listen for resize itself.
+const narrowScreen = () => window.matchMedia('(max-width: 640px)').matches
+
+// Cleared on every entry, so rapid toggling cannot have a stale timer hide the
+// prose two seconds into a later activation.
+let nodePosGlanceTimer = null
+let nodePosGlanceOver = false
+// The arguments the last real caller passed. The glance timer has to re-render
+// with THESE and not with the defaults: `registry: null` means "unreachable" to
+// nodePosPresentation, so a bare re-render would replace a working layer's key
+// with an error line two seconds after switching it on.
+let nodePosNoticeArgs = {}
+
+// Restarts the glance. Called when the layer is switched on, so that off-and-on
+// is a fresh glance rather than a memory of the last one.
+function restartNodePosGlance() {
+  if (nodePosGlanceTimer) { clearTimeout(nodePosGlanceTimer); nodePosGlanceTimer = null }
+  nodePosGlanceOver = false
+  if (!nodePosCb.checked) return
+  nodePosGlanceTimer = setTimeout(() => {
+    nodePosGlanceTimer = null
+    nodePosGlanceOver = true
+    showNodePosNotice(nodePosNoticeArgs)
+  }, NODEPOS_GLANCE_MS)
+}
+
 function showNodePosNotice({ on = nodePosCb.checked, member = true, registry = null, drawn = 0 } = {}) {
-  const { note, key } = nodePosPresentation({ on, member, registry, drawn })
+  nodePosNoticeArgs = { on, member, registry, drawn }
+  const { note, key } = nodePosPresentation({
+    on, member, registry, drawn, narrow: narrowScreen(), glanceExpired: nodePosGlanceOver,
+  })
   const noteEl = document.getElementById('nodepos-note')
   const keyEl = document.getElementById('nodepos-key')
   if (noteEl) noteEl.hidden = !note
@@ -1012,7 +1043,7 @@ async function drawNodePositions() {
   }
 }
 
-nodePosCb.addEventListener('change', () => { drawNodePositions() })
+nodePosCb.addEventListener('change', () => { restartNodePosGlance(); drawNodePositions() })
 
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')

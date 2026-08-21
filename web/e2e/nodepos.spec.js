@@ -278,3 +278,34 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
   await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === 0)
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
+
+test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ page }) => {
+  // #426: the same 300px corner block is cheap on a desktop map and a quarter
+  // of the viewport on a phone, over the part of the map being read. The key is
+  // one line and never goes -- that is the half §7 requires.
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.setViewportSize({ width: 390, height: 780 })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+
+  const note = page.locator('#nodepos-note')
+  const key = page.locator('#nodepos-key')
+  await expect(note).toBeVisible()
+  await expect(note).toBeHidden({ timeout: 10000 })
+  await expect(key).toBeVisible()
+  await expect(key).toContainText('▲')
+
+  // Off and on again is a fresh glance, not a memory of the last one.
+  await page.uncheck('#f-nodepos')
+  await page.check('#f-nodepos')
+  await expect(note).toBeVisible()
+
+  // Same page, wide: the prose stays put well past the glance.
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.uncheck('#f-nodepos')
+  await page.check('#f-nodepos')
+  await expect(note).toBeVisible()
+  await expect(key).toBeVisible()
+  await page.waitForTimeout(3000)
+  await expect(note).toBeVisible()
+})
