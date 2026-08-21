@@ -73,11 +73,23 @@ function saveSeen() {
 // positionCallouts() does. Re-run on resize while the overlay is open, because
 // the toolbar wraps to a second row on a narrow window and every anchor moves.
 //
-// Blockers are the centre panel and every callout already placed. The panel
-// half was missing until review: between roughly 760 and 1000 px the panel is
-// wide enough to reach the boxes but the window is not narrow enough to trip
-// the old fixed-width fallback, so all three sat behind it with their text
-// clipped mid-sentence — a band neither e2e viewport covered.
+// Blockers are the toolbar, the centre panel, and every callout already placed.
+// The panel half was missing until review: between roughly 760 and 1000 px the
+// panel is wide enough to reach the boxes but the window is not narrow enough
+// to trip the old fixed-width fallback, so all three sat behind it with their
+// text clipped mid-sentence — a band neither e2e viewport covered.
+//
+// The toolbar half was missing until #428, and cost more: every callout is
+// side:'below', so a box anchored to a control on the bar's first row was
+// placed straight over the bar's second row — including #auth-btn, the target
+// the third callout points at. The tour hid the controls it was explaining, and
+// avoidOverlap saw the position as clear because nothing had told it the bar
+// was there. #bar as a whole rather than each control: it is full-width and
+// avoidOverlap only moves boxes vertically, so per-control blockers would come
+// to the same answer through more work.
+//
+// Read live rather than assumed to be one row: the bar wraps, and how many rows
+// it has depends on the viewport and on content that arrives after load.
 //
 // There is no width constant any more. Whether the spotlight is usable is a
 // question about the space that actually exists, so it is asked of the
@@ -87,7 +99,10 @@ function saveSeen() {
 export function positionCallouts() {
   const viewport = { width: window.innerWidth, height: window.innerHeight }
   const panel = document.querySelector('.wb-panel')
-  const blockers = panel ? [panel.getBoundingClientRect()] : []
+  const bar = document.getElementById('bar')
+  const blockers = []
+  if (bar) blockers.push(bar.getBoundingClientRect())
+  if (panel) blockers.push(panel.getBoundingClientRect())
   const boxes = []
   let spotlight = true
   for (const co of ONBOARDING_CALLOUTS) {
