@@ -26,6 +26,7 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
+import { connectButton } from './connectstate.js'
 import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from './settings.js'
 import { parseChangelog, hasUnseen, unseenCount } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
@@ -128,6 +129,9 @@ const state = {
   // Startup splash (see splash.js) — hides once the first GPS fix lands.
   hasFix: false,
   bleError: false,
+  // Which of the four connect phases the buttons render (#433). One field, so a
+  // spontaneous drop cannot leave a label nobody rewrote. See connectstate.js.
+  connectPhase: 'idle',
   gpsError: false,
   // Onboarding re-opened via the "?" button after the splash has been dismissed.
   showOnboarding: false,
@@ -819,6 +823,19 @@ function connectButtons() {
   return [el('connect-btn'), el('ss-conn-btn')].filter(Boolean)
 }
 
+// Renders state.connectPhase onto both connect buttons. The single place any
+// of them gets a label, which is what stops a state transition nobody wrote a
+// label for from leaving a stale one on screen (#433).
+function applyConnectButtons() {
+  const view = connectButton(state.connectPhase)
+  for (const btn of connectButtons()) {
+    btn.textContent = view.label
+    btn.disabled = view.disabled
+    btn.classList.toggle('ss-disconnect', view.connected && btn.id === 'ss-conn-btn')
+    btn.classList.toggle('ss-connect', !view.connected && btn.id === 'ss-conn-btn')
+  }
+}
+
 // Creates and connects a fresh Publisher, replacing any prior instance. No-op
 // if MQTT isn't configured. Called on BLE connect, and again when the user
 // un-pauses MQTT from Settings while already connected.
@@ -837,7 +854,8 @@ function connectMqtt() {
 }
 
 async function connectAll() {
-  connectButtons().forEach((btn) => { btn.disabled = true; btn.textContent = 'Connecting…' })
+  state.connectPhase = 'connecting'
+  applyConnectButtons()
   state.bleError = false
   state.gpsError = false
   refreshSplash()
@@ -858,15 +876,19 @@ async function connectAll() {
       setDot('dot-ble', on)
       if (!on) {
         state.connected = false
-        // A spontaneous drop never reaches disconnectAll/stopBatteryPoll, so
-        // without this Settings keeps showing the last voltage read before the
-        // link died, indefinitely and with no sign it is stale.
+        // A spontaneous drop reaches neither disconnectAll nor stopBatteryPoll
+        // (#433). Without this the whole Connection section keeps describing a
+        // link that is gone: the last voltage, the companion name, its pubkey
+        // and SF, "BLE: Connected" — and a button still reading "Disconnect",
+        // which left a hunter out of range with no visible way back in.
         state.battery.mv = null
-        renderBattery()
+        state.connectPhase = 'idle'
+        refreshConnState()
       }
     })
     await state.transport.connect()
     state.connected = true
+    state.connectPhase = 'connected'
     setDot('dot-ble', true)
     refreshSplash()
 
@@ -897,9 +919,12 @@ async function connectAll() {
     startBatteryPoll()
   } catch (e) {
     console.error('[connect]', e)
-    connectButtons().forEach((btn) => { btn.textContent = 'Connect (retry)'; btn.disabled = false })
     state.bleError = true
-    await disconnectAll(true)
+    // The phase is passed in rather than set here and preserved by a flag: the
+    // old code set the label first and then called disconnectAll(silent) to
+    // stop it being overwritten, which is an ordering dependency waiting to be
+    // broken by the next edit.
+    await disconnectAll('failed')
   }
 }
 
@@ -929,21 +954,11 @@ async function refreshAccount() {
 // Mirror the connection state into the BLE-settings Connection section. No-op
 // until the settings sheet has been built.
 function refreshConnState() {
-  const btn = el('ss-conn-btn')
-  if (!btn) return
+  if (!el('ss-conn-btn')) return
   const connected = state.connected
-  // Only flip the connected/disconnected look here — "Connecting…" and
-  // "Connect (retry)" text is set directly by connectAll()/disconnectAll()
-  // via connectButtons(), and must not be clobbered by this no-op else branch.
-  if (connected) {
-    btn.textContent = 'Disconnect'
-    btn.disabled = false
-    btn.classList.remove('ss-connect')
-    btn.classList.add('ss-disconnect')
-  } else {
-    btn.classList.remove('ss-disconnect')
-    btn.classList.add('ss-connect')
-  }
+  // Rendered from the phase, so every state has a label — including the ones
+  // no code path used to write one for (#433).
+  applyConnectButtons()
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
   el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
@@ -967,7 +982,10 @@ function refreshConnState() {
   }
 }
 
-async function disconnectAll(silent) {
+// nextPhase is where the buttons land afterwards: 'idle' for a deliberate
+// disconnect, 'failed' when an attempt died on the way in. It replaces the old
+// `silent` flag, which said what NOT to do rather than what state to be in.
+async function disconnectAll(nextPhase = 'idle') {
   setDot('dot-ble', false)
   setDot('dot-mqtt', false)
   state.connected = false
@@ -985,13 +1003,10 @@ async function disconnectAll(silent) {
     state.transport = null
   }
 
+  state.connectPhase = nextPhase
   setHuntingChrome(false)
   refreshConnState()
   refreshSplash()
-
-  if (!silent) {
-    connectButtons().forEach((btn) => { btn.textContent = 'Connect'; btn.disabled = false })
-  }
 }
 
 // ---------------------------------------------------------------------------
