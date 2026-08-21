@@ -4,6 +4,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } fro
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { unclutteredLabels } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
@@ -1057,9 +1058,31 @@ async function drawNodePositions() {
   // identical draws still changes what the layer may claim.
   showNodePosNotice({ registry, drawn: deduped.length })
 
+  // Which names fit without printing over each other (#425). Sorted by id
+  // rather than by anything positional: the order decides which of two
+  // colliding names survives, and a positional order would reshuffle the
+  // winners on every pan, so labels would flicker in and out around the edges.
+  //
+  // The raw name, not the escaped one: entities inflate the character count and
+  // the width estimate is what decides overlap.
+  const rawLabel = (d) => String(d.name || cachedName(d.id) || d.id.slice(0, 6))
+  const labelled = new Set(unclutteredLabels(
+    [...deduped]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map((d) => {
+        const pt = map.latLngToContainerPoint([d.advertised.lat, d.advertised.lon])
+        return { id: d.id, x: pt.x, y: pt.y, label: rawLabel(d) }
+      }),
+  ))
+
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),
     d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+    // The label set is part of what is drawn, and it depends on the projection
+    // rather than on the rows: a zoom that changes nothing about which nodes
+    // are in view still changes which names fit. Without it in the signature,
+    // the early return below would leave the previous zoom's labels on screen.
+    + '#' + [...labelled].join(',')
   if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
   nodePosSig = sig
   nodePosLayer.clearLayers()
@@ -1070,7 +1093,9 @@ async function drawNodePositions() {
     // The name rides on the map next to the ▲, not just in the popup: the
     // layer is opt-in, so it can afford the labels while it is on. Only the ▲
     // is labelled — the ● is the same node.
-    const label = `<span class="np-label">${esc(name || cachedName(id) || id.slice(0, 6))}</span>`
+    // Only the names that survived decluttering are drawn; the ▲ always is, and
+    // the name is still in the popup, so nothing becomes unreachable (#425).
+    const label = labelled.has(id) ? `<span class="np-label">${esc(rawLabel({ id, name }))}</span>` : ''
     L.marker([advertised.lat, advertised.lon], {
       icon: L.divIcon({ className: 'np-advert-icon', html: `<div class="np-advert" style="color:${color}">▲${label}</div>`, iconSize: [14, 16] }),
     }).bindPopup(html).addTo(nodePosLayer)

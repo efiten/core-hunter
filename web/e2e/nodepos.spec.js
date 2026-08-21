@@ -427,3 +427,39 @@ test('a redraw after the glance does not bring the disclaimer back', async ({ pa
   await expect(note).toBeHidden()
   await expect(page.locator('#nodepos-key')).toBeVisible()
 })
+
+test('overlapping names are dropped, and the markers they belong to are not', async ({ page }) => {
+  // #425: every advertised node carried its name at full length whatever else
+  // was nearby, so a real cluster printed them over each other. Four nodes a
+  // few metres apart -- indistinguishable on screen at any usable zoom.
+  const cluster = [0, 1, 2, 3].map((i) => ({
+    pubkey: `cc${i}`.padEnd(64, '0'),
+    name: `NL-DR-GTN-OBS0${i}`,
+    lat: 51.0005 + i * 0.00002,
+    lon: 4.0 + i * 0.00002,
+  }))
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8), nodes: cluster })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+
+  // Every node keeps its marker: decluttering hides names, never nodes.
+  await expect(page.locator('.np-advert')).toHaveCount(4, { timeout: 15000 })
+  const labels = page.locator('.np-label')
+  const shown = await labels.count()
+  expect(shown, 'some names must be dropped in a cluster this tight').toBeLessThan(4)
+  expect(shown, 'and at least one must survive').toBeGreaterThan(0)
+
+  // The ones that are drawn do not print over each other.
+  const overlaps = await page.evaluate(() => {
+    const boxes = [...document.querySelectorAll('.np-label')].map((el) => el.getBoundingClientRect())
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    let n = 0
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (hit(boxes[i], boxes[j])) n++
+    return n
+  })
+  expect(overlaps, 'labels drawn on top of each other').toBe(0)
+
+  // The name of a node whose label was dropped is still reachable.
+  await page.locator('.np-advert').first().click({ force: true })
+  await expect(page.locator('.leaflet-popup-content')).toContainText('NL-DR-GTN-OBS0')
+})
