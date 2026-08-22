@@ -24,8 +24,9 @@ done in the `Spammer` project.
 - **Phase B — mobile hunter PWA (`app/`):** implemented. BLE scanner,
   live thermal hunt map (thermal points + hex-heat), IndexedDB persistence,
   MQTT drain. Pending field verification with hardware and deploy of the
-  ingestor. Iteration-2 changes implemented: zero-hop-only capture/publish,
-  RSSI-based signal metric, ignore-list, and multi-resolver name resolution.
+  ingestor. Iteration-2 changes implemented: capture/publish gated on a usable GPS
+  fix rather than on naming the sender (#454), RSSI-based signal metric,
+  ignore-list, and multi-resolver name resolution.
 
 ## Components
 

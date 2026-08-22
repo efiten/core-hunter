@@ -420,3 +420,21 @@ describe('idPrefix — no surface renders a full-length id (#297)', () => {
     expect(idPrefix(null)).toBe('')
   })
 })
+
+// #454: a reception nobody can be named for has no sender at all — no kind and
+// no id — so it
+// must never surface as something you can hunt. Two independent gates in
+// dedupeSenders refuse it (the TARGET_KINDS membership test and the null-id
+// test), so this goes red only when both are gone; it pins the outcome, not
+// either mechanism. Worth having anyway: the target list is the one place
+// where "we do not know who this is" must not become a row you can select.
+describe('senderList — receptions with no sender (#454)', () => {
+  it('never lists a record with no sender', () => {
+    const rows = senderList([
+      { sender_kind: null, sender_id: null, sender_label: null, rssi: -100, rx_at: '2026-08-22T10:00:00Z' },
+      { sender_kind: 'advert_pubkey', sender_id: 'a1b2c3', sender_label: 'Real', rssi: -90, rx_at: '2026-08-22T10:00:01Z' },
+    ])
+    expect(rows.map((r) => r.sender_id)).toEqual(['a1b2c3'])
+  })
+})
+
