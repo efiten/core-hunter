@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.2](https://github.com/efiten/core-hunter/compare/web-v1.8.1...web-v1.8.2) (2026-08-22)
+
+
+### Bug Fixes
+
+* **web:** let Leaflet's own controls follow the theme ([#437](https://github.com/efiten/core-hunter/issues/437)) ([86c3ed1](https://github.com/efiten/core-hunter/commit/86c3ed17eebda1323b992a306970d40f30a26f77))
+* **web:** let the position disclaimer go on a phone, and stay on a desktop ([#438](https://github.com/efiten/core-hunter/issues/438)) ([8cbd8d6](https://github.com/efiten/core-hunter/commit/8cbd8d6f6f8f8cd79c80ffe68d5c43dc7b4a1c4d))
+
 ## [1.8.1](https://github.com/efiten/core-hunter/compare/web-v1.8.0...web-v1.8.1) (2026-08-21)
 
 
