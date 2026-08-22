@@ -4,7 +4,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } fro
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
-import { unclutteredLabels } from './nodelabels.js'
+import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
@@ -985,6 +985,16 @@ function showNodePosNotice({ on = nodePosCb.checked, member = true, registry = n
   }
 }
 
+// One probe span for the page, created on the first draw that needs it: the map
+// container exists by then, and a layer that is never switched on never touches
+// the DOM. Kept across draws so the width cache survives panning and zooming,
+// which is where the saving is (#425).
+let nodeLabelMeasure = null
+function labelMeasurer() {
+  if (!nodeLabelMeasure) nodeLabelMeasure = createLabelMeasurer(map.getContainer())
+  return nodeLabelMeasure
+}
+
 async function drawNodePositions() {
   const gen = ++nodePosGen
   // locateActive for the same reason drawObserverPoints() checks it: Locate is a
@@ -1063,8 +1073,8 @@ async function drawNodePositions() {
   // colliding names survives, and a positional order would reshuffle the
   // winners on every pan, so labels would flicker in and out around the edges.
   //
-  // The raw name, not the escaped one: entities inflate the character count and
-  // the width estimate is what decides overlap.
+  // The raw name, not the escaped one: entities inflate what is measured, and
+  // the measured width is what decides overlap.
   const rawLabel = (d) => String(d.name || cachedName(d.id) || d.id.slice(0, 6))
   const labelled = new Set(unclutteredLabels(
     [...deduped]
@@ -1073,6 +1083,7 @@ async function drawNodePositions() {
         const pt = map.latLngToContainerPoint([d.advertised.lat, d.advertised.lon])
         return { id: d.id, x: pt.x, y: pt.y, label: rawLabel(d) }
       }),
+    { measure: labelMeasurer() },
   ))
 
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
