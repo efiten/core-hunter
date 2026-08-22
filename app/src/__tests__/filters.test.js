@@ -109,3 +109,31 @@ describe('FILTER_PACKET_TYPES', () => {
     for (const t of FILTER_PACKET_TYPES) expect(t.label).toBeTruthy()
   })
 })
+
+// #454: a stored record can now carry no sender at all. That row
+// reaches makeFilter for the first time, so the two branches that read an id
+// become load-bearing: they must refuse it where an id is required and admit it
+// where only the packet type is.
+describe('makeFilter — receptions with no sender (#454)', () => {
+  const now = Date.parse('2026-08-22T10:00:00Z')
+  const anon = { rx_at: '2026-08-22T09:59:30Z', rssi: -104, hops: 0, packet_type: 'Trace',
+    sender_kind: null, sender_id: null, sender_label: null }
+
+  it('excludes it while a target is selected — it cannot be that target', () => {
+    const f = makeFilter({ sender: { ids: ['a1b2c3'] }, types: null, windowMs: null, directOnly: false })
+    expect(f(anon, now)).toBe(false)
+  })
+
+  it('admits it on a packet-type filter, which is what names it', () => {
+    const f = makeFilter({ sender: null, types: new Set(['Trace']), windowMs: null, directOnly: false })
+    expect(f(anon, now)).toBe(true)
+    const other = makeFilter({ sender: null, types: new Set(['Advert']), windowMs: null, directOnly: false })
+    expect(other(anon, now)).toBe(false)
+  })
+
+  it('is not swept up by the ignore list, which is keyed on ids it does not have', () => {
+    const f = makeFilter({ sender: null, types: null, windowMs: null, directOnly: false, ignore: new Set(['a1b2c3']) })
+    expect(f(anon, now)).toBe(true)
+  })
+})
+

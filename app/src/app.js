@@ -524,10 +524,10 @@ async function processFrame(dv) {
   const cls = classifyReception(decoded, channelNameFor)
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
-    // A direct reception refused only because the fix is too poor is the one
-    // case worth telling the user about — silently dropping receptions during
-    // a drive is indistinguishable from the app being broken (#274).
-    if (cls && cls.isDirect === true && fix) noticePoorFix(fix)
+    // The only reason left to refuse is the fix, and that is the one worth
+    // telling the user about — silently dropping receptions during a drive is
+    // indistinguishable from the app being broken (#274).
+    if (cls && fix) noticePoorFix(fix)
     return
   }
 
