@@ -1,4 +1,5 @@
-import { test, expect, clickUntil } from './fixtures.js'
+import { test, expect, clickUntil, mapSettled } from './fixtures.js'
+import { NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
 // against our RSSI estimate (●), with the gap between them as drift.
@@ -308,4 +309,121 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
   await expect(key).toBeVisible()
   await page.waitForTimeout(3000)
   await expect(note).toBeVisible()
+})
+
+// The path #426 is actually about. urlstate.bindControl restores the checkbox
+// by assignment and dispatches nothing, so a layer that comes on from the URL
+// or from restored localStorage never fires `change` -- and the glance used to
+// be started from that listener alone. Every returning phone user who had the
+// layer on last time landed here and got the permanent quarter-screen block
+// this PR exists to remove. The toggle path above is the one where a user has
+// just deliberately switched the layer on and is already looking at it.
+test('a layer restored from the URL glances too, without a change event', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.setViewportSize({ width: 390, height: 780 })
+  await page.goto('/?mode=points&nodepos=1')
+
+  await expect(page.locator('#f-nodepos')).toBeChecked()
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  const note = page.locator('#nodepos-note')
+  const key = page.locator('#nodepos-key')
+  await expect(note).toBeVisible()
+  await expect(note).toBeHidden({ timeout: 10000 })
+  await expect(key).toBeVisible()
+})
+
+// The other half of the same gap: urlstate persists to localStorage under
+// `ch-state`, so the second visit of a returning user restores the layer with
+// no `?nodepos=1` in the URL at all.
+test('a layer restored from localStorage glances too', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.setViewportSize({ width: 390, height: 780 })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+
+  // Plain revisit, no query string: the checkbox comes back from the store.
+  await page.goto('/')
+  await expect(page.locator('#f-nodepos')).toBeChecked()
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  const note = page.locator('#nodepos-note')
+  await expect(note).toBeVisible()
+  await expect(note).toBeHidden({ timeout: 10000 })
+  await expect(page.locator('#nodepos-key')).toBeVisible()
+})
+
+// The glance's verdict is read at render time, so re-answering a media query
+// changes nothing by itself -- something has to re-render. A resize does
+// happen to reach drawNodePositions (setMapTop -> invalidateSize -> moveend ->
+// refresh), which would make the query look handled while it is really the
+// network round-trip doing it. So the registry is left hanging here: with no
+// draw able to complete, the media listener is the only thing that can move
+// the note, which is the point of using matchMedia rather than innerWidth.
+test('rotating across the boundary re-decides the disclaimer without a redraw', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.setViewportSize({ width: 390, height: 780 })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+
+  const note = page.locator('#nodepos-note')
+  const key = page.locator('#nodepos-key')
+  await expect(note).toBeVisible()
+  await expect(note).toBeHidden({ timeout: 10000 })
+
+  // From here on no draw can finish.
+  await page.route('**/api/nodes/positions*', () => {})
+
+  // Turned to landscape: the block is a corner of a wide map again, so the
+  // prose is affordable and comes back.
+  await page.setViewportSize({ width: 900, height: 390 })
+  await expect(note).toBeVisible()
+  await expect(key).toBeVisible()
+
+  // And back: the glance has already expired, so portrait takes it away again
+  // rather than starting a second one.
+  await page.setViewportSize({ width: 390, height: 780 })
+  await expect(note).toBeHidden()
+  await expect(key).toBeVisible()
+})
+
+// A glance is per activation, not per draw. The layer redraws on every pan,
+// zoom and filter change, and restarting the clock there would put the prose
+// back over the map the user is reading -- and on a phone refreshing faster
+// than the glance, it would never expire at all.
+test('a redraw after the glance does not bring the disclaimer back', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.setViewportSize({ width: 390, height: 780 })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+
+  const note = page.locator('#nodepos-note')
+  await expect(note).toBeVisible()
+  await expect(note).toBeHidden({ timeout: 10000 })
+
+  // Watched rather than polled: a retrying toBeHidden() would simply wait out
+  // a restarted glance and pass, which is the assertion this test is here to
+  // avoid. The observer records any moment the note came back at all.
+  await page.evaluate(() => {
+    const el = document.getElementById('nodepos-note')
+    window.__noteReturned = !el.hidden
+    new MutationObserver(() => { if (!el.hidden) window.__noteReturned = true })
+      .observe(el, { attributes: true, attributeFilter: ['hidden'] })
+  })
+
+  // Pan: moveend -> refresh() -> drawNodePositions(), a full redraw of the
+  // layer with the note re-rendered at the end of it.
+  const box = await page.locator('#map').boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width / 2 - 80, box.y + box.height / 2 - 60, { steps: 8 })
+  await page.mouse.up()
+  await mapSettled(page)
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  // Past a restarted glance, so a note put back by the redraw has been seen
+  // and has had time to go again.
+  await page.waitForTimeout(NODEPOS_GLANCE_MS + 500)
+
+  expect(await page.evaluate(() => window.__noteReturned)).toBe(false)
+  await expect(note).toBeHidden()
+  await expect(page.locator('#nodepos-key')).toBeVisible()
 })
