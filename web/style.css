@@ -379,6 +379,13 @@ body.wb-onboarding-on #bar { z-index:710; }
 .lc-card input[type=text], .lc-card input[type=password] {
   background: var(--ch-input-bg); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 6px; padding: 8px; }
+/* Named for a screen reader, not drawn: the sheet's visible heading is its
+   tab strip, but a dialog labelled by whichever tab is first announces the
+   wrong name when it opens on another one (#420). Not display:none or
+   `hidden`, either of which would take it out of the accessibility tree and
+   leave the dialog unnamed again. */
+.ss-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .lc-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .lc-remember { font-size: .9em; color: var(--ch-muted); }
 

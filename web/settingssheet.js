@@ -9,6 +9,8 @@
 // The parity assertion is therefore on the behaviour that must agree, not on
 // the export set.
 
+import { trapFocus } from './focustrap.js'
+
 // initialSettingsTab picks the tab the sheet opens on. Unread release notes
 // win once: opening that tab acknowledges them, so the next open finds
 // unseenChangelog false and lands back on Settings. Without that write this
@@ -27,6 +29,12 @@ export function initSettingsSheet(whatsNew) {
   const modal = document.getElementById('settings-modal')
   const close = document.getElementById('ss-close')
   if (!btn || !modal) return
+  // aria-modal tells assistive tech the page behind is inert, so Tab has to
+  // agree — without this, two presses from Close reached the map, then the
+  // attribution links, then the filter bar. Attached to the card because that
+  // is the element carrying role="dialog"; the scrim around it holds nothing
+  // focusable of its own, so either would behave the same today.
+  trapFocus(modal.querySelector('.lc-card'))
 
   const tab = (k) => document.getElementById('ss-tab-' + k)
   const panel = (k) => document.getElementById('ss-panel-' + k)
@@ -53,9 +61,9 @@ export function initSettingsSheet(whatsNew) {
     // answers with the flag the previous open left behind.
     whatsNew.refreshBadge()
     selectTab(initialSettingsTab({ unseenChangelog: whatsNew.unseen() }))
-    // aria-modal tells assistive tech the page behind is inert, so focus has to
-    // actually move — otherwise a keyboard user is left tabbing through a page
-    // they have just been told is not there. Same as login.js.
+    // Focus has to actually move in, not only be kept in: a keyboard user who
+    // opens the sheet and starts tabbing must start inside it. Same as
+    // login.js.
     close.focus()
   }
 

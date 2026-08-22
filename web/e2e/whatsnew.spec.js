@@ -1,4 +1,4 @@
-import { test, expect, openSettings } from './fixtures.js'
+import { test, expect, openSettings, clickUntil } from './fixtures.js'
 
 // A stand-in changelog.json so the assertions about which entries are marked
 // new do not move every time the real file gains one. The real file is
@@ -118,6 +118,96 @@ test('the panel closes on the Close button, on the scrim and on Escape', async (
   await openSettings(page, null)
   await page.keyboard.press('Escape')
   await expect(modal).toBeHidden()
+})
+
+// The walk that found the gap: from the Close button, two Tabs used to reach
+// the map, then the attribution links, then the filter bar -- content
+// aria-modal has just told a screen reader is not there.
+const tabWalk = async (page, presses, shift = false) => {
+  const seen = []
+  for (let i = 0; i < presses; i++) {
+    await page.keyboard.press(shift ? 'Shift+Tab' : 'Tab')
+    seen.push(await page.evaluate(() => {
+      const el = document.activeElement
+      if (!el || el === document.body) return 'BODY'
+      const card = el.closest('.lc-card')
+      return (card ? 'IN ' : 'OUT ') + (el.id || el.className || el.tagName)
+    }))
+  }
+  return seen
+}
+
+test('Tab stays inside the settings sheet, in both directions', async ({ page }) => {
+  await serveFixture(page)
+  await bootstrap(page, '1.4.0')
+  await page.goto('/')
+  await openSettings(page, null)
+  await expect(page.locator('#ss-close')).toBeFocused()
+
+  // What the walk should visit: everything rendered inside the card, which is
+  // NOT everything a focusable selector matches -- the sheet is tabbed, so two
+  // of its three panels are `hidden` at any moment. Computed here rather than
+  // listed, so adding a control to a panel does not silently narrow the test.
+  const rendered = await page.evaluate(() => {
+    const card = document.querySelector('#settings-modal .lc-card')
+    const sel = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    return [...card.querySelectorAll(sel)].filter((el) => el.offsetParent !== null)
+      .map((el) => 'IN ' + (el.id || el.className || el.tagName))
+  })
+  expect(rendered.length, 'the sheet must have several focusable controls').toBeGreaterThan(2)
+
+  // More presses than there are controls, so the walk goes round rather than
+  // merely reaching the end.
+  const forward = await tabWalk(page, rendered.length * 2)
+  expect(forward.filter((s) => !s.startsWith('IN ')), forward.join(' | ')).toEqual([])
+  // Everything rendered, and nothing else. This is what binds the "only what
+  // is on screen" filter: with the hidden panels' controls in the set, focus()
+  // on an invisible element is a no-op and the walk stalls on one control --
+  // still inside the dialog, so the assertion above would pass it.
+  expect(new Set(forward), forward.join(' | ')).toEqual(new Set(rendered))
+
+  const back = await tabWalk(page, rendered.length * 2, true)
+  expect(back.filter((s) => !s.startsWith('IN ')), back.join(' | ')).toEqual([])
+  expect(new Set(back), back.join(' | ')).toEqual(new Set(rendered))
+})
+
+test('Tab stays inside the login dialog too', async ({ page }) => {
+  // Same shape, same gap: login.js focused its first field and nothing else.
+  await serveFixture(page)
+  await bootstrap(page, '1.4.0')
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.goto('/')
+  await clickUntil(page, '#auth-btn', () => page.locator('#login-modal').isVisible())
+  await expect(page.locator('#login-user')).toBeFocused()
+  const seen = await tabWalk(page, 10)
+  expect(seen.filter((s) => !s.startsWith('IN ')), seen.join(' | ')).toEqual([])
+  expect(new Set(seen).size).toBeGreaterThan(1)
+})
+
+test('the dialog is named by a static heading, not by whichever tab is first', async ({ page }) => {
+  // aria-labelledby="ss-tab-settings" named the sheet after the first tab, so
+  // an open that lands on What's new announced "Settings".
+  await serveFixture(page)
+  await bootstrap(page, '1.4.0')
+  await page.goto('/')
+  await openSettings(page, null)
+  const named = await page.evaluate(() => {
+    const card = document.querySelector('#settings-modal .lc-card')
+    const label = document.getElementById(card.getAttribute('aria-labelledby'))
+    return {
+      by: card.getAttribute('aria-labelledby'),
+      text: label ? label.textContent.trim() : null,
+      isATab: !!label && label.getAttribute('role') === 'tab',
+      // Hidden from sight but not from the accessibility tree: display:none or
+      // `hidden` would leave the dialog unnamed again.
+      display: label ? getComputedStyle(label).display : null,
+      drawn: label ? label.getBoundingClientRect().width : null,
+    }
+  })
+  expect(named.text).toBe('Settings')
+  expect(named.isATab, 'the dialog must not be named after a tab').toBe(false)
+  expect(named.display).not.toBe('none')
+  expect(named.drawn).toBeLessThan(2)
 })
 
 test('focus moves into the dialog and back out again', async ({ page }) => {
