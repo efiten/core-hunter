@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.0](https://github.com/efiten/core-hunter/compare/app-v1.11.1...app-v1.12.0) (2026-08-22)
+
+
+### Features
+
+* **app:** capture what the radio hears, not only what it can name ([#455](https://github.com/efiten/core-hunter/issues/455)) ([f7518b6](https://github.com/efiten/core-hunter/commit/f7518b6a8f658b31ee8d5459e9ebfcd2bc594677))
+* **app:** give What's new its own Settings tab, and let its dot reach the HUD ([#429](https://github.com/efiten/core-hunter/issues/429)) ([bc646c3](https://github.com/efiten/core-hunter/commit/bc646c35a36b5f72ed5e99980cac2a5e2997df72)), closes [#421](https://github.com/efiten/core-hunter/issues/421)
+
 ## [1.11.1](https://github.com/efiten/core-hunter/compare/app-v1.11.0...app-v1.11.1) (2026-08-21)
 
 
