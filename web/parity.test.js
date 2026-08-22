@@ -304,7 +304,15 @@ describe('changelog — parity between the app and web copies', () => {
     }
     const ids = app.map((e) => e.id)
     expect(new Set(ids).size, 'ids must be unique').toBe(ids.length)
-    expect([...ids].sort().reverse()).toEqual(ids)
+    // "Newest first" is a claim about dates, not about slugs. A release lands
+    // several notes on one day and the order inside that day is the author's —
+    // the one a reader most needs goes on top. Sorting the ids would hand that
+    // choice to the alphabet instead. So: each id's prefix must be its own
+    // date (which is what makes the next check mean anything), and the dates
+    // must not increase down the file.
+    for (const e of app) expect(e.id.slice(0, 10), JSON.stringify(e)).toBe(e.date)
+    const dates = app.map((e) => e.date)
+    expect([...dates].sort().reverse()).toEqual(dates)
   })
 })
 

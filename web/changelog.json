@@ -5,5 +5,68 @@
     "where": "both",
     "title": "Release notes in plain language",
     "body": "This panel used to list commit subjects, so it read like a developer's log: scope prefixes, issue numbers, and a lot of entries about work nobody outside the code could see. From now on it carries one short note per change you can actually notice, and says whether it landed in the app, on the map, or both. The full technical history is still one click away on GitHub."
+  },
+  {
+    "id": "2026-08-21-whatsnew-tab",
+    "date": "2026-08-21",
+    "where": "app",
+    "title": "What's new sits in Settings",
+    "body": "Release notes used to open from their own button next to the version. They are now a tab in Settings, alongside the other panels, and the unread dot shows on the Settings button so you can see there is something to read without opening it first."
+  },
+  {
+    "id": "2026-08-21-nodepos-empty",
+    "date": "2026-08-21",
+    "where": "map",
+    "title": "The position layer says why it is empty",
+    "body": "Switching on advertised node positions and getting nothing back looked the same whether the registry was unreachable, returned no nodes, or returned nodes with no coordinates. It now says which of those happened."
+  },
+  {
+    "id": "2026-08-21-3d-pillars",
+    "date": "2026-08-21",
+    "where": "app",
+    "title": "3D view reads correctly again",
+    "body": "Receptions taken at the same spot stacked into overlapping pillars that hid each other; they now collapse into one. The signal colour is also no longer darkened by the map's lighting, so a bar's colour means the same thing as the matching point on the flat map."
+  },
+  {
+    "id": "2026-08-21-battery-warning",
+    "date": "2026-08-21",
+    "where": "app",
+    "title": "Low-battery warning matches the radio",
+    "body": "The warning used its own threshold and fired well after the companion had already decided the pack was low. It now warns when the firmware does. On boards with no battery sense the reading is left out rather than shown as empty."
+  },
+  {
+    "id": "2026-08-19-sf8-positions",
+    "date": "2026-08-19",
+    "where": "both",
+    "title": "SF8 nodes on the position layer",
+    "body": "The advertised-position layer only ever drew SF7 nodes, and said nothing about the gap. SF8 nodes are now drawn too, so the layer covers both areas the tool is used in."
+  },
+  {
+    "id": "2026-08-19-website-tour",
+    "date": "2026-08-19",
+    "where": "map",
+    "title": "A short tour for first-time visitors",
+    "body": "The map now offers a walkthrough of what it shows and what a hunter is, pointing at the controls it describes. It runs once and can be reopened from the map's controls."
+  },
+  {
+    "id": "2026-08-19-sky-and-tilt",
+    "date": "2026-08-19",
+    "where": "app",
+    "title": "3D camera can look along the ground",
+    "body": "The tilt now reaches 85 degrees instead of stopping short of the horizon, and there is a sky matching the time of day behind it, so a near-horizontal view reads as a view rather than as a broken map."
+  },
+  {
+    "id": "2026-08-19-ticker-readable",
+    "date": "2026-08-19",
+    "where": "both",
+    "title": "The receptions ticker is readable at a glance",
+    "body": "The rows were too small and too tight to take in while driving. They are now sized so a reception can be read at a glance instead of studied."
+  },
+  {
+    "id": "2026-08-19-node-positions",
+    "date": "2026-08-19",
+    "where": "map",
+    "title": "Advertised node positions on the map",
+    "body": "An optional layer draws where nodes say they are, from the node registry. That is what a node advertises about itself, not a measurement, so it is drawn separately from the receptions heat and stays out of the Locate view."
   }
 ]
