@@ -16,8 +16,18 @@
 //   with no glyphs on screen, since it implies the layer is fine and the area
 //   is simply empty.
 //
-// Web's note does not fade (the app's does, NODEPOS_GLANCE_MS): it sits in the
-// corner rather than over the HUD, so #306 does not apply here.
+// Web's note does not fade on a wide screen (the app's always does): it sits in
+// the corner rather than over the HUD, so #306 does not apply there.
+//
+// On a narrow one it does (#426). The corner is cheap on a desktop map and
+// expensive on a phone: the same 300px block is roughly a quarter of the
+// viewport, over the part of the map a hunter is looking at. So the argument
+// that #306 does not apply is a statement about screen size, not about web, and
+// this is where that gets said out loud.
+//
+// The key never fades either way. It is one line, and it is the half AGENTS.md
+// §7 actually requires.
+export const NODEPOS_GLANCE_MS = 2000
 
 export const NODEPOS_KEY_TEXT = '▲ advertised position (operator-reported) · ● estimate inferred from RSSI'
 
@@ -71,7 +81,7 @@ export function nodePosKeyText({ registryEmpty = false } = {}) {
 // failed, otherwise {status, stale}. `drawn` is how many markers this draw
 // actually produced — not how many rows arrived, since a row can survive the
 // registry and still be unplottable.
-export function nodePosPresentation({ on = false, member = true, registry = null, drawn = 0 } = {}) {
+export function nodePosPresentation({ on = false, member = true, registry = null, drawn = 0, narrow = false, glanceExpired = false } = {}) {
   if (!on) return { note: false, key: '' }
   if (!member) return { note: false, key: NODEPOS_GUEST_TEXT }
 
@@ -84,7 +94,10 @@ export function nodePosPresentation({ on = false, member = true, registry = null
 
   const suffix = stale ? NODEPOS_STALE_SUFFIX : ''
   if (drawn <= 0) return { note: false, key: NODEPOS_NONE_IN_VIEW_TEXT + suffix }
-  return { note: true, key: nodePosKeyText({ registryEmpty: false }) + suffix }
+  // The only branch that shows the prose at all, so the glance only has to be
+  // asked here. Both terms are required: a wide screen keeps it however long
+  // the layer is on, and a narrow one keeps it until the glance is over.
+  return { note: !(narrow && glanceExpired), key: nodePosKeyText({ registryEmpty: false }) + suffix }
 }
 
 // Maps one /api/nodes/positions response onto the status above. The server

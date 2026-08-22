@@ -3,7 +3,7 @@ import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
-import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
+import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
@@ -904,8 +904,77 @@ async function fetchNodeRegistry() {
 // `on` defaults to the checkbox, but the role branch passes it explicitly: it
 // clears the checkbox before it can explain itself, and "the account is why"
 // is precisely what a guest who deep-linked ?nodepos=1 needs to be told.
+// Narrow enough that the disclaimer block is a quarter of the map (#426).
+// matchMedia rather than innerWidth so the answer arrives as an event: the
+// value is read at render time, so re-answering by itself changes nothing —
+// a phone turned to landscape would keep the phone's verdict until something
+// else happened to redraw, which on a still map is never. The listener below
+// is what makes the query worth using.
+const narrowQuery = window.matchMedia('(max-width: 640px)')
+const narrowScreen = () => narrowQuery.matches
+
+// Cleared on every entry, so rapid toggling cannot have a stale timer hide the
+// prose two seconds into a later activation.
+let nodePosGlanceTimer = null
+let nodePosGlanceOver = false
+// The arguments the last real caller passed, or null before there has been one.
+// A re-render has to use THESE and not the defaults: `registry: null` means
+// "unreachable" to nodePosPresentation, so a bare re-render would replace a
+// working layer's key with an error line.
+let nodePosNoticeArgs = null
+
+// Re-render the notice from what was last drawn, for the two things that change
+// the verdict without changing the layer: the glance expiring, and the screen
+// crossing the narrow boundary. Silent before the first real render — there is
+// nothing to re-state, and stating the defaults would be a lie.
+function rerenderNodePosNotice() {
+  if (nodePosNoticeArgs) showNodePosNotice(nodePosNoticeArgs)
+}
+
+// A rotation crosses the boundary in both directions: to landscape, the prose
+// is affordable again and comes back; to portrait, an already-expired glance
+// takes it away. Neither redraws the layer, so nothing else would notice.
+narrowQuery.addEventListener('change', rerenderNodePosNotice)
+
+// Whether a glance has been started for the current activation of the layer.
+// Needed because `change` is not the only way the layer comes on:
+// urlstate.bindControl restores the checkbox by assignment and dispatches
+// nothing (urlstate.js `set:`), so ?nodepos=1 and the localStorage-restored
+// state both arrive with no event at all. Started from the change listener
+// alone, those readers never began a glance, nodePosGlanceOver stayed false,
+// and the note was permanent for the rest of the session — and since urlstate
+// persists to `ch-state`, that is every returning phone user who had the layer
+// on last time, i.e. exactly the case #426 is about.
+let nodePosGlanceStarted = false
+
+// Restarts the glance. Called when the layer is switched on, so that off-and-on
+// is a fresh glance rather than a memory of the last one.
+function restartNodePosGlance() {
+  if (nodePosGlanceTimer) { clearTimeout(nodePosGlanceTimer); nodePosGlanceTimer = null }
+  nodePosGlanceOver = false
+  nodePosGlanceStarted = false
+  if (!nodePosCb.checked) return
+  nodePosGlanceStarted = true
+  nodePosGlanceTimer = setTimeout(() => {
+    nodePosGlanceTimer = null
+    nodePosGlanceOver = true
+    rerenderNodePosNotice()
+  }, NODEPOS_GLANCE_MS)
+}
+
+// Starts the glance for a layer that came on without a change event. Once per
+// activation: a later draw — a pan, a zoom, a refresh tick — must not push the
+// note back on screen after it has gone, and must not restart the clock.
+function ensureNodePosGlance() {
+  if (!nodePosCb.checked || nodePosGlanceStarted) return
+  restartNodePosGlance()
+}
+
 function showNodePosNotice({ on = nodePosCb.checked, member = true, registry = null, drawn = 0 } = {}) {
-  const { note, key } = nodePosPresentation({ on, member, registry, drawn })
+  nodePosNoticeArgs = { on, member, registry, drawn }
+  const { note, key } = nodePosPresentation({
+    on, member, registry, drawn, narrow: narrowScreen(), glanceExpired: nodePosGlanceOver,
+  })
   const noteEl = document.getElementById('nodepos-note')
   const keyEl = document.getElementById('nodepos-key')
   if (noteEl) noteEl.hidden = !note
@@ -933,6 +1002,11 @@ async function drawNodePositions() {
     showNodePosNotice({ member: canSeeObserverPoints(currentRole) })
     return
   }
+  // Past the guards, so this is a draw that really puts the layer up. A guest
+  // deep-linking ?nodepos=1 returns above and keeps its note: "the account is
+  // why" is the only explanation on screen, and timing it out would leave an
+  // empty layer with nothing saying so.
+  ensureNodePosGlance()
   // The registry is what decides which nodes are drawn (#377). It used to be
   // the filtered reception set, which meant the layer could only ever show
   // nodes this filter happened to match — the website, with the bigger screen
@@ -1012,7 +1086,7 @@ async function drawNodePositions() {
   }
 }
 
-nodePosCb.addEventListener('change', () => { drawNodePositions() })
+nodePosCb.addEventListener('change', () => { restartNodePosGlance(); drawNodePositions() })
 
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
