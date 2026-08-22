@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from '../settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -24,6 +24,31 @@ describe('isSettingsActive', () => {
   it('is false for missing/undefined input', () => {
     expect(isSettingsActive({})).toBe(false)
     expect(isSettingsActive(undefined)).toBe(false)
+  })
+  // #421: the settings button's dot is the only pre-open signal there is, so
+  // unread release notes have to reach it. Asserted with the attenuator at its
+  // default, or the existing branch would answer for this one.
+  it('is true when release notes are unread, with every setting at its default', () => {
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: true })).toBe(true)
+  })
+  it('is false when the notes have been read and nothing else is on', () => {
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false })).toBe(false)
+  })
+})
+
+describe('initialSettingsTab', () => {
+  // Unread notes take the sheet to them once; the acknowledgement that opening
+  // the tab writes is what makes the next open land back on Settings, so these
+  // two cases are the whole behaviour.
+  it('opens on the release notes while they are unread', () => {
+    expect(initialSettingsTab({ unseenChangelog: true })).toBe('whatsnew')
+  })
+  it('opens on Settings once they have been read', () => {
+    expect(initialSettingsTab({ unseenChangelog: false })).toBe('settings')
+  })
+  it('opens on Settings for missing/undefined input', () => {
+    expect(initialSettingsTab({})).toBe('settings')
+    expect(initialSettingsTab(undefined)).toBe('settings')
   })
 })
 

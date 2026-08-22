@@ -285,7 +285,8 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #settings-sheet .sheet-head { margin: 0; padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 0;
   align-items: center; border-bottom: 1px solid var(--ch-border); }
 .ss-tabs { display: flex; gap: 14px; }
-.ss-tab { border: none; background: transparent; color: var(--ch-muted); font: inherit;
+.ss-tab { display: inline-flex; align-items: center; gap: 6px;
+  border: none; background: transparent; color: var(--ch-muted); font: inherit;
   font-size: 15px; font-weight: 600; padding: 10px 2px; margin-bottom: -1px; cursor: pointer;
   border-bottom: 2px solid transparent; }
 .ss-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
@@ -362,15 +363,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 13px; font-family: system-ui, sans-serif; cursor: pointer; }
 /* When a newer build is live, pull the eye to the reload button. */
 .ss-reload-update { border-color: var(--ch-accent-2); color: var(--ch-accent-2); }
-/* "What's new" changelog reader (#284). The dot marks a release this browser
-   has not acknowledged; the panel expands in place under the version row, so it
-   scrolls with the sheet instead of stacking another overlay on it. */
-.ss-whatsnew { display: inline-flex; align-items: center; gap: 6px; padding: 0;
-  border: none; background: none; color: var(--ch-accent-2);
-  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+/* "What's new" changelog reader (#284), its own tab since #421. The dot marks
+   a release this browser has not acknowledged; it rides the tab label, so it is
+   readable the moment the sheet opens rather than after a scroll.
+   No max-height and no border: the panel is the tab now, and .ss-panel already
+   owns the scrolling. */
 .ss-whatsnew-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ch-accent-2); }
-.ss-whatsnew-panel { margin-top: 12px; padding-top: 10px; max-height: 46vh; overflow-y: auto;
-  border-top: 1px solid var(--ch-border); }
+.ss-whatsnew-panel { padding: 0; }
 .wn-version { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 2px;
   font-size: 14px; color: var(--ch-text); }
 .wn-version:first-child { margin-top: 0; }

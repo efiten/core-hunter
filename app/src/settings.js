@@ -54,10 +54,24 @@ export function saveChangelogSeen(version) {
   try { localStorage.setItem('core-hunter-changelog-seen', version) } catch (_) {}
 }
 
-// isSettingsActive reports whether any setting under the Settings sheet
-// differs from its default — i.e. something that changes behaviour is on.
-// Drives the settings button's active-dot, mirroring isFilterActive (filters.js).
-export function isSettingsActive({ attenuatorDb } = {}) {
+// isSettingsActive reports whether the settings button deserves its dot: any
+// setting under the sheet differing from its default, or release notes the
+// reader has not opened yet (#421). Mirrors isFilterActive (filters.js).
+//
+// Unread notes ride the same dot deliberately. A second indicator on a 40px
+// button reads as noise, and the two mean the same thing to the person looking
+// at it — there is something behind this button you have not dealt with. What
+// it is, is one tap away, and the tab carries its own dot to say which.
+export function isSettingsActive({ attenuatorDb, unseenChangelog } = {}) {
   if (attenuatorDb) return true
+  if (unseenChangelog) return true
   return false
+}
+
+// initialSettingsTab picks the tab the sheet opens on. Unread release notes
+// win once: opening that tab acknowledges them (saveChangelogSeen), so the
+// next open finds unseenChangelog false and lands back on Settings. Without
+// that write this would strand the reader on the notes every single time.
+export function initialSettingsTab({ unseenChangelog } = {}) {
+  return unseenChangelog ? 'whatsnew' : 'settings'
 }
