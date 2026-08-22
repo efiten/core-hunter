@@ -363,3 +363,37 @@ body.wb-onboarding-on #bar { z-index:710; }
   border-radius: 6px; padding: 8px; }
 .lc-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .lc-remember { font-size: .9em; color: var(--ch-muted); }
+
+/* Leaflet's own controls (#427). Neither stylesheet had a single rule for
+   them, so the zoom buttons and the attribution strip kept Leaflet's defaults:
+   a pure white #fff button with #000 glyphs against an #0b0e14 page. In dark
+   theme that made the least important element on screen the highest-contrast
+   one.
+   style.css is appended by the module script and leaflet.css is a <link> in
+   the head, so these land later in the cascade and match Leaflet's own
+   specificity -- no !important needed, and none used. Tokens only, so both
+   themes follow the same switch as everything else. */
+.leaflet-bar { border: 1px solid var(--ch-border); box-shadow: none; }
+.leaflet-bar a {
+  background: var(--ch-surface); color: var(--ch-text);
+  border-bottom: 1px solid var(--ch-border);
+}
+/* --ch-border, not --ch-input-bg. Composited over the page, --ch-surface and
+   --ch-input-bg land within one 8-bit step of each other in both palettes
+   (dark rgb(17,22,32) against rgb(17,22,31), light rgb(254,251,244) against
+   rgb(255,252,245)), so hovering changed nothing a user could see. Leaflet's
+   own default had real feedback (#f4f4f4 on #fff) and this replaced it with
+   none -- and on a desktop the hover is that button's only affordance. */
+.leaflet-bar a:hover { background: var(--ch-border); }
+/* The last button has no divider under it; Leaflet writes that as a border on
+   the container's last child, so it has to be restated once the border above
+   is ours. */
+.leaflet-bar a:last-child { border-bottom: none; }
+.leaflet-bar a.leaflet-disabled { background: var(--ch-surface); color: var(--ch-muted); }
+/* Two classes, matching Leaflet's own `.leaflet-container .leaflet-control-
+   attribution`. A single-class rule loses on specificity however late it lands
+   -- measured: the text recoloured and the background stayed #fff-ish. */
+.leaflet-container .leaflet-control-attribution {
+  background: var(--ch-surface); color: var(--ch-muted);
+}
+.leaflet-container .leaflet-control-attribution a { color: var(--ch-accent-2); }

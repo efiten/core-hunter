@@ -451,3 +451,122 @@ test('the entry module scripts execute in insertion order, not whenever they loa
   expect(await page.evaluate(() => typeof window.currentHunters)).toBe('function')
   expect(await page.evaluate(() => typeof window.currentTypes)).toBe('function')
 })
+
+test("Leaflet's own controls follow the theme instead of keeping their defaults", async ({ page }) => {
+  // #427: neither stylesheet had a rule for them, so the zoom buttons and the
+  // attribution strip stayed Leaflet white (#fff / rgba(255,255,255,.8)) on an
+  // #0b0e14 page -- the least important element on screen with the highest
+  // contrast on it.
+  //
+  // Computed values, not the presence of a rule: the attribution needed two
+  // classes to beat Leaflet's own `.leaflet-container .leaflet-control-
+  // attribution`, and a single-class rule recoloured the text while leaving
+  // the background white. A test that only checked the stylesheet would have
+  // passed that.
+  await page.goto('/')
+  const read = () => page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement)
+    const px = (v) => root.getPropertyValue(v).trim()
+    const zoom = getComputedStyle(document.querySelector('.leaflet-control-zoom a'))
+    const attr = getComputedStyle(document.querySelector('.leaflet-control-attribution'))
+    // Whitespace-stripped: the token ships as rgba(18,23,33,0.92) and
+    // getComputedStyle normalises it to rgba(18, 23, 33, 0.92). Same colour,
+    // different formatting.
+    const norm = (v) => v.replace(/\s+/g, '')
+    return { theme: document.documentElement.getAttribute('data-theme'), surface: norm(px('--ch-surface')),
+      zoomBg: norm(zoom.backgroundColor), zoomColor: norm(zoom.color), attrBg: norm(attr.backgroundColor) }
+  })
+
+  // Twice: once per theme, so both palettes are asserted rather than whichever
+  // one happens to be the default.
+  for (let pass = 0; pass < 2; pass++) {
+    const v = await read()
+    expect(v.zoomBg, `zoom background in ${v.theme}`).toBe(v.surface)
+    expect(v.attrBg, `attribution background in ${v.theme}`).toBe(v.surface)
+    expect(v.zoomBg, `zoom must not be Leaflet white in ${v.theme}`).not.toBe('rgb(255,255,255)')
+    await page.click('#theme-toggle')
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', v.theme)
+  }
+})
+
+test('the zoom buttons have a hover a user can actually see, in both themes', async ({ page }) => {
+  // #427 review: the first version used --ch-input-bg, which composites to
+  // within one 8-bit step of --ch-surface in BOTH palettes -- dark
+  // rgb(17,22,32) against rgb(17,22,31), light rgb(254,251,244) against
+  // rgb(255,252,245). Hovering changed nothing. Leaflet's own default had real
+  // feedback and this replaced it with none; on a desktop that button's only
+  // affordance is the hover.
+  //
+  // It is invisible to a test that compares the two CSS values, because they
+  // ARE different strings. Only compositing them over the page shows they are
+  // the same colour, so that is what this measures.
+  //
+  // The hover state is forced through CDP rather than read out of the
+  // stylesheet: what matters is the colour the browser actually paints for
+  // :hover, whichever rule wins it.
+  await page.goto('/')
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('DOM.enable')
+  await cdp.send('CSS.enable')
+
+  const forceHover = async (on) => {
+    const { root } = await cdp.send('DOM.getDocument')
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.leaflet-control-zoom a' })
+    await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: on ? ['hover'] : [] })
+  }
+
+  const swatch = () => page.evaluate(() => {
+    const el = document.querySelector('.leaflet-control-zoom a')
+    const cs = getComputedStyle(el)
+    return { bg: cs.backgroundColor, fg: cs.color, page: getComputedStyle(document.body).backgroundColor,
+      theme: document.documentElement.getAttribute('data-theme') || 'dark' }
+  })
+
+  // Composited over the page, because --ch-surface is translucent: the whole
+  // point is that two different rgba() strings can land on the same pixel.
+  const parse = (c) => { const m = c.match(/[\d.]+/g).map(Number); return m.length === 3 ? [...m, 1] : m }
+  const over = (fg, bg) => fg.slice(0, 3).map((c, i) => Math.round(c * fg[3] + bg[i] * (1 - fg[3])))
+  const lum = (rgb) => {
+    const f = rgb.map((c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 })
+    return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]
+  }
+  const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return +((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)).toFixed(2) }
+
+  for (let pass = 0; pass < 2; pass++) {
+    await forceHover(false)
+    const rest = await swatch()
+    await forceHover(true)
+    const hov = await swatch()
+
+    const pageBg = parse(rest.page)
+    const base = over(parse(rest.bg), pageBg)
+    const hover = over(parse(hov.bg), base)
+    const glyph = over(parse(hov.fg), hover)
+    const step = ratio(base, hover)
+    const detail = `${rest.theme}: base ${base} hover ${hover}`
+
+    // 1.0 is what --ch-input-bg gave in both themes. Leaflet's own default is
+    // about 1.07 (#f4f4f4 on #fff), so this floor is above "technically a
+    // different colour" and below anything garish.
+    expect(step, `hover step, ${detail}`).toBeGreaterThan(1.2)
+    // And the glyph has to survive the state it appears in.
+    expect(ratio(glyph, hover), `glyph contrast on hover, ${detail}`).toBeGreaterThan(4.5)
+
+    // A visible hover is a new way to get this wrong: at min or max zoom
+    // Leaflet marks the button .leaflet-disabled, and lighting it under the
+    // cursor would offer feedback for a click that does nothing. Our disabled
+    // rule and the hover rule have equal specificity, so this is decided by
+    // which is written last.
+    await forceHover(false)
+    await page.evaluate(() => document.querySelector('.leaflet-control-zoom-in').classList.add('leaflet-disabled'))
+    const disabledRest = await swatch()
+    await forceHover(true)
+    const disabledHover = await swatch()
+    expect(disabledHover.bg, `disabled hover in ${rest.theme}`).toBe(disabledRest.bg)
+    await page.evaluate(() => document.querySelector('.leaflet-control-zoom-in').classList.remove('leaflet-disabled'))
+
+    await forceHover(false)
+    await page.click('#theme-toggle')
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', rest.theme)
+  }
+})
