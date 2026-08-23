@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/efiten/core-hunter/compare/web-v1.8.2...web-v1.9.0) (2026-08-23)
+
+
+### Features
+
+* **app,web:** write release notes for readers, not from the commit log ([#435](https://github.com/efiten/core-hunter/issues/435)) ([8b70eaa](https://github.com/efiten/core-hunter/commit/8b70eaa4653d1ca5ffb15e8a874b2e1743981ae0))
+
+
+### Bug Fixes
+
+* **web:** stop node-position labels printing over each other ([#439](https://github.com/efiten/core-hunter/issues/439)) ([a31e34e](https://github.com/efiten/core-hunter/commit/a31e34eda489955d48bcdf6a5e3e52f3e2e3b814))
+
 ## [1.8.2](https://github.com/efiten/core-hunter/compare/web-v1.8.1...web-v1.8.2) (2026-08-22)
 
 

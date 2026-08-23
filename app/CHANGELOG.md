@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/efiten/core-hunter/compare/app-v1.12.0...app-v1.13.0) (2026-08-23)
+
+
+### Features
+
+* **app,web:** write release notes for readers, not from the commit log ([#435](https://github.com/efiten/core-hunter/issues/435)) ([8b70eaa](https://github.com/efiten/core-hunter/commit/8b70eaa4653d1ca5ffb15e8a874b2e1743981ae0))
+
 ## [1.12.0](https://github.com/efiten/core-hunter/compare/app-v1.11.1...app-v1.12.0) (2026-08-22)
 
 
