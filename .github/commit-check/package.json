@@ -1,0 +1,14 @@
+{
+  "name": "commit-check",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CI guard: fails a PR whose squash commit release-please cannot parse (#448).",
+  "license": "ISC",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@conventional-commits/parser": "0.4.1"
+  }
+}
