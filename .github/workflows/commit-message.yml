@@ -1,0 +1,40 @@
+name: commit message
+
+# Its own workflow rather than a job in ci.yml, because of `edited`. A PR body
+# is what becomes the commit body, and it can be fixed without touching a
+# single line of code — but `on: pull_request` does not fire for an edit by
+# default, so a contributor who corrected their description would be stuck
+# looking at a red check with no way to clear it short of an empty commit. (A
+# re-run does not help: it replays the original event payload, body and all.
+# Found the hard way, on this check's own PR.)
+#
+# Putting `edited` on ci.yml instead would re-run vitest, playwright, Go and the
+# build every time someone fixes a typo in a description. This job takes ~10s.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  commit-message:
+    name: commit message — parseable by release-please
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .github/commit-check
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: .github/commit-check/package-lock.json
+      - run: npm ci
+      # The checker's own tests first: a guard that has silently stopped
+      # guarding is worse than none, and this one's whole subject is a check
+      # that passed while doing nothing (#434, #448).
+      - run: npm test
+      - run: node check.mjs

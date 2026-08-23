@@ -375,7 +375,8 @@ state.transport.onStatus((s) => {     <- column 0: breaks the whole message
 ```
 
 Any line with a word before the call is also fine, and fenced code blocks are not the problem. The
-`commit message` CI job checks this on every PR, so it fails before the merge rather than after.
+`commit message` workflow checks this on every PR and re-checks on a description edit, so it fails
+before the merge rather than after.
 
 ### Release notes — a user-visible change writes its own entry (#422)
 
