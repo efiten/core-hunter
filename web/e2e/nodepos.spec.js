@@ -427,3 +427,128 @@ test('a redraw after the glance does not bring the disclaimer back', async ({ pa
   await expect(note).toBeHidden()
   await expect(page.locator('#nodepos-key')).toBeVisible()
 })
+
+test('overlapping names are dropped, and the markers they belong to are not', async ({ page }) => {
+  // #425: every advertised node carried its name at full length whatever else
+  // was nearby, so a real cluster printed them over each other. Four nodes a
+  // few metres apart -- indistinguishable on screen at any usable zoom.
+  const cluster = [0, 1, 2, 3].map((i) => ({
+    pubkey: `cc${i}`.padEnd(64, '0'),
+    name: `NL-DR-GTN-OBS0${i}`,
+    lat: 51.0005 + i * 0.00002,
+    lon: 4.0 + i * 0.00002,
+  }))
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8), nodes: cluster })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+
+  // Every node keeps its marker: decluttering hides names, never nodes.
+  await expect(page.locator('.np-advert')).toHaveCount(4, { timeout: 15000 })
+  const labels = page.locator('.np-label')
+  const shown = await labels.count()
+  expect(shown, 'some names must be dropped in a cluster this tight').toBeLessThan(4)
+  expect(shown, 'and at least one must survive').toBeGreaterThan(0)
+
+  // The ones that are drawn do not print over each other.
+  const overlaps = await page.evaluate(() => {
+    const boxes = [...document.querySelectorAll('.np-label')].map((el) => el.getBoundingClientRect())
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    let n = 0
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (hit(boxes[i], boxes[j])) n++
+    return n
+  })
+  expect(overlaps, 'labels drawn on top of each other').toBe(0)
+
+  // The name of a node whose label was dropped is still reachable.
+  await page.locator('.np-advert').first().click({ force: true })
+  await expect(page.locator('.leaflet-popup-content')).toContainText('NL-DR-GTN-OBS0')
+})
+
+// The width the decluttering uses is measured, not estimated (#425 review).
+// This is the case the first pass got wrong: an average glyph advance ran
+// NARROW on uppercase names -- `NL-DR-GTN-OBS01` estimates 93.0 px and really
+// draws 100.1 -- so a pair sitting 96 px apart was judged clear and printed
+// over each other, on exactly the names the bug was reported for.
+//
+// The spacing is calibrated in the page rather than hard-coded, so the
+// assertion does not depend on the zoom the map happens to settle at.
+test('a pair the character estimate would call clear is decluttered on its real width', async ({ page }) => {
+  const NAME = 'NL-DR-GTN-OBS0'
+  const node = (i, lat, lon) => ({ pubkey: `cc${i}`.padEnd(64, '0'), name: `${NAME}${i}`, lat, lon })
+  // Two calibration nodes a known distance apart in longitude, to read px/deg
+  // off the live projection.
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8),
+    nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.01)] })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
+
+  const pxPerDeg = await page.evaluate(() => {
+    const xs = [...document.querySelectorAll('.np-advert')]
+      .map((el) => el.getBoundingClientRect().left).sort((a, b) => a - b)
+    return (xs[1] - xs[0]) / 0.01
+  })
+  expect(pxPerDeg, 'the two calibration markers must be distinguishable').toBeGreaterThan(100)
+
+  // 96 px apart: wider than the 93.0 the estimate claims for this name, and
+  // narrower than the 100.1 it actually occupies.
+  const GAP_PX = 96
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({
+    json: { nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.0 + GAP_PX / pxPerDeg)] },
+  }))
+  await page.uncheck('#f-nodepos')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
+
+  // Both markers, one name. Under the estimate both names were drawn, 4 px of
+  // the first sitting under the second.
+  const measured = await page.evaluate(() => {
+    const labels = [...document.querySelectorAll('.np-label')]
+    const r = labels.map((el) => el.getBoundingClientRect())
+    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+    let overlaps = 0
+    for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (hit(r[i], r[j])) overlaps++
+    return { shown: labels.length, overlaps, width: r.length ? +r[0].width.toFixed(1) : 0 }
+  })
+  expect(measured.shown, 'the second name must be dropped, not printed over the first').toBe(1)
+  expect(measured.overlaps).toBe(0)
+  // Pins the arithmetic above: if the drawn label stops being ~100 px wide,
+  // 96 is no longer between the estimate and the truth and this test is
+  // measuring something else.
+  expect(measured.width).toBeGreaterThan(GAP_PX)
+})
+
+// The probe has to be invisible, out of the way, and still have a width to
+// read. Same class as a real label for the font, so the rules that park it
+// have to win over .np-label's own positioning.
+test('the measuring probe is hidden and parked, and reads the label font', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.goto('/')
+  await page.check('#f-nodepos')
+  await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid', { timeout: 15000 })
+
+  const probe = await page.evaluate(() => {
+    const el = document.querySelector('.np-label-probe')
+    if (!el) return null
+    const label = document.querySelector('.np-label')
+    const cs = getComputedStyle(el)
+    return {
+      insideMap: !!el.closest('.leaflet-container'),
+      // Not counted as a drawn name by anything querying .np-label.
+      countedAsLabel: el.matches('.np-label'),
+      visibility: cs.visibility,
+      left: cs.left,
+      transform: cs.transform,
+      sameFont: cs.font === getComputedStyle(label).font,
+      // Not display:none -- a box with no layout has no width to measure.
+      hasWidth: el.getBoundingClientRect().width >= 0 && cs.display !== 'none',
+    }
+  })
+  expect(probe).not.toBeNull()
+  expect(probe.insideMap, 'on document.body it would inherit the page font, not Leaflet\'s').toBe(true)
+  expect(probe.visibility).toBe('hidden')
+  expect(probe.left).toBe('-9999px')
+  expect(probe.countedAsLabel).toBe(false)
+  expect(probe.sameFont).toBe(true)
+  expect(probe.hasWidth).toBe(true)
+})

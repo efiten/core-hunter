@@ -329,11 +329,22 @@ body.wb-onboarding-on #bar { z-index:710; }
 #nodepos-key { color: var(--ch-text); padding: 6px 10px; }
 .np-advert-icon { background: none; border: none; }
 .np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; cursor: pointer; }
+/* Everything that decides how wide a name comes out, shared with the hidden
+   probe nodelabels.js measures in (#425): the probe answers "how many pixels
+   does this name take" for the decluttering, so a font change here that missed
+   it would silently start measuring a different string than the one drawn. No
+   font-family on either — both inherit Leaflet's from .leaflet-container, which
+   is why the probe has to live inside the map (nodelabels.js). */
+.np-label, .np-label-probe { font-size: 11px; line-height: 1; white-space: nowrap; }
 /* Absolute so the label never shifts the ▲ off its anchored coordinate. The
    layer is opt-in, so names are shown on the map while it is on (#197). */
 .np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
-  margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
+  margin-left: 4px;
   color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
+/* Parked out of the way rather than display:none — a box with no layout has no
+   width to read. Its own class, not .np-label: a probe that answered
+   document.querySelectorAll('.np-label') would be counted as a drawn name. */
+.np-label-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
 .np-caveat { color: var(--ch-muted); font-size: 11px; }
 #locate-info .lc-warn { color: var(--ch-sig-warm); }
 #locate-info .lc-muted { color: var(--ch-muted); }
