@@ -1,88 +1,83 @@
-// "What's new" reader (#284). Pure parsing of the release-please CHANGELOG.md
-// both app/ and web/ already ship, plus the two decisions the badge needs. The
-// rendering and the localStorage read/write live in the caller.
+// Release notes for readers (#284, rewritten for #422).
+//
+// This used to parse the release-please CHANGELOG.md, which is a commit log, so
+// the panel read like one: "app,web: keep the receptions ticker off the bar's
+// last row (#388)". The scope prefix, the conventional-commit vocabulary and
+// the issue number all survived the stripping, and most of what a release
+// contains — chore, docs, test — is invisible to the person reading it.
+//
+// The source is now a hand-written changelog.json: one entry per change a user
+// could notice, in plain language, newest first. CHANGELOG.md stays exactly as
+// it is and stays the developer-facing record; the panel links out to it.
 //
 // Duplicated as app/src/changelog.js and web/changelog.js — the two deploy
 // paths cannot share a file (see web/parity.test.js), which also pins the
 // copies together. Keep them byte-identical.
 //
-// Version comparison is deliberately absent. The changelog is written newest
-// first and contains every release, so "what has appeared since the version you
-// acknowledged" is a position in that list, not a semver compare. That also
-// makes a rollback a non-event: an older running build sits *below* the
-// acknowledged version, so nothing is reported as new.
+// Seen-state is the newest entry's id rather than a version string. A release
+// with nothing user-visible in it therefore raises no dot, which is the whole
+// point: the old scheme badged every release, including the ones that only
+// moved code around.
 
-const HEADER = /^##\s+(?:\[([^\]]+)\]\([^)]*\)|(\S+))\s*(?:\(([^)]+)\))?\s*$/
-const SECTION = /^###\s+(.+?)\s*$/
-const BULLET = /^\*\s+(.+?)\s*$/
-const COMMIT_LINK = /\s*\(\[[0-9a-f]{7,40}\]\([^)]*\)\)/g
-const LINK = /\[([^\]]*)\]\([^)]*\)/g
-const ENTITIES = { '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&amp;': '&' }
+// Where an entry applies. The surfaces a reader recognises, not the repo's
+// directory names: `map` is the shared coverage map on the web, `app` is the
+// hunter PWA on their phone.
+const WHERE_LABELS = { app: 'App', map: 'Map', both: 'App and map' }
 
-// A bullet as release-please writes it:
-//   * **app,web:** carry … ([#343](…/issues/343)) ([e924935](…/commit/e924935…))
-// becomes plain text for a textContent render: the commit hash is dropped (it
-// is the longest thing on the line and means nothing to a user), links collapse
-// to their text so the issue number survives, bold scope markers go, and the
-// entities release-please escapes into titles are decoded.
-function plainText(s) {
-  let out = s.replace(COMMIT_LINK, '').replace(LINK, '$1').replace(/\*\*/g, '')
-  // &amp; last, so "&amp;lt;" does not decode into a "<".
-  for (const [entity, ch] of Object.entries(ENTITIES)) out = out.split(entity).join(ch)
-  return out.replace(/\s+/g, ' ').trim()
+// whereLabel renders that field. changelog.json is written by hand, so an
+// unrecognised value costs the label and nothing else — a typo must not take
+// the panel down with it.
+export function whereLabel(where) {
+  return WHERE_LABELS[where] || ''
 }
 
-// parseChangelog turns a release-please CHANGELOG.md into
-//   [{ version, date, sections: [{ title, items: [string] }] }]
-// newest first, in file order. A release header with no bullets under it is
-// dropped rather than rendered as an empty heading.
-export function parseChangelog(md) {
-  const releases = []
-  let release = null
-  let section = null
-  for (const line of String(md || '').split('\n')) {
-    const header = HEADER.exec(line)
-    if (header) {
-      release = { version: header[1] || header[2], date: header[3] || '', sections: [] }
-      section = null
-      releases.push(release)
-      continue
-    }
-    if (!release) continue
-    const sec = SECTION.exec(line)
-    if (sec) {
-      section = { title: sec[1], items: [] }
-      release.sections.push(section)
-      continue
-    }
-    const bullet = BULLET.exec(line)
-    if (bullet && section) section.items.push(plainText(bullet[1]))
-  }
-  return releases.filter((r) => r.sections.some((s) => s.items.length))
+// Index of the acknowledged entry, or -1 when there is no position to count
+// from: nothing acknowledged (a first run), or an id the file no longer
+// contains because the entry was edited or dropped. Guessing a position in
+// either case marks the whole file new.
+function seenIndex(entries, seenId) {
+  if (!Array.isArray(entries) || !seenId) return -1
+  return entries.findIndex((e) => e && e.id === seenId)
 }
 
-// hasUnseen drives the badge. `seen` is the version string the user last
-// acknowledged, or null/'' if they never have — a first run records the running
-// version silently instead of announcing releases the user was never here for.
-export function hasUnseen(current, seen) {
-  return Boolean(seen) && seen !== current
+// unseenEntryCount is how many entries sit above the acknowledged one, i.e.
+// how many to mark as new in the panel.
+export function unseenEntryCount(entries, seenId) {
+  const i = seenIndex(entries, seenId)
+  return i === -1 ? 0 : i
 }
 
-// unseenCount is how many of the parsed releases are newer than the
-// acknowledged one, i.e. how many to mark as new in the panel. 0 when nothing
-// was acknowledged, and 0 when the acknowledged version is not in the file at
-// all (a dev build ahead of the last release) — there is no position to count
-// from, and guessing one would mark every release new.
+// hasUnseenEntries drives the dot: the newest entry is not the one this reader
+// acknowledged. Deliberately not `unseenEntryCount > 0` — an acknowledged id
+// that has fallen out of the file badges nothing (no position) but is also not
+// "up to date", and the two answers are allowed to differ, as they did under
+// the version-string scheme.
+export function hasUnseenEntries(entries, seenId) {
+  if (!Array.isArray(entries) || !entries.length || !seenId) return false
+  return entries[0].id !== seenId
+}
+
+// migratedSeenId decides what to store at boot, and is the whole of the #422
+// migration. Three readers, three answers:
 //
-// So this and hasUnseen can disagree, and deliberately: an acknowledged version
-// that is not in the changelog badges the trigger (the running build differs
-// from what you last saw) and then marks nothing as new (there is no position to
-// count from). The reader sees a dot and an unmarked list. That is the honest
-// pair — the alternative is a dot that never appears for a dev build, or a list
-// where everything is new because we guessed a position — and it is only
-// reachable off a release, where "which entries are new" has no answer anyway.
-export function unseenCount(releases, seen) {
-  if (!seen) return 0
-  const i = releases.findIndex((r) => r.version === seen)
-  return i < 0 ? 0 : i
+//   - already on the new scheme  -> keep their id, nothing changes
+//   - acknowledged the OLD version-string scheme -> carry that value over
+//   - never acknowledged anything -> record the newest id silently, because a
+//     first-time reader has no "since you were last here"
+//
+// Without the middle case, every existing reader would have been treated as up
+// to date and would never have seen that the notes changed at all.
+//
+// The middle case carries the version string across rather than storing
+// nothing, and that is load-bearing rather than lazy. Storing nothing is
+// indistinguishable from a first visit, and hasUnseenEntries is silent for
+// those by design — the dot would never appear. A version string is not an id
+// in the file, so it lands in exactly the state both functions already handle:
+// hasUnseenEntries sees the newest entry is not it (dot), unseenEntryCount
+// finds no position (nothing marked new). Opening the panel then replaces it
+// with a real id and the migration is over.
+export function migratedSeenId(storedId, legacyAck, newestId) {
+  if (storedId) return storedId
+  if (legacyAck) return legacyAck
+  return newestId
 }

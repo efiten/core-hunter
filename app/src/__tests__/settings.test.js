@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from '../settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -117,10 +117,20 @@ describe('loadViewIndex', () => {
   })
 })
 
-describe('changelog seen-version (#284)', () => {
-  it('returns the acknowledged version', () => {
+describe('changelog acknowledgement (#284, #422)', () => {
+  it('returns the acknowledged entry id', () => {
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-changelog-entry': '2026-08-21-a' }))
+    expect(loadChangelogSeen()).toBe('2026-08-21-a')
+  })
+  // The two keys must not see each other's values, or migratedSeenId cannot
+  // tell a returning reader from a first-time one — which is the whole of the
+  // #422 migration.
+  it('does not read the old version-string key, and the legacy reader does not read the new one', () => {
     vi.stubGlobal('localStorage', storageWith({ 'core-hunter-changelog-seen': '1.6.0' }))
-    expect(loadChangelogSeen()).toBe('1.6.0')
+    expect(loadChangelogSeen()).toBe(null)
+    expect(loadLegacyChangelogAck()).toBe('1.6.0')
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-changelog-entry': '2026-08-21-a' }))
+    expect(loadLegacyChangelogAck()).toBe(null)
   })
   it('returns null when nothing was acknowledged yet', () => {
     vi.stubGlobal('localStorage', storageWith({}))
@@ -130,14 +140,14 @@ describe('changelog seen-version (#284)', () => {
     vi.stubGlobal('localStorage', throwingStorage())
     expect(loadChangelogSeen()).toBe(null)
   })
-  it('writes the version under the key the loader reads', () => {
+  it('writes the entry id under the key the loader reads', () => {
     const written = {}
     vi.stubGlobal('localStorage', { getItem: (k) => written[k] ?? null, setItem: (k, v) => { written[k] = v } })
-    saveChangelogSeen('1.7.0')
-    expect(loadChangelogSeen()).toBe('1.7.0')
+    saveChangelogSeen('2026-08-22-b')
+    expect(loadChangelogSeen()).toBe('2026-08-22-b')
   })
   it('does not throw when storage refuses the write', () => {
     vi.stubGlobal('localStorage', throwingStorage())
-    expect(() => saveChangelogSeen('1.7.0')).not.toThrow()
+    expect(() => saveChangelogSeen('2026-08-22-b')).not.toThrow()
   })
 })

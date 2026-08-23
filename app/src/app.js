@@ -27,8 +27,8 @@ import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
 import { connectButton } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen } from './settings.js'
-import { parseChangelog, hasUnseen, unseenCount } from './changelog.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from './settings.js'
+import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct } from './signal.js'
 import { createReceptionLog } from './receptionlog.js'
@@ -82,13 +82,26 @@ function saveSoundMode(mode) {
   try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
 }
 
-// "What's new" (#284). The version acknowledged *before* this session, read
-// once at boot: opening the panel acknowledges the running version, and this
-// has to keep pointing at where the user was so the panel can still mark which
-// releases are new to them. A first run records the running version silently —
-// someone opening the app for the first time has no "since you were last here".
+// "What's new" (#284, #422). The entry id acknowledged *before* this session,
+// read once at boot: opening the panel acknowledges the newest entry, and this
+// has to keep pointing at where the reader was so the panel can still mark
+// which entries are new to them.
+//
+// migratedSeenId decides what a boot stores. A first run records the newest id
+// silently — someone opening the app for the first time has no "since you were
+// last here" — while a reader carrying an acknowledgement from the old
+// version-string scheme stores nothing, so they get the dot once and find out
+// the notes are readable now.
 const whatsNewSeen = loadChangelogSeen()
-if (!whatsNewSeen) saveChangelogSeen(__APP_VERSION__)
+// Applied once the entries land, because "is the newest entry the acknowledged
+// one" is a question about the file. The dot starts hidden and appears a tick
+// later if there is something to report; a failed load leaves it hidden rather
+// than badging a panel that cannot render.
+loadEntries().then((entries) => {
+  const migrated = migratedSeenId(whatsNewSeen, loadLegacyChangelogAck(), entries[0] && entries[0].id)
+  if (migrated && migrated !== whatsNewSeen) saveChangelogSeen(migrated)
+  if (el('ss-whatsnew-dot')) refreshWhatsNewBadge()
+}).catch(() => {})
 
 // Row cap for the surfaces that are not window-scoped (the receptions log's
 // "all" mode, the target list) — see docs/2026-07-22-retention-and-bounded-reads.md.
@@ -122,7 +135,13 @@ const state = {
   // Unread release notes (#421). Lives on state so the settings button's dot
   // stays a question about state, not about storage: refreshWhatsNewBadge is
   // the one place that re-reads the acknowledgement and writes it here.
-  unseenChangelog: hasUnseen(__APP_VERSION__, whatsNewSeen),
+  //
+  // False rather than computed (#422): "unread" is now a position in the notes
+  // file, and that file arrives from an async import — `whatsNewEntries` is not
+  // even in scope yet at this line. The boot load calls refreshWhatsNewBadge
+  // when it lands, so the dot starts hidden and appears a tick later if there
+  // is something to report, which is what a failed load should leave it at too.
+  unseenChangelog: false,
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
@@ -1310,10 +1329,14 @@ function buildSettingsSheet() {
   // (initialSettingsTab), and that path has to clear the dot too.
   async function showWhatsNew() {
     const panel = el('ss-whatsnew')
-    saveChangelogSeen(__APP_VERSION__)
+    // The newest entry's id, not the running version (#422): the seen-state is
+    // a position in the notes now, so a release that adds nothing user-visible
+    // must not silently mark the notes read. #429 made this a tab, so there is
+    // no button to toggle and no early return -- reaching here IS the open.
+    saveChangelogSeen(whatsNewEntries && whatsNewEntries[0] ? whatsNewEntries[0].id : '')
     refreshWhatsNewBadge()
     try {
-      renderWhatsNew(panel, await loadReleases(), whatsNewSeen)
+      renderWhatsNew(panel, await loadEntries(), whatsNewSeen)
     } catch (_) {
       // Offline with the chunk not yet cached. The link still works once the
       // connection is back, and the panel says so rather than staying blank.
@@ -1534,41 +1557,49 @@ async function checkForUpdate() {
 }
 
 // ---------------------------------------------------------------------------
-// "What's new" — changelog reader in its own Settings tab (#284, #421)
+// "What's new" — release notes in their own Settings tab (#284, #421, #422)
 // ---------------------------------------------------------------------------
 
-// How many releases the panel lists. The rest are one tap away on GitHub —
-// CHANGELOG.md only grows, and 25 releases of collapsed commit subjects is a
-// scroll, not a summary.
+// How many entries the panel lists. The rest are one tap away on GitHub.
 const WHATSNEW_LIMIT = 10
 const RELEASES_URL = 'https://github.com/efiten/core-hunter/releases'
+const FEEDBACK_URL = 'https://github.com/efiten/core-hunter/issues/new'
 
-let whatsNewReleases = null
+let whatsNewEntries = null
 
-// The changelog is imported dynamically so it lands in its own chunk, fetched
-// the first time the panel is opened rather than on every cold start.
-async function loadReleases() {
-  if (!whatsNewReleases) {
-    whatsNewReleases = parseChangelog((await import('../CHANGELOG.md?raw')).default)
+// changelog.json is imported dynamically so it lands in its own chunk. Unlike
+// the CHANGELOG.md it replaced, it is now loaded at boot rather than on first
+// open: the dot has to know whether the newest entry is the acknowledged one,
+// which is a question about the file, not about two version strings. Curated
+// entries are a few kB where the raw changelog was 16.
+async function loadEntries() {
+  if (!whatsNewEntries) {
+    whatsNewEntries = (await import('../changelog.json')).default
   }
-  return whatsNewReleases
+  return whatsNewEntries
 }
 
-// Built as DOM rather than innerHTML: the items are changelog prose that has
-// been through link-stripping, so they are text, not markup.
-function renderWhatsNew(panel, releases, seen) {
-  const fresh = unseenCount(releases, seen)
+// Built as DOM rather than innerHTML: the entries are hand-written prose from a
+// file in the repo, and prose is rendered as text.
+function renderWhatsNew(panel, entries, seen) {
+  const fresh = unseenEntryCount(entries, seen)
   panel.replaceChildren()
-  releases.slice(0, WHATSNEW_LIMIT).forEach((rel, i) => {
+
+  // Above the entries, not below them (#422): a reader who has just been told
+  // what changed is the one most likely to have an opinion about it, and a
+  // link under ten entries is a link nobody scrolls to.
+  const ask = document.createElement('a')
+  ask.className = 'wn-feedback'
+  ask.href = FEEDBACK_URL
+  ask.target = '_blank'
+  ask.rel = 'noopener'
+  ask.textContent = 'Found a bug, or want something? Open an issue on GitHub'
+  panel.appendChild(ask)
+
+  entries.slice(0, WHATSNEW_LIMIT).forEach((entry, i) => {
     const head = document.createElement('h4')
     head.className = 'wn-version'
-    head.textContent = `v${rel.version}`
-    if (rel.date) {
-      const date = document.createElement('span')
-      date.className = 'wn-date'
-      date.textContent = rel.date
-      head.appendChild(date)
-    }
+    head.textContent = entry.title
     if (i < fresh) {
       const tag = document.createElement('span')
       tag.className = 'wn-new'
@@ -1576,29 +1607,34 @@ function renderWhatsNew(panel, releases, seen) {
       head.appendChild(tag)
     }
     panel.appendChild(head)
-    for (const section of rel.sections) {
-      const title = document.createElement('h5')
-      title.className = 'wn-section'
-      title.textContent = section.title
-      panel.appendChild(title)
-      const list = document.createElement('ul')
-      list.className = 'wn-items'
-      for (const item of section.items) {
-        const li = document.createElement('li')
-        li.textContent = item
-        list.appendChild(li)
-      }
-      panel.appendChild(list)
+
+    const meta = document.createElement('div')
+    meta.className = 'wn-meta'
+    const date = document.createElement('span')
+    date.className = 'wn-date'
+    date.textContent = entry.date || ''
+    meta.appendChild(date)
+    const where = whereLabel(entry.where)
+    if (where) {
+      const tag = document.createElement('span')
+      tag.className = 'wn-where'
+      tag.textContent = where
+      meta.appendChild(tag)
     }
+    panel.appendChild(meta)
+
+    const body = document.createElement('p')
+    body.className = 'wn-body-text'
+    body.textContent = entry.body || ''
+    panel.appendChild(body)
   })
+
   const more = document.createElement('a')
   more.className = 'wn-more'
   more.href = RELEASES_URL
   more.target = '_blank'
   more.rel = 'noopener'
-  more.textContent = releases.length > WHATSNEW_LIMIT
-    ? `Older releases (${releases.length - WHATSNEW_LIMIT} more) on GitHub`
-    : 'All releases on GitHub'
+  more.textContent = 'Full technical history on GitHub'
   panel.appendChild(more)
 }
 
@@ -1607,11 +1643,11 @@ function renderWhatsNew(panel, releases, seen) {
 // before the sheet is open. Reads storage rather than `whatsNewSeen` so
 // acknowledging clears both within the same session.
 function refreshWhatsNewBadge() {
-  const unseen = hasUnseen(__APP_VERSION__, loadChangelogSeen())
+  const unseen = hasUnseenEntries(whatsNewEntries, loadChangelogSeen())
   el('ss-whatsnew-dot').hidden = !unseen
   el('ss-tab-whatsnew').setAttribute(
     'aria-label',
-    unseen ? `What's new in v${__APP_VERSION__} — updated since you last looked` : `What's new in v${__APP_VERSION__}`,
+    unseen ? "What's new — updated since you last looked" : "What's new",
   )
   state.unseenChangelog = unseen
   refreshSettingsIndicator()

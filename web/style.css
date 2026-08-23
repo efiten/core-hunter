@@ -238,9 +238,16 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .wn-date { font-size:12px; font-weight:400; color:var(--ch-muted); }
 .wn-new { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   color:var(--ch-bg); background:var(--ch-accent-2); border-radius:999px; padding:1px 7px; }
-.wn-section { margin:8px 0 2px; font-size:12px; font-weight:600; color:var(--ch-muted); }
-.wn-items { margin:0; padding-left:18px; }
-.wn-items li { margin:3px 0; font-size:13px; line-height:1.45; color:var(--ch-text); }
+/* One entry is a title, a date + where it landed, and a paragraph (#422). The
+   release/section/bullet structure went with the commit log it came from. */
+.wn-meta { display:flex; align-items:center; gap:8px; margin:0 0 4px; }
+.wn-where { font-size:11px; font-weight:600; color:var(--ch-muted);
+  border:1px solid var(--ch-border); border-radius:999px; padding:1px 7px; }
+.wn-body-text { margin:0 0 4px; font-size:13px; line-height:1.5; color:var(--ch-text); }
+/* Above the entries, so the reader most likely to have an opinion sees it
+   without scrolling past ten of them. */
+.wn-feedback { display:block; margin:0 0 14px; padding-bottom:10px;
+  border-bottom:1px solid var(--ch-border); font-size:12.5px; color:var(--ch-accent-2); }
 .wn-more { display:block; margin:14px 0 4px; font-size:12.5px; color:var(--ch-accent-2); }
 /* ---- First-run onboarding overlay (#316) ----
    Mirrors the app's splash: a scrim over the map, the live toolbar lifted
