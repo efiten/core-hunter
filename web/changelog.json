@@ -1,5 +1,54 @@
 [
   {
+    "id": "2026-08-23-node-names-declutter",
+    "date": "2026-08-23",
+    "where": "map",
+    "title": "Node names stop printing over each other",
+    "body": "Where several advertised nodes sit close together their names overlapped into an unreadable smear. Names that would collide are now left off and the marker stays, so tapping it still gives you the name. Which names fit changes as you zoom."
+  },
+  {
+    "id": "2026-08-22-capture-everything-heard",
+    "date": "2026-08-22",
+    "where": "app",
+    "title": "The map shows everything the radio hears",
+    "body": "A reception used to be stored only when we could work out which node sent it. That threw away about two thirds of what the radio actually measured, because most relayed packets carry an identifier too short to attribute safely. Those receptions are now kept and drawn: the signal strength and the position are ours and measured, and they say something transmitted here, this strongly, without claiming who. Expect points with no sender name, and roughly three times as many of them."
+  },
+  {
+    "id": "2026-08-22-disclaimer-glance-on-phone",
+    "date": "2026-08-22",
+    "where": "map",
+    "title": "The position note gets out of the way on a phone",
+    "body": "The note explaining that positions come from radio measurements took up about a quarter of a phone screen and stayed there for the whole session. On a narrow screen it now appears and fades; on a desktop, where the corner costs nothing, it stays put. The single line naming what the two marker shapes mean is always on screen either way."
+  },
+  {
+    "id": "2026-08-22-leaflet-controls-theme",
+    "date": "2026-08-22",
+    "where": "map",
+    "title": "Zoom and attribution follow the theme",
+    "body": "The map's own zoom buttons and attribution strip kept their stock white against a dark page, which made the least important thing on screen the brightest. They now use the same colours as the rest of the map in both themes, and hovering a zoom button visibly does something again."
+  },
+  {
+    "id": "2026-08-21-connect-button-one-owner",
+    "date": "2026-08-21",
+    "where": "app",
+    "title": "The connect button always offers a way back",
+    "body": "When the link to your companion dropped on its own - out of range, radio switched off, flat battery - Settings could still show a Disconnect button next to the words Not connected, and nothing on screen said how to get back. The button now always matches the real state."
+  },
+  {
+    "id": "2026-08-21-pillar-collapse",
+    "date": "2026-08-21",
+    "where": "app",
+    "title": "Readings from one spot draw one bar",
+    "body": "Standing still logged a separate 3D bar for every reception at the same place, and the stacked bars fought over the same pixels: the column flickered between colours as the camera moved. Readings within ten metres now collapse to the strongest one. The receptions list still shows every one of them."
+  },
+  {
+    "id": "2026-08-21-nodepos-key-glance",
+    "date": "2026-08-21",
+    "where": "app",
+    "title": "The marker key stops covering the receptions list",
+    "body": "The line explaining the two node-position markers stayed on screen for as long as the layer was on, sitting on top of the receptions ticker. It now shows when you switch the layer on and fades a couple of seconds later, and tapping any node still tells you what its markers mean. The line that reports an empty registry does not fade: that one explains why the map is blank rather than labelling something on it."
+  },
+  {
     "id": "2026-08-21-readable-release-notes",
     "date": "2026-08-21",
     "where": "both",
