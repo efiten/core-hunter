@@ -143,6 +143,12 @@ test('Tab stays inside the settings sheet, in both directions', async ({ page })
   await page.goto('/')
   await openSettings(page, null)
   await expect(page.locator('#ss-close')).toBeFocused()
+  // The seeded legacy acknowledgement opens the sheet on What's new, whose body
+  // is filled by a fetch. Wait for it: the panel gains a focusable link when it
+  // lands, so measuring the rendered set before then counts one control fewer
+  // than the walk will reach, and the test fails on its own timing rather than
+  // on the trap. Every render path ends with this link, including the empty one.
+  await expect(page.locator('#ss-panel-whatsnew .wn-more')).toBeVisible()
 
   // What the walk should visit: everything rendered inside the card, which is
   // NOT everything a focusable selector matches -- the sheet is tabbed, so two
