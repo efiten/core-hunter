@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/efiten/core-hunter/compare/web-v1.9.0...web-v1.9.1) (2026-08-23)
+
+
+### Documentation
+
+* **app,web:** write the release notes for what shipped since the backfill ([#460](https://github.com/efiten/core-hunter/issues/460)) ([ca1e31a](https://github.com/efiten/core-hunter/commit/ca1e31ae31ff1b38309f6368e5da01e68018207e))
+
 ## [1.9.0](https://github.com/efiten/core-hunter/compare/web-v1.8.2...web-v1.9.0) (2026-08-23)
 
 
