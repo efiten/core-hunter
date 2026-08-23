@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/efiten/core-hunter/compare/app-v1.13.0...app-v1.13.1) (2026-08-23)
+
+
+### Documentation
+
+* **app,web:** write the release notes for what shipped since the backfill ([#460](https://github.com/efiten/core-hunter/issues/460)) ([ca1e31a](https://github.com/efiten/core-hunter/commit/ca1e31ae31ff1b38309f6368e5da01e68018207e))
+
 ## [1.13.0](https://github.com/efiten/core-hunter/compare/app-v1.12.0...app-v1.13.0) (2026-08-23)
 
 
