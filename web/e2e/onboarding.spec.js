@@ -1,4 +1,5 @@
 import { test, expect, clickUntil } from './fixtures.js'
+import { ONBOARDING_CALLOUTS } from '../onboarding.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
@@ -226,12 +227,24 @@ test('no callout is placed over the bar it is describing', async ({ page }) => {
   const overlay = page.locator('#wb-onboarding')
   await expect(overlay).toBeVisible()
 
-  const boxes = page.locator('.wb-callout:not([hidden])')
-  const count = await boxes.count()
-  // Below the breakpoint the spotlight gives up and the copy goes inline, which
-  // is a different (correct) answer -- assert the overlap only when the
-  // spotlight is actually showing.
-  test.skip(count === 0, 'spotlight fell back to the inline panel at this size')
+  // Two outcomes, both correct, and BOTH asserted (#458). This used to
+  // `test.skip()` when the spotlight had fallen back to the inline panel, which
+  // reported success without testing anything -- and it happened in a quarter
+  // of runs on the configured viewport, not just on a narrow one: positionCallouts()
+  // turns the spotlight off whenever a placed box still overlaps a blocker, and
+  // #bar's height depends on content that lands after load. So a quarter of the
+  // time the guard for #428 was not running, and the summary line said
+  // `1 skipped` rather than anything alarming.
+  const count = await page.locator('.wb-callout:not([hidden])').count()
+
+  if (count === 0) {
+    // Spotlight gave up: the copy has to be in the panel instead, or the tour
+    // says nothing at all. One <li> per callout, same text.
+    const inline = page.locator('#wb-inline')
+    await expect(inline, 'spotlight fell back, so the inline panel must carry the copy').toBeVisible()
+    await expect(inline.locator('li')).toHaveCount(ONBOARDING_CALLOUTS.length)
+    return
+  }
 
   const overlaps = await page.evaluate(() => {
     const bar = document.getElementById('bar').getBoundingClientRect()
