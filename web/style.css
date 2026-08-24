@@ -477,6 +477,51 @@ body.wb-onboarding-on #bar { z-index:710; }
 }
 .leaflet-container .leaflet-control-attribution a { color: var(--ch-accent-2); }
 
+/* Mobile filter sheet (#423). The stylesheet had no breakpoint at all, so #bar
+   wrapped its controls into six rows on a phone and left the map the bottom
+   half of the screen.
+
+   Above the breakpoint this changes nothing: #bar-filters is `display:
+   contents`, so its children remain direct flex items of #bar and lay out
+   exactly as they did, and the pill is not rendered. Nothing is re-parented,
+   which is what keeps placePopover's toggle measurements valid (#372, #385). */
+#filter-pill { display: none; }
+#bar-filters { display: contents; }
+#bar-filters .bf-head { display: none; }
+/* :not([hidden]) is load-bearing: any author rule setting `display` beats the
+   UA's [hidden] { display: none }, so without it the dot paints while carrying
+   the attribute that is supposed to hide it -- measured, not assumed. */
+.fp-dot:not([hidden]) { display: inline-block; }
+.fp-dot { width: 6px; height: 6px; margin-left: 6px; border-radius: 50%;
+  background: var(--ch-accent); vertical-align: middle; }
+
+@media (max-width: 640px) {
+  #filter-pill { display: inline-flex; align-items: center; }
+  /* Hangs under the bar rather than off the bottom of the viewport, and that
+     is forced rather than chosen: #bar sets backdrop-filter, which makes it a
+     containing block for position:fixed descendants, so `bottom: 0` resolves
+     against the bar's box and puts the panel off the top of the screen
+     (measured: top -263px on a 780px viewport). `top: 100%` anchors it to the
+     bar's lower edge, which is where a dropdown from a bar belongs anyway.
+     The alternative was re-parenting out of #bar, which is what this whole
+     approach exists to avoid (#372, #385). */
+  #bar-filters { display: none; }
+  #bar-filters.bf-open {
+    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
+    position: fixed; left: 0; right: 0; top: 100%; z-index: 700;
+    max-height: 70vh; overflow-y: auto;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--ch-surface); border-bottom: 1px solid var(--ch-border);
+    border-radius: 0 0 14px 14px; backdrop-filter: blur(8px);
+  }
+  #bar-filters.bf-open .bf-head { display: flex; align-items: center; justify-content: space-between; }
+  #bar-filters.bf-open .bf-head h2 { margin: 0; font-size: 15px; }
+  #bar-filters.bf-open .bf-close { background: none; border: none; color: var(--ch-muted); padding: 4px; cursor: pointer; }
+  /* Rows rather than a wrapped strip: the sheet has the width the bar did not. */
+  #bar-filters.bf-open > * { flex: 0 0 auto; }
+  #bar-filters.bf-open #f-types { display: flex; flex-wrap: wrap; gap: 6px; }
+}
+
 /* Settings sheet (#420). Two presentations of one element: a centred card on
    desktop, a full-height sheet below the breakpoint. Web had nowhere to put a
    non-filter control before this, so theme, the walkthrough and the release
