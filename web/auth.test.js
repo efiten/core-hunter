@@ -29,6 +29,20 @@ describe('role helpers', () => {
     expect(guestNotice('guest')).toMatch(/24 h|coarse|approximate/i)
     expect(guestNotice('member')).toBeNull()
   })
+  // #440: the map opens on the hex layer, which is all-time for a degraded
+  // caller, while the 24 h window survives only on individual receptions. A
+  // notice that says "last 24 h" flat describes the layer the reader is not
+  // looking at -- and undersells the one they are, which is the whole point of
+  // the change.
+  it('separates all-time coverage from the 24 h reception window', () => {
+    for (const role of ['guest', 'hunter']) {
+      const n = guestNotice(role)
+      expect(n, role).toMatch(/all-time coverage/i)
+      expect(n, role).toMatch(/receptions show the last 24 h/i)
+      // The old copy opened by claiming the whole view was 24h-bounded.
+      expect(n, role).not.toMatch(/^(Guest|Hunter) view: last 24 h/)
+    }
+  })
   it('hunter also sees the degraded notice (own data is exact server-side, global is coarse)', () => {
     expect(guestNotice('hunter')).not.toBeNull()
   })

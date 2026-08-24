@@ -37,12 +37,23 @@ export function isDegradedFor(role) {
 //
 // The call to action differs too: a guest isn't logged in yet, but a hunter
 // already is and needs member verification instead (#174).
+//
+// The two layers now say different things about time (#440), so the copy has
+// to as well. Coverage — the hex heat, and the layer the map opens on — is
+// all-time for everyone; the 24 h window is only on the individual receptions
+// (/api/points, applyGuestWindowCap). Saying "last 24 h" flat, as this did
+// before #440, described the layer a visitor is NOT looking at and undersold
+// the one they are.
+//
+// "not named" rather than "anonymised" for the heat, because they are absent
+// from it rather than pseudonymised: the per-cell hunter list is withheld
+// entirely below member, which is what let the window go (#280).
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
-    return 'Hunter view: last 24 h, coarse ~1 km positions, anonymised — filter to your own companion to see it in full. An admin verifies you as a member to see everyone in full.'
+    return 'Hunter view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h — filter to your own companion to see those in full. An admin verifies you as a member to see everyone in full.'
   }
-  return 'Guest view: last 24 h, coarse ~1 km positions, hunters anonymised. Log in to see more.'
+  return 'Guest view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h. Log in to see more.'
 }
 export async function fetchMe() {
   try {
