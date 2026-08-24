@@ -166,7 +166,11 @@ export function createHuntMap(containerId) {
   const hexCache = lastValueCache()
   function buildHexFC(records) {
     const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
-    return hexCache.get(`${recordsKey(records)}|${res}|${currentOffset()}`, () => buildHexFCUncached(records, res))
+    // An unsignable set must not be cached under the string "null|10|0", which
+    // is a perfectly good cache key and exactly the wrong one — the null has to
+    // survive into the lookup.
+    const sig = recordsKey(records)
+    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}`, () => buildHexFCUncached(records, res))
   }
   function buildHexFCUncached(records, res) {
     const cells = new Map()

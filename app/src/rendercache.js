@@ -22,13 +22,33 @@
 // even when nothing changed.
 //
 // Length alone is not enough — one row ageing out of the window as another
-// arrives leaves it identical — so the ids are folded in too. That is an O(n)
-// pass, which is the point: an integer multiply-add per row costs about 1 ms
-// where the work it guards costs 157 ms.
+// arrives leaves it identical — so every id is folded in. Nor is length plus
+// the id range: a row swapped for another inside that range keeps all three,
+// and a filter change can do exactly that, which would hand back the previous
+// tick's answer for a set that is no longer the same one (the trap #474 found
+// itself in). Folding is an O(n) integer pass, which is the point: about 1 ms
+// to guard 157 ms.
+//
+// null means "cannot be signed", not "empty": a record with no numeric id
+// carries nothing to fold, so two different sets of them would sign alike. The
+// honest answer there is to recompute rather than trust a signature that does
+// not describe the data — lastValueCache never reuses a null key. (Records come
+// from the IndexedDB store, so they always have one; this is the guard for the
+// day something else calls render(). Borrowed from #474, which got this right.)
+// An EMPTY set is signable and common, and keeps its own key.
 export function recordsKey(records) {
-  if (!Array.isArray(records) || records.length === 0) return '0'
+  if (!Array.isArray(records)) return null
+  if (records.length === 0) return '0'
   let h = 0
-  for (const r of records) h = (h * 31 + ((r && r.id) | 0)) | 0
+  for (const r of records) {
+    const id = r == null ? undefined : r.id
+    // typeof, not Number(): Number(null) is 0, which is finite, so a null id
+    // would sign as a real record numbered zero. That is the same hole in both
+    // shapes of this guard, and it is the one an unsigned set actually arrives
+    // through — an absent field, not a string.
+    if (typeof id !== 'number' || !Number.isFinite(id)) return null
+    h = (h * 31 + (id | 0)) | 0
+  }
   return records.length + ':' + h
 }
 
@@ -41,6 +61,10 @@ export function lastValueCache() {
   let has = false
   return {
     get(k, build) {
+      // A null key is "unsignable", never "a key that happens to be null":
+      // build every time and store nothing, so a later signable set cannot
+      // match against it either.
+      if (k === null || k === undefined) { has = false; key = undefined; value = undefined; return build() }
       if (!has || k !== key) { key = k; value = build(); has = true }
       return value
     },

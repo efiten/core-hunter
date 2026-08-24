@@ -29,9 +29,26 @@ describe('recordsKey', () => {
     expect(recordsKey([rec(1), rec(2)])).not.toBe(recordsKey([rec(2), rec(1)]))
   })
 
-  it('answers for the degenerate inputs draw() can hand it', () => {
-    for (const empty of [[], null, undefined, 'nope']) expect(recordsKey(empty)).toBe('0')
-    expect(() => recordsKey([null, undefined, {}])).not.toThrow()
+  it('signs an empty set, which is a real and common answer', () => {
+    // A quiet tick with nothing in the window is a state worth caching, not an
+    // absence of one.
+    expect(recordsKey([])).toBe('0')
+  })
+
+  it('refuses to sign a set it cannot describe', () => {
+    // A record with no numeric id contributes nothing to fold, so two different
+    // sets of them would sign alike. null is the caller's cue to recompute
+    // rather than trust a signature that does not describe the data.
+    expect(recordsKey([{ lat: 51, lon: 4 }])).toBeNull()
+    expect(recordsKey([{ id: 1 }, { id: null }])).toBeNull()
+    expect(recordsKey([{ id: 1 }, { id: 'x' }])).toBeNull()
+    expect(recordsKey([{ id: 1 }, null])).toBeNull()
+    for (const notAnArray of [null, undefined, 'nope']) expect(recordsKey(notAnArray)).toBeNull()
+  })
+
+  it('accepts an id of 0, which is falsy but perfectly real', () => {
+    expect(recordsKey([{ id: 0 }, { id: 1 }])).not.toBeNull()
+    expect(recordsKey([{ id: 0 }, { id: 1 }])).not.toBe(recordsKey([{ id: 1 }, { id: 0 }]))
   })
 })
 
@@ -64,6 +81,19 @@ describe('lastValueCache', () => {
     c.get('k', build)
     c.get('k', build)
     expect(build).toHaveBeenCalledTimes(1)
+  })
+
+  it('never reuses an unsignable set, and does not poison the cache with one', () => {
+    // Two things at once: a null key always rebuilds, AND it must clear what
+    // was stored — otherwise a signable set arriving afterwards could match the
+    // entry left behind by a set that was never comparable to it.
+    const build = vi.fn((n) => n)
+    const c = lastValueCache()
+    expect(c.get('k', () => build('first'))).toBe('first')
+    expect(c.get(null, () => build('unsignable'))).toBe('unsignable')
+    expect(c.get(null, () => build('unsignable-again'))).toBe('unsignable-again')
+    expect(c.get('k', () => build('rebuilt'))).toBe('rebuilt')
+    expect(build).toHaveBeenCalledTimes(4)
   })
 
   it('rebuilds after clear()', () => {
