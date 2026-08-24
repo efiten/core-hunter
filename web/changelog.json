@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-24-render-tick-cost",
+    "date": "2026-08-24",
+    "where": "app",
+    "title": "The map keeps up when the log is large",
+    "body": "With the time filter switched off the map redraws everything it holds once a second, and after the capture change that could be enough work to take longer than a second - so the display fell behind and the phone ran hot. It now reuses what cannot have changed since the last redraw. Nothing looks different; it just keeps up. The usual half-hour view was never affected."
+  },
+  {
     "id": "2026-08-23-node-names-declutter",
     "date": "2026-08-23",
     "where": "map",

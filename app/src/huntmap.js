@@ -7,6 +7,7 @@ import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
+import { recordsKey, lastValueCache } from './rendercache.js'
 import { skyForHour, currentHour } from './sky.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -135,9 +136,15 @@ export function createHuntMap(containerId) {
   // loop used to skip itself, so there is no second guard here. The flat 2D
   // layer is deliberately left uncollapsed -- circles have no side walls, so it
   // has overplotting but not this defect.
+  // The collapse is cached, the collection is not (#462): collapsePillars is
+  // the single most expensive thing a tick does — 157 ms of a 193 ms tick at
+  // the largest observed store — and it depends only on the records. What is
+  // built from it carries ageFade, which is a function of the clock, so that
+  // half has to run every tick or the fade freezes on screen.
+  const collapseCache = lastValueCache()
   function buildPoints3DFC(records, nowMs) {
     const feats = []
-    for (const r of collapsePillars(records)) {
+    for (const r of collapseCache.get(recordsKey(records), () => collapsePillars(records))) {
       const tier = rssiTier(r.rssi, currentOffset())
       const fade = ageFade(r.rx_at, nowMs, timeWindowMs)
       const ring = octagonRing(r.lat, r.lon, pillarRadiusM(r.lat, map.getZoom(), POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
@@ -152,9 +159,21 @@ export function createHuntMap(containerId) {
     }
     return fc(feats)
   }
+  // Fully cacheable, unlike the point collections: nothing here reads the clock.
+  // A cell's colour and height come from the best RSSI in it and the attenuator
+  // offset, so the answer changes only when the records, the zoom resolution or
+  // that offset do — all three are in the key (#462).
+  const hexCache = lastValueCache()
   function buildHexFC(records) {
-    const cells = new Map()
     const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
+    // An unsignable set must not be cached under the string "null|10|0", which
+    // is a perfectly good cache key and exactly the wrong one — the null has to
+    // survive into the lookup.
+    const sig = recordsKey(records)
+    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}`, () => buildHexFCUncached(records, res))
+  }
+  function buildHexFCUncached(records, res) {
+    const cells = new Map()
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
       const id = hexCellAt(r.lat, r.lon, res)
