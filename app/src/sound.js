@@ -32,20 +32,28 @@ export function nextSoundMode(mode) {
   return SOUND_MODES[(Math.max(i, 0) + 1) % SOUND_MODES.length]
 }
 
-// RSSI → ping pitch on the HARMONIC SERIES of F2 (87.31 Hz), consonant
-// overtones only: F4 A4 C5 F5 G5 A5 C6 F6. The generative music plays in
-// F-pentatonic, and overtones of F physically cannot clash with it — that was
-// the fix for the first pentatonic attempt, a kalimba tuned to G, which fought
-// the music. Hotter signal = higher harmonic.
+// RSSI → cue pitch on the HARMONIC SERIES of F2 (87.31 Hz). The generative
+// music plays in F-pentatonic, and overtones of F physically cannot beat
+// against it — that was the fix for the first attempt, a kalimba tuned to G,
+// which fought the music. Hotter signal = higher harmonic.
 //
-// F6 is the eighth step, added with the wider band of #282: the steps are
-// evenly spaced across weak..strong, so stretching the band from 40 dB to
-// 50 dB over seven steps would have coarsened each one from 6.7 to 8.3 dB —
-// swallowing a 7 dB gain at close range, which is exactly the change you hunt
-// by. Eight steps put it back at 7.1 dB. F6 is an octave of the root, so it
-// cannot clash with the music either.
+// The rule is "overtone of F2", NOT "pentatonic" (#471). Pentatonic was a
+// consequence of stopping at harmonic 16: up to there the overtones happen to
+// be F, A, C and G. Continuing the same series adds scale degrees — 15 is E,
+// 18 G, 20 A, 24 C — with the physical argument unchanged. Harmonics 7, 11, 13
+// and 14 stay out: those land between the keys, up to a quarter-tone off, and
+// they genuinely do clash.
+//
+// Twelve steps across the 50 dB band is 4.5 dB each, against 7.1 for the eight
+// of #282 — and 7.1 was already wide enough to swallow the 7 dB gain at close
+// range that #282 itself calls "exactly the change you hunt by".
+//
+// Extended UP rather than down, though the traffic got denser at the weak end
+// after #455: harmonics 2 and 3 are F3 and C4, and below roughly 300 Hz a
+// phone speaker in a moving car gives up. Resolution you cannot hear is not
+// resolution, and the strong end is where you steer.
 const HARM_ROOT_HZ = 87.31 // F2
-const HARMONICS = [4, 5, 6, 8, 9, 10, 12, 16]
+const HARMONICS = [4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24]
 export function harmFreq(rssi, offset = 0) {
   return HARM_ROOT_HZ * HARMONICS[Math.round(rssiFrac(rssi, offset) * (HARMONICS.length - 1))]
 }
