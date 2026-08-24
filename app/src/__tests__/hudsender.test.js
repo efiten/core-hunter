@@ -79,4 +79,14 @@ describe('senderReadout never presents an id as an identity', () => {
     const { text } = senderReadout({ sender_id: 'abcdef', sender_label: 'Gent', sender_kind: 'channel_name' })
     expect(text).toBe('Gent')
   })
+
+  // #481: a trace reply carries the target's id and no name of its own. It came
+  // from that node directly — a retransmission we provoked — so it is not "via"
+  // anything, and the full id must not reach the screen (AGENTS §5.4 rule 6).
+  it('shows a trace reply as a short id, not as a name and not as a relay hop', () => {
+    const full = 'ab12cd34' + '0'.repeat(56)
+    const { text, viaRelay } = senderReadout({ sender_id: full, sender_label: null, sender_kind: 'trace_reply' })
+    expect(text).toBe('ab12cd')
+    expect(viaRelay).toBe(false)
+  })
 })

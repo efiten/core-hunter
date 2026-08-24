@@ -517,3 +517,30 @@ describe('senderList — search query (#449)', () => {
     expect(senderList(rows, { query: 'b2' }).map((r) => r.sender_label)).toEqual(['Bravo'])
   })
 })
+
+// #481: a trace reply carries the target's id, which makes it the newest record
+// for that node the moment autoping starts working. selectedRepeaterIds reads
+// only the newest record per id, so without trace_reply counting as forwarding
+// behaviour the target drops out of the ping set right after it answers — and
+// stops being pinged because it answered. Only a node that forwards packets
+// retransmits a directed trace (a companion does not), so the reply is evidence
+// of exactly the property this filter is testing for.
+describe('selectedRepeaterIds — the target answered our ping (#481)', () => {
+  const at = (s) => `2026-08-24T12:00:${String(s).padStart(2, '0')}Z`
+
+  it('keeps a relay target in the ping set once its own trace reply is the newest row', () => {
+    const rows = [
+      { sender_kind: 'relay', sender_id: 'ab12', rx_at: at(0) },
+      { sender_kind: 'trace_reply', sender_id: 'ab12', rx_at: at(5) },
+    ]
+    expect(selectedRepeaterIds(rows, new Set(['ab12']))).toEqual(['ab12'])
+  })
+
+  it('does the same for an advertised repeater whose newest row is the reply', () => {
+    const rows = [
+      { sender_kind: 'advert_pubkey', sender_role: 'Repeater', sender_id: 'cd34', rx_at: at(0) },
+      { sender_kind: 'trace_reply', sender_id: 'cd34', rx_at: at(5) },
+    ]
+    expect(selectedRepeaterIds(rows, new Set(['cd34']))).toEqual(['cd34'])
+  })
+})

@@ -98,6 +98,13 @@
     "body": "The target sheet has a search field. Type part of a name, or the first characters of an id as it appears on the map and in the ticker, and the list narrows to what matches while you type. Clearing the field brings the whole list back; what you already picked stays picked either way."
   },
   {
+    "id": "2026-08-24-trace-reply-named",
+    "date": "2026-08-24",
+    "where": "app",
+    "title": "A repeater's answer to your ping counts for the node you picked",
+    "body": "When you have a target selected, the app pings it and the repeater answers. That answer was drawn on the map as an unnamed reception, so it never counted towards where the app thinks your target is. It is now tied to the node you asked, because the app recognises the marker it put in its own ping. Traffic you merely overhear is unchanged: it stays unnamed."
+  },
+  {
     "id": "2026-08-24-render-tick-cost",
     "date": "2026-08-24",
     "where": "app",

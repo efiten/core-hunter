@@ -258,7 +258,12 @@ export function selectedRepeaterIds(records, selectedIds) {
   // as the representative so the caller still has the most specific form.
   const byFrame = new Map()
   for (const [id, r] of bySender) {
-    if (!(r.sender_role === 'Repeater' || r.sender_kind === 'relay')) continue
+    // trace_reply (#481) counts as forwarding behaviour: only a node that
+    // forwards retransmits a directed trace, and the reply is by construction
+    // the newest record for a target we are already pinging. Reading the newest
+    // record alone, without this, drops a target from the ping set BECAUSE it
+    // answered.
+    if (!(r.sender_role === 'Repeater' || r.sender_kind === 'relay' || r.sender_kind === 'trace_reply')) continue
     const frame = id.slice(0, 2)
     const prev = byFrame.get(frame)
     if (!prev || id.length > prev.length) byFrame.set(frame, id)
