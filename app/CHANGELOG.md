@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.14.0](https://github.com/efiten/core-hunter/compare/app-v1.13.2...app-v1.14.0) (2026-08-24)
+
+
+### Features
+
+* **app:** widen the cue ladder to twelve steps, 4.5 dB apart ([#472](https://github.com/efiten/core-hunter/issues/472)) ([ff012ba](https://github.com/efiten/core-hunter/commit/ff012baed9192f03f8d63f87372bf59e39a9b047))
+
+
+### Documentation
+
+* **app:** say what a lit hex cell claims after [#455](https://github.com/efiten/core-hunter/issues/455), and drop two stale claims ([#469](https://github.com/efiten/core-hunter/issues/469)) ([3040d01](https://github.com/efiten/core-hunter/commit/3040d01186b5a117486a71727841313151c60e53))
+
 ## [1.13.2](https://github.com/efiten/core-hunter/compare/app-v1.13.1...app-v1.13.2) (2026-08-24)
 
 
