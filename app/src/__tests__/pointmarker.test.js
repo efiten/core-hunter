@@ -183,6 +183,35 @@ describe('collapsePillars', () => {
     const out = collapsePillars([{ id: 1, lat: 52.0, lon: 4.0 }, rec(2, 52.0, 4.0, -110)])
     expect(out[0].id).toBe(2)
   })
+  // One cell holds a list, not a single survivor, and the reason needs three
+  // records to show: with only two, both come back either way. Here the
+  // strongest is placed first, the second lands in the SAME cell, and the third
+  // is 9.4 m from the first - close enough to merge, but it is only ever
+  // compared against whatever that cell holds. Keeping one survivor per cell
+  // loses the comparison and draws a second pillar 9.4 m from the first, which
+  // is the z-fight this function exists to prevent (#419 review).
+  it('keeps comparing against every survivor in a cell, not just the last', () => {
+    const M = 1 / 111320
+    const at = (id, dLat, dLon, rssi) => ({ id, lat: 52 + dLat * M, lon: 4 + dLon / 68535, rssi })
+    const out = collapsePillars([at(0, 5.103, -16.186, -96), at(1, 14.352, -8.073, -60), at(2, 9.175, -0.217, -110)])
+    expect(out.map((r) => r.id).sort()).toEqual([0, 1])
+  })
+
+  // Two receptions on opposite sides of the earth must not merge. The index is
+  // a Map of columns, which cannot alias one cell onto another - this is the
+  // test that would fail if it were ever flattened back into a single key with
+  // the two indices packed into one number, where the coordinate range has to
+  // stay inside the packing stride for that to hold.
+  it('never merges cells that are nowhere near each other', () => {
+    const far = [
+      { id: 1, lat: 89.9, lon: 179.9, rssi: -60 },
+      { id: 2, lat: -89.9, lon: -179.9, rssi: -70 },
+      { id: 3, lat: 0, lon: 0, rssi: -80 },
+      { id: 4, lat: 51, lon: 4, rssi: -90 },
+    ]
+    expect(collapsePillars(far).map((r) => r.id).sort()).toEqual([1, 2, 3, 4])
+  })
+
   it('returns nothing for no input', () => {
     expect(collapsePillars([])).toEqual([])
   })

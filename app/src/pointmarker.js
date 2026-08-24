@@ -99,21 +99,40 @@ export function collapsePillars(records, cellM = PILLAR_MERGE_M) {
   // A list per cell, not one record: a 10 m cell is 14 m across the diagonal,
   // so two survivors legitimately share a cell whenever they sit in opposite
   // corners, and keying by cell alone would drop one of them.
+  // A Map of columns rather than one Map keyed on `cx + ':' + cy`. The scan asks
+  // nine questions per record, so the string form allocated nine keys per
+  // record - about 1.2 million of them at the largest observed store, and the
+  // single biggest cost in a render tick (#462). Nesting removes the key
+  // entirely: measured 43 ms against 157 ms at 134k records.
+  //
+  // Packing the two indices into one number was the other candidate and is
+  // rejected: it is both slower than this (91 ms) and only correct while the
+  // coordinate range stays inside the stride, which is an invariant that has to
+  // be documented, tested, and re-checked whenever cellM changes. Nesting
+  // cannot collide at all, so there is nothing to get wrong later.
   const kept = new Map()
   const out = []
   for (const r of byStrength) {
     const [cx, cy] = cellOf(r)
     let merged = false
+    // +/-1 is enough because the grid cell and the merge radius are the same
+    // cellM: two points within the radius differ by at most one cell index per
+    // axis. That coupling is load-bearing and invisible - widening the radius
+    // alone breaks the scan without breaking any test that reads only the shape
+    // of the output.
     for (let dx = -1; dx <= 1 && !merged; dx++) {
+      const column = kept.get(cx + dx)
+      if (!column) continue
       for (let dy = -1; dy <= 1 && !merged; dy++) {
-        const near = kept.get((cx + dx) + ':' + (cy + dy))
+        const near = column.get(cy + dy)
         if (near && near.some((k) => withinM(k, r))) merged = true
       }
     }
     if (merged) continue
-    const key = cx + ':' + cy
-    const cell = kept.get(key)
-    if (cell) cell.push(r); else kept.set(key, [r])
+    let column = kept.get(cx)
+    if (!column) { column = new Map(); kept.set(cx, column) }
+    const cell = column.get(cy)
+    if (cell) cell.push(r); else column.set(cy, [r])
     out.push(r)
   }
   return out
