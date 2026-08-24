@@ -17,7 +17,7 @@ import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilt
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hiddenFiltersActive } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
-import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
+import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 
@@ -224,13 +224,27 @@ function qs() {
 const pointsDraw = latestWins()
 const hexDraw = latestWins()
 const mayPaint = (isCurrent) => isCurrent() && !locateActive
-const setStatus = (text) => { document.getElementById('status').textContent = text }
+// The status line and its tooltip move together: the line has room for a date
+// and not for the mechanism behind it, so a truncated answer explains itself on
+// hover rather than in eight words (#440).
+// The two caps, named so the tooltip can state the number it is explaining
+// rather than repeating a literal. HEATMAP_CAP mirrors heatmapCap in
+// httpapi/api.go: the server owns it, this only reports it, and a drift shows
+// up as a wrong number in a sentence rather than as broken behaviour.
+const POINTS_CAP = 25000
+const HEATMAP_CAP = 50000
+
+const setStatus = (text, title = '') => {
+  const el = document.getElementById('status')
+  el.textContent = text
+  if (title) el.title = title; else el.removeAttribute('title')
+}
 
 async function drawPoints() {
   const isCurrent = pointsDraw()
   let points, capped
   try {
-    ({ points, capped } = await fetchPointsPaged(qs(), { maxTotal: 25000 }))
+    ({ points, capped } = await fetchPointsPaged(qs(), { maxTotal: POINTS_CAP }))
   } catch (_) {
     // The layer is no longer cleared up front, so a failed fetch would
     // otherwise leave the previous bbox's points and count sitting there as
@@ -260,7 +274,11 @@ async function drawPoints() {
   }
   pointLayer.clearLayers()
   for (const m of markers) m.addTo(pointLayer)
-  setStatus(`${points.length} points${capped ? ' (capped)' : ''}`)
+  // Same rule for the points layer. Its cap is the client's own maxTotal and the
+  // rows carry rx_at, so the date comes from the data already in hand rather
+  // than from a second server field.
+  const cover = { truncated: capped, coversFrom: oldestRxAt(points) }
+  setStatus(coverageLabel(points.length, 'points', cover), coverageTitle(POINTS_CAP, cover))
   // Direct only reads as "what I heard from nearby", filters on a field the
   // sender writes, and on a forged path hides everything -- silently, which is
   // how it emptied the map on a real hunt (#454 follow-up). Say so, against the
@@ -316,7 +334,11 @@ async function drawHex() {
   }
   hexLayer.clearLayers()
   for (const c of cells) c.addTo(hexLayer)
-  setStatus(fc.features.length + ' cells' + (fc.truncated ? ' (capped)' : ''))
+  // "cells (capped)" under a range button reading All time is a contradiction a
+  // reader cannot resolve. The truncation is the most RECENT n receptions, so
+  // the honest report is the date it reaches back to (#440).
+  const cover = { truncated: fc.truncated, coversFrom: fc.covers_from }
+  setStatus(coverageLabel(fc.features.length, 'cells', cover), coverageTitle(HEATMAP_CAP, cover))
 }
 
 function applyLocateGate() {

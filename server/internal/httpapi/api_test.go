@@ -490,6 +490,45 @@ func TestHeatmapGuestSeesAllCoverage(t *testing.T) {
 	}
 }
 
+// TestHeatmapCoversFromOnlyWhenTruncated: a truncated heatmap has to say how far
+// back it actually reaches. QueryPoints orders rx_at DESC, so a capped answer is
+// the most RECENT n -- which makes a date the honest report, where "(capped)"
+// under a range button reading "All time" was a contradiction the reader could
+// not resolve. Absent when nothing was left out: an untruncated answer covers
+// the range that was asked for and has nothing extra to say.
+func TestHeatmapCoversFromOnlyWhenTruncated(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+
+	full := doHeatmap(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?z=5")
+	if v, ok := full["covers_from"]; ok {
+		t.Fatalf("an untruncated heatmap must not claim a coverage start, got %v", v)
+	}
+	if v, ok := full["truncated"]; ok {
+		t.Fatalf("this fixture must not truncate, got truncated=%v", v)
+	}
+}
+
+// oldestRxAt is what fills that field, and it must not depend on the query
+// happening to arrive sorted -- a wrong answer here is a wrong date on screen.
+func TestOldestRxAtScansRatherThanTrustingOrder(t *testing.T) {
+	pts := []store.Point{
+		{RxAt: "2026-08-20T10:00:00Z"},
+		{RxAt: "2026-08-12T09:14:00Z"},
+		{RxAt: "2026-08-24T19:00:00Z"},
+	}
+	if got := oldestRxAt(pts); got != "2026-08-12T09:14:00Z" {
+		t.Fatalf("oldest in an unsorted set: got %q", got)
+	}
+	// A row with no timestamp is skipped rather than answered with.
+	if got := oldestRxAt([]store.Point{{RxAt: ""}, {RxAt: "2026-08-20T10:00:00Z"}}); got != "2026-08-20T10:00:00Z" {
+		t.Fatalf("empty rx_at must not win: got %q", got)
+	}
+	if got := oldestRxAt(nil); got != "" {
+		t.Fatalf("no points, no date: got %q", got)
+	}
+}
+
 // TestHeatmapGuestCarriesNoHunters: with the window gone, a STABLE pseudonym
 // would hand a guest one hunter's entire historical territory (#280). So the
 // degraded response carries no hunter identities at all -- count and best RSSI

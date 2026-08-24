@@ -129,6 +129,18 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// oldestRxAt is the earliest reception in a result set. QueryPoints orders
+// rx_at DESC, so that is the last row -- but this scans rather than indexing
+// the end, because "the query happens to be sorted" is not a property this
+// function should depend on and a wrong answer here is a wrong date on screen.
+func oldestRxAt(pts []store.Point) string {
+	oldest := ""
+	for _, p := range pts {
+		if p.RxAt != "" && (oldest == "" || p.RxAt < oldest) { oldest = p.RxAt }
+	}
+	return oldest
+}
+
 const heatmapCap = 50000
 
 type Deps struct {
@@ -227,9 +239,13 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 			for _, c := range a.Companions { own[c] = true }
 			pts = degradePoints(pts, ps, own)
 		}
+		// One aggregation, not two: this used to build the full heatmap and then
+		// throw it away for the anonymous one on every guest request, which is
+		// the traffic the unwindowed view exists to serve.
 		fc := query.Heatmap(pts, geo.ResForZoom(z))
 		if anon { fc = query.HeatmapAnon(pts, geo.ResForZoom(z)) }
 		fc.Truncated = trunc
+		if trunc { fc.CoversFrom = oldestRxAt(pts) }
 		writeJSON(w, fc)
 	})
 	mux.HandleFunc("/api/hunters", func(w http.ResponseWriter, r *http.Request) {

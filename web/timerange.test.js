@@ -5,6 +5,7 @@ import {
   toLocalInput, boundFromField,
   exceedsGuestWindow, rangeIsLive,
   COLD_START_RANGE, rangeForRole, rangeLabelFor,
+  coverageLabel, coverageTitle, oldestRxAt,
 } from './timerange.js'
 
 // Fixed clock for every case below: 2026-07-22 15:30 local.
@@ -310,5 +311,64 @@ describe('rangeLabelFor — the clamp note names the layer it applies to (#492)'
   })
   it('falls back to the plain label with no options', () => {
     expect(rangeLabelFor('now-30d', 'now', NOW)).toBe('Last 30 days')
+  })
+})
+
+// #440 follow-up: "N cells (capped)" under a range button reading "All time" is
+// a contradiction the reader cannot resolve — and the truncation is not
+// arbitrary, so a date is both honest and useful.
+describe('coverageLabel', () => {
+  const NOW = Date.parse('2026-08-24T20:00:00Z')
+  const from = '2026-08-12T09:14:00Z'
+
+  it('says nothing extra when the answer is complete', () => {
+    // The range button already stated the span; repeating it would make the
+    // common case noisier to fix the rare one.
+    expect(coverageLabel(72, 'cells', { truncated: false }, NOW)).toBe('72 cells')
+    expect(coverageLabel(0, 'points', {}, NOW)).toBe('0 points')
+  })
+
+  it('reports how far back a truncated answer reaches', () => {
+    const label = coverageLabel(72, 'cells', { truncated: true, coversFrom: from }, NOW)
+    expect(label).toMatch(/^72 cells · since 2026-08-12 \d\d:\d\d$/)
+  })
+
+  it('falls back to the old warning when truncated with no date', () => {
+    // Something is missing and we cannot say from when — that is still better
+    // served by a warning than by a claim with a blank in it.
+    expect(coverageLabel(72, 'cells', { truncated: true }, NOW)).toBe('72 cells (capped)')
+    expect(coverageLabel(72, 'cells', { truncated: true, coversFrom: 'not a date' }, NOW))
+      .toBe('72 cells · since not a date')
+  })
+})
+
+describe('coverageTitle', () => {
+  const NOW = Date.parse('2026-08-24T20:00:00Z')
+  it('is empty unless something was left out', () => {
+    expect(coverageTitle(50000, { truncated: false }, NOW)).toBe('')
+  })
+  it('names the cap and the date, with a thousands separator', () => {
+    const t = coverageTitle(50000, { truncated: true, coversFrom: '2026-08-12T09:14:00Z' }, NOW)
+    expect(t).toContain('50,000')
+    expect(t).toContain('Older ones are not in this view')
+  })
+})
+
+describe('oldestRxAt', () => {
+  it('finds the earliest, whatever order the pages arrived in', () => {
+    // fetchPointsPaged concatenates pages, so "the last element" is not a
+    // property this may rest on.
+    expect(oldestRxAt([
+      { rx_at: '2026-08-20T10:00:00Z' },
+      { rx_at: '2026-08-12T09:14:00Z' },
+      { rx_at: '2026-08-24T19:00:00Z' },
+    ])).toBe('2026-08-12T09:14:00Z')
+  })
+  it('skips rows with no timestamp rather than answering with one', () => {
+    expect(oldestRxAt([{ rx_at: '' }, null, {}, { rx_at: '2026-08-20T10:00:00Z' }]))
+      .toBe('2026-08-20T10:00:00Z')
+  })
+  it('answers empty for nothing at all', () => {
+    for (const empty of [[], null, undefined]) expect(oldestRxAt(empty)).toBe('')
   })
 })

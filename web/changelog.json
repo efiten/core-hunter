@@ -63,6 +63,13 @@
     "body": "With the time filter switched off the map redraws everything it holds once a second, and after the capture change that could be enough work to take longer than a second - so the display fell behind and the phone ran hot. It now reuses what cannot have changed since the last redraw. Nothing looks different; it just keeps up. The usual half-hour view was never affected."
   },
   {
+    "id": "2026-08-24-all-time-coverage-date",
+    "date": "2026-08-24",
+    "where": "map",
+    "title": "The map says how far back it goes",
+    "body": "With the range set to All time the map could only fit so much on screen at once, and it said so with the word capped - which told you something was missing but not what. It now names the date it reaches back to, so you can see at a glance whether the area you are looking at is covered for the period you care about."
+  },
+  {
     "id": "2026-08-23-node-names-declutter",
     "date": "2026-08-23",
     "where": "map",
