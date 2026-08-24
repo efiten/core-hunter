@@ -94,12 +94,18 @@ function renderEntries(body, entries, seen) {
   body.appendChild(more)
 }
 
-// initWhatsNew wires the footer version button, the dot and the modal. Called
-// from index.html once the footer version text has been set.
+// initWhatsNew owns the release-notes content and its unread state, but not a
+// window: since #420 the notes are a tab inside the settings sheet, so the
+// modal lifecycle (open, focus, Escape, scrim) belongs to settingssheet.js.
+// Returns the two things that caller needs.
+//
+// Two dots, one state. #wn-dot rides the settings button in the bar, which is
+// the only signal a reader gets without opening anything; #ss-whatsnew-dot
+// rides the tab, to say which of the three tabs the first dot was about.
 export function initWhatsNew() {
-  const btn = document.getElementById('ch-version')
-  const dot = document.getElementById('wn-dot')
-  const modal = document.getElementById('whatsnew-modal')
+  const barDot = document.getElementById('wn-dot')
+  const tabDot = document.getElementById('ss-whatsnew-dot')
+  const btn = document.getElementById('settings-btn')
   const body = document.getElementById('wn-body')
 
   // Read once, before the first open acknowledges the newest entry: this is
@@ -109,17 +115,20 @@ export function initWhatsNew() {
 
   function refreshBadge() {
     const unseen = hasUnseenEntries(entries, loadSeen())
-    dot.hidden = !unseen
-    // Re-read storage rather than close over the boot value: opening the panel
+    barDot.hidden = !unseen
+    tabDot.hidden = !unseen
+    // Re-read storage rather than close over the boot value: showing the tab
     // acknowledges the newest entry, and a title still reading "updated since
     // you last looked" next to a hidden dot is the two halves disagreeing.
-    btn.title = unseen ? "What's new — updated since you last looked" : "What's new"
+    btn.title = unseen
+      ? "Settings — what's new, updated since you last looked"
+      : 'Settings, release notes and about'
   }
   refreshBadge()
 
-  // Fetched at boot, because the dot depends on the file. A failure leaves the
-  // dot hidden and `entries` null; open() then renders the fallback link
-  // rather than an empty dialog.
+  // Fetched at boot, because the dot depends on the file (#422). A failure
+  // leaves the dot hidden and `entries` null; load() then renders the fallback
+  // link rather than an empty panel.
   const loaded = fetch(`changelog.json?v=${VERSION}`)
     .then((res) => { if (!res.ok) throw new Error(String(res.status)); return res.json() })
     .then((json) => {
@@ -134,14 +143,14 @@ export function initWhatsNew() {
     })
     .catch(() => {})
 
-  async function open() {
-    modal.hidden = false
-    btn.setAttribute('aria-expanded', 'true')
-    // aria-modal tells assistive tech the page behind is inert, so focus has to
-    // actually move — otherwise a keyboard user is left tabbing through a page
-    // they have just been told is not there. Same as login.js, which focuses
-    // its first field on open.
-    document.getElementById('wn-close').focus()
+  // Called when the tab is shown. Showing it IS the acknowledgement, so the
+  // write happens here rather than on a dismiss — a reader who switches
+  // straight back to Settings has still seen the notes were there.
+  //
+  // Renders from `seen`, the boot value, so which entries are marked new stays
+  // put while the sheet is open and across tab switches; the acknowledgement
+  // below only decides what the NEXT session sees.
+  async function load() {
     await loaded
     if (entries && entries.length) {
       if (entries[0].id) saveSeen(entries[0].id)
@@ -151,7 +160,7 @@ export function initWhatsNew() {
     }
     // changelog.json is a static file next to index.html; a miss means a deploy
     // that did not copy it, so say where the notes are instead of showing an
-    // empty dialog.
+    // empty panel.
     body.replaceChildren()
     const link = document.createElement('a')
     link.className = 'wn-more'
@@ -162,18 +171,5 @@ export function initWhatsNew() {
     body.appendChild(link)
   }
 
-  function close() {
-    modal.hidden = true
-    btn.setAttribute('aria-expanded', 'false')
-    // Back to the control that opened it, so Escape or Close does not drop the
-    // keyboard user at the top of the document.
-    btn.focus()
-  }
-
-  btn.addEventListener('click', open)
-  document.getElementById('wn-close').addEventListener('click', close)
-  // Click on the scrim (the modal element itself, not the card) closes, like
-  // the login modal's Cancel; Escape closes too.
-  modal.addEventListener('click', (e) => { if (e.target === modal) close() })
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) close() })
+  return { refreshBadge, load, unseen: () => hasUnseenEntries(entries, loadSeen()) }
 }

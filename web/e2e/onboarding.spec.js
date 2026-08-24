@@ -1,4 +1,4 @@
-import { test, expect, clickUntil } from './fixtures.js'
+import { test, expect, clickUntil, openSettings } from './fixtures.js'
 import { ONBOARDING_CALLOUTS } from '../onboarding.js'
 
 test.beforeEach(async ({ page }) => {
@@ -38,15 +38,25 @@ test('a first visit opens the tour; dismissing it keeps it shut across a reload'
   await expect(overlay).toBeHidden()
 })
 
-test('a returning reader is not shown the tour, and the ? button brings it back', async ({ page }) => {
+test('a returning reader is not shown the tour, and the About entry brings it back', async ({ page }) => {
   await bootstrap(page, true)
   await page.goto('/')
   const overlay = page.locator('#wb-onboarding')
   await expect(overlay).toBeHidden()
 
+  await openSettings(page, 'about')
   await clickUntil(page, '#help-btn', () => overlay.isVisible())
+  // The sheet gets out of the way, or it would cover the controls the tour is
+  // pointing at.
+  await expect(page.locator('#settings-modal')).toBeHidden()
   await expect(page.locator('#help-btn')).toHaveAttribute('aria-expanded', 'true')
-  await page.click('#help-btn')
+
+  // Closing is no longer a second click on the same control: since #420 that
+  // control is inside the sheet, and opening the sheet is itself "operating
+  // another control", which the tour already treats as a dismissal. So Escape
+  // (or any ringed control) is the way out, and the entry goes back to
+  // unexpanded with it.
+  await page.keyboard.press('Escape')
   await expect(overlay).toBeHidden()
   await expect(page.locator('#help-btn')).toHaveAttribute('aria-expanded', 'false')
 })
@@ -102,10 +112,12 @@ test('the tour closes on the scrim and on Escape', async ({ page }) => {
   await page.goto('/')
   const overlay = page.locator('#wb-onboarding')
 
+  await openSettings(page, 'about')
   await clickUntil(page, '#help-btn', () => overlay.isVisible())
   await page.locator('#wb-scrim').click({ position: { x: 5, y: 400 } }) // the dimmed map
   await expect(overlay).toBeHidden()
 
+  await openSettings(page, 'about')
   await clickUntil(page, '#help-btn', () => overlay.isVisible())
   await page.keyboard.press('Escape')
   await expect(overlay).toBeHidden()
@@ -172,14 +184,17 @@ test('a phone-width window drops the floating callouts into the panel', async ({
   await expect(page.locator('#wb-inline')).toBeHidden()
 })
 
-test('focus moves into the tour and back to the ? button', async ({ page }) => {
+test('focus moves into the tour and back to a control that can take it', async ({ page }) => {
   await bootstrap(page, false)
   await page.goto('/')
   await expect(page.locator('#wb-onboarding')).toBeVisible()
   await expect(page.locator('#wb-got-it')).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(page.locator('#wb-onboarding')).toBeHidden()
-  await expect(page.locator('#help-btn')).toBeFocused()
+  // Not #help-btn: on a first run the sheet has never been opened, so the
+  // About entry is inside a hidden dialog and focusing it would drop focus to
+  // the body. The settings button is the visible way back to it.
+  await expect(page.locator('#settings-btn')).toBeFocused()
 })
 
 test('using a ringed control closes the tour instead of blocking it', async ({ page }) => {

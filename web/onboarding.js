@@ -225,7 +225,14 @@ export function initOnboarding() {
     setSpots(false)
     barWatch.disconnect()
     saveSeen()
-    help.focus()
+    // Since #420 the "?" lives inside the settings sheet as "How it works", so
+    // on a first run -- the tour's own case -- it is inside a closed dialog.
+    // Focusing a hidden element drops focus to the body, which strands a
+    // keyboard user at the top of the document, exactly what returning focus
+    // exists to prevent. offsetParent is null for a hidden ancestor, so it
+    // answers "can this actually take focus" rather than "does it exist".
+    const back = help.offsetParent ? help : document.getElementById('settings-btn')
+    if (back) back.focus()
   }
 
   help.addEventListener('click', () => (overlay.hidden ? open() : close()))

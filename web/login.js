@@ -1,5 +1,6 @@
 import { API_BASE } from './config.js'
 import { fetchMe } from './auth.js'
+import { trapFocus } from './focustrap.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -46,6 +47,11 @@ export async function initAuthBar(onChange) {
   const btn = $('auth-btn')
   const modal = $('login-modal')
   let me = await fetchMe()
+  // Same gap as the settings sheet had, same fix: focusing the first field
+  // moves focus in, and without this Tab walks straight back out into the page
+  // aria-modal has declared inert (#420).
+  trapFocus($('login-form'))
+  const dismiss = () => { modal.hidden = true }
   const render = () => {
     btn.textContent = me.username ? me.username : 'Log in'
   }
@@ -62,12 +68,12 @@ export async function initAuthBar(onChange) {
       $('login-user').focus()
     }
   })
-  $('login-cancel').addEventListener('click', () => { modal.hidden = true })
+  $('login-cancel').addEventListener('click', dismiss)
   $('login-form').addEventListener('submit', async (e) => {
     e.preventDefault()
     const res = await doLogin()
     if (!res) return
-    modal.hidden = true
+    dismiss()
     me = await fetchMe()
     render(); onChange(me)
   })

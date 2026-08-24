@@ -143,7 +143,8 @@ window.addEventListener('resize', setMapTop)
 // #rx-log (#224) sits below the bar too, but it is published as a token and
 // observed, because it is the one whose staleness steals clicks: at z-index 620
 // over the bar's 600 it sat on the bar's last row and swallowed everything meant
-// for #ch-version (#386). The bar keeps growing after module load -- the packet
+// for the bar's last-row control (#386) -- #settings-btn since #420. The bar
+// keeps growing after module load -- the packet
 // chips render, the role notice arrives with /api/auth/me, the node counts and
 // the server version land later still -- and each one wraps another row, so one
 // measurement is stale within a second of load and only a resize repaired it.
@@ -157,7 +158,7 @@ window.addEventListener('resize', setMapTop)
 // resize is a different case: it already re-runs invalidateSize today, and
 // holding the visible content still across it is the wanted behaviour. What
 // #map loses by staying put is a few stale pixels behind the bar, which paints
-// above it. What #rx-log lost was every click on #ch-version.
+// above it. What #rx-log lost was every click on that control.
 const publishBarHeight = () => {
   document.documentElement.style.setProperty('--ch-bar-h', `${bar.offsetHeight}px`)
 }

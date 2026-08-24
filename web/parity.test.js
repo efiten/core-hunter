@@ -20,6 +20,8 @@ import * as webChangelog from './changelog.js'
 import * as appChangelog from '../app/src/changelog.js'
 import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
+import { initialSettingsTab as webInitialTab } from './settingssheet.js'
+import { initialSettingsTab as appInitialTab } from '../app/src/settings.js'
 import { setConfig } from '../app/src/config.js'
 import { readFileSync } from 'node:fs'
 import * as webLayer from './nodelayer.js'
@@ -659,5 +661,32 @@ describe('nodeposnotice — parity of the two shared lines', () => {
     expect(Object.keys(webNotice).filter((n) => !(n in appNotice)).sort())
       .toEqual(['NODEPOS_GUEST_TEXT', 'NODEPOS_NONE_IN_VIEW_TEXT', 'NODEPOS_STALE_SUFFIX',
         'NODEPOS_UNAVAILABLE_TEXT', 'NODEPOS_UNCONFIGURED_TEXT', 'nodePosPresentation', 'registryStatusFor'])
+  })
+})
+
+// initialSettingsTab is the fifth duplicated decision (#421 gave the app a
+// What's new tab, #420 gives web the same sheet). Only this function is
+// copied, not the module around it: the app's settings.js also loads the
+// attenuator, the sound mode and the view index, none of which web has. So
+// parity is asserted on the behaviour that must agree rather than on an
+// export set, and the cases are the two branches plus the shapes a caller can
+// actually pass — a missing flag is what a first visit hands it.
+describe('initialSettingsTab — parity between the app and web copies', () => {
+  const CASES = [
+    ['unread notes', { unseenChangelog: true }],
+    ['notes read', { unseenChangelog: false }],
+    ['flag absent', {}],
+    ['no argument at all', undefined],
+  ]
+  it.each(CASES)('agrees on %s', (_label, input) => {
+    expect(webInitialTab(input)).toBe(appInitialTab(input))
+  })
+
+  // Both agreeing on the wrong answer is still parity, so pin the value once:
+  // without this, two copies that each returned 'settings' unconditionally
+  // would pass every case above.
+  it('sends an unread reader to the notes, on both surfaces', () => {
+    expect(webInitialTab({ unseenChangelog: true })).toBe('whatsnew')
+    expect(appInitialTab({ unseenChangelog: true })).toBe('whatsnew')
   })
 })

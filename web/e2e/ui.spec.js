@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, openPicker } from './fixtures.js'
+import { test, expect, mapSettled, openPicker, openSettings } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -12,6 +12,7 @@ test.beforeEach(async ({ page }) => {
 test('theme toggle flips data-theme, persists, reflects in URL, and swaps the glyph', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await openSettings(page)
   await expect(page.locator('#theme-toggle')).toHaveText('🌙')
 
   await page.click('#theme-toggle')
@@ -25,7 +26,9 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
   // Open a link carrying full state — a second viewer must see the same thing.
   await page.goto('/?theme=light&mode=hex&sender=4a2b&z=15')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await openSettings(page)
   await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await page.click('#ss-close')
   await expect(page.locator('#layer-toggle')).toHaveText('hex')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
   expect(await page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(15)
@@ -33,7 +36,9 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
 
 test('settings survive a reload via localStorage (no URL params)', async ({ page }) => {
   await page.goto('/')
+  await openSettings(page)
   await page.click('#theme-toggle') // -> light
+  await page.click('#ss-close')
   await page.click('#layer-toggle') // hex -> both
   await expect(page.locator('#layer-toggle')).toHaveText('both')
 
@@ -452,6 +457,19 @@ test('the entry module scripts execute in insertion order, not whenever they loa
   expect(await page.evaluate(() => typeof window.currentTypes)).toBe('function')
 })
 
+// Since #420 the theme control lives in the settings sheet rather than on the
+// bar, so flipping themes means opening the sheet and shutting it again. The
+// sheet must be shut before the map is measured: it lays a scrim over the map,
+// and a test about the map's own controls should not read them through it.
+async function flipTheme(page) {
+  const was = await page.getAttribute('html', 'data-theme')
+  await openSettings(page, 'settings')
+  await page.click('#theme-toggle')
+  await page.click('#ss-close')
+  await expect(page.locator('#settings-modal')).toBeHidden()
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', was)
+}
+
 test("Leaflet's own controls follow the theme instead of keeping their defaults", async ({ page }) => {
   // #427: neither stylesheet had a rule for them, so the zoom buttons and the
   // attribution strip stayed Leaflet white (#fff / rgba(255,255,255,.8)) on an
@@ -484,8 +502,7 @@ test("Leaflet's own controls follow the theme instead of keeping their defaults"
     expect(v.zoomBg, `zoom background in ${v.theme}`).toBe(v.surface)
     expect(v.attrBg, `attribution background in ${v.theme}`).toBe(v.surface)
     expect(v.zoomBg, `zoom must not be Leaflet white in ${v.theme}`).not.toBe('rgb(255,255,255)')
-    await page.click('#theme-toggle')
-    await expect(page.locator('html')).not.toHaveAttribute('data-theme', v.theme)
+    await flipTheme(page)
   }
 })
 
@@ -566,7 +583,6 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
     await page.evaluate(() => document.querySelector('.leaflet-control-zoom-in').classList.remove('leaflet-disabled'))
 
     await forceHover(false)
-    await page.click('#theme-toggle')
-    await expect(page.locator('html')).not.toHaveAttribute('data-theme', rest.theme)
+    await flipTheme(page)
   }
 })
