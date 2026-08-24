@@ -170,9 +170,52 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 /* pointer-events:none on the container, re-enabled on .rx-hd/.rx-ln below: the
    ticker is a transparent overlay on the map, so its box (and .rx-list's empty
    padding) must not swallow drag/wheel before Leaflet sees them. */
-#rx-log { position: fixed; top: calc(var(--ch-bar-h) + 4px); left: 0; right: 0; z-index: 620;
-  padding: 0 24px; pointer-events: none;
+/* Placed rather than stretched (#424). Was left:0;right:0 -- a full-width band
+   across the middle-top of the map, over the content, colliding with Leaflet's
+   zoom control at the top-left. It is now a box the user drags, positioned from
+   --rx-x/--rx-y which tickerplace.js clamps into the viewport on load and on
+   resize. The 680px width is what .rx-hd/.rx-list already constrained
+   themselves to, so the rows are unchanged; only the box around them moved. */
+#rx-log { position: fixed; z-index: 620;
+  top: var(--rx-y, calc(var(--ch-bar-h) + 4px)); left: var(--rx-x, 0px);
+  width: min(680px, 100vw); pointer-events: none;
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
+/* Frameless at rest (#322) and framed only while being reached for (#424): the
+   map stays unobstructed until the pointer is over the ticker. */
+/* inset 0, not -6px: the strips live INSIDE the band's own footprint. Outside
+   it they extended over the map and, being hit-testable, swallowed clicks meant
+   for it -- a Leaflet popup's "Locate this sender" button, in the case that
+   caught this. Inside, they only take from the band's own box, which is the
+   same bargain .rx-hd already makes. */
+.rx-grab { position: absolute; inset: 0 0 auto 0; height: 0; opacity: 0; transition: opacity .12s ease; }
+#rx-log:hover .rx-grab, #rx-log.rx-dragging .rx-grab { opacity: 1; }
+/* pointer-events only while the frame is revealed. At rest these strips are
+   invisible but were still hit-testable, and being 6px OUTSIDE the band they sat
+   over the map and swallowed clicks meant for it -- a Leaflet popup's "Locate
+   this sender" button, in the case that caught this. That is exactly what
+   #287/#322's pointer-events discipline exists to prevent, so the frame has to
+   follow the same rule as the band: reachable only when reached for. Hovering
+   .rx-hd or .rx-ln (both pointer-events:auto) is what reveals it, so the
+   pointer is already on the ticker by the time the strips can take anything. */
+/* Hit-testable at rest, visible only on hover. Gating pointer-events on :hover
+   as well is a trap: the strips are the outermost thing on the ticker, so a
+   pointer arriving from the map lands on an inert strip, never triggers the
+   hover that would enliven it, and the frame can only be grabbed by first
+   crossing the text. Opacity carries the reveal; the hit area is always there. */
+.rx-grab-t, .rx-grab-l { position: absolute; background: var(--ch-border); pointer-events: auto; cursor: move; }
+.rx-grab-t { left: 0; right: 0; top: 0; height: 6px; border-radius: 3px; }
+.rx-grab-l { left: 0; top: 0; height: var(--rx-grab-h, 120px); width: 6px; border-radius: 3px; }
+/* Collapsed keeps the header -- the count and the fold control are how you get
+   it back, so they are the one part that must never go. */
+/* Targets the list by id, not by .rx-list: parity.test.js's ticker guard finds
+   a rule by the first selector text that mentions the class, so a descendant
+   rule written above the canonical `.rx-list` block would silently become the
+   one under test. #407 tracks hardening that matcher; this sidesteps it. */
+#rx-log.rx-folded #rx-list { display: none; }
+.rx-fold { margin-left: auto; background: none; border: none; padding: 0 2px; cursor: pointer;
+  color: var(--ch-muted); font: inherit; pointer-events: auto; }
+.rx-fold::before { content: '\2212'; }            /* minus while open */
+#rx-log.rx-folded .rx-fold::before { content: '\002B'; }  /* plus while folded */
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
   width: min(680px, 100%); margin: 0 auto;
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
