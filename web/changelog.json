@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-24-target-search",
+    "date": "2026-08-24",
+    "where": "app",
+    "title": "Search the target list",
+    "body": "The target sheet has a search field. Type part of a name, or the first characters of an id as it appears on the map and in the ticker, and the list narrows to what matches while you type. Clearing the field brings the whole list back; what you already picked stays picked either way."
+  },
+  {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
     "where": "map",
