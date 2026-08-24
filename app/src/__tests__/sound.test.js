@@ -22,8 +22,34 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   it('maps the weak end (-125 dBm) to the 4th harmonic (F4)', () => {
     expect(harmFreq(-125)).toBeCloseTo(F2 * 4, 5)
   })
-  it('maps the strong end (-75 dBm) to the 16th harmonic (F6)', () => {
-    expect(harmFreq(-75)).toBeCloseTo(F2 * 16, 5)
+  it('maps the strong end (-75 dBm) to the 24th harmonic (C7)', () => {
+    expect(harmFreq(-75)).toBeCloseTo(F2 * 24, 5)
+  })
+
+  // #471: the step size is the coarsest thing about the instrument, and it is
+  // coarsest exactly where you are closing in. Asserted as a property over the
+  // whole band rather than by retyping the ladder, so it fails for the reason
+  // it is about: a step you could drive through without hearing.
+  it('never leaves more than 5 dB inside one step', () => {
+    const seen = []
+    for (let db = RSSI_WEAK_DBM; db <= RSSI_STRONG_DBM; db += 0.25) {
+      const f = harmFreq(db)
+      if (!seen.length || seen[seen.length - 1].f !== f) seen.push({ db, f })
+    }
+    const widest = seen.slice(1).reduce((w, s, i) => Math.max(w, s.db - seen[i].db), 0)
+    expect(widest).toBeLessThanOrEqual(5)
+  })
+
+  // The consonance rule is "overtone of F2", not "pentatonic" -- and the
+  // overtones that are NOT scale degrees are the ones that would clash: 7, 11,
+  // 13 and 14 sit up to a quarter-tone between the keys.
+  it('uses only overtones of the root, and none of the out-of-tune ones', () => {
+    const ratios = new Set()
+    for (let db = RSSI_WEAK_DBM; db <= RSSI_STRONG_DBM; db += 0.25) ratios.add(harmFreq(db) / F2)
+    for (const r of ratios) {
+      expect(Math.abs(r - Math.round(r))).toBeLessThan(1e-6)
+      expect([7, 11, 13, 14]).not.toContain(Math.round(r))
+    }
   })
   // The step size is what you actually hunt by: closing from -95 to -88 dBm
   // has to be audible as a rise, not absorbed inside one harmonic. Widening
@@ -43,11 +69,15 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   it('quantizes — nearby RSSI values land on the same harmonic', () => {
     expect(harmFreq(-96)).toBeCloseTo(harmFreq(-97), 5)
   })
-  it('only produces consonant overtones of F (harmonics 4,5,6,8,9,10,12)', () => {
-    const allowed = [4, 5, 6, 8, 9, 10, 12, 16]
-    for (let rssi = -130; rssi <= -70; rssi += 1) {
-      const h = Math.round(harmFreq(rssi) / F2)
-      expect(allowed).toContain(h)
+  // Outside the band too, not just inside it: the clamp must not fall off the
+  // ladder into an arbitrary multiple. (The membership check that used to live
+  // here retyped the ladder itself, so it could only fail when someone edited
+  // the array and forgot the test; the property test above is what pins the
+  // rule.)
+  it('stays on the ladder either side of the band', () => {
+    for (const rssi of [-130, -128, -72, -70]) {
+      const h = harmFreq(rssi) / F2
+      expect(Math.abs(h - Math.round(h))).toBeLessThan(1e-6)
     }
   })
   it('applies the plot offset (calibration + attenuator), same as the map', () => {
@@ -56,7 +86,7 @@ describe('harmFreq — RSSI quantized to the harmonic series of F2', () => {
   })
   it('takes the weak/strong anchors from signal.js, so HUD, map and ping agree', () => {
     expect(harmFreq(RSSI_WEAK_DBM)).toBeCloseTo(F2 * 4, 5)
-    expect(harmFreq(RSSI_STRONG_DBM)).toBeCloseTo(F2 * 16, 5)
+    expect(harmFreq(RSSI_STRONG_DBM)).toBeCloseTo(F2 * 24, 5)
   })
   it('defaults a missing RSSI to the lowest harmonic', () => {
     expect(harmFreq(null)).toBeCloseTo(F2 * 4, 5)
