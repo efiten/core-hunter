@@ -154,9 +154,23 @@ strong (close)**. Colour and heat are driven by **RSSI** using fixed dBm bands:
 An optional `rssiCalibrationOffset` (dBm) in config shifts every raw RSSI
 value before band assignment. SNR is still stored and shown as a number.
 
-All plotted points are zero-hop (no direct/relayed distinction). Two map
-layers are available: individual **signal points** and a **hex-heat**
+Two map layers are available: individual **signal points** and a **hex-heat**
 aggregate layer. Toggle between them with the layer button in the map controls.
+
+**What a lit cell claims.** Since #455 the app records every reception it can
+place, not only the ones whose sender it can name, so a coloured hex cell now
+answers *"something transmitted here, this strongly"* rather than *"we heard
+node N here"*. That is a better claim — it is a measurement our own radio made,
+and RSSI cannot be forged the way an identity can — but it is a different one,
+and the coverage layer is where you meet it first. To read a cell as a
+particular node, narrow to that node: select it as a target, and the layer
+answers the old question again.
+
+The same distinction runs through the points layer: a point plots where *we*
+were when the transmission arrived, and only a zero-hop reception says anything
+about where its originator stands. A relayed one describes the repeater that
+re-broadcast it. `hops` is what separates them, and the "direct only" filter is
+what narrows to the first kind.
 
 ## Ignore-list
 
@@ -170,10 +184,11 @@ settings sheet and persisted in localStorage.
 
 Resolvers in `config.json` are tried in config order; the first unambiguous
 hit wins. Providing multiple resolvers (e.g. one per region/spreading-factor)
-allows coverage across different network segments. SF-ordered resolver
-preference is firmware-gated (the companion's SF is not yet readable) and
-falls back to config order. The resolver region label is not shown next to
-the resolved name.
+allows coverage across different network segments. Resolvers whose `sf` matches
+the companion's own spreading factor are tried first: the SF is read from the
+`PACKET_SELF_INFO` reply (byte 56, firmware-confirmed, see AGENTS.md §7), and
+config order is the fallback when it is unavailable or nothing matches. The
+resolver region label is not shown next to the resolved name.
 
 ## Resilience
 
