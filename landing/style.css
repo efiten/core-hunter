@@ -50,11 +50,15 @@ body {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover; object-position: center bottom;
 }
+/* The copy sits in the TOP of the frame and the scrim thins out below it, so
+   the lower half -- where the drive runs -- is close to unobscured. The heavy
+   band is only as tall as the text that needs it. */
 .lp-hero-inner {
-  position: relative; text-align: center; padding: 76px 24px 68px;
+  position: relative; text-align: center; padding: 60px 24px 132px;
   background: linear-gradient(180deg,
-    rgba(11,14,20,0.88) 0%, rgba(11,14,20,0.62) 46%,
-    rgba(11,14,20,0.72) 74%, rgba(11,14,20,0.92) 100%);
+    rgba(11,14,20,0.92) 0%, rgba(11,14,20,0.86) 30%,
+    rgba(11,14,20,0.55) 52%, rgba(11,14,20,0.18) 72%,
+    rgba(11,14,20,0.10) 100%);
 }
 /* Literal colours, not tokens: the shot behind this is dark in BOTH themes, so
    the copy over it has to be dark-theme copy in both too. Following the theme
@@ -102,7 +106,7 @@ body {
 
 @media (max-width: 640px) {
   .lp-sub { grid-template-columns: 1fr; gap: 24px; }
-  .lp-hero-inner { padding: 46px 18px 42px; }
+  .lp-hero-inner { padding: 40px 18px 88px; }
   .lp-hero h1 { font-size: 2rem; }
   .lp-lead { font-size: 1.05rem; }
   .lp-feature { padding: 26px 0 8px; }
