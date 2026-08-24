@@ -80,7 +80,9 @@ describe('the hero shot', () => {
 })
 
 describe('link colours', () => {
-  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8')
+  // Comments stripped first: without it a comment sitting above a rule is read
+  // as part of that rule's selector, and the test reports on prose.
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
   // Every rule that colours a link has to colour :visited too. An author rule
   // naming only the base state leaves :visited to the UA -- browser blue, then
   // purple -- which is what happened when the product copy moved out of

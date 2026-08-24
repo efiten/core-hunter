@@ -37,7 +37,35 @@ body {
 /* 940, not 760 (#441): the hero shot needs the width, and the two feature
    sections read as the page rather than as cards sitting on it. */
 .lp-main { max-width: 940px; margin: 0 auto; padding: 32px 20px 48px; }
-.lp-hero { text-align: center; padding: 24px 0 8px; }
+/* The hero is the animation, with the copy over it (#441). The scrim is not
+   decoration: white text over a scene carrying #ff453a and #ffd60a pillars
+   needs a floor under it, and it is heaviest top and bottom where the h1 and
+   the buttons sit. */
+.lp-hero {
+  position: relative; margin: 8px 0 0;
+  border: 1px solid var(--ch-border); border-radius: 14px;
+  overflow: hidden; background: #0e131c;
+}
+.lp-hero-bg {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center bottom;
+}
+.lp-hero-inner {
+  position: relative; text-align: center; padding: 76px 24px 68px;
+  background: linear-gradient(180deg,
+    rgba(11,14,20,0.88) 0%, rgba(11,14,20,0.62) 46%,
+    rgba(11,14,20,0.72) 74%, rgba(11,14,20,0.92) 100%);
+}
+/* Literal colours, not tokens: the shot behind this is dark in BOTH themes, so
+   the copy over it has to be dark-theme copy in both too. Following the theme
+   put #1b2430 text on a near-black scrim in light mode. */
+.lp-hero-inner { color: #e6edf3; }
+.lp-hero .lp-lead { color: #b9c4d0; }
+.lp-hero .lp-btn, .lp-hero .lp-btn:visited {
+  color: #e6edf3; background: rgba(17,22,31,0.82); border-color: #2a3340;
+}
+.lp-hero .lp-btn-primary { border-color: #40c8ff; }
+.lp-hero .lp-btn:hover { border-color: #40c8ff; }
 .lp-hero h1 { font-size: 2.4rem; margin: 0 0 12px; }
 .lp-lead { color: var(--ch-muted); font-size: 1.15rem; max-width: 620px; margin: 0 auto 24px; }
 .lp-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
@@ -51,19 +79,10 @@ body {
 .lp-btn:hover { border-color: var(--ch-sig-cool); }
 .lp-btn-primary { border-color: var(--ch-sig-cool); }
 
-/* Hero shot. Dark in both themes on purpose: it is a picture of the product,
-   and the product's own default theme is dark, so it should not invert with
-   the site around it. */
-.lp-hero-shot { margin: 34px 0 0; }
-.lp-hero-shot img {
-  display: block; width: 100%; height: auto;
-  border: 1px solid var(--ch-border); border-radius: 14px; background: #0e131c;
-}
-
 /* The two products lead (#441). Rules rather than cards: a card makes them
    items on the page, a rule makes them the page. */
 .lp-feature { border-top: 1px solid var(--ch-border); padding: 34px 0 8px; }
-.lp-feature:first-of-type { margin-top: 22px; }
+.lp-feature:first-of-type { margin-top: 34px; }
 .lp-feature h2 { margin: 0 0 14px; font-size: 2rem; letter-spacing: -0.015em; }
 .lp-feature p { font-size: 1.08rem; max-width: 700px; margin: 0 0 16px; }
 .lp-feature p:last-child { margin-bottom: 0; }
@@ -83,7 +102,7 @@ body {
 
 @media (max-width: 640px) {
   .lp-sub { grid-template-columns: 1fr; gap: 24px; }
-  .lp-hero { padding: 16px 0 4px; }
+  .lp-hero-inner { padding: 46px 18px 42px; }
   .lp-hero h1 { font-size: 2rem; }
   .lp-lead { font-size: 1.05rem; }
   .lp-feature { padding: 26px 0 8px; }
