@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { classifyReception, carriesSignedIdentity } from '../meshpacket.js'
+import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception } from '../meshpacket.js'
+import { decodePacket } from '../decode.js'
 
 const mk = (payloadType, decoded, pathLength = 0) => ({ payloadType, pathLength, payload: { decoded } })
 
@@ -79,5 +80,54 @@ describe('carriesSignedIdentity', () => {
     expect(carriesSignedIdentity(null)).toBe(false)
     expect(carriesSignedIdentity({})).toBe(false)
     expect(carriesSignedIdentity({ sender: null })).toBe(false)
+  })
+})
+
+// #454 classes 4 and 5. Both keep the reception and refuse only what the
+// packet claims about itself, which is the split AGENTS §1 draws: RSSI, SNR
+// and our own GPS fix cannot be forged, every identity in the header can.
+describe('stripIdentity (#454 class 4)', () => {
+  const advert = () => classifyReception(mk(4, { publicKey: 'AB'.repeat(32), appData: { name: 'Repeater-1', deviceRole: 2 } }))
+
+  it('drops every part of the identity, keeping what was measured about the packet', () => {
+    const bare = stripIdentity(advert())
+    expect(bare.sender).toEqual({ kind: null, id: null, label: null, role: null })
+    expect(bare.packetType).toBe('Advert')
+    expect(bare.hops).toBe(0)
+  })
+
+  it('does not mutate the classification it was given', () => {
+    const cls = advert()
+    stripIdentity(cls)
+    expect(cls.sender.id).toBe('ab'.repeat(32))
+  })
+
+  it('leaves a name nowhere on the record, not even as a label', () => {
+    const bare = stripIdentity(advert())
+    expect(JSON.stringify(bare)).not.toContain('Repeater-1')
+  })
+})
+
+// A packet that does not decode has no type either. The decoder does not say
+// so: its error paths return a fully-formed packet whose payloadType is a
+// hardcoded RawCustom placeholder (packet-decoder.js, both catch branches), so
+// running the error packet through classifyReception would file junk under the
+// real "Raw" chip and claim pathLength 0 as a hop count. undecodableReception
+// exists to keep that value out of the record.
+describe('undecodableReception (#454 class 5)', () => {
+  it('names the type Unknown rather than borrowing one from the decoder', () => {
+    const c = undecodableReception()
+    expect(c.packetType).toBe('Unknown')
+    expect(c.sender).toEqual({ kind: null, id: null, label: null, role: null })
+    expect(c.isDirect).toBe(false)
+    expect(c.channel).toBeNull()
+    expect(c.text).toBeNull()
+  })
+
+  it('is not the classification the decoder would hand us for the same packet', () => {
+    const errorPacket = decodePacket('ff')            // too short: isValid false
+    expect(errorPacket.isValid).toBe(false)
+    expect(classifyReception(errorPacket).packetType).toBe('RawCustom')
+    expect(undecodableReception().packetType).not.toBe('RawCustom')
   })
 })

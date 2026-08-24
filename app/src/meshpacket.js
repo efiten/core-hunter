@@ -33,6 +33,43 @@ export function carriesSignedIdentity(cls) {
   return !!cls && !!cls.sender && cls.sender.kind === 'advert_pubkey'
 }
 
+// The empty identity: what a reception carries when nothing about who sent it
+// may be believed. Shared by both refusals below so they cannot drift apart.
+const NO_SENDER = () => ({ kind: null, id: null, label: null, role: null })
+
+// stripIdentity returns the same reception with its identity removed (#454).
+// Used for an Advert whose Ed25519 signature does not verify: the claim is
+// refused, the measurement is not. RSSI, SNR and our own GPS fix were made by
+// our radio and cannot be forged; the pubkey, the name and the advertised
+// position are exactly the parts an attacker writes, so they go — rather than
+// the whole reception, which is what #356 did and what #455 stopped doing for
+// every other unattributable class.
+//
+// Returns a new object: the caller still reads the original (its text and its
+// id, for the console warning) after the strip.
+export function stripIdentity(cls) {
+  return { ...cls, sender: NO_SENDER() }
+}
+
+// undecodableReception is the classification for a packet that did not decode
+// at all (#454 class 5) — either the decoder threw, or it reported the packet
+// structurally unsound. The 0x88 frame's SNR and RSSI are read before the
+// decoder ever runs (frames.js), so the measurement is intact and the packet
+// is still a reception: something transmitted here, this strongly.
+//
+// It cannot be built from what the decoder returns. Both of its error paths
+// hand back a fully-formed packet whose fields are placeholders rather than
+// readings — payloadType RawCustom, routeType Flood, pathLength 0, path null —
+// so classifying that packet would file junk under the real "Raw" chip and
+// state a hop count nobody measured.
+//
+// hops stays 0 because the ingestor's column is NOT NULL and its parser takes
+// hops as a value type, so a null would arrive as 0 anyway, unmarked. The type
+// is what carries "unknown" here, on both surfaces and in the ?types= query.
+export function undecodableReception() {
+  return { packetType: 'Unknown', hops: 0, isDirect: false, sender: NO_SENDER(), channel: null, text: null }
+}
+
 export function classifyReception(decoded, channelNameFor = () => null) {
   const pt = decoded.payloadType
   const hops = decoded.pathLength || 0

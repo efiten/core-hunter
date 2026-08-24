@@ -18,6 +18,8 @@ import * as webNames from './names.js'
 import * as appNames from '../app/src/names.js'
 import * as webChangelog from './changelog.js'
 import * as appChangelog from '../app/src/changelog.js'
+import { FILTER_PACKET_TYPES as webTypes, packetTypeLabel as webPacketTypeLabel } from './packettypes.js'
+import { FILTER_PACKET_TYPES as appTypes, packetTypeLabel as appPacketTypeLabel } from '../app/src/filters.js'
 import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
 import { initialSettingsTab as webInitialTab } from './settingssheet.js'
@@ -230,6 +232,28 @@ describe('names — parity of the shared matching core', () => {
 // hand-written changelog.json, so parity is checked on the four decisions that
 // have to agree — and the shipped data files are compared to each other too,
 // since "one shared changelog" is physically two copies.
+
+// web/packettypes.js and app/src/filters.js carry the same chip list on purpose
+// (#142): filters.js has top-level DOM side effects, so web cannot import it.
+// The list is what both surfaces filter by, and the server takes the values
+// verbatim as ?types= — so a chip only one side knows is a filter that works
+// on one map and silently returns nothing on the other. Nothing pinned this
+// until #454 added a type to both copies.
+describe('packet-type chips — parity between the app and web copies', () => {
+  it('ships the same values in the same order', () => {
+    expect(webTypes.map((t) => t.value)).toEqual(appTypes.map((t) => t.value))
+  })
+
+  it('labels each value identically, so one chip does not read as two things', () => {
+    for (const { value } of appTypes) {
+      expect(webPacketTypeLabel(value)).toBe(appPacketTypeLabel(value))
+    }
+  })
+
+  it('falls back to the raw type identically for a value neither list knows', () => {
+    expect(webPacketTypeLabel('NotAType')).toBe(appPacketTypeLabel('NotAType'))
+  })
+})
 
 describe('changelog — parity between the app and web copies', () => {
   const ENTRIES = [

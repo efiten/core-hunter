@@ -14,7 +14,7 @@
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'
-import { classifyReception, carriesSignedIdentity } from './meshpacket.js'
+import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
 import { Publisher } from './publisher.js'
@@ -537,36 +537,49 @@ function onVisibilityChange() {
 async function processFrame(dv) {
   const frame = parseFrame(dv)
   if (!frame || frame.code !== PUSH_CODE_LOG_RX_DATA) return
-  let decoded
-  try { decoded = decodePacket(bytesToHex(frame.raw)) } catch (e) { return }
-  if (!decoded || !decoded.isValid) return
-  const cls = classifyReception(decoded, channelNameFor)
+  // A packet that does not decode is still a reception (#454): parseFrame read
+  // its SNR and RSSI out of the 0x88 header before the decoder ever saw byte 3,
+  // so the measurement is untouched by the decode failure. What is lost is
+  // everything the packet says about itself, the type included — the decoder's
+  // error paths return placeholders, not readings, so nothing on that object
+  // may be copied onto the record. undecodableReception says so explicitly.
+  let decoded = null
+  try { decoded = decodePacket(bytesToHex(frame.raw)) } catch (e) { decoded = null }
+  let cls = decoded && decoded.isValid ? classifyReception(decoded, channelNameFor) : undecodableReception()
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
     // The only reason left to refuse is the fix, and that is the one worth
     // telling the user about — silently dropping receptions during a drive is
-    // indistinguishable from the app being broken (#274).
-    if (cls && fix) noticePoorFix(fix)
+    // indistinguishable from the app being broken (#274). A classification
+    // always exists now, so the fix is the whole condition.
+    if (fix) noticePoorFix(fix)
     return
   }
 
   // An Advert is the only packet whose identity is signed, and the only one
   // whose identity is rendered as a name and a self-reported position (#356).
   // Verify before it can name anything: an advert that does not verify is a
-  // fabricated identity, and capturing it would put a forged name — and a
-  // forged position — into the registry surfaces and into locate(). The
-  // reception itself is real, but it is unattributable, and this pipeline has
-  // never captured unattributable packets.
+  // fabricated identity, and keeping that identity would put a forged name —
+  // and a forged position — into the registry surfaces and into locate().
+  //
+  // The identity is refused, the reception is not (#454). The RSSI, the SNR
+  // and the fix are ours and are perfectly good coverage; only the parts the
+  // packet claims about itself are attacker-chosen, and stripIdentity removes
+  // all of them. This used to drop the whole reception, on the grounds that
+  // the pipeline never captured unattributable packets — which stopped being
+  // true with #455.
   //
   // Note the limit: this stops an identity being invented, not replayed. A
   // genuine advert captured elsewhere and rebroadcast verifies exactly as this
   // one does — see docs/2026-08-15-hop-count-trust.md.
   if (carriesSignedIdentity(cls) && !(await verifyAdvertSignature(bytesToHex(frame.raw)))) {
-    // Logged, not silent: a dropped advert is otherwise indistinguishable from
-    // "no adverts heard", and this is the one place the app can see either a
-    // forgery or a packet corrupted in flight.
+    // Logged, not silent: this is the one place the app can see either a
+    // forgery or a packet corrupted in flight. It also covers the case where
+    // verification threw rather than failed — verifyAdvertSignature fails
+    // closed for both, and after the strip that costs an identity rather than
+    // every advert the radio hears.
     console.warn('advert signature did not verify, identity refused:', cls.sender.id)
-    return
+    cls = stripIdentity(cls)
   }
 
   const rec = buildRecord(frame, cls, fix, new Date().toISOString())

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { PayloadType, getPayloadTypeName } from '@michaelhart/meshcore-decoder'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel, FILTER_PACKET_TYPES } from '../filters.js'
+import { undecodableReception } from '../meshpacket.js'
 
 const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true, hops: 0,
   rx_at: '2026-06-29T10:00:00Z', ...o })
@@ -103,6 +104,13 @@ describe('FILTER_PACKET_TYPES', () => {
       .filter((name) => !covered.has(name))
     expect(missing).toEqual([])
   })
+  // #454 class 5: an undecodable packet is filed under a type of its own. A
+  // captured type with no chip is the mirror of the #341 bug — makeFilter drops
+  // a record whose type is not in the set, so without a chip these rows are
+  // hidden the moment any chip is touched and unfilterable when none is.
+  it('carries a chip for the type an undecodable packet is filed under', () => {
+    expect(FILTER_PACKET_TYPES.map((t) => t.value)).toContain(undecodableReception().packetType)
+  })
   it('has a unique value and a non-empty label per entry', () => {
     const values = FILTER_PACKET_TYPES.map((t) => t.value)
     expect(new Set(values).size).toBe(values.length)
@@ -129,6 +137,14 @@ describe('makeFilter — receptions with no sender (#454)', () => {
     expect(f(anon, now)).toBe(true)
     const other = makeFilter({ sender: null, types: new Set(['Advert']), windowMs: null, directOnly: false })
     expect(other(anon, now)).toBe(false)
+  })
+
+  it('filters an undecodable reception by its own chip, like any other type', () => {
+    const unknown = { ...anon, packet_type: undecodableReception().packetType }
+    const own = makeFilter({ sender: null, types: new Set([unknown.packet_type]), windowMs: null, directOnly: false })
+    expect(own(unknown, now)).toBe(true)
+    const other = makeFilter({ sender: null, types: new Set(['Advert']), windowMs: null, directOnly: false })
+    expect(other(unknown, now)).toBe(false)
   })
 
   it('is not swept up by the ignore list, which is keyed on ids it does not have', () => {
