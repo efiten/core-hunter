@@ -177,7 +177,21 @@ export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js
 export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldPoll, onActiveChange } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { refetch() {}, focusRecord() {}, records: () => [], destroy() {} }
-  root.innerHTML = '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span></div><div class="rx-list" id="rx-list"></div>'
+  // .rx-grab is the drag frame (#424): two edge strips, top and left, that fade
+  // in on hover. It is a sibling of the content rather than a border on the
+  // band because pointer-events must land ONLY on the strips -- #rx-log sets
+  // pointer-events:none on itself and re-enables it on .rx-hd/.rx-ln precisely
+  // so drags and wheels reach Leaflet underneath (#287, #322). A frame across
+  // the whole band would take panning away from the map it floats over.
+  //
+  // The collapse control sits in .rx-hd rather than at a fixed map corner as
+  // #424 first described. That wording predates the decision that dragging
+  // REPLACES the anchor: an icon pinned to the corner would be stranded away
+  // from a ticker the user has moved, and it is the ticker it collapses.
+  root.innerHTML = '<div class="rx-grab" aria-hidden="true"><span class="rx-grab-t"></span><span class="rx-grab-l"></span></div>'
+    + '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span>'
+    + '<button type="button" class="rx-fold" aria-expanded="true" aria-controls="rx-list"></button></div>'
+    + '<div class="rx-list" id="rx-list"></div>'
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')
   const list = root.querySelector('.rx-list')

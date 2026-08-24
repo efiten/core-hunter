@@ -17,6 +17,7 @@ import { createMultiSelectPicker, wirePopover, placePopover } from './multiselec
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
+import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 
 let currentRole = 'guest'
 
@@ -161,6 +162,11 @@ window.addEventListener('resize', setMapTop)
 // above it. What #rx-log lost was every click on that control.
 const publishBarHeight = () => {
   document.documentElement.style.setProperty('--ch-bar-h', `${bar.offsetHeight}px`)
+  // The ticker hangs below the bar and is placed in pixels (#424), so it has to
+  // follow the bar the same way #map does. The bar keeps growing after load --
+  // chips render, the role notice arrives, the version lands -- so a single
+  // measurement at init puts the ticker above the bar's final edge (#386).
+  if (window.__reflowTicker) window.__reflowTicker()
 }
 publishBarHeight()
 new ResizeObserver(publishBarHeight).observe(bar)
@@ -1356,6 +1362,100 @@ urlstate.bindControl('to', 'f-to', { urlOnly: true })
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
+
+// Ticker placement, drag and fold (#424).
+//
+// Dragging replaces the anchor rather than overriding it, so there is no "put
+// it back" button and the clamp is the safety net: on load and on every resize
+// the box is pulled inside the viewport, or a ticker left at the edge of a wide
+// monitor would be unreachable on a laptop.
+const rxLog = document.getElementById('rx-log')
+if (rxLog) {
+  const NARROW = window.matchMedia('(max-width: 640px)')
+  let place = { x: 0, y: 0, collapsed: false }
+
+  // The bar's lower edge, which is the ticker's ceiling: the bar is opaque, so
+  // anything above it is simply hidden. --ch-bar-h is republished on every bar
+  // resize (#386), so this follows a wrapped or taller bar for free.
+  const barBottom = () => (document.getElementById('bar')?.getBoundingClientRect().bottom ?? 0) + 4
+  const size = () => ({ w: rxLog.offsetWidth, h: rxLog.offsetHeight })
+  const viewport = () => ({ vw: window.innerWidth, vh: window.innerHeight, top: barBottom() })
+
+  function apply() {
+    rxLog.style.setProperty('--rx-x', `${place.x}px`)
+    rxLog.style.setProperty('--rx-y', `${place.y}px`)
+    rxLog.classList.toggle('rx-folded', place.collapsed)
+    const fold = rxLog.querySelector('.rx-fold')
+    if (fold) {
+      fold.setAttribute('aria-expanded', String(!place.collapsed))
+      fold.setAttribute('aria-label', place.collapsed ? 'Show the receptions ticker' : 'Hide the receptions ticker')
+    }
+    // The left grab strip spans the visible height, which changes when the
+    // list folds away.
+    rxLog.style.setProperty('--rx-grab-h', `${Math.max(24, rxLog.offsetHeight)}px`)
+  }
+
+  function reflow() {
+    place = { ...place, ...clampToViewport(place, size(), viewport()) }
+    apply()
+  }
+
+  urlstate.register({
+    key: 'rx',
+    get: () => serialise(place),
+    set: (v) => {
+      const saved = parsePlacement(v)
+      place = initialPlacement({ saved, size: size(), viewport: viewport(), narrow: NARROW.matches })
+      apply()
+    },
+  })
+  // urlstate only calls set() when it has a value, so a first visit needs the
+  // same decision made explicitly rather than leaving the ticker at 0,0.
+  place = initialPlacement({ saved: null, size: size(), viewport: viewport(), narrow: NARROW.matches })
+  apply()
+
+  window.addEventListener('resize', reflow)
+  // publishBarHeight calls this on every bar resize, which is the only signal
+  // for the bar growing after load without the window changing at all.
+  window.__reflowTicker = reflow
+
+  // Delegated, not bound to the elements: createReceptionTicker writes this
+  // markup later than this module runs, so querySelectorAll here finds nothing
+  // and the controls end up inert. #rx-log itself is static in index.html.
+  rxLog.addEventListener('click', (e) => {
+    if (!e.target.closest('.rx-fold')) return
+    place = { ...place, collapsed: !place.collapsed }
+    apply()
+    reflow()          // folding changes the height, which can free or need space
+    urlstate.save()
+  })
+
+  // Pointer events rather than mouse so a touch drag works on a tablet, where
+  // there is no hover to reveal the frame but the strips are still there.
+  rxLog.addEventListener('pointerdown', (e) => {
+    const strip = e.target.closest('.rx-grab-t, .rx-grab-l')
+    if (!strip) return
+    e.preventDefault()
+    const dx = e.clientX - place.x, dy = e.clientY - place.y
+    try { strip.setPointerCapture(e.pointerId) } catch (_) { /* capture is an optimisation, not the mechanism */ }
+    rxLog.classList.add('rx-dragging')
+    const move = (ev) => {
+      place = { ...place, ...clampToViewport({ x: ev.clientX - dx, y: ev.clientY - dy }, size(), viewport()) }
+      apply()
+    }
+    // On window, not the strip: with capture unavailable a fast drag leaves the
+    // 6px strip between two move events and the ticker stops following.
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      rxLog.classList.remove('rx-dragging')
+      urlstate.save()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  })
+}
+
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
