@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/efiten/core-hunter/compare/web-v1.9.1...web-v1.9.2) (2026-08-24)
+
+
+### Performance Improvements
+
+* **app:** stop rebuilding a render tick that cannot have changed ([#485](https://github.com/efiten/core-hunter/issues/485)) ([18aa6ca](https://github.com/efiten/core-hunter/commit/18aa6caaf045fff7ecfbfd61ae266070d1c6797d)), closes [#462](https://github.com/efiten/core-hunter/issues/462)
+
 ## [1.9.1](https://github.com/efiten/core-hunter/compare/web-v1.9.0...web-v1.9.1) (2026-08-23)
 
 
