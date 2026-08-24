@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/efiten/core-hunter/compare/server-v1.3.0...server-v1.4.0) (2026-08-24)
+
+
+### Features
+
+* **server,web:** show a visitor everything that has been mapped ([#466](https://github.com/efiten/core-hunter/issues/466)) ([4dc885d](https://github.com/efiten/core-hunter/commit/4dc885d178e7e52965b96be5e59b8ca9bd05fb0f))
+
 ## [1.3.0](https://github.com/efiten/core-hunter/compare/server-v1.2.0...server-v1.3.0) (2026-08-19)
 
 

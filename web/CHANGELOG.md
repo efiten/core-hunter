@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.10.0](https://github.com/efiten/core-hunter/compare/web-v1.9.2...web-v1.10.0) (2026-08-24)
+
+
+### Features
+
+* **server,web:** show a visitor everything that has been mapped ([#466](https://github.com/efiten/core-hunter/issues/466)) ([4dc885d](https://github.com/efiten/core-hunter/commit/4dc885d178e7e52965b96be5e59b8ca9bd05fb0f))
+* **web:** give the map a settings sheet, so the bar can stop being the junk drawer ([#432](https://github.com/efiten/core-hunter/issues/432)) ([2c5f9d5](https://github.com/efiten/core-hunter/commit/2c5f9d5d2f9bfa523f4362c9f45a53325696d8bc))
+* **web:** let the receptions ticker be placed and put away ([#473](https://github.com/efiten/core-hunter/issues/473)) ([6f744a3](https://github.com/efiten/core-hunter/commit/6f744a3dc17d24efda420bb196f28cd61fc8c23f))
+
 ## [1.9.2](https://github.com/efiten/core-hunter/compare/web-v1.9.1...web-v1.9.2) (2026-08-24)
 
 
