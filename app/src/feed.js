@@ -242,11 +242,22 @@ export function expandSelection(keys, rows) {
 // broadcast Discover.
 export function selectedRepeaterIds(records, selectedIds) {
   if (!selectedIds || selectedIds.size === 0) return []
+  return repeaterIds(records, (id) => selectedIds.has(id))
+}
+
+// heardRepeaterIds is the same reading over everything heard rather than over a
+// selection: the nodes worth trace-pinging when no target is chosen (#479). Same
+// per-frame collapse, so the sweep never spends two transmissions on one frame.
+export function heardRepeaterIds(records) {
+  return repeaterIds(records, () => true)
+}
+
+function repeaterIds(records, wanted) {
   const bySender = new Map()
   for (const r of records || []) {
     if (r.sender_id == null) continue
     const id = String(r.sender_id).toLowerCase()
-    if (!selectedIds.has(id)) continue
+    if (!wanted(id)) continue
     const prev = bySender.get(id)
     if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
   }

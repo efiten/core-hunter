@@ -38,8 +38,9 @@ import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
+import { selectedRepeaterIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets } from './autoping.js'
+import { nextSweepBatch, noteAsk } from './sweep.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
@@ -180,6 +181,9 @@ const state = {
   // Trace-pings we sent and may still get an answer to (#481). The tag on the
   // reply is what names the target it came back from; tracetag.js holds the rule.
   tracePings: [],
+  // Sweep state (#479): who we asked when, how many asks went unheard, and when
+  // each node was last heard at all. sweep.js turns those three into "who next".
+  sweep: { cursor: 0, attempts: new Map(), lastAskedAt: new Map(), heardAt: new Map() },
   // Companion battery (#281): polled periodically while connected, since it
   // doesn't arrive with each packet the way RSSI/SNR do.
   battery: { mv: null, timer: null, failures: 0 },
@@ -622,6 +626,9 @@ async function processFrame(dv) {
 
   const rec = buildRecord(frame, cls, fix, new Date().toISOString(), state.rxPubkey)
   rec._text = cls.text // local-only, for the popup; stripped before publish
+  // Hearing a node is the sweep's in-range signal (#479) — its own reply counts,
+  // and so does any other traffic from it, which is the cheaper of the two.
+  if (rec.sender_id != null) state.sweep.heardAt.set(String(rec.sender_id).toLowerCase(), Date.now())
   await state.queue.add(rec)
   state.lastPacketAt = Date.now()
   updateHud(rec)
@@ -877,14 +884,38 @@ function autoPingTick() {
   // sound the cue for it too, but only if the ping actually succeeds (#254).
   // The tx cue follows the same rule as the pulse: it must mean "a frame went
   // out", not "a timer fired", or it lies after a BLE drop.
-  for (const { id, delayMs } of staggerTargets(selectedRepeaterTargets())) {
+  const { ids, sweeping } = probeTargets(now)
+  for (const { id, delayMs } of staggerTargets(ids)) {
     const handle = setTimeout(() => {
       const i = state.autoPing.pendingPings.indexOf(handle)
       if (i !== -1) state.autoPing.pendingPings.splice(i, 1)
-      if (sendTracePing(id)) { pulseDiscoverBtn(); sound.txBlip('trace') }
+      if (!sendTracePing(id)) return
+      pulseDiscoverBtn()
+      sound.txBlip('trace')
+      // Bookkeeping follows the frame, not the plan (#479). A ping that never
+      // went out — BLE dropped between the tick and the timer — must not count
+      // as an unanswered ask, or a node loses its place in the rotation for
+      // something that never left the phone.
+      if (sweeping) state.sweep = { ...state.sweep, ...noteAsk(id, state.sweep, Date.now()) }
     }, delayMs)
     state.autoPing.pendingPings.push(handle)
   }
+}
+
+// Who this cycle probes. With a target selected it is those targets and nothing
+// else: airtime spent elsewhere is airtime not spent on the hunt. With nothing
+// selected the app is mapping, and a batch is rotated out of everything we can
+// hear (#479) — a trace-ping is answered by a retransmission we hear zero-hop,
+// and the firmware rate-limits it not at all, where a Discover answer is capped
+// at 4 per 120 s per repeater and an anonymous request at 4 per 180 s.
+function probeTargets(now) {
+  const selected = selectedRepeaterTargets()
+  if (selected.length) return { ids: selected, sweeping: false }
+  const ids = nextSweepBatch(heardRepeaterIds(state.lastRows), { ...state.sweep, now })
+  // The cursor moves once per cycle, not once per ping: a batch that starts
+  // where the last one ended walks the whole set instead of re-asking its head.
+  if (ids.length) state.sweep = { ...state.sweep, cursor: state.sweep.cursor + ids.length }
+  return { ids, sweeping: true }
 }
 
 function stopAutoPing() {
