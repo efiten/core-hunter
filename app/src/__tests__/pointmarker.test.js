@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from '../pointmarker.js'
+import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M , cellKey, recordsSignature, createPillarCollapser } from '../pointmarker.js'
 
 describe('octagonRing', () => {
   it('returns a closed ring of 9 points (octagon)', () => {
@@ -187,3 +187,85 @@ describe('collapsePillars', () => {
     expect(collapsePillars([])).toEqual([])
   })
 })
+
+// #462: the 3x3 neighbourhood scan built nine string keys per record, ~1.2M
+// allocations at the sizes a no-time-filter tick reaches. A numeric key is only
+// collision-free while |cy| stays well under the multiplier, and that invariant
+// is exactly the kind that should not be implicit.
+describe('cellKey', () => {
+  // The load-bearing property, stated as one: stepping cx by one has to jump
+  // further than the entire range cy can occupy, or some (cx, cy) pair folds
+  // onto another. A sampled grid does NOT catch this -- the first version of
+  // this test survived a multiplier of 2^10, because the sample was too sparse
+  // to contain a colliding pair.
+  const CY_MAX = Math.round(90 * 111320 / PILLAR_MERGE_M)   // |cy| at the poles
+  const CX_MAX = Math.round(180 * 111320 / PILLAR_MERGE_M)  // |cx| at the equator
+
+  it('steps cx further than cy can ever reach', () => {
+    expect(cellKey(1, 0) - cellKey(0, 0)).toBeGreaterThan(2 * CY_MAX)
+  })
+
+  it('collides for no pair in a dense strip at the worst-case latitude', () => {
+    const seen = new Set()
+    for (let cx = -2; cx <= 2; cx++) {
+      for (let cy = CY_MAX - 3; cy <= CY_MAX; cy++) {
+        const k = cellKey(cx, cy)
+        expect(seen.has(k)).toBe(false)
+        seen.add(k)
+        const mirrored = cellKey(cx, -cy)
+        expect(seen.has(mirrored)).toBe(false)
+        seen.add(mirrored)
+      }
+    }
+  })
+
+  it('separates neighbours that a too-small multiplier would fold together', () => {
+    expect(cellKey(1, 0)).not.toBe(cellKey(0, 1))
+    expect(cellKey(1, -1)).not.toBe(cellKey(0, 1))
+    expect(cellKey(-1, 1)).not.toBe(cellKey(0, -1))
+  })
+
+  it('stays inside the safe integer range at the extremes', () => {
+    expect(Number.isSafeInteger(cellKey(CX_MAX, CY_MAX))).toBe(true)
+    expect(Number.isSafeInteger(cellKey(-CX_MAX, -CY_MAX))).toBe(true)
+  })
+})
+
+// The deeper waste #462 measured: a static store collapses the same rows sixty
+// times a minute for an identical answer. The collapse depends only on the
+// records -- not on zoom, age-fade or the plot offset -- so it can be skipped
+// wholesale when nothing new has landed.
+describe('createPillarCollapser', () => {
+  const rec = (id, lat, lon, rssi) => ({ id, lat, lon, rssi, rx_at: 1000 + id })
+  const rows = [rec(1, 52.0, 4.0, -70), rec(2, 52.001, 4.001, -80)]
+
+  it('does not recompute for a set that has not changed', () => {
+    const collapse = createPillarCollapser()
+    const first = collapse(rows)
+    // A fresh array with the same rows: the tick hands over a new array every
+    // second, so identity of the input cannot be what decides this.
+    expect(collapse([...rows])).toBe(first)
+  })
+
+  it('recomputes when a record lands', () => {
+    const collapse = createPillarCollapser()
+    const first = collapse(rows)
+    const grown = collapse([...rows, rec(3, 53.0, 5.0, -60)])
+    expect(grown).not.toBe(first)
+    expect(grown.map((r) => r.id).sort()).toEqual([1, 2, 3])
+  })
+
+  it('recomputes when the set is swapped for a different one of the same size', () => {
+    const collapse = createPillarCollapser()
+    const first = collapse(rows)
+    expect(collapse([rec(7, 52.0, 4.0, -70), rec(8, 52.001, 4.001, -80)])).not.toBe(first)
+  })
+
+  it('never memoises a set it cannot sign, rather than returning a stale answer', () => {
+    const collapse = createPillarCollapser()
+    const unsigned = [{ lat: 52.0, lon: 4.0, rssi: -70 }]
+    expect(collapse(unsigned)).not.toBe(collapse(unsigned))
+    expect(recordsSignature(unsigned)).toBeNull()
+  })
+})
+

@@ -81,6 +81,57 @@ export const PILLAR_MERGE_M = 10
 // index: a record is dropped when a stronger survivor already sits within
 // cellM, and the 3x3 neighbourhood is what makes the boundary case behave like
 // the middle of a cell. Bounded work per record, unlike an all-pairs scan.
+// Cell key for the collapse grid (#462). The 3x3 neighbourhood scan below runs
+// per record, so a string key cost nine allocations each -- about 1.2M of them
+// at the row counts a no-time-filter tick reaches.
+//
+// Packing two signed cell indices into one number is only collision-free while
+// |cy| stays under half the multiplier, which is an invariant worth stating
+// rather than leaving implicit: at the 10 m grid, lat +-90 puts |cy| at most
+// ~1.00e6, against a 2^21 = 2.10e6 half-multiplier. The largest key a real
+// coordinate can produce is ~8.4e12, comfortably inside Number.MAX_SAFE_INTEGER.
+const CELL_KEY_MULT = 4194304 // 2^22
+export function cellKey(cx, cy) { return cx * CELL_KEY_MULT + cy }
+
+// A cheap identity for a record set, used to skip a collapse that would return
+// the answer it already returned (#462). Count plus the id range: ids come from
+// the IndexedDB store and only ever grow, so a set cannot change while keeping
+// all three the same -- dropping a record inside the range changes the count,
+// and adding one moves the maximum.
+//
+// Returns null when any record has no numeric id, which is the honest answer
+// for "cannot be signed": the caller must then recompute rather than trust a
+// signature that does not describe the data.
+export function recordsSignature(records) {
+  const rows = records || []
+  let min = Infinity, max = -Infinity
+  for (const r of rows) {
+    const id = Number(r && r.id)
+    if (!Number.isFinite(id)) return null
+    if (id < min) min = id
+    if (id > max) max = id
+  }
+  return rows.length + ':' + min + ':' + max
+}
+
+// createPillarCollapser wraps collapsePillars in that check. The collapse
+// depends on the records alone -- not on zoom, not on the age fade, not on the
+// plot offset -- so an unchanged set can reuse the previous answer wholesale,
+// which is most ticks while parked. Everything that DOES change per tick (the
+// ring geometry, the tier colour, the fade) is rebuilt by the caller on top of
+// this, so nothing goes stale.
+export function createPillarCollapser(cellM = PILLAR_MERGE_M) {
+  let sig = null
+  let out = []
+  return function collapse(records) {
+    const next = recordsSignature(records)
+    if (next !== null && next === sig) return out
+    sig = next
+    out = collapsePillars(records, cellM)
+    return out
+  }
+}
+
 export function collapsePillars(records, cellM = PILLAR_MERGE_M) {
   const placed = records.filter((r) => r.lat != null && r.lon != null)
   if (placed.length < 2) return placed
@@ -106,12 +157,12 @@ export function collapsePillars(records, cellM = PILLAR_MERGE_M) {
     let merged = false
     for (let dx = -1; dx <= 1 && !merged; dx++) {
       for (let dy = -1; dy <= 1 && !merged; dy++) {
-        const near = kept.get((cx + dx) + ':' + (cy + dy))
+        const near = kept.get(cellKey(cx + dx, cy + dy))
         if (near && near.some((k) => withinM(k, r))) merged = true
       }
     }
     if (merged) continue
-    const key = cx + ':' + cy
+    const key = cellKey(cx, cy)
     const cell = kept.get(key)
     if (cell) cell.push(r); else kept.set(key, [r])
     out.push(r)
