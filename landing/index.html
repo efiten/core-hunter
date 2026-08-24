@@ -48,23 +48,22 @@
       </div>
     </section>
 
-    <section class="lp-card lp-blogcard">
-      <p class="blog-meta">Uit de blog · 13 juli 2026</p>
-      <h2><a href="/blog/van-radiosignaal-naar-kaart.html">Van radiosignaal naar kaart: node-hunting met Mesh-Hunter</a></h2>
-      <p>Elke MeshCore-node staat ergens. Op je scherm zie je alleen een naam; Mesh-Hunter helpt je
-        ontdekken waar die node fysiek staat, live terwijl je rijdt.</p>
-      <p><a href="/blog/van-radiosignaal-naar-kaart.html">Lees het verhaal →</a></p>
-    </section>
+    <figure class="lp-hero-shot">
+      <!-- Drawn, not a capture: an illustration of what the map shows, so it
+           does not claim a mode the web map has (3D is the app's; #465). Kept
+           dark in both themes on purpose, the way a product shot is. -->
+      <img src="/hero.svg" alt="A 3D view of the coverage map: a hunter drives a route through a city and signal pillars rise where receptions land." width="900" height="380" />
+    </figure>
 
-    <section class="lp-card">
+    <section class="lp-feature">
       <h2>The map</h2>
       <p>The map at <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a> shows where MeshCore
         nodes have been heard. Without logging in you see recent, coarse coverage. Registered hunters
         see their own receptions in full detail; verified members see everything.</p>
-      <p><a href="https://map.mesh-hunter.eu">Log in on the map →</a></p>
+      <p><a href="https://map.mesh-hunter.eu">Log in on the map &rarr;</a></p>
     </section>
 
-    <section class="lp-card">
+    <section class="lp-feature">
       <h2>The RX webapp</h2>
       <p>The RX webapp at <a href="https://rx.mesh-hunter.eu">rx.mesh-hunter.eu</a> turns a phone into
         a reception logger: Web Bluetooth to a MeshCore companion radio, plus the phone's GPS. Every
@@ -73,21 +72,32 @@
         the app to link your companion device and unlock your own data on the map.</p>
     </section>
 
-    <section class="lp-card">
-      <h2>Related projects</h2>
-      <ul class="lp-links">
-        <li><a href="https://meshcore.io">MeshCore</a>, the mesh networking project this tool is built for.</li>
-        <li><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a>, the mesh observatory Mesh-Hunter builds on.</li>
-      </ul>
+    <section class="lp-card lp-blogcard">
+      <p class="blog-meta">From the blog &middot; 13 July 2026</p>
+      <h2><a href="/blog/from-signal-to-map.html">From radio signal to map: node-hunting with Mesh-Hunter</a></h2>
+      <p>Every MeshCore node is somewhere. On your screen you only see a name; Mesh-Hunter helps you
+        find where that node physically stands, live while you drive.</p>
+      <p><a href="/blog/from-signal-to-map.html">Read the story &rarr;</a>
+        &middot; <a href="/blog/van-radiosignaal-naar-kaart.html" lang="nl" hreflang="nl">Lees in het Nederlands</a></p>
     </section>
 
-    <section class="lp-card">
-      <h2>About &amp; access</h2>
-      <p>Mesh-Hunter is run by amateur-radio operators. Coverage is inferred from radio measurements
-        via mesh topology, not from GPS tracking of any target node.</p>
-      <p>Verification to a member account (full map access) is granted by the admins. Register in the
-        RX webapp to get a hunter account; ask an admin for member verification.</p>
-    </section>
+    <div class="lp-sub">
+      <section>
+        <h3>Related projects</h3>
+        <ul class="lp-links">
+          <li><a href="https://meshcore.io">MeshCore</a>, the mesh networking project this tool is built for.</li>
+          <li><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a>, the mesh observatory Mesh-Hunter builds on.</li>
+        </ul>
+      </section>
+      <section>
+        <h3>About &amp; access</h3>
+        <p>Mesh-Hunter is run by amateur-radio operators. Coverage is inferred from radio measurements
+          via mesh topology, not from GPS tracking of any target node.</p>
+        <p>Verification to a member account (full map access) is granted by the admins. Register in the
+          RX webapp to get a hunter account; ask an admin for member verification.</p>
+      </section>
+    </div>
+
   </main>
 
   <footer class="lp-foot">

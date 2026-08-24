@@ -26,7 +26,7 @@ body {
 }
 .lp-brand { font-weight: 700; letter-spacing: 0.02em; }
 .lp-nav { display: flex; align-items: center; gap: 16px; }
-.lp-nav a { color: var(--ch-text); text-decoration: none; }
+.lp-nav a, .lp-nav a:visited { color: var(--ch-text); text-decoration: none; }
 .lp-nav a:hover { color: var(--ch-sig-cool); }
 .lp-theme {
   background: var(--ch-input-bg); color: var(--ch-text);
@@ -34,7 +34,9 @@ body {
   padding: 4px 8px; cursor: pointer; font-size: 15px;
 }
 
-.lp-main { max-width: 760px; margin: 0 auto; padding: 32px 20px 48px; }
+/* 940, not 760 (#441): the hero shot needs the width, and the two feature
+   sections read as the page rather than as cards sitting on it. */
+.lp-main { max-width: 940px; margin: 0 auto; padding: 32px 20px 48px; }
 .lp-hero { text-align: center; padding: 24px 0 8px; }
 .lp-hero h1 { font-size: 2.4rem; margin: 0 0 12px; }
 .lp-lead { color: var(--ch-muted); font-size: 1.15rem; max-width: 620px; margin: 0 auto 24px; }
@@ -45,15 +47,65 @@ body {
   border: 1px solid var(--ch-border); background: var(--ch-input-bg);
   color: var(--ch-text); text-decoration: none; font-weight: 600;
 }
+.lp-btn:visited { color: var(--ch-text); }
 .lp-btn:hover { border-color: var(--ch-sig-cool); }
 .lp-btn-primary { border-color: var(--ch-sig-cool); }
+
+/* Hero shot. Dark in both themes on purpose: it is a picture of the product,
+   and the product's own default theme is dark, so it should not invert with
+   the site around it. */
+.lp-hero-shot { margin: 34px 0 0; }
+.lp-hero-shot img {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--ch-border); border-radius: 14px; background: #0e131c;
+}
+
+/* The two products lead (#441). Rules rather than cards: a card makes them
+   items on the page, a rule makes them the page. */
+.lp-feature { border-top: 1px solid var(--ch-border); padding: 34px 0 8px; }
+.lp-feature:first-of-type { margin-top: 22px; }
+.lp-feature h2 { margin: 0 0 14px; font-size: 2rem; letter-spacing: -0.015em; }
+.lp-feature p { font-size: 1.08rem; max-width: 700px; margin: 0 0 16px; }
+.lp-feature p:last-child { margin-bottom: 0; }
+
+/* Everything that follows them is support, and reads as support. */
+.lp-sub {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px;
+  margin: 40px 0 0; padding-top: 28px; border-top: 1px solid var(--ch-border);
+}
+.lp-sub h3 {
+  margin: 0 0 10px; font-size: 0.95rem; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ch-muted);
+}
+.lp-sub p, .lp-sub li { color: var(--ch-muted); font-size: 0.95rem; }
+.lp-sub p { margin: 0 0 10px; }
+.lp-sub p:last-child { margin-bottom: 0; }
+
+@media (max-width: 640px) {
+  .lp-sub { grid-template-columns: 1fr; gap: 24px; }
+  .lp-hero { padding: 16px 0 4px; }
+  .lp-hero h1 { font-size: 2rem; }
+  .lp-lead { font-size: 1.05rem; }
+  .lp-feature { padding: 26px 0 8px; }
+  .lp-feature h2 { font-size: 1.5rem; }
+  .lp-feature p { font-size: 1rem; }
+}
 
 .lp-card {
   background: var(--ch-surface); border: 1px solid var(--ch-border);
   border-radius: 14px; padding: 20px 22px; margin: 22px 0;
 }
 .lp-card h2 { margin: 0 0 10px; font-size: 1.3rem; }
-.lp-card a { color: var(--ch-sig-cool); }
+/* Content links, in every container that holds copy. Scoped to the containers
+   rather than `.lp-main a`, which would also catch .lp-btn.
+   :visited is stated explicitly everywhere below: an author rule that names
+   only the base state leaves :visited to the UA, which is browser blue and
+   then purple. That is exactly what happened when the product copy moved out
+   of .lp-card into .lp-feature (#441) -- the links went #0000ee on a #0b0e14
+   background. */
+.lp-card a, .lp-card a:visited,
+.lp-feature a, .lp-feature a:visited,
+.lp-sub a, .lp-sub a:visited { color: var(--ch-sig-cool); }
 .lp-links { margin: 0; padding-left: 20px; }
 .lp-links li { margin: 6px 0; }
 
@@ -63,9 +115,9 @@ body {
 }
 
 /* --- blog --- */
-.lp-nav a.active { color: var(--ch-sig-cool); }
+.lp-nav a.active, .lp-nav a.active:visited { color: var(--ch-sig-cool); }
 
-.blog-back { display: inline-block; color: var(--ch-sig-cool); text-decoration: none; margin: 8px 0 4px; }
+.blog-back, .blog-back:visited { display: inline-block; color: var(--ch-sig-cool); text-decoration: none; margin: 8px 0 4px; }
 .blog-back:hover { text-decoration: underline; }
 .blog-head { padding: 8px 0 4px; }
 .blog-head h1 { font-size: 1.9rem; line-height: 1.25; margin: 8px 0 8px; }
@@ -75,7 +127,7 @@ body {
 .blog-article p { margin: 0 0 16px; }
 .blog-article ul { margin: 0 0 16px; padding-left: 22px; }
 .blog-article li { margin: 6px 0; }
-.blog-article a { color: var(--ch-sig-cool); }
+.blog-article a, .blog-article a:visited { color: var(--ch-sig-cool); }
 .blog-article strong { color: var(--ch-text); }
 
 /* blog index: cards that are whole-block links */
@@ -87,5 +139,5 @@ body {
 
 /* "from the blog" card on the landing */
 .lp-blogcard .blog-meta { margin: 0 0 8px; }
-.lp-blogcard h2 a { color: var(--ch-text); text-decoration: none; }
+.lp-blogcard h2 a, .lp-blogcard h2 a:visited { color: var(--ch-text); text-decoration: none; }
 .lp-blogcard h2 a:hover { color: var(--ch-sig-cool); }
