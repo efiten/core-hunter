@@ -4,11 +4,12 @@
 // actual event (a zero-hop reception or an outgoing ping), never synthesized
 // ticking. Three states, cycled by the sound FAB (#255):
 //   off  — silent (default)
-//   rxtx — a morse dit per real zero-hop reception + the transmit pops, no
-//          bed/music; pitch (F harmonic series) and length scale with RSSI
-//          (hotter = higher/longer), same fixed dBm band as the HUD bar
+//   rxtx — a cue per recorded reception + the transmit pops, no bed/music;
+//          pitch, length and gain scale with RSSI (hotter = higher/longer/
+//          louder), on the same fixed dBm band as the HUD bar
 //          (RSSI_WEAK_DBM..RSSI_STRONG_DBM, calibration/attenuator offset
-//          applied)
+//          applied). The packet-type family picks the instrument and a relayed
+//          reception is damped rather than silent (#468).
 //   full — the surf/air soundbed + generative ambient music (Eno-style, never
 //          repeats), with the rx/tx sounds on top. The bed/music carry no
 //          information (atmosphere only), so the always-real rule holds.
@@ -64,13 +65,67 @@ export function pingGain(rssi, offset = 0) {
   return 0.25 + rssiFrac(rssi, offset) * 0.4
 }
 
-// The gate for reception pings: sound on, heard DIRECTLY (hops === 0 — a
-// relayed packet's RSSI describes the last repeater, not the target), and
-// inside the active filter set — you hear exactly what the map plots.
-export function shouldPing(rec, mode, filterFn, nowMs) {
-  if (mode === 'off') return false
-  if (!rec || rec.hops !== 0) return false
-  return !!filterFn(rec, nowMs)
+// Which cue a reception gets (#468). Everything the app records is audible:
+// nothing in the pipeline may make a reception permanently unhearable as a
+// side effect of something unrelated to the reception itself.
+//
+// Two conditions this deliberately no longer has:
+//
+// - The FILTER. It is a lens on the map, not on what the radio heard, and
+//   narrowing to one target used to silence everything else. There is no
+//   filter argument any more, so no future caller can reintroduce that.
+// - hops === 0. A relayed packet is a real reception of a real transmitter --
+//   the repeater that forwarded it, which this app will happily let you select
+//   as a target. Only the ORIGINATOR's position needs zero hops (AGENTS.md §1).
+//   It is damped rather than dropped, because it reached us through something.
+//
+// A reception with no usable GPS fix is the one carve-out, and it is enforced
+// upstream: shouldCapture refuses it, so it never gets here (#274).
+export function receptionCue(rec, mode) {
+  if (mode === 'off' || !rec) return null
+  return { family: cueFamily(rec.packet_type), damped: rec.hops !== 0 }
+}
+
+// Packet type -> cue family. The type survives even when the sender cannot be
+// named (#454), so the instrument carries WHAT is transmitting even when
+// nothing can say WHO -- which is why identity is not an audio dimension.
+//
+// Families, not one voice per chip: four to six timbres is what anyone tells
+// apart in a 35-95 ms event in a moving car. The grouping follows the measured
+// distribution (#455): the rarer and more informative the type, the more
+// distinctive its voice; the common majority (Response/Request/Path, 134k of
+// the newly captured 204k) shares the driest one or it becomes a drone.
+const CUE_FAMILY_BY_TYPE = {
+  Advert: 'advert',
+  GroupText: 'channel', GroupData: 'channel',
+  TextMessage: 'message',
+  Trace: 'trace',
+}
+export function cueFamily(packetType) {
+  return CUE_FAMILY_BY_TYPE[packetType] || 'network'
+}
+
+// Minimum gap between cues of one family. Bursts still have to coalesce into
+// distinct-but-sane audio; what changed is that the gap is no longer global.
+export const CUE_GAP_MS = 60
+
+// coalesceCue decides whether a cue is played, given when its family last
+// sounded. Pure so the rule can be pinned, because the failure it prevents is
+// invisible in the field: with two thirds of traffic audible, one global
+// timestamp let a relayed cue swallow a zero-hop reception 30 ms behind it --
+// the least important sound eating the most important one, in a hotspot, where
+// it matters most.
+//
+// So: a direct cue always plays, a damped one yields to its own family AND to
+// any direct cue inside the gap. Families do not shadow each other.
+export function coalesceCue(state, cue, nowMs) {
+  const st = state || {}
+  if (!cue) return { play: false, state: st }
+  if (!cue.damped) return { play: true, state: { ...st, [cue.family]: nowMs, direct: nowMs } }
+  const held = nowMs - (st[cue.family] ?? -Infinity) < CUE_GAP_MS ||
+               nowMs - (st.direct ?? -Infinity) < CUE_GAP_MS
+  if (held) return { play: false, state: st }
+  return { play: true, state: { ...st, [cue.family]: nowMs } }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +133,31 @@ export function shouldPing(rec, mode, filterFn, nowMs) {
 // voice envelopes.
 // ---------------------------------------------------------------------------
 
-const MIN_PING_GAP_MS = 60 // coalesce reception bursts into distinct-but-sane audio
+// Per-family voice (#468). Everything is synthesised -- no assets, works
+// offline -- so an "instrument" is an oscillator shape, an envelope and an
+// optional consonant partial. `hold` and `tail` scale the RSSI-derived length;
+// `partial` is a harmonic of the same fundamental (2 = octave, 3 = twelfth),
+// so an added voice cannot clash with the note it thickens or with the music.
+//
+// These are starting points, to be dialled in by ear in the sound lab the way
+// the mix was (#145, docs/2026-07-16-sound-modes.md). The structure is what
+// this change fixes: prominence runs inverse to how common a family is, so the
+// measured majority (network: Response/Request/Path) stays the driest thing in
+// the mix and an Advert can afford a tail.
+const VOICES = {
+  advert:  { wave: 'sine',     hold: 1.0,  tail: 0.22, gain: 1.0,  partial: 3 },
+  channel: { wave: 'triangle', hold: 0.85, tail: 0.10, gain: 0.95, partial: 0 },
+  message: { wave: 'triangle', hold: 0.6,  tail: 0.05, gain: 0.75, partial: 0 },
+  trace:   { wave: 'sine',     hold: 0.6,  tail: 0.14, gain: 0.8,  partial: 2 },
+  network: { wave: 'sine',     hold: 0.35, tail: 0.02, gain: 0.5,  partial: 0 },
+}
+
+// A relayed reception is the same voice heard through something: lowpassed,
+// shorter and quieter, so a direct reception stays the brightest thing in the
+// mix and the ear can tell them apart without being told.
+const DAMP_HZ = 900
+const DAMP_GAIN = 0.65
+const DAMP_HOLD = 0.7
 
 // Reverb + music + rx mix, dialed in by ear in the sound lab (final round,
 // 2026-07-16): morse-harmonic rx at 50%, music 86% @ 1.7×, reverb 35%/2.8 s.
@@ -99,9 +178,9 @@ export function createSoundEngine() {
   const AC = typeof AudioContext !== 'undefined' ? AudioContext
     : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null
   // No Web Audio (node tests, unsupported WebView) → inert engine, never throw.
-  if (!AC) return { setMode() {}, ping() {}, txBlip() {}, destroy() {} }
+  if (!AC) return { setMode() {}, cue() {}, txBlip() {}, destroy() {} }
 
-  let ctx = null, mode = 'off', bed = null, lastPingAt = 0
+  let ctx = null, mode = 'off', bed = null, cueState = {}
   let master = null, genTimers = [], genGain = null, activeOscs = []
 
   // Created lazily from the FAB tap (a user gesture, which Web Audio requires).
@@ -434,32 +513,62 @@ export function createSoundEngine() {
     if (mode === 'full' && !document.hidden) { startBed(); startMusic() }
   }
 
-  // Morse dit per real zero-hop reception (#145 sound lab winner, round 6):
-  // a tight CW dit — 4 ms attack, 35..95 ms hold, 12 ms release — pitched on
-  // the F harmonic series (harmFreq), so it locks into the generative music
-  // instead of clashing with it. Hotter = higher harmonic, longer dit, louder.
-  function ping(rssi, offset = 0) {
-    if (mode === 'off') return
-    const now = Date.now()
-    if (now - lastPingAt < MIN_PING_GAP_MS) return
-    lastPingAt = now
-    const c = ensureCtx()
+  // One cue per recorded reception (#468). The dit from #145's sound lab is
+  // still the shape -- a tight CW attack, RSSI on the F harmonic series, hotter
+  // = higher/longer/louder -- but the family chooses the instrument and a
+  // relayed reception is damped rather than dropped.
+  //
+  // The caller decides WHETHER (receptionCue) and the coalescer decides whether
+  // this one survives its burst; this function only plays what it is handed.
+  function cue(c, rssi, offset = 0) {
+    if (mode === 'off' || !c) return
+    const { play, state } = coalesceCue(cueState, c, Date.now())
+    cueState = state
+    if (!play) return
+    const ac = ensureCtx()
     if (!isRunning()) return
+    const v = VOICES[c.family] || VOICES.network
     const f = harmFreq(rssi, offset)
-    const g = pingGain(rssi, offset) * RX_GAIN
-    const len = 0.035 + rssiFrac(rssi, offset) * 0.06
-    const t = c.currentTime
-    const osc = c.createOscillator()
-    const og = c.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = f
+    const frac = rssiFrac(rssi, offset)
+    const g = pingGain(rssi, offset) * RX_GAIN * v.gain * (c.damped ? DAMP_GAIN : 1)
+    const len = (0.035 + frac * 0.06) * v.hold * (c.damped ? DAMP_HOLD : 1)
+    const t = ac.currentTime
+
+    // One gain stage for the whole cue, so a partial cannot double the level.
+    const og = ac.createGain()
     og.gain.setValueAtTime(0, t)
     og.gain.linearRampToValueAtTime(g, t + 0.004)
     og.gain.setValueAtTime(g, t + len)
-    og.gain.linearRampToValueAtTime(0.0001, t + len + 0.012)
-    osc.connect(og).connect(master)
-    osc.start(t)
-    osc.stop(t + len + 0.04)
+    og.gain.linearRampToValueAtTime(0.0001, t + len + v.tail)
+
+    let out = og
+    if (c.damped) {
+      const lp = ac.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = DAMP_HZ
+      og.connect(lp)
+      out = lp
+    }
+    out.connect(master)
+
+    const stop = t + len + v.tail + 0.04
+    const voices = [f]
+    if (v.partial) voices.push(f * v.partial)
+    for (let i = 0; i < voices.length; i++) {
+      const osc = ac.createOscillator()
+      osc.type = v.wave
+      osc.frequency.value = voices[i]
+      // The partial rides under the fundamental, or the bell reads as a
+      // different (higher) note instead of a colour on this one.
+      if (i === 0) osc.connect(og)
+      else {
+        const pg = ac.createGain()
+        pg.gain.value = 0.35
+        osc.connect(pg).connect(og)
+      }
+      osc.start(t)
+      osc.stop(stop)
+    }
   }
 
   // Transmit-side cue (#145 addendum): the audio twin of the Discover FAB's
@@ -530,5 +639,5 @@ export function createSoundEngine() {
     if (ctx) { try { ctx.close() } catch (_) {} ctx = null; master = null; genGain = null }
   }
 
-  return { setMode, ping, txBlip, destroy }
+  return { setMode, cue, txBlip, destroy }
 }

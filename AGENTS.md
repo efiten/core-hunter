@@ -19,9 +19,16 @@ node type. Improved successor to an earlier method. Two reused building blocks:
 2. **Map / visualisation base** — the **CoreScope** map and point-visualisation layer: map setup,
    point/marker rendering, coverage/hex heat, and SNR/RSSI colour scaling.
 
-**Direction-finding principle:** only what the hunter hears **directly (zero-hop, `hops === 0`)**
-tells you where a transmitter is. A relayed packet's RSSI/SNR describes the last repeater that
-forwarded it, not the target. Drive toward the strongest zero-hop heat to close in on the source.
+**Direction-finding principle:** every reception is heard directly, from whichever node transmitted
+it last. What zero hops (`hops === 0`) adds is that this node is also the **originator**, so only
+then does the RSSI/SNR say something about where the *source* stands. A relayed packet's signal
+describes the repeater that forwarded it -- which is a real transmitter on a real spot, and one this
+app lets you select as a target, just not the one whose packet you are reading. Drive toward the
+strongest zero-hop heat to close in on a source; toward relayed heat to close in on the repeater.
+
+Say this precisely, because the loose form ("only zero-hop tells you where a transmitter is") has
+misled work twice: it reads as a capture rule, and it is not one. Capture keeps everything it can
+place (#454), and audio follows the same rule (#468).
 
 **"Direct" is not "authenticated" (#320).** The hop count and path are plaintext header fields with
 no signature or MAC over them. MeshCore does authenticate payloads (channel/direct MACs, an Advert's

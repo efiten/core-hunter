@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createSoundEngine } from '../sound.js'
 
+// A plain zero-hop cue: these tests are about the engine's clock and
+// lifecycle, not about which instrument plays (#468).
+const DIRECT = { family: 'network', damped: false }
+
 // The engine was entirely untested: vitest runs in node, so `AudioContext` is
 // undefined and createSoundEngine() returns its no-op stub — every real branch
 // executed zero times. That is why three lifecycle defects shipped. A minimal
@@ -92,7 +96,7 @@ describe('the engine is reachable at all', () => {
   it('builds a real engine once AudioContext exists, not the no-op stub', () => {
     const e = createSoundEngine()
     e.setMode('rxtx')
-    e.ping(-80)
+    e.cue(DIRECT, -80)
     expect(ctx.oscillators.length).toBeGreaterThan(0)
   })
 })
@@ -137,7 +141,7 @@ describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
     const e = createSoundEngine()
     e.setMode('rxtx')
     ctx.oscillators.length = 0
-    for (let i = 0; i < 50; i++) { vi.advanceTimersByTime(100); e.ping(-80) }
+    for (let i = 0; i < 50; i++) { vi.advanceTimersByTime(100); e.cue(DIRECT, -80) }
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
   })
 
@@ -155,7 +159,7 @@ describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
     const e = createSoundEngine()
     e.setMode('rxtx')
     ctx.oscillators.length = 0
-    e.ping(-80)
+    e.cue(DIRECT, -80)
     expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
   })
 
@@ -163,7 +167,7 @@ describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
     ctx.state = 'suspended'; ctx.gestureGiven = false
     const e = createSoundEngine()
     e.setMode('rxtx')
-    for (let i = 0; i < 40; i++) { vi.advanceTimersByTime(100); e.ping(-80) }
+    for (let i = 0; i < 40; i++) { vi.advanceTimersByTime(100); e.cue(DIRECT, -80) }
     const pointer = listeners.filter((l) => l.type === 'pointerdown')
     expect(pointer).toHaveLength(1)
   })
@@ -391,7 +395,7 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     e.setMode('rxtx')
     await fireVisibility(true)
     ctx.oscillators.length = 0
-    e.ping(-80)
+    e.cue(DIRECT, -80)
     expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
   })
 
