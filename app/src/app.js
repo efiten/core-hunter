@@ -14,7 +14,7 @@
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'
-import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, traceTagOf } from './meshpacket.js'
+import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, traceTagOf, heardUsSnr } from './meshpacket.js'
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
@@ -691,7 +691,13 @@ async function processFrame(dv) {
   // tag off, and its fields are placeholders rather than readings (#454).
   if (decodedOk && cls.sender.id == null) {
     const target = matchTraceTarget(state.tracePings, traceTagOf(decoded), Date.now())
-    if (target) cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null } }
+    // The same packet also carries how well that node heard us (#482) — its own
+    // radio's reading of our ping, appended to the path before it forwarded.
+    // Only kept for a reply we provoked: on an overheard trace those bytes
+    // describe other nodes hearing each other.
+    if (target) {
+      cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null }, heardUsSnr: heardUsSnr(decoded) }
+    }
   }
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {

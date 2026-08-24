@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception } from '../meshpacket.js'
+import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, heardUsSnr } from '../meshpacket.js'
 import { decodePacket } from '../decode.js'
 
 const mk = (payloadType, decoded, pathLength = 0) => ({ payloadType, pathLength, payload: { decoded } })
@@ -146,5 +146,28 @@ describe('undecodableReception (#454 class 5)', () => {
     expect(errorPacket.isValid).toBe(false)
     expect(classifyReception(errorPacket).packetType).toBe('RawCustom')
     expect(undecodableReception().packetType).not.toBe('RawCustom')
+  })
+})
+
+// #482: a TRACE packet's path bytes are the SNR each hop measured of the
+// transmission it forwarded — firmware writes `(int8_t)(pkt->getSNR()*4)` before
+// retransmitting (src/Mesh.cpp). For a trace we sent, the first of those is the
+// target's reading of US: the reciprocal of every measurement this app makes.
+describe('heardUsSnr (#482)', () => {
+  const trace = (snrValues) => ({ payloadType: 9, payload: { decoded: { traceTag: '00000001', snrValues } } })
+
+  it('reads the first hop, which is the node we addressed', () => {
+    expect(heardUsSnr(trace([-4, -11.5]))).toBe(-4)
+  })
+  it('decodes the firmware encoding, a signed byte of SNR times four', () => {
+    // 0xf0 = -16 as int8, /4 = -4 dB. Driven through the real decoder rather
+    // than a hand-built fixture, so this pins the path the app actually takes.
+    const hex = ['26', '01', 'f0', '01000000', '00000000', '00', 'ab'].join('')
+    expect(heardUsSnr(decodePacket(hex))).toBe(-4)
+  })
+  it('has nothing to say about a packet with no path SNRs', () => {
+    expect(heardUsSnr(trace([]))).toBeNull()
+    expect(heardUsSnr({ payloadType: 4, payload: { decoded: { publicKey: 'ab' } } })).toBeNull()
+    expect(heardUsSnr(null)).toBeNull()
   })
 })
