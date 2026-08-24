@@ -397,14 +397,72 @@ func TestHeatmapGuestResFloor(t *testing.T) {
 	}
 }
 
-// TestHeatmapGuestWindowDrop: guest heatmap must drop rows older than the 24h
-// window even at low zoom (no res floor triggered).
-func TestHeatmapGuestWindowDrop(t *testing.T) {
+// TestHeatmapGuestSeesAllCoverage: the guest heatmap is NOT windowed (#440).
+// It used to clamp to 24h, which meant a first-time visitor landed on a blank
+// map in any area nobody had driven that day -- everything the project had
+// mapped hidden from exactly the person deciding whether to join. Safe because
+// the heat is aggregated after degradePoints: no coordinate, no identity.
+func TestHeatmapGuestSeesAllCoverage(t *testing.T) {
 	st := seedPointsStore(t)
 	defer st.Close()
 	out := doHeatmap(t, st, Guest(), "?z=5")
-	if got := heatmapTotal(t, out); got != 2 {
-		t.Fatalf("guest heatmap should drop the >24h row, got total count %d, want 2", got)
+	if got := heatmapTotal(t, out); got != 3 {
+		t.Fatalf("guest heatmap should include the 72h-old row, got total count %d, want 3", got)
+	}
+}
+
+// TestHeatmapGuestCarriesNoHunters: with the window gone, a STABLE pseudonym
+// would hand a guest one hunter's entire historical territory (#280). So the
+// degraded response carries no hunter identities at all -- count and best RSSI
+// only. This is what makes the window length stop being a privacy question.
+func TestHeatmapGuestCarriesNoHunters(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doHeatmap(t, st, Guest(), "?z=5")
+	feats := out["features"].([]any)
+	if len(feats) == 0 {
+		t.Fatal("expected some hex features")
+	}
+	for _, f := range feats {
+		props := f.(map[string]any)["properties"].(map[string]any)
+		if h, ok := props["hunters"]; ok {
+			t.Fatalf("guest cell must carry no hunters key, got %v", h)
+		}
+		// The measurement half must survive: dropping identities must not
+		// quietly drop what the cell exists to show.
+		if props["count"].(float64) < 1 {
+			t.Fatalf("guest cell lost its count: %v", props)
+		}
+	}
+}
+
+// TestHeatmapMemberKeepsHunters: the change is scoped to degraded callers.
+func TestHeatmapMemberKeepsHunters(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doHeatmap(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?z=5")
+	named := 0
+	for _, f := range out["features"].([]any) {
+		props := f.(map[string]any)["properties"].(map[string]any)
+		if hs, ok := props["hunters"].([]any); ok {
+			named += len(hs)
+		}
+	}
+	if named == 0 {
+		t.Fatal("member heatmap lost its hunter names")
+	}
+}
+
+// TestPointsGuestStillWindowed: #440 relaxes the window on the heatmap ONLY.
+// /api/points has its own clamp (applyGuestWindowCap) and keeps it. Pinned so
+// relaxing one handler cannot quietly relax the other.
+func TestPointsGuestStillWindowed(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	out := doPoints(t, st, Guest())
+	pts := out["points"].([]any)
+	if len(pts) != 2 {
+		t.Fatalf("guest points should still drop the >24h row, got %d, want 2", len(pts))
 	}
 }
 
@@ -449,15 +507,26 @@ func TestHeatmapGuestRawPubkeyNotTargeted(t *testing.T) {
 	if got, want := heatmapTotal(t, out), heatmapTotal(t, baseline); got != want {
 		t.Fatalf("raw pubkey must not narrow the guest heatmap: got total %d, want %d (unfiltered)", got, want)
 	}
-	seen := map[string]bool{}
-	for _, feat := range out["features"].([]any) {
-		props := feat.(map[string]any)["properties"].(map[string]any)
-		if hs, ok := props["hunters"].([]any); ok {
-			for _, h := range hs { seen[h.(string)] = true }
+	// The hunter list is withheld from a guest since #440, so "more than one
+	// hunter still visible" is no longer observable. The cell set is, and it is
+	// a stronger check: targeting one hunter would drop bbbb-only cells, which
+	// an equal total alone could hide if another cell grew to compensate.
+	cells := func(g map[string]any) map[string]int {
+		m := map[string]int{}
+		for _, feat := range g["features"].([]any) {
+			props := feat.(map[string]any)["properties"].(map[string]any)
+			m[props["cell"].(string)] = int(props["count"].(float64))
 		}
+		return m
 	}
-	if len(seen) < 2 {
-		t.Fatalf("raw pubkey must not target a single hunter, got hunters: %v", seen)
+	got, want := cells(out), cells(baseline)
+	if len(got) != len(want) {
+		t.Fatalf("raw pubkey changed the cell set: got %v, want %v", got, want)
+	}
+	for id, n := range want {
+		if got[id] != n {
+			t.Fatalf("raw pubkey changed cell %s: got %d, want %d", id, got[id], n)
+		}
 	}
 }
 

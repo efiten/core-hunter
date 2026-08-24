@@ -11,9 +11,10 @@ test.beforeEach(async ({ page }) => {
 
 test('the button labels the current range and the panel opens/closes', async ({ page }) => {
   await page.goto('/')
-  // Cold default is still today 00:00-23:59 (#217 untouched), so the label is
-  // the absolute span rather than a quick-range name.
-  await expect(page.locator('#tr-label')).toHaveText('00:00 → 23:59')
+  // A cold start is now unbounded (#440): the map opens on everything that has
+  // been mapped rather than on however many hours have passed since local
+  // midnight. rangeLabel already had a word for an empty range.
+  await expect(page.locator('#tr-label')).toHaveText('All time')
 
   await openPicker(page, '#tr-toggle', '#time-picker')
   await expect(page.locator('#tr-quick .tr-item')).toHaveCount(12)
@@ -102,4 +103,39 @@ test('a guest is told the range is clamped, not just shown a hidden row (#300)',
 test('a member sees no clamp note for the same range (#300)', async ({ page }) => {
   await page.goto('/?mode=points&from=now-7d&to=now')
   await expect(page.locator('#tr-label')).toHaveText('Last 7 days')
+})
+
+// #440: the map's first impression. A newcomer landing on mesh-hunter.eu used
+// to get today only -- at 09:00 that is nine hours of driving, and in most
+// areas on most days a blank map, which is the worst possible advertisement for
+// a mapping project. The server stopped clamping the guest heatmap, but that
+// alone changes nothing while the client still asks for today, so this pins the
+// half that actually reaches the API.
+test('a first visit asks for all coverage, not just today', async ({ page }) => {
+  const heatmapUrls = []
+  await page.route('**/api/heatmap*', (r) => { heatmapUrls.push(r.request().url()); r.fulfill({ json: { features: [] } }) })
+  await page.goto('/')
+  await expect(page.locator('#tr-label')).toHaveText('All time')
+
+  // The inputs are left empty rather than filled with midnight..23:59.
+  await expect(page.locator('#f-from')).toHaveValue('')
+  await expect(page.locator('#f-to')).toHaveValue('')
+
+  await expect.poll(() => heatmapUrls.length).toBeGreaterThan(0)
+  for (const u of heatmapUrls) {
+    const q = new URL(u).searchParams
+    expect(q.get('from') || '', `heatmap request carried a from: ${u}`).toBe('')
+  }
+})
+
+// The other half of the same rule: a returning visitor keeps whatever range
+// they last used. defaultToday only fills a range nothing restored, so this
+// must not be re-broadened underneath them.
+test('a restored range survives the all-time default', async ({ page }) => {
+  await page.goto('/?from=now-6h')
+  // Open-ended, and it stays open-ended: nothing invents a `to` to pair with a
+  // shared link that carried only a `from`.
+  await expect(page.locator('#tr-label')).toHaveText('From now-6h')
+  await expect(page.locator('#f-from')).toHaveValue('now-6h')
+  await expect(page.locator('#f-to')).toHaveValue('')
 })

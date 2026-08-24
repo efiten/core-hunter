@@ -185,14 +185,27 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		f := filterFrom(r, ignore)
 		var ps auth.Pseudonyms
 		sub := !a.AtLeast("member")
+		// Whether the per-cell hunter list is withheld (#440). Not simply
+		// `sub`: a hunter filtered to their own companion is exact by contract,
+		// real name included.
+		anon := false
 		if sub {
 			ord, _ := s.HunterOrdinals()
 			ps = auth.Pseudonyms(ord)
 			f = resolveHunterFilter(f, a, ps)
 			ownFull := len(f.Hunter) == 1 && a.ownsCompanion(strings.ToLower(f.Hunter[0]))
+			anon = !ownFull
 			if !ownFull {
 				if z > guestHeatmapMaxZ { z = guestHeatmapMaxZ }
-				if f.From == "" || f.From < windowFrom(time.Now()) { f.From = windowFrom(time.Now()) }
+				// Deliberately NOT windowed (#440). The 24h clamp that used to
+				// sit here made a first-time visitor land on a blank map in any
+				// area nobody had driven that day, hiding everything the project
+				// has mapped from exactly the person deciding whether to join.
+				// Safe because this response is an aggregate: coordinates are
+				// snapped and identities dropped before any of it reaches a
+				// cell. /api/points keeps its own clamp (applyGuestWindowCap) --
+				// an all-time points scatter is both less legible and more
+				// identifying than the hex.
 			}
 		}
 		f.Limit = heatmapCap
@@ -204,6 +217,7 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 			pts = degradePoints(pts, ps, own)
 		}
 		fc := query.Heatmap(pts, geo.ResForZoom(z))
+		if anon { fc = query.HeatmapAnon(pts, geo.ResForZoom(z)) }
 		fc.Truncated = trunc
 		writeJSON(w, fc)
 	})

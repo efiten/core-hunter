@@ -13,16 +13,21 @@ const toLocalInput = (d) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-// Default the timeframe to today (local): 00:00 → 23:59.
-function defaultToday() {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0)
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59)
-  const from = document.getElementById('f-from')
-  const to = document.getElementById('f-to')
-  if (!from.value) from.value = toLocalInput(start)
-  if (!to.value) to.value = toLocalInput(end)
-}
+// No cold-start timeframe (#440). This used to default to today 00:00-23:59,
+// which meant a newcomer met however many hours had passed since local midnight
+// -- at 09:00, nine hours of driving, and in most areas on most days a blank
+// map. Everything the project has mapped was hidden from the one person who has
+// not decided to join yet. An empty range asks for all of it, and the heatmap
+// no longer clamps a guest to 24 h (server/internal/httpapi/api.go).
+//
+// Nothing replaces it rather than something setting a wider range, because this
+// ran BEFORE urlstate restores: it only ever saw empty inputs, so any value it
+// wrote was the cold-start value by definition. A returning visitor's range is
+// applied afterwards and is untouched.
+//
+// The Clear button (resetFilters) still means today, deliberately: that is
+// someone already using the map asking for a working default, not a first
+// impression.
 
 // Reset every filter to its default: all hunters, no sender, timeframe = today.
 // The hunter picker's own selection lives in map.js (like the sender picker,
@@ -68,7 +73,6 @@ if (typeof document !== 'undefined') {
   directCb.addEventListener('change', syncDirectActive)
   syncDirectActive()
 
-  defaultToday()
 
   window.__resetFilters = resetFilters
 

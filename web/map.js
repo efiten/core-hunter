@@ -273,7 +273,11 @@ async function drawHex() {
     const ring = f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon])
     const tier = rssiTier(f.properties.best_rssi)
     const cell = L.polygon(ring, { color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
-      .bindTooltip(`best RSSI ${esc(f.properties.best_rssi)} · ${f.properties.count} pts · ${(f.properties.hunters||[]).length} hunters`)
+      // The hunter count is omitted rather than shown as 0 when the server
+      // withholds it (#440): a degraded caller gets no identities at all, and
+      // "0 hunters" over a cell with receptions in it reads as a bug.
+      .bindTooltip(`best RSSI ${esc(f.properties.best_rssi)} · ${f.properties.count} pts`
+        + (f.properties.hunters ? ` · ${f.properties.hunters.length} hunters` : ''))
     // Ticker sync from hex mode (#224). The marker-click path only exists in
     // 'points'/'both', and the cold default is 'hex' (#141), so without this a
     // first-time visitor clicking the map got nothing. A cell is an aggregate
