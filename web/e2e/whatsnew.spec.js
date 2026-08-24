@@ -139,14 +139,17 @@ const tabWalk = async (page, presses, shift = false) => {
 
 test('Tab stays inside the settings sheet, in both directions', async ({ page }) => {
   await serveFixture(page)
-  await bootstrap(page, '1.4.0')
+  await bootstrap(page, { legacy: '1.4.0' })
   await page.goto('/')
-  await openSettings(page, null)
-  await expect(page.locator('#ss-close')).toBeFocused()
-  // The seeded legacy acknowledgement opens the sheet on What's new, whose body
-  // is filled by a fetch. Wait for it: the panel gains a focusable link when it
-  // lands, so measuring the rendered set before then counts one control fewer
-  // than the walk will reach, and the test fails on its own timing rather than
+  // The notes tab explicitly, not whichever tab initialSettingsTab picks: this
+  // test is about a sheet with hidden panels beside the shown one, so which
+  // panel is shown has to be the test's choice rather than a side effect of the
+  // seeded acknowledgement.
+  await openSettings(page, 'whatsnew')
+  await page.locator('#ss-close').focus()
+  // The panel body is filled by a fetch, and it gains a focusable link when it
+  // lands. Measuring the rendered set before then counts one control fewer than
+  // the walk will reach, so the test would fail on its own timing rather than
   // on the trap. Every render path ends with this link, including the empty one.
   await expect(page.locator('#ss-panel-whatsnew .wn-more')).toBeVisible()
 
@@ -194,7 +197,7 @@ test('the dialog is named by a static heading, not by whichever tab is first', a
   // aria-labelledby="ss-tab-settings" named the sheet after the first tab, so
   // an open that lands on What's new announced "Settings".
   await serveFixture(page)
-  await bootstrap(page, '1.4.0')
+  await bootstrap(page, { legacy: '1.4.0' })
   await page.goto('/')
   await openSettings(page, null)
   const named = await page.evaluate(() => {
@@ -298,7 +301,9 @@ test('a first-time reader is not badged, and the panel still works', async ({ pa
   await page.goto('/')
   await expect(page.locator('#wn-dot')).toBeHidden()
   expect(await page.evaluate(() => localStorage.getItem('ch-whatsnew-entry'))).toBe('2026-08-15-newest')
-  await openSettings(page, null)
+  // Explicitly, because a reader with nothing unread lands on Settings: the
+  // panel still has to work when they go looking for it.
+  await openSettings(page, 'whatsnew')
   await expect(page.locator('#wn-body .wn-version')).toHaveCount(3)
   await expect(page.locator('#wn-body .wn-new')).toHaveCount(0)
 })
