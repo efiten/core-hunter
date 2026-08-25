@@ -11,7 +11,7 @@ import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
-import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe } from './auth.js'
+import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
@@ -340,6 +340,38 @@ async function drawHex() {
   setStatus(coverageLabel(fc.features.length, 'cells', cover) + ignoreSuffix(), coverageTitle(HEATMAP_CAP, cover))
 }
 
+// The point layer, gated like Locate below (#493). Below member /api/points
+// returns 24 h and 500 rows, which read as a thin or empty layer with nothing
+// on the control saying why. The Points and Both segments stay visible and
+// disabled rather than hidden: a visitor should be able to see that the layer
+// exists and what it takes to open it, which is also what the map has to sell.
+// The reason renders as a line under the group (#layer-gate-note), because on
+// a phone a tooltip is nothing at all.
+//
+// ?mode=points is restored before the role is known, so the mode is re-derived
+// here rather than only at module-eval time, the same deferral ?locate=1 uses.
+function applyPointLayerGate() {
+  const can = canSeePointLayer(currentRole)
+  const reason = pointLayerReason(currentRole)
+  for (const b of document.querySelectorAll('#layer-seg button')) {
+    if (b.dataset.mode === 'hex') continue // hex is everyone's layer
+    b.disabled = !can
+    // The note below carries the reason visually; this hands it to a reader
+    // landing on the disabled segment.
+    if (reason) b.setAttribute('aria-describedby', 'layer-gate-note')
+    else b.removeAttribute('aria-describedby')
+  }
+  const note = document.getElementById('layer-gate-note')
+  note.textContent = reason || ''
+  note.hidden = !reason
+  const gated = modeForRole(mode, currentRole)
+  if (gated !== mode) {
+    mode = gated
+    syncLayerSeg()
+    urlstate.save()
+  }
+}
+
 function applyLocateGate() {
   const show = canSeeLocate(currentRole)
   const btn = document.getElementById('locate-toggle')
@@ -423,6 +455,7 @@ function applyRole(me) {
   }
   applyLocateGate()
   applyObserverGate()
+  applyPointLayerGate()
   // The range label depends on the role (#300), and this runs after
   // /api/auth/me resolves — at module-eval time currentRole is still the
   // 'guest' default, so without this a member keeps the clamp note.
@@ -463,9 +496,6 @@ for (const segBtn of document.querySelectorAll('#layer-seg button')) {
     mode = segBtn.dataset.mode
     syncLayerSeg()
     urlstate.save()
-    // The range label's clamp note is about the point layer (#492), so
-    // switching layers changes whether it applies.
-    syncTimeUi()
     refresh()
   })
 }
@@ -1301,10 +1331,7 @@ function syncTimeUi() {
   // Say so when the server is going to clamp this, rather than labelling a
   // range the data does not cover (#300). Hiding the >24h rows only stops a
   // guest picking one; a shared ?from=now-7d link still lands here.
-  trLabelEl.textContent = rangeLabelFor(fFrom.value, fTo.value, now, {
-    degraded: isDegradedFor(currentRole),
-    showsPoints: mode === 'points' || mode === 'both',
-  })
+  trLabelEl.textContent = rangeLabelFor(fFrom.value, fTo.value, now, { degraded: isDegradedFor(currentRole) })
   const active = matchQuickRange(fFrom.value, fTo.value)
   for (const li of trQuick.children) li.classList.toggle('active', !!active && li.dataset.label === active.label)
   const f = resolveTimeValue(fFrom.value, now), t = resolveTimeValue(fTo.value, now)

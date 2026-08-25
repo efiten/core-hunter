@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-29-point-layer-needs-an-account",
+    "date": "2026-08-29",
+    "where": "map",
+    "title": "The point layer says what an account opens",
+    "body": "Points and Both are off for visitors, with the reason underneath: individual receptions need a member account. The coverage layer stays open to everyone."
+  },
+  {
     "id": "2026-08-26-app-design-pass",
     "date": "2026-08-26",
     "where": "app",
