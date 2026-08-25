@@ -21,6 +21,13 @@
     "body": "Receptions you have captured but not sent yet no longer depend on the radio still being connected. They are stamped with the companion that heard them, so they keep their identity even after you disconnect, and the app now reconnects to the server on its own instead of only trying once when the companion connects. Resuming after a pause works with the radio unplugged too, which it did not before. If you have driven around and the measurements did not arrive, they were not lost - they were waiting, and now they go out."
   },
   {
+    "id": "2026-08-25-map-opens-on-thirty-days",
+    "date": "2026-08-25",
+    "where": "map",
+    "title": "The map opens on the last 30 days",
+    "body": "The range button used to read All time on a first visit, and that was never quite true: the server answers with the newest 50,000 receptions in view, so in a busy area the older coverage was quietly left out under a label promising everything. A first visit now asks for the last 30 days, which is a window the server returns whole. You can still pick any range you like, and the 2, 7 and 30 day options are no longer hidden when you are not logged in. Where a range is longer than the individual receptions go back, the button says which layer that applies to instead of capping the whole thing."
+  },
+  {
     "id": "2026-08-25-map-keeps-up-with-the-drive",
     "date": "2026-08-25",
     "where": "both",
