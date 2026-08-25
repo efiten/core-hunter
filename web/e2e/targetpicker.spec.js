@@ -329,7 +329,11 @@ test('a long node name clips instead of rewrapping the filter bar', async ({ pag
   await page.keyboard.press('Escape')
   await expect(page.locator('#sp-toggle')).toHaveClass(/has-selection/)
 
-  expect(await barHeight()).toBe(empty)
+  // Not pixel equality: font rendering differs per platform, and the same two
+  // states measure 88/125 locally and 116/117 on CI. What must not happen is a
+  // whole extra row, which is ~37px, so anything under half of that is the bar
+  // staying as it was.
+  expect(Math.abs(await barHeight() - empty)).toBeLessThan(18)
   // Clipped, so the full name lives in the title instead.
   const btn = page.locator('#sp-toggle')
   expect(await btn.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
