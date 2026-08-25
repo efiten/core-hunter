@@ -79,4 +79,13 @@ test('the pill says when something behind it is filtered', async ({ page }) => {
 
   await page.uncheck('#f-direct')
   await expect(dot).toBeHidden()
+
+  // Every control the sheet swallows, not just the one this branch was written
+  // against. Sender unknown arrived in the bar from #497 while this was open,
+  // so on a phone it is filtered behind the pill from the day it lands.
+  await page.check('#f-unnamed')
+  await expect(dot).toBeVisible()
+
+  await page.uncheck('#f-unnamed')
+  await expect(dot).toBeHidden()
 })

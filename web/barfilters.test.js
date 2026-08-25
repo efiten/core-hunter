@@ -14,6 +14,7 @@ describe('hiddenFiltersActive', () => {
 
   it.each([
     ['direct only', { directOnly: true }],
+    ['sender unknown', { senderUnknown: true }],
     ['a packet-type filter', { types: new Set(['Advert']) }],
     ['CoreScope adverts', { csAdverts: true }],
     ['CoreScope relays', { csRelays: true }],

@@ -30,10 +30,16 @@
 // this wrong lights the dot on a map nobody has touched, which is the one
 // failure that makes the indicator worthless -- it then says "filtered" always,
 // so it says nothing.
+//
+// This list is the sheet's inventory, and it does not maintain itself: a
+// control added to #bar-filters later is hidden behind the pill from its first
+// day, but stays dark here until it is added below. #497 landed "Sender
+// unknown" in the bar while this branch was open, and the rebase put it in the
+// sheet without lighting the dot -- filtered map, pill says nothing.
 export const DEFAULT_MODE = 'hex'
 
-export function hiddenFiltersActive({ directOnly = false, types = null, csAdverts = false, csRelays = false, nodePos = false, mode = DEFAULT_MODE } = {}) {
-  if (directOnly) return true
+export function hiddenFiltersActive({ directOnly = false, senderUnknown = false, types = null, csAdverts = false, csRelays = false, nodePos = false, mode = DEFAULT_MODE } = {}) {
+  if (directOnly || senderUnknown) return true
   // An empty/absent set means "no type filter" -- same convention as the app's
   // isFilterActive, where `types` present and non-empty is the active state.
   if (types && [...types].length > 0) return true

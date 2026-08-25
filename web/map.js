@@ -1517,6 +1517,7 @@ if (barFilters && filterPill) {
     const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
     const active = hiddenFiltersActive({
       directOnly: on('f-direct'),
+      senderUnknown: on('f-unnamed'),
       types: window.currentTypes ? window.currentTypes() : null,
       csAdverts: on('cs-adverts'),
       csRelays: on('cs-relays'),
