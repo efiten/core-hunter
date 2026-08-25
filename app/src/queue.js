@@ -242,4 +242,20 @@ export class Queue {
     const store = db.transaction(STORE, 'readonly').objectStore(STORE);
     return result(store.count());
   }
+
+  // How many receptions the drain still owes the broker. Counted rather than
+  // read from a list, so it is cheap on a backlog of thousands -- and it has to
+  // be, because it is read on the render tick.
+  //
+  // This is the number nobody could see on 2026-08-24. The app kept capturing
+  // and the MQTT dot stayed lit, while a stalled drain meant nothing reached
+  // the map for over an hour. A dot that only says "the socket is open" is not
+  // the same as "your receptions are getting through", and the difference is
+  // the whole hunt.
+  async unpublishedCount() {
+    const watermark = await this.getWatermark();
+    const db = await openDB();
+    const store = db.transaction(STORE, 'readonly').objectStore(STORE);
+    return result(store.count(IDBKeyRange.lowerBound(watermark, true)));
+  }
 }

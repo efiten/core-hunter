@@ -139,3 +139,27 @@ test('a restored range survives the all-time default', async ({ page }) => {
   await expect(page.locator('#f-from')).toHaveValue('now-6h')
   await expect(page.locator('#f-to')).toHaveValue('')
 })
+const pt = (i) => ({ lat: 52.36 + i * 2e-4, lon: 4.83, rssi: -90, snr: -5, hops: 0,
+  sender_id: 'aa', sender_kind: 'relay', sender_label: '', hunter_name: 'Onnix',
+  packet_type: 'TextMessage', rx_at: '2026-08-24T20:57:00Z' })
+test('new receptions appear on the map without touching it', async ({ page }) => {
+  // The default range since #440 is All time, which is not a relative token --
+  // so the old "is this range relative" test was false, the refresh timer was
+  // never created, and the map showed whatever loaded on open. The receptions
+  // ticker kept polling, so the page LOOKED alive while the map was frozen.
+  let points = [pt(0), pt(1)]
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
+  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points } }))
+  await page.goto('/?mode=points')
+  await expect(page.locator('#tr-label')).toContainText('All time')
+  // The points layer renders to a canvas, so there are no DOM markers to
+  // count. The status line carries the number the map is actually showing,
+  // which is what a hunter reads anyway.
+  const status = page.locator('#status')
+  await expect(status).toHaveText('2 points', { timeout: 10000 })
+  // Six more arrive at the server. Nothing touches the map.
+  points = [pt(0), pt(1), pt(2), pt(3), pt(4), pt(5), pt(6), pt(7)]
+  await expect(status).toHaveText('8 points', { timeout: 25000 })
+})

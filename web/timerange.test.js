@@ -3,8 +3,7 @@ import {
   isTimeToken, resolveToken, resolveTimeValue,
   QUICK_RANGES, matchQuickRange, rangeLabel, absoluteShareUrl,
   toLocalInput, boundFromField,
-  exceedsGuestWindow,
-} from './timerange.js'
+  exceedsGuestWindow, rangeIsLive } from './timerange.js'
 
 // Fixed clock for every case below: 2026-07-22 15:30 local.
 const NOW = new Date(2026, 6, 22, 15, 30, 0, 0).getTime()
@@ -208,5 +207,50 @@ describe('exceedsGuestWindow — would the server clamp this range? (#300)', () 
     // clamps a degraded role to 24h — so the range really is capped and the
     // label should say so. Same path as an empty start, deliberately.
     expect(exceedsGuestWindow('nonsense', 'now', NOW)).toBe(true)
+  })
+})
+
+// #440 follow-up. The auto-refresh asked "is this range relative", which was
+// the right question while its reason was keeping `now-1h` rolling. The
+// cold-start default became All time -- empty from and to, not a token -- so
+// the timer was never created and the map never refreshed itself. A hunter
+// watching a live drive saw the page as it loaded and no further (2026-08-24).
+describe('rangeIsLive', () => {
+  const LIVE_NOW = Date.parse('2026-08-24T21:00:00Z')
+
+  it('says yes for All time, which is the default and was the bug', () => {
+    expect(rangeIsLive('', '', LIVE_NOW)).toBe(true)
+  })
+
+  it('says yes for anything open-ended, however the start is written', () => {
+    expect(rangeIsLive('now-1h', '', LIVE_NOW)).toBe(true)
+    expect(rangeIsLive('2026-08-01T00:00:00Z', '', LIVE_NOW)).toBe(true)
+  })
+
+  it('says yes for a relative end, which is what it always used to catch', () => {
+    expect(rangeIsLive('now-7d', 'now', LIVE_NOW)).toBe(true)
+  })
+
+  it('says yes for a window that SLIDES, even though its end is in the past', () => {
+    // `now-1h` as the end resolves to an hour ago, so a plain "is the end
+    // behind us" test calls it finished. It is not: the whole window moves
+    // with the clock, and new receptions enter it as old ones leave. This is
+    // the case the token branch exists for -- `to: 'now'` alone does not pin
+    // it, because that resolves to exactly now and passes either way.
+    expect(rangeIsLive('now-2h', 'now-1h', LIVE_NOW)).toBe(true)
+  })
+
+  it('says no for a range that has already finished', () => {
+    // Nothing new can fall inside it, so polling it is pure cost.
+    expect(rangeIsLive('2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z', LIVE_NOW)).toBe(false)
+  })
+
+  it('says yes for a range whose end is still ahead', () => {
+    expect(rangeIsLive('2026-08-24T00:00:00Z', '2026-08-25T00:00:00Z', LIVE_NOW)).toBe(true)
+  })
+
+  it('refreshes rather than freezes when the end cannot be read', () => {
+    // A stale map is the worse failure: it looks like working data.
+    expect(rangeIsLive('', 'not a date', LIVE_NOW)).toBe(true)
   })
 })

@@ -361,6 +361,15 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-reload { margin-left: auto; border: 1px solid var(--ch-muted); border-radius: 11px;
   padding: 7px 16px; background: transparent; color: var(--ch-text); font-weight: 600;
   font-size: 13px; font-family: system-ui, sans-serif; cursor: pointer; }
+/* Receptions captured but not sent on (#454). Beside the "since last packet"
+   readout, because they answer the same worry from two directions: one says
+   the radio is quiet, the other says the radio is fine and the map is not. */
+#hud-backlog { font-size: 11px; line-height: 1.35; padding: 2px 6px; border-radius: 6px;
+  color: var(--ch-muted); background: var(--ch-surface); }
+#hud-backlog.hud-backlog-warn { color: var(--ch-sig-mid); }
+#hud-backlog.hud-backlog-alarm { color: var(--ch-sig-hot); font-weight: 600; }
+#hud-backlog.hud-backlog-paused { color: var(--ch-muted); }
+
 /* When a newer build is live, pull the eye to the reload button. */
 .ss-reload-update { border-color: var(--ch-accent-2); color: var(--ch-accent-2); }
 /* "What's new" changelog reader (#284), its own tab since #421. The dot marks

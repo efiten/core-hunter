@@ -16,7 +16,7 @@ import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
-import { QUICK_RANGES, matchQuickRange, rangeLabel, resolveTimeValue, absoluteShareUrl, isTimeToken, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
+import { QUICK_RANGES, matchQuickRange, rangeLabel, rangeIsLive, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 
@@ -1237,7 +1237,13 @@ function syncTimeUi() {
 // Runs every 10s while a relative range is active to keep token-based windows rolling.
 // Also refreshes the data so the map shows the current rolling window (#289 blocker 2).
 function updateTimeRangeTimer() {
-  const isRelative = isTimeToken(fFrom.value) || isTimeToken(fTo.value)
+  // "Still includes now", not "is written as a token". Since the cold-start
+  // default became All time (#440) the old test was false for the commonest
+  // range on the map, so the timer was never created and nothing refreshed --
+  // a hunter watching a live drive saw the page as it loaded and no further
+  // (2026-08-24). A range that ends in the past keeps its timer off: nothing
+  // new can fall inside it.
+  const isRelative = rangeIsLive(fFrom.value, fTo.value)
   if (isRelative && !timeRangeTimer) {
     timeRangeTimer = setInterval(() => { syncTimeUi(); refresh() }, 10000)
   } else if (!isRelative && timeRangeTimer) {

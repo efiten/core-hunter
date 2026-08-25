@@ -84,6 +84,9 @@
       <div id="hud-snr">—</div>
       <div id="hud-sender" title="Last reception — sender, or the repeater it was heard via">—</div>
       <div id="hud-since" title="Time since last packet">—</div>
+      <!-- Receptions captured but not yet sent on. The MQTT dot answers
+           "is the socket open", which is a different question (#454). -->
+      <div id="hud-backlog" role="status" hidden></div>
     </div>
     <div id="hud-bar">
       <div id="hud-bar-fill"></div>
