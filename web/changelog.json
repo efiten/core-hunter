@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-25-map-keeps-up-with-the-drive",
+    "date": "2026-08-25",
+    "where": "both",
+    "title": "The map keeps up with the drive",
+    "body": "On the map, new receptions now appear on their own while you are out driving. They did not before unless the time range was one of the rolling ones - and since the range now defaults to All time, that meant the page showed whatever had loaded when you opened it, for as long as you left it open. The receptions list kept updating, so the page looked alive while the map was standing still. In the app there is now a count on the HUD of receptions captured but not sent on yet. The MQTT dot only tells you the connection is open, which is a different thing from your receptions arriving."
+  },
+  {
     "id": "2026-08-25-receptions-reach-the-map-on-time",
     "date": "2026-08-25",
     "where": "both",

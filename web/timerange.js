@@ -165,6 +165,28 @@ export function rangeLabel(from, to, nowMs) {
   return `${shortAbsolute(f, nowMs)} → ${shortAbsolute(t, nowMs)}`
 }
 
+// rangeIsLive: does this range still include "now"? That is the question the
+// auto-refresh has to ask, and it is not the same as "is this range relative".
+//
+// The refresh used to run only while a RELATIVE range was active, because the
+// reason it existed was to keep `now-1h` rolling. Since #440 the cold-start
+// default is All time -- empty from and to, which is not a token -- so the
+// timer was never created and the map never refreshed itself at all. A hunter
+// watching a drive saw whatever had loaded when the page opened, for as long as
+// they left it open (2026-08-24).
+//
+// A range that ENDS in the past is genuinely finished and needs no polling:
+// nothing new can fall inside it. Everything else does, whether it is written
+// as a token or left open.
+export function rangeIsLive(from, to, nowMs = Date.now()) {
+  const t = String(to == null ? '' : to).trim()
+  if (!t) return true                       // open-ended: now is always inside it
+  if (isTimeToken(t)) return true           // `now`, `now-1h`: follows the clock
+  const ms = Date.parse(resolveTimeValue(t, nowMs) || t)
+  if (Number.isNaN(ms)) return true         // unreadable: refresh rather than freeze
+  return ms >= nowMs
+}
+
 // absoluteShareUrl rewrites the current URL's from/to to resolved timestamps,
 // so the link stays fixed instead of following now for whoever opens it — the
 // escape hatch that pairs with storing tokens by default.

@@ -17,6 +17,7 @@ import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSign
 import { classifyReception, carriesSignedIdentity } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
+import { backlogState } from './backlog.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -228,6 +229,23 @@ function setDot(id, on) {
 // (raw voltage primary — no chemistry assumptions — with a rough Li-ion % hint),
 // while a low battery rides the BLE status dot so it's catchable at a glance
 // while driving.
+// Receptions captured but not yet on the map. Read on the render tick, which
+// is why queue.unpublishedCount() counts rather than reading rows: on the night
+// this exists for the backlog reached three thousand.
+async function renderBacklog() {
+  const elx = el('hud-backlog')
+  if (!elx) return
+  let pending = 0
+  try { pending = await state.queue.unpublishedCount() } catch (_) { return }
+  const s = backlogState(pending, {
+    connected: Boolean(state.publisher && state.publisher.connected()),
+    paused: Boolean(state.mqttPaused),
+  })
+  elx.hidden = !s.show
+  elx.textContent = s.text
+  for (const lvl of ['warn', 'alarm', 'paused']) elx.classList.toggle(`hud-backlog-${lvl}`, s.show && s.level === lvl)
+}
+
 function renderBattery() {
   const mv = state.battery.mv
   const row = el('ss-conn-battery')
@@ -622,6 +640,7 @@ async function drawOnce() {
     const rows = await state.queue.recent(RECENT_CAP)
     state.lastRows = rows
     el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
+    await renderBacklog()
     // Enrich names on both the window and the recent rows to prevent mismatches
     // in the log and target list (BLOCKER 1 fix for PR #283)
     enrichNames(windowRows)

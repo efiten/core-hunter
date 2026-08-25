@@ -338,3 +338,30 @@ describe('nextWatermark — getting out of a stall', () => {
     expect(nextWatermark(10, null, undefined).watermark).toBe(10)
   })
 })
+
+// The number nobody could see on 2026-08-24: the app kept capturing and the
+// MQTT dot stayed lit while a stalled drain meant nothing reached the map for
+// over an hour. "The socket is open" is not "your receptions are getting
+// through", and the difference was the whole hunt.
+describe('unpublishedCount', () => {
+  it('counts what the drain still owes, not what the store holds', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 7; i++) await q.add({ rx_at: `2026-08-24T20:1${i}:00Z`, raw: `0${i}`, lat: 52, lon: 4 })
+    expect(await q.count()).toBe(7)
+    expect(await q.unpublishedCount()).toBe(7)
+
+    const rows = await q.unpublishedFrom(0)
+    await q.setWatermark(rows[3].id)
+    // Four sent, three owed. count() still sees all seven -- the backlog is the
+    // difference, which is the thing worth showing.
+    expect(await q.count()).toBe(7)
+    expect(await q.unpublishedCount()).toBe(3)
+
+    await q.setWatermark(rows[6].id)
+    expect(await q.unpublishedCount()).toBe(0)
+  })
+
+  it('is zero on an empty store rather than throwing', async () => {
+    expect(await new Queue().unpublishedCount()).toBe(0)
+  })
+})
