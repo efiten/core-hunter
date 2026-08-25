@@ -1,17 +1,17 @@
 [
   {
-    "id": "2026-08-24-target-search",
-    "date": "2026-08-24",
-    "where": "app",
-    "title": "Search the target list",
-    "body": "The target sheet has a search field. Type part of a name, or the first characters of an id as it appears on the map and in the ticker, and the list narrows to what matches while you type. Clearing the field brings the whole list back; what you already picked stays picked either way."
-  },
-  {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
     "where": "map",
     "title": "You can now filter a flood that has no sender",
     "body": "Some traffic arrives with nothing to identify who sent it, and until now there was no way to narrow the map to it - which is exactly the situation on a spam hunt. Two new handles: Sender unknown shows only the receptions nothing could be attributed to, and the map can group every relayed copy of one transmission together even when nobody can name the sender. The old Direct only tick is now called No path, because that is what it filters on: the path is written by the sender, so it says what the packet claims rather than how far away it was. When that tick would hide everything on screen, the map now says so instead of going blank."
+  },
+  {
+    "id": "2026-08-24-target-search",
+    "date": "2026-08-24",
+    "where": "app",
+    "title": "Search the target list",
+    "body": "The target sheet has a search field. Type part of a name, or the first characters of an id as it appears on the map and in the ticker, and the list narrows to what matches while you type. Clearing the field brings the whole list back; what you already picked stays picked either way."
   },
   {
     "id": "2026-08-24-render-tick-cost",
