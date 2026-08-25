@@ -280,24 +280,25 @@ test('no callout is placed over the bar it is describing', async ({ page }) => {
 // either. One box per control fixes it, and this is the check that would have
 // caught it: sweep the widths where the bar re-wraps and demand every box still
 // sit under, and horizontally over, the control it describes.
-// `split` forces the row break between the two buttons rather than hoping a
-// width produces it: which controls share a row depends on font metrics, so the
-// widths that reproduced this on CI are green on a Mac. A margin wide enough to
-// never fit pushes #auth-btn onto the next row, which is exactly the geometry
-// that broke, and the tour re-places its boxes on the resize that follows.
-for (const [w, split] of [[1100, false], [1280, false], [1440, false], [1280, true], [1440, true]]) {
-  test(`every callout stays with its own control at ${w}px${split ? ', with the buttons on separate rows' : ''}`, async ({ page }) => {
+// #490 review. The bar wraps by content, so which controls share a row moves
+// with font metrics: CI placed Start mapping and Log in on separate rows at a
+// width where this laptop keeps them together. A callout anchored to both was
+// then positioned against the union of the two and landed in the empty middle,
+// 900px from either button.
+//
+// This sweep is the cheap half of the guard: it walks the widths where the bar
+// re-wraps and demands every visible box still sit under, and horizontally
+// over, the control it describes. It does NOT reproduce the split on demand --
+// forcing one (a margin, a narrower bar) either distorts the layout or drops
+// the tour into its inline fallback, where there are no boxes to measure. What
+// rules the shape out for good is the one-target-per-button assertion in
+// onboarding.test.js; this catches the ordinary regressions.
+for (const w of [1100, 1280, 1440]) {
+  test(`every callout stays with its own control at ${w}px`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: 800 })
     await bootstrap(page, false)
     await page.goto('/')
     await expect(page.locator('#wb-onboarding')).toBeVisible()
-    if (split) {
-      await page.addStyleTag({ content: '#bar #rx-cta { margin-right: 9999px; }' })
-      await page.setViewportSize({ width: w, height: 799 })
-      const rows = await page.evaluate(() => [document.getElementById('rx-cta').getBoundingClientRect().y,
-        document.getElementById('auth-btn').getBoundingClientRect().y])
-      expect(rows[0], 'the split actually split the row').not.toBe(rows[1])
-    }
     // The spotlight is allowed to give up and fall back to the panel; what is
     // not allowed is a visible box away from its target.
     const placed = await page.evaluate((pairs) => {

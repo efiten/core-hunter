@@ -75,7 +75,11 @@ describe('the mapping call to action', () => {
 
   // Its own callout rather than a second target on the account one: #bar wraps,
   // so the two buttons are neighbours at some widths and on different rows at
-  // others, and a box anchored to the union of the two lands between them.
+  // others, and a box anchored to the union of the two lands between them --
+  // 900px from either button, which is what CI caught. This assertion is the
+  // guard, not the e2e sweep beside it: the split cannot be forced in a browser
+  // without either distorting the bar or dropping the tour into its inline
+  // fallback, so only the shape of the config rules it out.
   it('is explained by a callout of its own, anchored to nothing else', () => {
     const mapping = ONBOARDING_CALLOUTS.find((c) => c.id === 'wb-co-mapping')
     expect(mapping.targets).toEqual(['rx-cta'])
