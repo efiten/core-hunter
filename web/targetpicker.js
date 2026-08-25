@@ -308,6 +308,40 @@ function rowIds(rec) {
 }
 
 
+// targetChipLabel is what the picker's button reads (#495). Ported from the
+// app's target chip (app/src/app.js), which had to solve the same three things:
+//
+//   count NODES, not id variants -- multiselect.js selects a merged row as a
+//     unit, so one tap on a 3-prefix node puts 3 ids in the selection, and
+//     counting those reported "3 targets" for one tap (#268)
+//   never render a full-length id -- an unresolved node falls back to the same
+//     6-char prefix the list rows use; the unbounded form pushed the topbar
+//     off screen (#305)
+//   say something when nothing is picked -- the button is the only thing left
+//     on screen once the panel closes (the hunter button's lesson, #290)
+//
+// rows is the picker's current row set (senderList output). It is empty on a
+// cold start with ?senders= in the URL, so a selected id that no row claims
+// counts as its own node and takes nameOf, the caller's resolver, for a label.
+export function targetChipLabel(selectedIds, { rows = [], nameOf } = {}) {
+  const sel = new Set((selectedIds || []).filter(Boolean).map((i) => String(i).toLowerCase()))
+  if (sel.size === 0) return { text: 'Select target', title: '', count: 0 }
+  const nodes = []
+  const claimed = new Set()
+  for (const rec of rows || []) {
+    const ids = rowIds(rec).map((i) => String(i).toLowerCase())
+    if (!ids.some((i) => sel.has(i))) continue
+    nodes.push({ id: ids[0], label: rec.sender_label ? String(rec.sender_label) : '' })
+    for (const i of ids) claimed.add(i)
+  }
+  for (const id of sel) if (!claimed.has(id)) nodes.push({ id, label: '' })
+  const count = nodes.length
+  const name = count === 1
+    ? (nodes[0].label || (nameOf && nameOf(nodes[0].id)) || idPrefix(nodes[0].id))
+    : `${count} targets`
+  return { text: '⌖ ' + name, title: name, count }
+}
+
 // createTargetPicker builds the browsable multi-select dropdown.
 //
 // The picker owns its selection (#288). It used to write a delimiter-joined id

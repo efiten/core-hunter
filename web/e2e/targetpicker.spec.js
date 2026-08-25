@@ -258,3 +258,80 @@ test('a 1-byte id is marked, and never sent to the resolver', async ({ page }) =
   await expect(page.locator('#tp-list')).not.toContainText('should never be used')
   expect(asked).toEqual([])
 })
+
+// The button carries the selection once the panel closes (#495).
+const hexToRgb = (h) => {
+  const n = parseInt(h.replace('#', ''), 16)
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`
+}
+
+test('the toggle names one picked node, and counts several', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
+  await page.goto('/?mode=points')
+  await expect(page.locator('#sp-toggle')).toHaveText('Select target ▾')
+
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(2, { timeout: 10000 })
+  // An open panel accents its button too, and lost the same specificity race
+  // until this change.
+  const accentRgb = hexToRgb(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--ch-accent').trim()))
+  expect(await page.locator('#sp-toggle').evaluate((el) => getComputedStyle(el).color)).toBe(accentRgb)
+
+  await page.locator('#tp-list .tl-row', { hasText: 'NEO7HI' }).click()
+  await expect(page.locator('#sp-toggle')).toHaveText('⌖ NEO7HI ▾')
+  await expect(page.locator('#sp-toggle')).toHaveClass(/has-selection/)
+  // Measured with the panel CLOSED, which is the state this exists for, and
+  // the only one where the open-panel rule above is not also colouring it.
+  // The class alone would prove nothing: `#bar select, #bar input, #bar button`
+  // (style.css) sets colour at (1,0,1), so a bare `.ms-toggle.has-selection`
+  // rule never reaches this button.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#sender-picker')).toBeHidden()
+  expect(await page.locator('#sp-toggle').evaluate((el) => getComputedStyle(el).color)).toBe(accentRgb)
+
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+
+  await page.locator('#tp-list .tl-row', { hasText: 'Charlie' }).click()
+  await expect(page.locator('#sp-toggle')).toHaveText('⌖ 2 targets ▾')
+
+  // Typing a prefix drops the pick (#299), so the button has to follow it back
+  // to the empty state rather than keep naming a node that is no longer picked.
+  await page.locator('#f-sender').fill('aa')
+  await expect(page.locator('#sp-toggle')).toHaveText('Select target ▾')
+  await expect(page.locator('#sp-toggle')).not.toHaveClass(/has-selection/)
+})
+
+test('a ?senders= deep link names the node before the picker has ever opened', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI' } }))
+  await page.goto('/?mode=points&senders=' + encodeURIComponent(JSON.stringify(['aa11bb22'])))
+  // No row set exists yet: the panel has never been opened, so the label comes
+  // from the resolver or falls back to the 6-char prefix, never the full id.
+  await expect(page.locator('#sp-toggle')).toHaveText(/^⌖ (NEO7HI|aa11bb) ▾$/)
+  await expect(page.locator('#sp-toggle')).toHaveClass(/has-selection/)
+})
+
+// #bar's first row sits at 1211/1280 at desktop width, so the label this button
+// now carries is the difference between a two-row and a three-row bar, and the
+// map's height follows the bar (setMapTop). Pinned here because the failure is
+// silent: nothing breaks, the map just gets 37px shorter (#495).
+test('a long node name clips instead of rewrapping the filter bar', async ({ page }) => {
+  const LONG = { ...A, sender_id: 'ee55ff66', sender_label: 'Repeater-Kortrijk-Noord' }
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [LONG] } }))
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto('/?mode=points')
+  const barHeight = () => page.locator('#bar').evaluate((el) => Math.round(el.getBoundingClientRect().height))
+  const empty = await barHeight()
+
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(1, { timeout: 10000 })
+  await page.locator('#tp-list .tl-row').first().click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#sp-toggle')).toHaveClass(/has-selection/)
+
+  expect(await barHeight()).toBe(empty)
+  // Clipped, so the full name lives in the title instead.
+  const btn = page.locator('#sp-toggle')
+  expect(await btn.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
+  await expect(btn).toHaveAttribute('title', 'Repeater-Kortrijk-Noord')
+})
