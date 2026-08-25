@@ -4,6 +4,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } fro
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { warnHopFilter } from './hopfilter.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
@@ -182,6 +183,21 @@ const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;',
 // server/internal/httpapi/api.go), so this stays a plain pass-through -- no
 // client-side narrowing, and hex/heatmap honours a multi-sender pick exactly
 // like the point layer does.
+// The Direct only notice. Placed beside the status line, not as a modal: it is
+// a caveat about a control, and it has to be readable while the control is
+// being used rather than dismissed before it is.
+function showHopNotice(points) {
+  const el = document.getElementById('hop-notice')
+  if (!el) return
+  const active = document.getElementById('f-direct').checked
+  const text = warnHopFilter(points, { active })
+  el.textContent = text
+  el.hidden = !text
+  // Louder when the control is already on and the map is empty because of it:
+  // that is the state someone is staring at wondering what broke.
+  el.classList.toggle('hop-notice-active', Boolean(text) && active)
+}
+
 function qs() {
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
@@ -244,6 +260,11 @@ async function drawPoints() {
   pointLayer.clearLayers()
   for (const m of markers) m.addTo(pointLayer)
   setStatus(`${points.length} points${capped ? ' (capped)' : ''}`)
+  // Direct only reads as "what I heard from nearby", filters on a field the
+  // sender writes, and on a forged path hides everything -- silently, which is
+  // how it emptied the map on a real hunt (#454 follow-up). Say so, against the
+  // set actually on screen rather than as a standing warning.
+  showHopNotice(points)
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a
   // name — but not out from under an open popup (#271).
   if (unresolved.size) {
@@ -1366,6 +1387,7 @@ urlstate.bindControl('to', 'f-to', { urlOnly: true })
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
+urlstate.bindControl('unnamed', 'f-unnamed', { checkbox: true })
 
 // Ticker placement, drag and fold (#424).
 //
