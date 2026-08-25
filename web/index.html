@@ -134,6 +134,24 @@
         </div>
       </div>
     </span>
+    <!-- Filters pill (#423), parity with the app's #filter-pill. Shown only
+         below the breakpoint; above it the group below lays out inline exactly
+         as before and this stays hidden. -->
+    <button id="filter-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="bar-filters">
+      Filters<span id="filter-pill-dot" class="fp-dot" hidden aria-hidden="true"></span>
+    </button>
+    <!-- One container, never re-parented: `display: contents` above the
+         breakpoint keeps every child a direct flex item of #bar, so the desktop
+         layout and placePopover's measurements are untouched (#372, #385). -->
+    <div id="bar-filters">
+      <div class="bf-head">
+        <h2>Filters</h2>
+        <button class="bf-close" id="bf-close" type="button" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
+          </svg>
+        </button>
+      </div>
     <span id="f-types"></span>
     <label class="cs-cb" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet CLAIMS, not a measurement of distance."><input type="checkbox" id="f-direct" /> No path</label>
       <label class="cs-cb" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has."><input type="checkbox" id="f-unnamed" /> Sender unknown</label>
@@ -153,6 +171,7 @@
       <label class="cs-cb"><input type="checkbox" id="f-nodepos" /> Node positions</label>
     </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
+    </div>
     <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>

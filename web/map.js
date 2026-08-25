@@ -15,6 +15,7 @@ import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from '
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
+import { hiddenFiltersActive } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, matchQuickRange, rangeLabel, rangeIsLive, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
@@ -1486,6 +1487,55 @@ if (rxLog) {
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   })
+}
+
+// Filters pill + sheet (#423). Below 640px the secondary controls are a bottom
+// sheet; above it they are inline in #bar and the pill is not rendered, so this
+// wiring is inert there -- the class it toggles has no rule outside the media
+// query.
+//
+// Not wirePopover: that positions an anchored panel with placePopover and uses
+// `hidden`, and this is a full-width sheet that must stay visible on desktop.
+// The dismiss semantics are copied from it deliberately -- outside click in the
+// capture phase, Escape -- so the sheet behaves like every other panel here.
+const barFilters = document.getElementById('bar-filters')
+const filterPill = document.getElementById('filter-pill')
+if (barFilters && filterPill) {
+  const setOpen = (on) => {
+    barFilters.classList.toggle('bf-open', on)
+    filterPill.setAttribute('aria-expanded', String(on))
+  }
+  filterPill.addEventListener('click', () => setOpen(!barFilters.classList.contains('bf-open')))
+  document.getElementById('bf-close').addEventListener('click', () => setOpen(false))
+  document.addEventListener('click', (e) => {
+    if (!barFilters.classList.contains('bf-open')) return
+    if (e.target.closest('#bar-filters') || e.target.closest('#filter-pill')) return
+    setOpen(false)
+  }, true)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && barFilters.classList.contains('bf-open')) setOpen(false)
+  })
+
+  // The dot says something the bar can no longer show: a filter is on behind
+  // the pill. Recomputed from the DOM rather than tracked, so it cannot drift
+  // from the controls it describes.
+  const refreshFilterPill = () => {
+    const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
+    const active = hiddenFiltersActive({
+      directOnly: on('f-direct'),
+      senderUnknown: on('f-unnamed'),
+      types: window.currentTypes ? window.currentTypes() : null,
+      csAdverts: on('cs-adverts'),
+      csRelays: on('cs-relays'),
+      nodePos: on('f-nodepos'),
+      mode,
+    })
+    document.getElementById('filter-pill-dot').hidden = !active
+  }
+  window.__refreshFilterPill = refreshFilterPill
+  barFilters.addEventListener('change', refreshFilterPill)
+  barFilters.addEventListener('click', refreshFilterPill)
+  refreshFilterPill()
 }
 
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
