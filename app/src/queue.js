@@ -243,6 +243,23 @@ export class Queue {
     return result(store.count());
   }
 
+  // The companion the oldest unsent reception was heard by. That is the
+  // identity the drain has to publish under, and it must not come from live
+  // BLE state: a deliberate disconnect clears that, and the receptions waiting
+  // in here were captured by a real companion and are owed to the broker
+  // whatever the radio is doing now (#454).
+  //
+  // Oldest rather than newest, because the drain publishes in id order and the
+  // MQTT client id is bound to one companion at a time -- so the connection has
+  // to belong to whoever is at the front of the queue.
+  async pendingPubkey() {
+    const watermark = await this.getWatermark();
+    const db = await openDB();
+    const store = db.transaction(STORE, 'readonly').objectStore(STORE);
+    const rows = (await result(store.getAll(IDBKeyRange.lowerBound(watermark, true), 1))) || [];
+    return (rows[0] && rows[0].rx_pubkey) || '';
+  }
+
   // How many receptions the drain still owes the broker. Counted rather than
   // read from a list, so it is cheap on a backlog of thousands -- and it has to
   // be, because it is read on the render tick.

@@ -19,9 +19,17 @@ export function shouldCapture(cls, fix) {
   return !!cls && isUsableFix(fix)
 }
 
-export function buildRecord(frame, cls, gps, nowIso) {
+export function buildRecord(frame, cls, gps, nowIso, rxPubkey = '') {
   return {
     rx_at: nowIso,
+    // Stamped at capture, not supplied at publish time (#454). A queued
+    // reception was heard by a particular companion, and that fact does not
+    // stop being true when the radio is unplugged -- but the pubkey used to
+    // come from live state, which a deliberate disconnect clears, so a backlog
+    // became unpublishable the moment someone tidied up. It also binds each row
+    // to the companion that actually heard it, so swapping companions cannot
+    // republish an old backlog under a new identity.
+    rx_pubkey: String(rxPubkey || ''),
     raw: bytesToHex(frame.raw),
     snr: frame.snr,
     rssi: frame.rssi,

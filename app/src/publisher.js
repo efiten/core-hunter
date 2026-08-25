@@ -58,9 +58,14 @@ export class Publisher {
   }
 
   // publish sends one reception; resolves on broker ack (QoS1).
+  // The row's own pubkey wins over the caller's: a reception belongs to the
+  // companion that heard it, and the backlog may outlive that BLE session
+  // (#454). The argument stays as the fallback for rows queued before the
+  // stamp existed.
   publish(rxPubkey, rec, name) {
-    const topic = 'meshcore/hunter/' + rxPubkey + '/packets';
-    const payload = JSON.stringify(Publisher.buildPayload(rxPubkey, rec, name));
+    const owner = (rec && rec.rx_pubkey) || rxPubkey;
+    const topic = 'meshcore/hunter/' + owner + '/packets';
+    const payload = JSON.stringify(Publisher.buildPayload(owner, rec, name));
     return new Promise((resolve, reject) => {
       this.client.publish(topic, payload, { qos: 1 }, (err) => (err ? reject(err) : resolve()));
     });

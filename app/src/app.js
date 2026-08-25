@@ -18,6 +18,7 @@ import { classifyReception, carriesSignedIdentity } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
 import { backlogState } from './backlog.js'
+import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -590,7 +591,7 @@ async function processFrame(dv) {
     return
   }
 
-  const rec = buildRecord(frame, cls, fix, new Date().toISOString())
+  const rec = buildRecord(frame, cls, fix, new Date().toISOString(), state.rxPubkey)
   rec._text = cls.text // local-only, for the popup; stripped before publish
   await state.queue.add(rec)
   state.lastPacketAt = Date.now()
@@ -689,7 +690,11 @@ async function renderTick() {
 let draining = false
 async function drainOnce() {
   if (draining) return
-  if (!(state.publisher && state.publisher.connected() && state.rxPubkey)) return
+  // Before the guard, not after: the publisher this checks for is the one
+  // ensureMqtt may have just created, and the old order meant a session that
+  // lost its broker never rebuilt one (#454).
+  await ensureMqtt()
+  if (!(state.publisher && state.publisher.connected())) return
   draining = true
   try {
     const startedAt = Date.now()
@@ -897,14 +902,44 @@ function applyConnectButtons() {
 // Creates and connects a fresh Publisher, replacing any prior instance. No-op
 // if MQTT isn't configured. Called on BLE connect, and again when the user
 // un-pauses MQTT from Settings while already connected.
-function connectMqtt() {
+// ensureMqtt closes the gap between what should be publishing and what is,
+// and runs on the drain tick so recovery needs no separate timer (#454).
+//
+// The publisher used to be created only at the end of a BLE connect, so a
+// session that never got a broker never got another attempt -- and un-pausing
+// with the radio disconnected did nothing at all, which is what "pauzeren en
+// resume werkt niet" meant in the field. Publishing does not need the radio:
+// the receptions are already on disk, they were heard by a real companion, and
+// they are owed to the broker whatever the link is doing now.
+async function ensureMqtt() {
   const cfg = getConfig()
-  if (!cfg || !cfg.mqttUrl || !state.rxPubkey) return
+  // The identity comes from the queue when live state has none: a deliberate
+  // disconnect clears state.rxPubkey, and the backlog still belongs to the
+  // companion that captured it.
+  let owner = state.rxPubkey
+  if (!owner) {
+    try { owner = await state.queue.pendingPubkey() } catch (_) { owner = '' }
+  }
+  const run = mqttShouldRun({ configured: Boolean(cfg && cfg.mqttUrl), paused: state.mqttPaused, rxPubkey: owner })
+  switch (mqttAction(run, Boolean(state.publisher))) {
+    case 'connect': connectMqtt(owner); break
+    case 'end':
+      state.publisher.end()
+      state.publisher = null
+      setDot('dot-mqtt', false)
+      break
+    default: break
+  }
+}
+
+function connectMqtt(owner = state.rxPubkey) {
+  const cfg = getConfig()
+  if (!cfg || !cfg.mqttUrl || !owner) return
   state.publisher = new Publisher({
     url: cfg.mqttUrl,
     username: cfg.mqttUsername,
     password: cfg.mqttPassword,
-    clientId: state.rxPubkey,
+    clientId: owner,
   })
   state.publisher.connect()
     .then(() => setDot('dot-mqtt', true))
@@ -1398,12 +1433,10 @@ function buildSettingsSheet() {
 
   el('ss-mqtt-pause-btn').addEventListener('click', () => {
     state.mqttPaused = !state.mqttPaused
-    if (state.mqttPaused) {
-      if (state.publisher) { state.publisher.end(); state.publisher = null }
-      setDot('dot-mqtt', false)
-    } else if (state.connected) {
-      connectMqtt()
-    }
+    // Both directions go through ensureMqtt: resuming used to be gated on BLE
+    // being connected, so with the radio down it did nothing and the queue
+    // stayed put (#454).
+    ensureMqtt()
     refreshConnState()
   })
 
