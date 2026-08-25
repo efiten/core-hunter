@@ -233,3 +233,126 @@ func TestNoSenderKeepsWhatNothingCouldBeAttributedTo(t *testing.T) {
 		t.Fatalf("unattributable origin copies: got %v", got)
 	}
 }
+
+// MQTT QoS 1 is at-least-once by definition, so a consumer that is not
+// idempotent is a consumer that is wrong. On 2026-08-24 one reception was
+// published 303 times over 44 minutes and all 303 landed as rows, putting a
+// hotspot made of a single packet on the map.
+func TestStoringOneReceptionTwiceKeepsOneRow(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	r := Reception{HunterPubkey: "aaaa", RxAt: "2026-08-24T20:11:03.315Z", Raw: msgA4,
+		Hops: 4, RSSI: -106, PacketType: "TextMessage", Lat: 52.36, Lon: 4.83}
+	for i := 0; i < 303; i++ {
+		if err := st.Insert(r); err != nil {
+			t.Fatalf("redelivery %d must not error: %v", i, err)
+		}
+	}
+	pts, _, err := st.QueryPoints(Filter{Limit: 500})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pts) != 1 {
+		t.Fatalf("303 redeliveries of one reception: got %d rows, want 1", len(pts))
+	}
+}
+
+func TestTwoRealReceptionsAreNotCollapsed(t *testing.T) {
+	// The key must not be so coarse that it eats real data. Two different
+	// frames can share a timestamp -- a burst of BLE frames handled in one turn
+	// does exactly that, and 39% of consecutive receptions share an rx_at -- so
+	// `raw` is what separates them.
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	const same = "2026-08-24T20:11:03.315Z"
+	base := Reception{HunterPubkey: "aaaa", RxAt: same, PacketType: "TextMessage", Lat: 52.36, Lon: 4.83}
+	for _, raw := range []string{msgA4, msgA5, msgB8} {
+		b := base
+		b.Raw = raw
+		if err := st.Insert(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// And the same frame from a DIFFERENT hunter is a second measurement, which
+	// is the whole basis for locating anything from more than one position.
+	other := base
+	other.Raw = msgA4
+	other.HunterPubkey = "bbbb"
+	if err := st.Insert(other); err != nil {
+		t.Fatal(err)
+	}
+	pts, _, _ := st.QueryPoints(Filter{Limit: 100})
+	if len(pts) != 4 {
+		t.Fatalf("three frames plus a second hunter: got %d rows, want 4", len(pts))
+	}
+}
+
+func TestExistingDuplicatesAreClearedOnOpen(t *testing.T) {
+	// The live store already holds them -- 9.7% over 30 days -- and the unique
+	// index cannot be created while they are there. The lowest id survives:
+	// the first arrival, whose ingested_at is the honest one.
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	// Drop the guard first: this reproduces a store written BEFORE it existed,
+	// which is the only state the dedupe has to handle. That the plant fails
+	// without this is itself the evidence the guard holds.
+	if _, err := st.db.Exec(`DROP INDEX idx_recv_identity`); err != nil {
+		t.Fatal(err)
+	}
+	// Bypass Insert to plant duplicates the way they were really stored.
+	for i := 0; i < 5; i++ {
+		if _, err := st.db.Exec(`INSERT INTO hunter_receptions
+			(hunter_pubkey,rx_at,ingested_at,raw,is_direct,hops,lat,lon,packet_type)
+			VALUES ('aaaa','2026-08-24T20:11:03.315Z',?,?,0,4,52.36,4.83,'TextMessage')`,
+			"2026-08-24T21:2"+string(rune('0'+i))+":00Z", msgA4); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The SAME frame at the same millisecond from a second hunter. That is two
+	// measurements from two positions -- the whole basis for locating anything
+	// from more than one place -- so a dedupe key without the hunter would
+	// throw away exactly the data the network exists to collect.
+	if _, err := st.db.Exec(`INSERT INTO hunter_receptions
+		(hunter_pubkey,rx_at,ingested_at,raw,is_direct,hops,lat,lon,packet_type)
+		VALUES ('bbbb','2026-08-24T20:11:03.315Z','2026-08-24T21:31:00Z',?,0,4,52.40,4.90,'TextMessage')`,
+		msgA4); err != nil {
+		t.Fatal(err)
+	}
+	// A DIFFERENT frame at the same millisecond, which really happens: a burst
+	// of BLE frames handled in one turn shares a timestamp, and 39% of
+	// consecutive receptions do. The dedupe must keep it, so the fixture makes
+	// a key that ignored `raw` delete real data instead of duplicates.
+	if _, err := st.db.Exec(`INSERT INTO hunter_receptions
+		(hunter_pubkey,rx_at,ingested_at,raw,is_direct,hops,lat,lon,packet_type)
+		VALUES ('aaaa','2026-08-24T20:11:03.315Z','2026-08-24T21:30:00Z',?,0,8,52.36,4.83,'TextMessage')`,
+		msgB8); err != nil {
+		t.Fatal(err)
+	}
+	var before int
+	st.db.QueryRow(`SELECT COUNT(*) FROM hunter_receptions`).Scan(&before)
+	if before != 7 {
+		t.Fatalf("fixture should hold 5 duplicates, a second hunter and a distinct frame, got %d", before)
+	}
+	if err := st.enforceReceptionIdentity(); err != nil {
+		t.Fatal(err)
+	}
+	var kept int
+	var at string
+	st.db.QueryRow(`SELECT COUNT(*) FROM hunter_receptions`).Scan(&kept)
+	if kept != 3 {
+		t.Fatalf("after dedupe: got %d rows, want 3 (one survivor, the second hunter, the distinct frame)", kept)
+	}
+	st.db.QueryRow(`SELECT ingested_at FROM hunter_receptions WHERE raw = ? AND hunter_pubkey = 'aaaa'`, msgA4).Scan(&at)
+	if at != "2026-08-24T21:20:00Z" {
+		t.Fatalf("the first arrival should survive, got ingested_at %q", at)
+	}
+}

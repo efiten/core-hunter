@@ -16,7 +16,7 @@ import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'
 import { classifyReception, carriesSignedIdentity } from './meshpacket.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue, RETENTION_MS, shouldContinueDraining, watermarkAfter } from './queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
 import { requestSelfInfo } from './selfinfo.js'
@@ -152,6 +152,9 @@ const state = {
   // Startup splash (see splash.js) — hides once the first GPS fix lands.
   hasFix: false,
   bleError: false,
+  // How many consecutive drain passes have failed on one reception (#454).
+  // Carried on state because the drain loop restarts every 5 s.
+  drainStall: { id: null, count: 0 },
   // Which of the four connect phases the buttons render (#433). One field, so a
   // spontaneous drop cannot leave a label nobody rewrote. See connectstate.js.
   connectPhase: 'idle',
@@ -685,19 +688,31 @@ async function drainOnce() {
         } catch (_) {
           // Publish failed. Stop here rather than skipping ahead — the rest is
           // retried next cycle. How far the watermark may move is
-          // watermarkAfter's decision, not this loop's.
+          // nextWatermark's decision, not this loop's.
           outcomes.push({ id: r.id, ok: false })
           break
         }
       }
       const failed = outcomes.some((o) => !o.ok)
-      const last = watermarkAfter(watermark, outcomes)
-      if (last > watermark) {
-        await state.queue.setWatermark(last)
-        console.debug('[drain] published through id', last)
-        watermark = last
+      // The stall state is carried across passes, not across ticks: it lives
+      // on state so a reception that fails every 5 s pass is eventually
+      // stepped over instead of blocking the queue behind it forever (#454).
+      const next = nextWatermark(watermark, outcomes, state.drainStall)
+      state.drainStall = next.stall
+      if (next.steppedOver !== null) {
+        // Worth a log rather than silence: this is the one case where a
+        // reception may not have reached the broker. It is the deliberate
+        // trade -- one possible loss against everything queued behind it --
+        // and a duplicate costs nothing now that the ingestor stores
+        // receptions idempotently.
+        console.warn('[drain] stepping over id', next.steppedOver, 'after repeated publish failures')
       }
-      if (failed) break
+      if (next.watermark > watermark) {
+        await state.queue.setWatermark(next.watermark)
+        console.debug('[drain] published through id', next.watermark)
+        watermark = next.watermark
+      }
+      if (failed && next.steppedOver === null) break
       if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
     }
     await pruneOnce()

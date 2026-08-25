@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-25-receptions-reach-the-map-on-time",
+    "date": "2026-08-25",
+    "where": "both",
+    "title": "Receptions reach the map on time again",
+    "body": "On a weak mobile link the app could get stuck trying to send one reception over and over, and everything captured after it waited behind. On one hunt that meant the map ran up to two hours behind while the driving was happening, which is exactly when it is no use. The app now moves on after a handful of failed attempts, and the server no longer stores the same reception twice - so a resend costs nothing. If you saw a bright spot on the map that turned out to be one packet counted hundreds of times, that was this."
+  },
+  {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
     "where": "map",

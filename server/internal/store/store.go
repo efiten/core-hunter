@@ -114,10 +114,45 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	st := &Store{db: db}
+	if err := st.enforceReceptionIdentity(); err != nil {
+		return nil, err
+	}
 	if err := st.backfillMessageIDs(); err != nil {
 		return nil, err
 	}
 	return st, nil
+}
+
+// enforceReceptionIdentity makes storing a reception idempotent.
+//
+// MQTT QoS 1 is at-least-once BY DEFINITION -- the broker may redeliver, and
+// mqtt.js resends its own inflight messages on reconnect -- so a consumer that
+// is not idempotent is a consumer that is wrong. This one never was, and on
+// 2026-08-24 that cost a hunt: one reception was published 303 times over 44
+// minutes on a flaky mobile link, and all 303 landed as rows. They sat at one
+// position, so the map carried a hotspot made of a single packet. Across 30
+// days, 9.7% of all rows were exact duplicates.
+//
+// The key is (hunter_pubkey, rx_at, raw), which is safe rather than merely
+// convenient: rx_at has millisecond precision and a 30-byte frame at SF7 needs
+// about 46 ms of airtime, so one hunter cannot genuinely receive the identical
+// frame twice inside the same millisecond. Two different frames sharing a
+// timestamp differ in `raw` and are kept. Same shape as CoreScope's own
+// UNIQUE(rx_pubkey, heard_key, rx_at).
+//
+// Existing duplicates have to go first or the index cannot be created. The
+// lowest id is kept -- the first arrival, whose ingested_at is the honest one.
+// This deletes rows, which is why it is narrow: byte-identical frames from one
+// hunter at one millisecond carry no information the survivor does not.
+func (s *Store) enforceReceptionIdentity() error {
+	if _, err := s.db.Exec(`DELETE FROM hunter_receptions WHERE id NOT IN (
+		SELECT MIN(id) FROM hunter_receptions GROUP BY hunter_pubkey, rx_at, raw
+	)`); err != nil {
+		return err
+	}
+	_, err := s.db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recv_identity
+		ON hunter_receptions(hunter_pubkey, rx_at, raw)`)
+	return err
 }
 
 // backfillMessageIDs fills the column for rows stored before it existed. Every
@@ -182,7 +217,7 @@ func (s *Store) Insert(r Reception) error {
 	// the app needs no change to benefit.
 	messageID, _ := meshpacket.MessageID(r.Raw)
 	_, err := s.db.Exec(
-		`INSERT INTO hunter_receptions
+		`INSERT OR IGNORE INTO hunter_receptions
 		 (hunter_pubkey,hunter_name,rx_at,ingested_at,snr,rssi,raw,packet_type,
 		  sender_key,sender_keylen,sender_role,sender_kind,sender_id,sender_label,channel_name,
 		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic,message_id)

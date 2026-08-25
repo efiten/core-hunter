@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { Queue, RETENTION_MS, shouldContinueDraining, DRAIN_BUDGET_MS, watermarkAfter } from '../queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, DRAIN_BUDGET_MS, watermarkAfter, nextWatermark, DRAIN_STALL_LIMIT } from '../queue.js'
 
 // A reception as buildRecord() writes it (capture.js) — only the fields the
 // queue itself reads matter here.
@@ -259,5 +259,82 @@ describe('watermarkAfter', () => {
     // setWatermark is monotonic too, but the decision should not depend on
     // that: a stale batch must not be able to propose a lower value.
     expect(watermarkAfter(90, [{ id: 41, ok: true }])).toBe(90)
+  })
+})
+
+// #454 follow-up. The watermark advancing only over an unbroken run of
+// successes is correct and was also a trap: a reception that fails every time
+// blocks everything behind it. On 2026-08-24 one row was republished 303 times
+// over 44 minutes, and the night's median capture-to-map lag was 97 minutes.
+describe('nextWatermark — getting out of a stall', () => {
+  const ok = (id) => ({ id, ok: true })
+  const bad = (id) => ({ id, ok: false })
+  const fresh = { id: null, count: 0 }
+
+  it('behaves like watermarkAfter while things are working', () => {
+    const r = nextWatermark(10, [ok(11), ok(12), ok(13)], fresh)
+    expect(r.watermark).toBe(13)
+    expect(r.steppedOver).toBeNull()
+  })
+
+  it('still refuses to skip a failure on the first attempts', () => {
+    // The old guarantee: a reception the broker may never have received is not
+    // marked as sent just because the next one succeeded.
+    let stall = fresh
+    for (let attempt = 1; attempt < DRAIN_STALL_LIMIT; attempt++) {
+      const r = nextWatermark(10, [bad(11), ok(12)], stall)
+      expect(r.watermark, `attempt ${attempt}`).toBe(10)
+      expect(r.steppedOver).toBeNull()
+      stall = r.stall
+    }
+  })
+
+  it('steps over a reception that has failed the whole limit through', () => {
+    let stall = fresh
+    let watermark = 10
+    let stepped = null
+    for (let attempt = 0; attempt < DRAIN_STALL_LIMIT; attempt++) {
+      const r = nextWatermark(watermark, [bad(11), ok(12)], stall)
+      stall = r.stall
+      watermark = r.watermark
+      stepped = r.steppedOver
+    }
+    expect(stepped).toBe(11)
+    expect(watermark).toBe(11)
+  })
+
+  it('counts consecutive failures only, so an intermittent link never steps over', () => {
+    // A link that fails one message in three would otherwise accumulate a
+    // count over hours and eventually skip a reception it never sent.
+    let stall = fresh
+    for (let i = 0; i < 30; i++) {
+      const outcomes = i % 3 === 0 ? [bad(11), ok(12)] : [ok(11), ok(12)]
+      const r = nextWatermark(10, outcomes, stall)
+      stall = r.stall
+      expect(r.steppedOver, `pass ${i}`).toBeNull()
+    }
+  })
+
+  it('starts counting again when the blockage moves to another reception', () => {
+    let stall = fresh
+    for (let i = 0; i < DRAIN_STALL_LIMIT - 1; i++) stall = nextWatermark(10, [bad(11)], stall).stall
+    // A different id now fails: that is a new stall, not the tail of the old one.
+    const r = nextWatermark(10, [bad(12)], stall)
+    expect(r.steppedOver).toBeNull()
+    expect(r.stall).toEqual({ id: 12, count: 1 })
+  })
+
+  it('never moves the watermark backwards', () => {
+    // A stale batch proposing a lower value must not un-send anything.
+    expect(nextWatermark(99, [ok(5), ok(6)], fresh).watermark).toBe(99)
+    let stall = { id: 5, count: DRAIN_STALL_LIMIT }
+    expect(nextWatermark(99, [bad(5)], stall).watermark).toBe(99)
+  })
+
+  it('answers for an empty pass without inventing progress', () => {
+    const r = nextWatermark(10, [], fresh)
+    expect(r.watermark).toBe(10)
+    expect(r.stall).toEqual({ id: null, count: 0 })
+    expect(nextWatermark(10, null, undefined).watermark).toBe(10)
   })
 })

@@ -47,6 +47,51 @@ export function shouldContinueDraining({ batchSize, batchLimit = DRAIN_BATCH, el
   return elapsedMs < budgetMs;
 }
 
+// How many consecutive drain passes may fail on the SAME reception before the
+// drain steps over it.
+//
+// Five is roughly half a minute at the 5 s tick, long enough that an ordinary
+// reconnect resolves itself well inside it.
+export const DRAIN_STALL_LIMIT = 5;
+
+// nextWatermark is watermarkAfter plus a way out of a stall.
+//
+// The watermark only advances over an unbroken run of successes, which is
+// correct and was also a trap: a reception that fails every time blocks
+// everything behind it forever. On 2026-08-24 that cost a hunt -- one row was
+// republished 303 times over 44 minutes on a flaky link, and every reception
+// captured behind it reached the map between 71 minutes and 2 hours late. The
+// median lag that night was 97 minutes, so the live map was useless for the
+// whole session.
+//
+// The cause is that a lost PUBACK and a lost PUBLISH look identical from here.
+// Blocking assumes the message never arrived; stepping over assumes it did.
+// That choice used to be one-sided, because stepping over a message the broker
+// never got loses a reception permanently. It is not one-sided any more: the
+// ingestor stores receptions idempotently now (QoS 1 is at-least-once, so it
+// always should have), which makes a duplicate free -- and that leaves one
+// possible lost reception against every reception behind it.
+//
+// `stall` is carried by the caller across passes: { id, count }.
+export function nextWatermark(watermark, outcomes, stall) {
+  const prev = stall || { id: null, count: 0 };
+  let last = watermark;
+  let blockedAt = null;
+  for (const o of outcomes || []) {
+    if (!o.ok) { blockedAt = o.id; break; }
+    if (o.id > last) last = o.id;
+  }
+  // A pass that got through clears the count rather than decaying it: the run
+  // of failures this is counting has to be CONSECUTIVE, or a link that fails
+  // one message in three would eventually step over a message it never sent.
+  if (blockedAt === null) return { watermark: last, stall: { id: null, count: 0 }, steppedOver: null };
+  const count = prev.id === blockedAt ? prev.count + 1 : 1;
+  if (count >= DRAIN_STALL_LIMIT && blockedAt > last) {
+    return { watermark: blockedAt, stall: { id: null, count: 0 }, steppedOver: blockedAt };
+  }
+  return { watermark: last, stall: { id: blockedAt, count }, steppedOver: null };
+}
+
 // watermarkAfter decides how far the watermark may move after a drain pass.
 //
 // The watermark means "everything at or below this id has reached the broker",
