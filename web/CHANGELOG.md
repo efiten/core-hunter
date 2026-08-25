@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.13.0](https://github.com/efiten/core-hunter/compare/web-v1.12.0...web-v1.13.0) (2026-08-25)
+
+
+### Features
+
+* **app,web:** keep the reception when the identity or the decode fails ([#478](https://github.com/efiten/core-hunter/issues/478)) ([0c2831a](https://github.com/efiten/core-hunter/commit/0c2831aa29d69be6da5e6fcb789d1977ffd93090))
+* **app:** give the app the map's two reception filters ([#507](https://github.com/efiten/core-hunter/issues/507)) ([a5243b0](https://github.com/efiten/core-hunter/commit/a5243b067e2fb5995b6a6b378cb1afc1a9b39875))
+* **web:** open the map on the last 30 days, not on All time ([#512](https://github.com/efiten/core-hunter/issues/512)) ([28802ac](https://github.com/efiten/core-hunter/commit/28802ac4f5892c5d3d611e295280a01cef49d533))
+* **web:** put the secondary filters behind a Filters pill on a phone ([#467](https://github.com/efiten/core-hunter/issues/467)) ([36f100f](https://github.com/efiten/core-hunter/commit/36f100fb15787b36ed5984b9f5ea4ecd8ce8f5fc))
+
+
+### Bug Fixes
+
+* **web:** reload the map when Sender unknown is ticked ([#504](https://github.com/efiten/core-hunter/issues/504)) ([01c22aa](https://github.com/efiten/core-hunter/commit/01c22aa5ce7e9e45b0ed057a8beaa3fbacb32697))
+
 ## [1.12.0](https://github.com/efiten/core-hunter/compare/web-v1.11.0...web-v1.12.0) (2026-08-25)
 
 
