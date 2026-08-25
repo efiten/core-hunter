@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/efiten/core-hunter/compare/server-v1.4.0...server-v1.5.0) (2026-08-25)
+
+
+### Features
+
+* **server,web:** give a flood with no sender something to filter on ([#497](https://github.com/efiten/core-hunter/issues/497)) ([9362217](https://github.com/efiten/core-hunter/commit/93622172c842693b69db7496c082c40b00e0295a))
+
+
+### Bug Fixes
+
+* **server,app:** stop one reception blocking every reception behind it ([#505](https://github.com/efiten/core-hunter/issues/505)) ([c49b87a](https://github.com/efiten/core-hunter/commit/c49b87accbfd047aaa1affc6dbdbbea0ab3419d2)), closes [#454](https://github.com/efiten/core-hunter/issues/454)
+
 ## [1.4.0](https://github.com/efiten/core-hunter/compare/server-v1.3.0...server-v1.4.0) (2026-08-24)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.11.0](https://github.com/efiten/core-hunter/compare/web-v1.10.0...web-v1.11.0) (2026-08-25)
+
+
+### Features
+
+* **app,web:** locate from the whole signal field, not its centre of mass ([#516](https://github.com/efiten/core-hunter/issues/516)) ([4d9a947](https://github.com/efiten/core-hunter/commit/4d9a9471418966d0e4d86a7893d5b335cb0d9e7b)), closes [#454](https://github.com/efiten/core-hunter/issues/454)
+* **server,web:** give a flood with no sender something to filter on ([#497](https://github.com/efiten/core-hunter/issues/497)) ([9362217](https://github.com/efiten/core-hunter/commit/93622172c842693b69db7496c082c40b00e0295a))
+
+
+### Bug Fixes
+
+* **app:** send the receptions that are waiting, radio or no radio ([#515](https://github.com/efiten/core-hunter/issues/515)) ([15f79ff](https://github.com/efiten/core-hunter/commit/15f79ff678cd7e600363c52f0f0aa4ba1ce9f8d7)), closes [#454](https://github.com/efiten/core-hunter/issues/454)
+* **server,app:** stop one reception blocking every reception behind it ([#505](https://github.com/efiten/core-hunter/issues/505)) ([c49b87a](https://github.com/efiten/core-hunter/commit/c49b87accbfd047aaa1affc6dbdbbea0ab3419d2)), closes [#454](https://github.com/efiten/core-hunter/issues/454)
+* **web,app:** make the map keep up with the drive ([#514](https://github.com/efiten/core-hunter/issues/514)) ([720da82](https://github.com/efiten/core-hunter/commit/720da82fb32431b36a52840a31f2677ea84c08a8)), closes [#454](https://github.com/efiten/core-hunter/issues/454)
+
 ## [1.10.0](https://github.com/efiten/core-hunter/compare/web-v1.9.2...web-v1.10.0) (2026-08-24)
 
 
