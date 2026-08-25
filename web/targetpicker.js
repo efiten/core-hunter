@@ -154,10 +154,20 @@ export function dedupeSenders(points) {
   return mergePrefixGroups([...bySender.entries()])
 }
 
+// visibleSenders drops the rows the viewer has ignored (#494). Applied AFTER
+// merging, so a node listed under one of its prefixes takes its whole merged
+// row out rather than staying visible under the other two (#331).
+function visibleSenders(rows, ignore) {
+  if (!ignore || !ignore.size) return rows
+  return rows.filter((r) => !rowIds(r).some((id) => ignore.has(String(id).toLowerCase())))
+}
+
 // senderList sorts deduped senders by name (falling back to id), case-
 // insensitive, optionally limited for lazy-loaded batches.
-export function senderList(points, { limit = Infinity } = {}) {
-  return dedupeSenders(points)
+// `ignore` is the viewer's ignore-list; the app's list takes the same option
+// (app/src/targetlist.js).
+export function senderList(points, { limit = Infinity, ignore } = {}) {
+  return visibleSenders(dedupeSenders(points), ignore)
     .sort((a, b) =>
       String(a.sender_label || a.sender_id).localeCompare(String(b.sender_label || b.sender_id), undefined, { sensitivity: 'base' }))
     .slice(0, limit)
@@ -167,9 +177,11 @@ export function senderList(points, { limit = Infinity } = {}) {
 // pinned section above the alphabetical list -- same formula as app's
 // feed.js: every 30s since the last reception costs roughly 1dB, so a
 // strong-but-stale sender still loses ground to a weaker one heard moments ago.
-export function topSenders(points, { count = 3, nowMs } = {}) {
+// Takes the same `ignore` as senderList: the pinned section picks from the same
+// pool, so an ignored node must not stay pinned above a list it is gone from.
+export function topSenders(points, { count = 3, nowMs, ignore } = {}) {
   const score = (r) => r.rssi - (nowMs - Date.parse(r.rx_at)) / 1000 / 30
-  return dedupeSenders(points)
+  return visibleSenders(dedupeSenders(points), ignore)
     .sort((a, b) => score(b) - score(a))
     .slice(0, count)
 }
@@ -236,6 +248,18 @@ export const SENDER_FILTER_KEY = 'senderPairs'
 // A named export rather than an inline `k !== '...'` at the call site: that key
 // was renamed once already, and the stale literal left behind kept the cache
 // invalidating on every selection change without anything failing.
+// withoutIgnoreFilter drops the ignore-list from a filter set (#494). The
+// ignore picker needs it for the same reason withoutSenderFilters exists: a
+// list built from a query that already honours the ignore-list would not
+// contain the ignored nodes, so nothing could be unchecked again.
+export function withoutIgnoreFilter(filters) {
+  const out = {}
+  for (const [k, v] of Object.entries(filters || {})) {
+    if (k !== 'ignorePairs') out[k] = v
+  }
+  return out
+}
+
 export function withoutSenderFilters(filters) {
   const out = {}
   for (const [k, v] of Object.entries(filters || {})) {
@@ -297,8 +321,11 @@ function rowIds(rec) {
 // So #f-sender is the typed leading-prefix search and nothing else, and the
 // selection lives here as a Set. onChange fires whenever it moves, so map.js
 // can refresh and persist without this module knowing about either.
-export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange } = {}) {
+// `ignored` is a getter rather than a value: the list changes while the picker
+// lives, and every render has to see the current one.
+export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange, ignored } = {}) {
   const input = document.getElementById(senderInputId)
+  const ignoreSet = () => (ignored ? ignored() : undefined)
 
   const adapter = {
     // A merged row is one target across several prefixes (#331), so it reports
@@ -315,8 +342,8 @@ export function createTargetPicker(senderInputId, listEl, { pinnedEl, onChange }
     // under a prefix the node was not yet known by changes the group the row
     // toggles, without necessarily changing the newest reception it displays.
     sigOf: (r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at + '/' + rowIds(r).join(','),
-    list: (points, { limit } = {}) => senderList(points, { limit }),
-    pinned: (points, { count, nowMs }) => topSenders(points, { count, nowMs }),
+    list: (points, { limit } = {}) => senderList(points, { limit, ignore: ignoreSet() }),
+    pinned: (points, { count, nowMs }) => topSenders(points, { count, nowMs, ignore: ignoreSet() }),
     // A typed prefix and an exact pick are different match kinds, so picking
     // clears the box rather than silently intersecting the two.
     onPick: (selected) => {

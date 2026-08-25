@@ -69,6 +69,11 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .ms-wrap { display: inline-flex; }
 .ms-toggle { padding: 5px 6px; }
 .ms-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
+/* A picker that is holding something has to say so with the panel closed, when
+   the button is all that is left of it (#494). #bar-prefixed because `#bar
+   select, #bar input, #bar button` sets colour and border at (1,0,1), which
+   beats a bare class -- the same claim .f-chip.active above has to make. */
+#bar .ms-toggle.has-selection { color: var(--ch-accent); border-color: var(--ch-accent); }
 /* position:fixed with left/top written by placePopover (#372): #bar wraps, so
    the toggle these were anchored to can end up anywhere on any row, and CSS
    anchoring cannot flip or shift a panel back onto the screen. */
@@ -270,6 +275,22 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #bar #settings-btn:hover { color:var(--ch-text); }
 .wn-dot { width:7px; height:7px; border-radius:50%; background:var(--ch-accent-2); }
 #bar #settings-btn .wn-dot { position:absolute; top:2px; right:2px; }
+/* Ignored senders (#494). Mirrors the app's section (app/src/styles/app.css):
+   a row per node with the label on the left and Remove on the right. */
+.ss-ignore-section { border-top: 1px solid var(--ch-border); margin-top: 12px; padding-top: 12px; }
+.ss-ignore-section h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--ch-muted); font-weight: 600; }
+.ss-ignore-empty { margin: 0; font-size: 13px; color: var(--ch-muted); }
+.ss-ignore-row { display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-top: 1px solid var(--ch-border); font-size: 13px; }
+.ss-ignore-row:first-child { border-top: 0; }
+.ss-ignore-key { flex: 1 1 auto; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; }
+.ss-ignore-remove, #ss-ignore-clear { flex: 0 0 auto; background: transparent;
+  border: 1px solid var(--ch-border); border-radius: 6px; color: var(--ch-muted);
+  font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer; }
+.ss-ignore-remove:hover, #ss-ignore-clear:hover { color: var(--ch-text); border-color: var(--ch-muted); }
+#ss-ignore-clear { margin-top: 10px; }
 /* min-height:0 is what makes the scroll happen: .lc-card is a column flex
    container, and a flex item defaults to min-height:auto — it refuses to shrink
    below its content, so the list would push past the card's 70vh instead of

@@ -13,7 +13,8 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
+import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime } from './targetpicker.js'
+import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hiddenFiltersActive } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
@@ -206,7 +207,7 @@ function qs() {
   for (const [k, v] of Object.entries(f)) {
     // senderPairs is already [key, value][] and may repeat a key (#223), so it
     // appends rather than sets -- URLSearchParams.set would keep only the last.
-    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (k === 'senderPairs' || k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
     if (v) p.set(k, v)
   }
   return p.toString()
@@ -239,6 +240,11 @@ const setStatus = (text, title = '') => {
   el.textContent = text
   if (title) el.title = title; else el.removeAttribute('title')
 }
+// What the status line says about the ignore-list (#494). It goes here rather
+// than on a pill or the settings dot: #bar has no room for another control
+// (#495 measured what a label costs there), and a count says more than a dot
+// does. Both layers carry it, since ignoring drops rows from both.
+const ignoreSuffix = () => (ignored.size ? ` · ${ignored.size} ignored` : '')
 
 async function drawPoints() {
   const isCurrent = pointsDraw()
@@ -263,9 +269,12 @@ async function drawPoints() {
     const sid = pt.sender_id || ''
     const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
     const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
+    // Ignoring is per person and needs no role: it only ever removes rows from
+    // the asker's own view. Same wording as the app's popup (huntmap.js).
+    const ignBtn = sid ? `<br><button class="pp-ignore" data-sender="${esc(sid)}">Ignore this ID</button>` : ''
     const tier = rssiTier(pt.rssi)
     const marker = L.circleMarker([pt.lat, pt.lon], { renderer: ptCanvas, radius: 5, color: cssVar(tierColorVar(tier)), weight: 1, fillColor: cssVar(tierColorVar(tier)), fillOpacity: fillOpacity(tier) })
-      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}`)
+      .bindPopup(`RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}${ignBtn}`)
     // Reception ticker two-way sync (#224): clicking a marker scrolls the
     // ticker to the matching line, keyed by receptionKey since /api/points
     // rows carry no stable id.
@@ -278,7 +287,7 @@ async function drawPoints() {
   // rows carry rx_at, so the date comes from the data already in hand rather
   // than from a second server field.
   const cover = { truncated: capped, coversFrom: oldestRxAt(points) }
-  setStatus(coverageLabel(points.length, 'points', cover), coverageTitle(POINTS_CAP, cover))
+  setStatus(coverageLabel(points.length, 'points', cover) + ignoreSuffix(), coverageTitle(POINTS_CAP, cover))
   // Direct only reads as "what I heard from nearby", filters on a field the
   // sender writes, and on a forged path hides everything -- silently, which is
   // how it emptied the map on a real hunt (#454 follow-up). Say so, against the
@@ -338,7 +347,7 @@ async function drawHex() {
   // reader cannot resolve. The truncation is the most RECENT n receptions, so
   // the honest report is the date it reaches back to (#440).
   const cover = { truncated: fc.truncated, coversFrom: fc.covers_from }
-  setStatus(coverageLabel(fc.features.length, 'cells', cover), coverageTitle(HEATMAP_CAP, cover))
+  setStatus(coverageLabel(fc.features.length, 'cells', cover) + ignoreSuffix(), coverageTitle(HEATMAP_CAP, cover))
 }
 
 function applyLocateGate() {
@@ -479,7 +488,7 @@ function filtersQs() {
   for (const [k, v] of Object.entries(f)) {
     // senderPairs is already [key, value][] and may repeat a key (#223), so it
     // appends rather than sets -- URLSearchParams.set would keep only the last.
-    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (k === 'senderPairs' || k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
     if (v) p.set(k, v)
   }
   return p.toString()
@@ -573,7 +582,7 @@ async function refreshHunterPickerCandidates() {
   // sender candidate query, withoutHunterFilter does not drop it, so it needs
   // the same append handling filtersQs() uses.
   for (const [k, v] of Object.entries(f)) {
-    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (k === 'senderPairs' || k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
     if (v) p.set(k, v)
   }
   try {
@@ -595,7 +604,7 @@ async function fetchTickerPage(mode) {
   for (const [k, v] of Object.entries(filters)) {
     // senderPairs is [key, value][] and may repeat a key (#223), so append it
     // the way qs() does -- p.set would stringify the array into one garbage value.
-    if (k === 'senderPairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (k === 'senderPairs' || k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
     if (v) p.set(k, v)
   }
   p.set('limit', String(RX_CAP)); p.set('offset', '0')
@@ -1652,6 +1661,164 @@ if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 syncTimeUi() // label the picker button from the restored/default range (#285)
 refresh()
 
+// ---- Ignore-list (#494) -------------------------------------------------
+// Senders the viewer has dropped. Held here, like the picker selections, and
+// read by filters.js through the same lazy window indirection. It leaves as
+// repeated ?ignores= params, so the rows never reach the client and the hex
+// layer honours it without a second code path (ignorelist.js says why).
+let ignored = loadIgnore(window.localStorage)
+// Declared here rather than beside the picker below: renderIgnoreList() reads
+// it through knownLabelFor and runs before that block is evaluated.
+let cachedIgnoreCandidates = []
+let cachedIgnoreSig = null
+window.ignoredSenderParams = () => ignoreParams(ignored)
+window.isIgnoredSender = (ids) => isIgnored(ignored, ids)
+
+// An ignored node is off the map and out of the target picker, so this list is
+// the only place it can be found again, and a bare hex prefix names nothing to
+// the person reading it. Three sources, best first: the label the node was
+// heard under in this session, the resolver's cache, then the same 6-char
+// prefix the rows use. Never the full id (#305, AGENTS.md §5.4) -- that is
+// what the row's title carries.
+//
+// Nothing is stored alongside the id, so after a reload a node that has not
+// been heard again falls back to its prefix. Storing a label would freeze a
+// name the node can change, and the list is keyed by id either way.
+function knownLabelFor(id) {
+  for (const src of [cachedIgnoreCandidates, cachedCandidatePoints]) {
+    const hit = (src || []).find((p) => p.sender_label && String(p.sender_id).toLowerCase() === id)
+    if (hit) return String(hit.sender_label)
+  }
+  return cachedName(id) || ''
+}
+
+function ignoreRowLabel(id) {
+  const name = knownLabelFor(id)
+  return name ? { primary: name, secondary: id.slice(0, 6) } : { primary: id.slice(0, 6), secondary: '' }
+}
+
+function renderIgnoreList() {
+  const listEl = document.getElementById('ss-ignore-list')
+  if (!listEl) return
+  listEl.replaceChildren()
+  document.getElementById('ss-ignore-clear').hidden = ignored.size === 0
+  if (ignored.size === 0) {
+    const empty = document.createElement('p')
+    empty.className = 'ss-ignore-empty'
+    empty.textContent = 'No ignored senders.'
+    listEl.appendChild(empty)
+    return
+  }
+  for (const id of ignored) {
+    const { primary, secondary } = ignoreRowLabel(id)
+    const row = document.createElement('div')
+    row.className = 'ss-ignore-row'
+    const label = document.createElement('span')
+    label.className = 'ss-ignore-key'
+    label.textContent = secondary ? `${primary} · ${secondary}` : primary
+    label.title = id
+    const rm = document.createElement('button')
+    rm.type = 'button'
+    rm.className = 'ss-ignore-remove'
+    rm.textContent = 'Remove'
+    rm.addEventListener('click', () => applyIgnore(toggleIgnore(ignored, id)))
+    row.append(label, rm)
+    listEl.appendChild(row)
+  }
+}
+
+// One place for everything a change to the list has to touch. The candidate
+// signature is cleared because the picker's own list is now different, and
+// refreshPickerCandidates() would otherwise serve the cached one.
+function applyIgnore(next) {
+  ignored = next
+  const saved = saveIgnore(window.localStorage, ignored)
+  cachedCandidatureSig = null
+  renderIgnoreList()
+  // The picker holds its own Set, so every path that changes the list from
+  // outside it (the popup button, Remove, Clear) has to write back into it.
+  // setSelected on the picker that just fired onChange is a no-op reassignment
+  // of the same ids, so this does not loop.
+  if (ignorePicker) ignorePicker.setSelected([...ignored])
+  syncIgnoreToggleLabel()
+  refresh()
+  if (!saved) setStatus('Ignore-list could not be saved (storage unavailable)')
+}
+
+// "Ignore this ID" in a point popup, delegated like the Locate button above.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.pp-ignore')
+  if (!btn) return
+  map.closePopup()
+  applyIgnore(toggleIgnore(ignored, btn.dataset.sender))
+})
+
+document.getElementById('ss-ignore-clear').addEventListener('click', () => applyIgnore(new Set()))
+// Re-render on open, not only on change: a name can become known after the row
+// was first drawn (a picker opened, a resolver answered), and the app does the
+// same on its own sheet (app/src/app.js).
+document.getElementById('settings-btn').addEventListener('click', () => renderIgnoreList())
+
+// The ignore picker: the third instance of the multi-select popover, with the
+// list itself as its selection. Checking a row ignores that node, unchecking
+// it brings it back, so this is the only picker whose selection IS a filter
+// rather than an input to one.
+const igToggle = document.getElementById('ig-toggle')
+const ignorePanel = document.getElementById('ignore-picker')
+let ignorePicker = null
+
+const ignoreAdapter = {
+  idsOf: (rec) => (rec.merged_ids && rec.merged_ids.length ? rec.merged_ids : [rec.sender_id]),
+  rowParts: (rec, nowMs) => {
+    const { primary, secondary } = targetParts(rec)
+    return { primary, secondary, meta: [{ text: relTime(rec.rx_at, nowMs), cls: 'tl-time' }] }
+  },
+  sigOf: (r) => (r.sender_label || r.sender_id || '') + r.rx_at,
+  // No ignore option passed on purpose: this is the one list that has to keep
+  // showing the nodes the list holds, or they could never be unchecked.
+  list: (points, { limit } = {}) => senderList(points, { limit }),
+}
+
+function syncIgnoreToggleLabel() {
+  igToggle.textContent = ignored.size ? `Ignored (${ignored.size}) ▾` : 'Ignored ▾'
+  igToggle.classList.toggle('has-selection', ignored.size > 0)
+}
+
+// Candidates for this picker come from a query with the ignore-list stripped
+// (withoutIgnoreFilter), unlike every other request the page makes.
+async function refreshIgnoreCandidates() {
+  if (!ignorePicker || !ignorePanel || ignorePanel.hidden) return
+  const b = map.getBounds()
+  const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
+  const f = withoutIgnoreFilter((window.currentFilters && window.currentFilters()) || {})
+  const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
+  if (sig === cachedIgnoreSig) {
+    ignorePicker.render(cachedIgnoreCandidates, Date.now())
+    return
+  }
+  for (const [k, v] of Object.entries(f)) {
+    if (k === 'senderPairs' || k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
+  }
+  try {
+    const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
+    cachedIgnoreCandidates = points
+    cachedIgnoreSig = sig
+    ignorePicker.render(points, Date.now())
+  } catch (_) { /* keep the last good list; retried on the next open */ }
+}
+
+ignorePicker = createMultiSelectPicker(ignoreAdapter, document.getElementById('ig-list'), {
+  onChange: () => applyIgnore(new Set(ignorePicker.getSelected())),
+})
+wirePopover({
+  toggleEl: igToggle, panelEl: ignorePanel, wrapEl: igToggle.closest('.ms-wrap'), wrapSelector: '.ms-wrap',
+  onOpen: () => { ignorePicker.reset(); refreshIgnoreCandidates() },
+})
+
+renderIgnoreList()
+syncIgnoreToggleLabel()
+
 // Target-list picker (#223): a small dropdown beside #f-sender, a "toggle
 // button reveals a panel" shape rather than app's full sheet -- web's top bar
 // keeps every control inline (#225 decision), so this stays a compact
@@ -1660,6 +1827,7 @@ const spToggle = document.getElementById('sp-toggle')
 senderPicker = document.getElementById('sender-picker')
 targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
   pinnedEl: document.getElementById('tp-pinned'),
+  ignored: () => ignored,
   // The picker owns its selection now (#288), so the field's own input/urlstate
   // wiring no longer carries it -- refresh and persist explicitly instead.
   onChange: () => { urlstate.save(); refresh() },

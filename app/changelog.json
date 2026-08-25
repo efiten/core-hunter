@@ -49,6 +49,13 @@
     "body": "On a weak mobile link the app could get stuck trying to send one reception over and over, and everything captured after it waited behind. On one hunt that meant the map ran up to two hours behind while the driving was happening, which is exactly when it is no use. The app now moves on after a handful of failed attempts, and the server no longer stores the same reception twice - so a resend costs nothing. If you saw a bright spot on the map that turned out to be one packet counted hundreds of times, that was this."
   },
   {
+    "id": "2026-08-25-ignore-senders-on-the-map",
+    "date": "2026-08-25",
+    "where": "map",
+    "title": "Ignore a sender you do not want to see",
+    "body": "A node that floods the map can now be silenced from the map itself, the way the app has always allowed. Ignore it from its popup or tick it in the new Ignored list in the bar, and its receptions leave the points, the hex heat and the target list at once. The list is yours alone: it stays in this browser and is not part of a link you share. Settings holds everything you have ignored, so you can bring a node back."
+  },
+  {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
     "where": "both",

@@ -101,6 +101,17 @@
         <ul id="hp-list" class="tl-list tl-scroll"></ul>
       </div>
     </span>
+    <!-- Ignore picker (#494). Third instance of the one multi-select pattern,
+         and the reason it has its own candidate query: a node the list already
+         holds is gone from every other request, so it could not be unchecked
+         from a list built the ordinary way. No Top section — ranking what you
+         are about to silence by signal strength says nothing useful. -->
+    <span class="ms-wrap">
+      <button id="ig-toggle" type="button" class="ms-toggle" title="Ignore senders: checked senders are dropped from your view" aria-expanded="false">Ignored ▾</button>
+      <div id="ignore-picker" class="tl-panel" hidden>
+        <ul id="ig-list" class="tl-list tl-scroll"></ul>
+      </div>
+    </span>
     <span class="ms-wrap">
       <input id="f-sender" type="text" placeholder="sender id (prefix)" />
       <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">▾</button>
@@ -240,6 +251,14 @@
           <span class="ss-row-label">Light theme</span>
           <button id="theme-toggle" type="button" title="Toggle light/dark">🌙</button>
         </label>
+        <!-- Ignored senders (#494): the same section the app carries, and the
+             only place an ignored node can be found again — it is gone from the
+             map and from the target picker by then. -->
+        <div class="ss-ignore-section">
+          <h3>Ignored senders</h3>
+          <div id="ss-ignore-list"></div>
+          <button id="ss-ignore-clear" type="button">Clear ignore-list</button>
+        </div>
       </div>
       <div class="ss-panel" id="ss-panel-whatsnew" role="tabpanel" aria-labelledby="ss-tab-whatsnew" hidden>
         <div id="wn-body" class="wn-body"></div>
