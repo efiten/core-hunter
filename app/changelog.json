@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-25-locate-uses-the-whole-signal-field",
+    "date": "2026-08-25",
+    "where": "both",
+    "title": "Locate reads the whole signal field",
+    "body": "Locate used to mark the middle of where you heard a node strongest, which lands on your own route when you approached from one side. It now works out which position best explains every reading you took - the weak ones as well as the strong ones - so the fall-off across your drive points at the transmitter even where you never went. Checked against nine repeaters whose real locations were measured on the ground: the average miss went from about 680 metres to about 210. It is still an estimate from radio measurements, not a fix on the node."
+  },
+  {
     "id": "2026-08-25-queued-receptions-always-go-out",
     "date": "2026-08-25",
     "where": "app",
