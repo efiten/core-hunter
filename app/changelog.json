@@ -151,7 +151,7 @@
     "date": "2026-08-25",
     "where": "app",
     "title": "You hear everything the radio hears, and what kind it is",
-    "body": "Sound used to be reserved for receptions heard straight from the transmitter, which is about a third of what the radio picks up, and it went quiet whenever you filtered the map to one node. Everything is audible now, and the packet type picks the instrument: adverts ring, chat is softer, the constant network chatter stays the driest sound in the mix. A relayed reception is the same instrument heard through something, darker and shorter, so you can tell without looking whether what you just heard came in directly. Pitch and loudness still tell you the signal strength."
+    "body": "Sound used to be reserved for receptions heard straight from the transmitter, which is about a third of what the radio picks up, and it went quiet whenever you filtered the map to one node. Everything is audible now, and the packet type picks the instrument: adverts ring, chat is softer, the constant network chatter stays the driest sound in the mix. A relayed reception barely gives you the strike at all: what you hear is mostly what came back off the repeater, a darker echo a beat behind, so you can tell without looking whether something reached you directly. Pitch and loudness still tell you the signal strength."
   },
   {
     "id": "2026-08-24-render-tick-cost",

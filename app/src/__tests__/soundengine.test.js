@@ -30,6 +30,8 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     sampleRate,
     destination: node(),
     resumeCalls: 0,
+    delays: 0,
+    bufferSources: 0,
     oscillators,
     // Autoplay policy: before a user gesture, resume() does not actually start
     // the clock. Modelling that is the point -- a fake that always succeeds
@@ -51,7 +53,8 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     createConvolver: () => node({ buffer: null }),
     createStereoPanner: () => node({ pan: fakeParam(0) }),
     createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
-    createBufferSource: () => node({ buffer: null, loop: false, start() {}, stop() {} }),
+    createBufferSource: () => { ctx.bufferSources++; return node({ buffer: null, loop: false, start() {}, stop() {} }) },
+    createDelay: () => { ctx.delays++; return node({ delayTime: fakeParam(0) }) },
     createOscillator() {
       const o = node({
         type: 'sine', frequency: fakeParam(0),
@@ -412,5 +415,57 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     await fireVisibility(true)
     await fireVisibility(false)
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+})
+
+// Dialled in by ear in the sound lab, 2026-08-25. The point of the profile is
+// that the families read apart at a glance-equivalent -- one strike and you
+// know what kind of packet it was -- and that a relayed reception is not a
+// quieter version of a direct one but a different event: mostly what came back
+// off the repeater rather than the strike itself.
+//
+// Pitch is not part of any of it. It carries the signal strength, and that is
+// the reading the whole instrument exists for (#468).
+describe('the voice profile is audible in what the engine builds', () => {
+  const DAMPED = { family: 'network', damped: true }
+
+  it('routes a relayed cue through a delay line and a direct one straight out', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    e.cue(DIRECT, -80)
+    expect(ctx.delays, 'a direct cue has no echo').toBe(0)
+    vi.advanceTimersByTime(100)
+    e.cue(DAMPED, -80)
+    expect(ctx.delays, 'a relayed cue is heard through its echo').toBe(1)
+  })
+
+  it('gives a family with a transient its noise burst, and one without none', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const before = ctx.bufferSources
+    e.cue({ family: 'message', damped: false }, -80)   // noise > 0 in the profile
+    const withClick = ctx.bufferSources - before
+    vi.advanceTimersByTime(100)
+    e.cue({ family: 'advert', damped: false }, -80)    // noise === 0
+    expect(withClick, 'the message voice is struck').toBe(1)
+    expect(ctx.bufferSources - before - withClick, 'the advert voice is not').toBe(0)
+  })
+
+  it('keeps every family distinguishable by wave and envelope, not by pitch', () => {
+    // A profile where two families share a wave AND an envelope is one where
+    // the ear cannot tell them apart, which is the whole point of #468. Pitch
+    // is excluded on purpose: it is the RSSI reading.
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const shapes = new Set()
+    for (const family of ['advert', 'channel', 'message', 'trace', 'network']) {
+      const before = ctx.oscillators.length
+      e.cue({ family, damped: false }, -80)
+      const osc = ctx.oscillators.slice(before)
+      expect(osc.length, `${family} sounds at all`).toBeGreaterThan(0)
+      shapes.add(`${osc[0].type}/${osc.length}`)
+      vi.advanceTimersByTime(100)
+    }
+    expect(shapes.size, 'families that sound identical').toBeGreaterThanOrEqual(4)
   })
 })

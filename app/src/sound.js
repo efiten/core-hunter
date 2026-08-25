@@ -157,20 +157,36 @@ export function coalesceCue(state, cue, nowMs) {
 // this change fixes: prominence runs inverse to how common a family is, so the
 // measured majority (network: Response/Request/Path) stays the driest thing in
 // the mix and an Advert can afford a tail.
+// Dialled in by ear in the lab, 2026-08-25, from the starting points this PR
+// opened with. What the round changed is separation: every family now differs
+// in wave AND in attack, and three of them carry a short noise transient, so
+// the ear reads the type from the first few milliseconds rather than from a
+// tail it may never hear in traffic.
+//
+//   wave        oscillator shape -- the timbre
+//   attack      seconds to full level; 1 ms reads as struck, 20 ms as blown
+//   hold/tail   scale the RSSI-derived length, and the release after it
+//   partial     harmonic added under the fundamental (2 = octave, 3 = twelfth)
+//   noise       a band-passed noise burst in front of the tone, the "strike"
+//
+// Pitch is deliberately not in this table. It carries the signal strength and
+// nothing else, which is the reading the instrument exists for (#468).
 const VOICES = {
-  advert:  { wave: 'sine',     hold: 1.0,  tail: 0.22, gain: 1.0,  partial: 3 },
-  channel: { wave: 'triangle', hold: 0.85, tail: 0.10, gain: 0.95, partial: 0 },
-  message: { wave: 'triangle', hold: 0.6,  tail: 0.05, gain: 0.75, partial: 0 },
-  trace:   { wave: 'sine',     hold: 0.6,  tail: 0.14, gain: 0.8,  partial: 2 },
-  network: { wave: 'sine',     hold: 0.35, tail: 0.02, gain: 0.5,  partial: 0 },
+  advert:  { wave: 'sine',     hold: 1.4,  tail: 0.45, gain: 1.1,  partial: 3, partialGain: 0.5,  attack: 0.02,  noise: 0,    noiseLen: 0.01 },
+  channel: { wave: 'triangle', hold: 0.9,  tail: 0.16, gain: 1.0,  partial: 2, partialGain: 0.25, attack: 0.004, noise: 0.25, noiseLen: 0.012 },
+  message: { wave: 'square',   hold: 0.5,  tail: 0.06, gain: 0.8,  partial: 0, partialGain: 0.35, attack: 0.002, noise: 0.15, noiseLen: 0.008 },
+  trace:   { wave: 'sawtooth', hold: 0.7,  tail: 0.2,  gain: 0.85, partial: 2, partialGain: 0.4,  attack: 0.001, noise: 0.1,  noiseLen: 0.006 },
+  network: { wave: 'sine',     hold: 0.25, tail: 0.01, gain: 0.42, partial: 0, partialGain: 0.35, attack: 0.001, noise: 0.05, noiseLen: 0.004 },
 }
 
-// A relayed reception is the same voice heard through something: lowpassed,
-// shorter and quieter, so a direct reception stays the brightest thing in the
-// mix and the ear can tell them apart without being told.
-const DAMP_HZ = 900
-const DAMP_GAIN = 0.65
-const DAMP_HOLD = 0.7
+// A relayed reception is not a quieter direct one: it is mostly what came back
+// off the repeater. Only 15% of the strike survives; the rest of what you hear
+// is a lowpassed echo, four taps 110 ms apart. Same lab round.
+//
+// Cheaper than it looks -- one delay node with a feedback loop, faded out after
+// `taps` so the loop cannot ring on, and no pitch shift anywhere, so the RSSI
+// reading survives the treatment.
+const DAMP = { hz: 500, gain: 0.5, hold: 0.55, dry: 0.15, wet: 0.9, delayMs: 110, feedback: 0.45, taps: 4, echoHz: 900 }
 
 // Reverb + music + rx mix, dialed in by ear in the sound lab (final round,
 // 2026-07-16): morse-harmonic rx at 50%, music 86% @ 1.7×, reverb 35%/2.8 s.
@@ -543,26 +559,67 @@ export function createSoundEngine() {
     const v = VOICES[c.family] || VOICES.network
     const f = harmFreq(rssi, offset)
     const frac = rssiFrac(rssi, offset)
-    const g = pingGain(rssi, offset) * RX_GAIN * v.gain * (c.damped ? DAMP_GAIN : 1)
-    const len = (0.035 + frac * 0.06) * v.hold * (c.damped ? DAMP_HOLD : 1)
+    const g = pingGain(rssi, offset) * RX_GAIN * v.gain * (c.damped ? DAMP.gain : 1)
+    const len = (0.035 + frac * 0.06) * v.hold * (c.damped ? DAMP.hold : 1)
     const t = ac.currentTime
 
     // One gain stage for the whole cue, so a partial cannot double the level.
     const og = ac.createGain()
     og.gain.setValueAtTime(0, t)
-    og.gain.linearRampToValueAtTime(g, t + 0.004)
+    og.gain.linearRampToValueAtTime(g, t + v.attack)
     og.gain.setValueAtTime(g, t + len)
     og.gain.linearRampToValueAtTime(0.0001, t + len + v.tail)
 
-    let out = og
     if (c.damped) {
       const lp = ac.createBiquadFilter()
       lp.type = 'lowpass'
-      lp.frequency.value = DAMP_HZ
+      lp.frequency.value = DAMP.hz
       og.connect(lp)
-      out = lp
+      // What is left of the strike itself.
+      const dry = ac.createGain()
+      dry.gain.value = DAMP.dry
+      lp.connect(dry).connect(master)
+      // And what came back off the repeater. The feedback loop is faded rather
+      // than left to decay on its own: at 0.45 it is still audible after a
+      // second, which would smear into the next reception in a hotspot.
+      const delay = ac.createDelay(2)
+      delay.delayTime.value = DAMP.delayMs / 1000
+      const fb = ac.createGain()
+      fb.gain.value = DAMP.feedback
+      const eq = ac.createBiquadFilter()
+      eq.type = 'lowpass'
+      eq.frequency.value = DAMP.echoHz
+      const wet = ac.createGain()
+      wet.gain.value = DAMP.wet
+      lp.connect(delay)
+      delay.connect(eq).connect(fb).connect(delay)
+      delay.connect(wet).connect(master)
+      const life = (DAMP.delayMs / 1000) * DAMP.taps
+      fb.gain.setValueAtTime(DAMP.feedback, t + life)
+      fb.gain.linearRampToValueAtTime(0, t + life + 0.15)
+    } else {
+      og.connect(master)
     }
-    out.connect(master)
+
+    // The strike: a few milliseconds of band-passed noise in front of the tone.
+    // It is what separates a struck voice from a blown one at the moment the
+    // cue starts, which is the only part of a cue a busy minute leaves room for.
+    if (v.noise > 0) {
+      const n = Math.floor(ac.sampleRate * v.noiseLen)
+      const buf = ac.createBuffer(1, n, ac.sampleRate)
+      const ch = buf.getChannelData(0)
+      for (let k = 0; k < n; k++) ch[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / n, 3)
+      const sn = ac.createBufferSource()
+      sn.buffer = buf
+      const ng = ac.createGain()
+      ng.gain.value = g * v.noise
+      const nf = ac.createBiquadFilter()
+      nf.type = 'bandpass'
+      nf.frequency.value = f * 2
+      nf.Q.value = 0.7
+      sn.connect(nf).connect(ng).connect(master)
+      sn.start(t)
+    }
 
     const stop = t + len + v.tail + 0.04
     const voices = [f]
@@ -576,7 +633,7 @@ export function createSoundEngine() {
       if (i === 0) osc.connect(og)
       else {
         const pg = ac.createGain()
-        pg.gain.value = 0.35
+        pg.gain.value = v.partialGain
         osc.connect(pg).connect(og)
       }
       osc.start(t)
