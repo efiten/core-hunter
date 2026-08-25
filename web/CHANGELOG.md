@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/efiten/core-hunter/compare/web-v1.11.0...web-v1.12.0) (2026-08-25)
+
+
+### Features
+
+* **app:** name the 1-byte path hash instead of showing no sender ([#522](https://github.com/efiten/core-hunter/issues/522)) ([9ad8389](https://github.com/efiten/core-hunter/commit/9ad83896d94772c12dd0c0b1eebeae3e71864329))
+
 ## [1.11.0](https://github.com/efiten/core-hunter/compare/web-v1.10.0...web-v1.11.0) (2026-08-25)
 
 

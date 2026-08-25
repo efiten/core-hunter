@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/efiten/core-hunter/compare/app-v1.15.0...app-v1.16.0) (2026-08-25)
+
+
+### Features
+
+* **app:** name the 1-byte path hash instead of showing no sender ([#522](https://github.com/efiten/core-hunter/issues/522)) ([9ad8389](https://github.com/efiten/core-hunter/commit/9ad83896d94772c12dd0c0b1eebeae3e71864329))
+
 ## [1.15.0](https://github.com/efiten/core-hunter/compare/app-v1.14.0...app-v1.15.0) (2026-08-25)
 
 
