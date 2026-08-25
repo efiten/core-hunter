@@ -400,17 +400,6 @@ body.wb-onboarding-on #bar { z-index:710; }
 /* Node-position layer (#197). The disclaimer stays on screen for as long as the
    layer is drawn — it implies node locations, so a popup-only note is not
    enough (AGENTS.md §7). Sits left so it never covers #locate-info. */
-/* The Direct only caveat (#454 follow-up). Top-centre, under the bar, because
-   it is about a control in the bar -- and out of the bottom corners, which the
-   node-position stack and Locate already own. */
-#hop-notice { position: fixed; top: calc(var(--ch-bar-h, 48px) + 8px); left: 50%; transform: translateX(-50%);
-  z-index: 640; max-width: min(560px, calc(100vw - 24px));
-  background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
-  border-left: 3px solid var(--ch-accent-2); border-radius: 8px; padding: 8px 12px;
-  font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); pointer-events: none; }
-/* Louder when the control is on and the map is empty because of it. */
-#hop-notice.hop-notice-active { border-left-color: var(--ch-sig-warm, var(--ch-accent-2)); color: var(--ch-text); }
-
 /* One anchored stack, column-reverse: the key is first in the DOM and last in
    the visual order, so it holds the bottom corner while the note (hidden in
    every state that drew nothing, #376) grows upward above it. Neither box
