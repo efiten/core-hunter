@@ -29,6 +29,17 @@ func ParseBBox(s string) (minLat, minLon, maxLat, maxLon float64, ok bool) {
 func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{From: q.Get("from"), To: q.Get("to")}
+	// ?message= narrows to one transmission and every relayed copy of it, and
+	// ?origin=1 keeps only the copies that reached us with the fewest path
+	// hashes. Together they are the handle a flood has when it has no sender:
+	// a spammer using 1-byte path hashes leaves nothing to type into the
+	// sender box, which is how 2,707 receptions became unfilterable on a real
+	// hunt (2026-08-24).
+	f.Message = strings.TrimSpace(q.Get("message"))
+	f.OriginOnly = q.Get("origin") == "1"
+	// ?unnamed=1 is the coarse version of the same handle: everything the
+	// classifier could not attribute, without needing to pick a message first.
+	f.NoSender = q.Get("unnamed") == "1"
 	// Two distinct sender filters on two distinct params (#223):
 	//   ?senders=  repeated, the target-list picker's exact multi-id selection (SQL IN)
 	//   ?sender=   the free-text leading-prefix search

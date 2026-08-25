@@ -10,31 +10,46 @@ import (
 	"time"
 
 	"github.com/efiten/core-hunter/server/internal/auth"
+	"github.com/efiten/core-hunter/server/internal/meshpacket"
 	"github.com/efiten/core-hunter/server/internal/store"
 	"github.com/efiten/core-hunter/server/internal/version"
 )
 
 func TestParseBBox(t *testing.T) {
 	a, b, c, d, ok := ParseBBox("51.0,4.0,52.0,5.0")
-	if !ok || a != 51.0 || b != 4.0 || c != 52.0 || d != 5.0 { t.Fatalf("good bbox parsed wrong: %v %v %v %v %v", a, b, c, d, ok) }
-	if _, _, _, _, ok := ParseBBox("nope"); ok { t.Fatal("bad bbox accepted") }
-	if _, _, _, _, ok := ParseBBox("1,2,3"); ok { t.Fatal("short bbox accepted") }
+	if !ok || a != 51.0 || b != 4.0 || c != 52.0 || d != 5.0 {
+		t.Fatalf("good bbox parsed wrong: %v %v %v %v %v", a, b, c, d, ok)
+	}
+	if _, _, _, _, ok := ParseBBox("nope"); ok {
+		t.Fatal("bad bbox accepted")
+	}
+	if _, _, _, _, ok := ParseBBox("1,2,3"); ok {
+		t.Fatal("short bbox accepted")
+	}
 }
 
 func TestFilterFromHopsAndTypes(t *testing.T) {
 	// hops + comma-separated types parsed into the store filter (#142)
 	r := httptest.NewRequest(http.MethodGet, "/api/points?hops=0&types=Advert,GroupText", nil)
 	f := filterFrom(r, nil)
-	if f.Hops == nil || *f.Hops != 0 { t.Fatalf("hops not parsed: %+v", f.Hops) }
-	if len(f.Types) != 2 || f.Types[0] != "Advert" || f.Types[1] != "GroupText" { t.Fatalf("types not parsed: %+v", f.Types) }
+	if f.Hops == nil || *f.Hops != 0 {
+		t.Fatalf("hops not parsed: %+v", f.Hops)
+	}
+	if len(f.Types) != 2 || f.Types[0] != "Advert" || f.Types[1] != "GroupText" {
+		t.Fatalf("types not parsed: %+v", f.Types)
+	}
 	// absent params → no hop filter, no type filter
 	r = httptest.NewRequest(http.MethodGet, "/api/points", nil)
 	f = filterFrom(r, nil)
-	if f.Hops != nil || len(f.Types) != 0 { t.Fatalf("empty params must not filter: hops=%v types=%v", f.Hops, f.Types) }
+	if f.Hops != nil || len(f.Types) != 0 {
+		t.Fatalf("empty params must not filter: hops=%v types=%v", f.Hops, f.Types)
+	}
 	// junk hops → ignored, not a filter
 	r = httptest.NewRequest(http.MethodGet, "/api/points?hops=abc", nil)
 	f = filterFrom(r, nil)
-	if f.Hops != nil { t.Fatalf("junk hops must be ignored: %v", *f.Hops) }
+	if f.Hops != nil {
+		t.Fatalf("junk hops must be ignored: %v", *f.Hops)
+	}
 }
 
 // TestFilterFromHunterCommaSeparated: ?hunter= accepts a comma-separated list
@@ -47,7 +62,9 @@ func TestFilterFromHunterCommaSeparated(t *testing.T) {
 	}
 	r = httptest.NewRequest(http.MethodGet, "/api/points", nil)
 	f = filterFrom(r, nil)
-	if len(f.Hunter) != 0 { t.Fatalf("absent hunter must not filter: %+v", f.Hunter) }
+	if len(f.Hunter) != 0 {
+		t.Fatalf("absent hunter must not filter: %+v", f.Hunter)
+	}
 }
 
 // ?sender=a;b is the target-list picker's exact multi-id selection (#223);
@@ -119,10 +136,16 @@ func TestVersionEndpoint(t *testing.T) {
 	RegisterRoutes(mux, nil, nil, nil, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/version", nil))
-	if rec.Code != http.StatusOK { t.Fatalf("status = %d, want 200", rec.Code) }
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
 	var body map[string]string
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil { t.Fatalf("bad json: %v", err) }
-	if body["server"] != version.Version { t.Fatalf("server = %q, want %q", body["server"], version.Version) }
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+	if body["server"] != version.Version {
+		t.Fatalf("server = %q, want %q", body["server"], version.Version)
+	}
 }
 
 func seedPointsStore(t *testing.T) *store.Store {
@@ -298,10 +321,14 @@ func TestPointsMemberMultiHunterFilter(t *testing.T) {
 	st.Insert(store.Reception{HunterPubkey: "cccc", HunterName: "Carol", RxAt: time.Now().Add(-1 * time.Hour).UTC().Format(time.RFC3339), RSSI: -90, Raw: "00", IsDirect: true, Lat: 53.0, Lon: 6.0, SenderID: "s4", PacketType: "Response"})
 	out := doPointsQ(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?hunter=aaaa,bbbb")
 	pts := out["points"].([]any)
-	if len(pts) != 3 { t.Fatalf("multi-hunter filter should return aaaa+bbbb's 3 rows, got %d", len(pts)) }
+	if len(pts) != 3 {
+		t.Fatalf("multi-hunter filter should return aaaa+bbbb's 3 rows, got %d", len(pts))
+	}
 	for _, p := range pts {
 		hp := p.(map[string]any)["hunter_pubkey"]
-		if hp == "cccc" { t.Fatalf("hunter outside the filtered set leaked: %v", hp) }
+		if hp == "cccc" {
+			t.Fatalf("hunter outside the filtered set leaked: %v", hp)
+		}
 	}
 }
 
@@ -319,7 +346,9 @@ func TestPointsGuestMultiHunterCollapsesToFirst(t *testing.T) {
 		t.Fatalf("multi-hunter guest filter should collapse to the first token: got %d rows, want %d (== ?hunter=h1)", len(multiPts), len(singlePts))
 	}
 	for _, p := range multiPts {
-		if p.(map[string]any)["hunter_pubkey"] != "h1" { t.Fatalf("collapsed filter should only return h1 rows: %v", p) }
+		if p.(map[string]any)["hunter_pubkey"] != "h1" {
+			t.Fatalf("collapsed filter should only return h1 rows: %v", p)
+		}
 	}
 }
 
@@ -402,6 +431,56 @@ func TestHeatmapGuestResFloor(t *testing.T) {
 // map in any area nobody had driven that day -- everything the project had
 // mapped hidden from exactly the person deciding whether to join. Safe because
 // the heat is aggregated after degradePoints: no coordinate, no identity.
+// A flood with no sender is unfilterable without these two: ?message= is its
+// only handle, and ?origin=1 is the only thing a forged path leaves intact.
+// Frames are real, from the Amsterdam hunt of 2026-08-24.
+func TestPointsAcceptTheMessageAndOriginParams(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	copies := []struct {
+		raw  string
+		hops int
+	}{
+		{"0822480000040426a364fc64fd478be84632b802c7498e0db5334d2910e2", 4},
+		{"0822480000050426a36431fc64fd478be84632b802c7498e0db5334d2910e2", 5},
+		{"0822480000060426a3641c57fc64fd478be84632b802c7498e0db5334d2910e2", 6},
+		{"0886c0000008150c287e99644c9a5107765f7144c2bbc36cc7e8f19af9b8", 8}, // heard once
+	}
+	for _, r := range copies {
+		st.Insert(store.Reception{HunterPubkey: "aaaa", RxAt: now, Raw: r.raw, Hops: r.hops,
+			RSSI: -90, PacketType: "TextMessage", Lat: 52.36, Lon: 4.83})
+	}
+	member := Auth{Role: "member", UserID: 1, Username: "m"}
+	count := func(q string) int {
+		out := doPointsQ(t, st, member, q)
+		pts, _ := out["points"].([]any)
+		return len(pts)
+	}
+	if n := count(""); n != 4 {
+		t.Fatalf("unfiltered: got %d, want 4", n)
+	}
+	// origin=1 keeps the shortest-path copy and drops the singleton entirely.
+	if n := count("?origin=1"); n != 1 {
+		t.Fatalf("origin=1: got %d, want 1", n)
+	}
+	id, ok := meshpacket.MessageID(copies[0].raw)
+	if !ok {
+		t.Fatal("the fixture must decode")
+	}
+	if n := count("?message=" + id); n != 3 {
+		t.Fatalf("message=%s: got %d, want 3", id, n)
+	}
+	// An id nobody sent matches nothing rather than everything: a filter that
+	// silently falls back to "all" is worse than one that returns empty.
+	if n := count("?message=deadbeefdeadbeef"); n != 0 {
+		t.Fatalf("unknown message id: got %d, want 0", n)
+	}
+}
+
 func TestHeatmapGuestSeesAllCoverage(t *testing.T) {
 	st := seedPointsStore(t)
 	defer st.Close()
@@ -539,7 +618,9 @@ func TestHeatmapGuestNamesPseudonymised(t *testing.T) {
 	for _, feat := range out["features"].([]any) {
 		props := feat.(map[string]any)["properties"].(map[string]any)
 		hs, ok := props["hunters"].([]any)
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		for _, h := range hs {
 			name := h.(string)
 			if name == "Alice" || name == "Bob" {
@@ -573,9 +654,13 @@ func TestHeatmapHunterOwnPubkeyFullRes(t *testing.T) {
 	for _, feat := range feats {
 		props := feat.(map[string]any)["properties"].(map[string]any)
 		hs, ok := props["hunters"].([]any)
-		if !ok { continue }
+		if !ok {
+			continue
+		}
 		for _, h := range hs {
-			if h.(string) == "Alice" { sawAlice = true }
+			if h.(string) == "Alice" {
+				sawAlice = true
+			}
 		}
 	}
 	if !sawAlice {
@@ -632,10 +717,14 @@ func TestHuntersHunterOwnReal(t *testing.T) {
 	for _, h := range out["hunters"].([]any) {
 		m := h.(map[string]any)
 		if m["hunter_pubkey"] == "aaaa" {
-			if m["hunter_name"] != "Alice" { t.Fatalf("own hunter entry must stay real: %v", m) }
+			if m["hunter_name"] != "Alice" {
+				t.Fatalf("own hunter entry must stay real: %v", m)
+			}
 			sawOwnReal = true
 		} else {
-			if m["hunter_pubkey"].(string)[0] != 'h' { t.Fatalf("other hunter entry must be pseudonymised: %v", m) }
+			if m["hunter_pubkey"].(string)[0] != 'h' {
+				t.Fatalf("other hunter entry must be pseudonymised: %v", m)
+			}
 			sawOtherPseudonym = true
 		}
 	}
@@ -668,13 +757,19 @@ func TestHuntersHunterMultipleCompanionsReal(t *testing.T) {
 		m := h.(map[string]any)
 		switch m["hunter_pubkey"] {
 		case "aaaa":
-			if m["hunter_name"] != "Alice" { t.Fatalf("companion aaaa must stay real: %v", m) }
+			if m["hunter_name"] != "Alice" {
+				t.Fatalf("companion aaaa must stay real: %v", m)
+			}
 			sawAliceReal = true
 		case "bbbb":
-			if m["hunter_name"] != "Bob" { t.Fatalf("companion bbbb must stay real: %v", m) }
+			if m["hunter_name"] != "Bob" {
+				t.Fatalf("companion bbbb must stay real: %v", m)
+			}
 			sawBobReal = true
 		default:
-			if m["hunter_pubkey"].(string)[0] != 'h' { t.Fatalf("third hunter must be pseudonymised: %v", m) }
+			if m["hunter_pubkey"].(string)[0] != 'h' {
+				t.Fatalf("third hunter must be pseudonymised: %v", m)
+			}
 			sawCarolPseudonym = true
 		}
 	}

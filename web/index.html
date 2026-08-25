@@ -135,7 +135,8 @@
       </div>
     </span>
     <span id="f-types"></span>
-    <label class="cs-cb"><input type="checkbox" id="f-direct" /> Direct only</label>
+    <label class="cs-cb" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet CLAIMS, not a measurement of distance."><input type="checkbox" id="f-direct" /> No path</label>
+      <label class="cs-cb" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has."><input type="checkbox" id="f-unnamed" /> Sender unknown</label>
     <button id="layer-toggle">points</button>
     <!-- hidden until the role is known (#270): applyLocateGate() is then the
          single owner of this button's visibility, setting it on every role
@@ -171,6 +172,9 @@
        bottom corner whether or not the note above it is showing, so neither
        needs to know the other's height. role=status so a screen reader hears
        the state change without the focus moving. -->
+  <!-- Beside the map, not in the bar: it is a caveat about a control that the
+       reader needs while using it, and the bar has no room for a sentence. -->
+  <div id="hop-notice" role="status" hidden></div>
   <div id="nodepos-stack">
     <div id="nodepos-key" role="status" hidden></div>
     <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>

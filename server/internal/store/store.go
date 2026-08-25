@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"strings"
 
+	"github.com/efiten/core-hunter/server/internal/meshpacket"
 	_ "modernc.org/sqlite"
 )
 
@@ -100,25 +101,95 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
-	for _, col := range []string{"sender_kind", "sender_id", "sender_label", "channel_name"} {
+	for _, col := range []string{"sender_kind", "sender_id", "sender_label", "channel_name", "message_id"} {
 		if _, err := db.Exec("ALTER TABLE hunter_receptions ADD COLUMN " + col + " TEXT"); err != nil &&
 			!strings.Contains(err.Error(), "duplicate column name") {
 			return nil, err
 		}
 	}
-	return &Store{db: db}, nil
+	// message_id groups every relayed copy of one transmission, so it wants an
+	// index for the same reason sender_key has one: it is what a filter narrows
+	// on. Created after the column, and IF NOT EXISTS so a restart is cheap.
+	if _, err := db.Exec("CREATE INDEX IF NOT EXISTS idx_recv_message ON hunter_receptions(message_id)"); err != nil {
+		return nil, err
+	}
+	st := &Store{db: db}
+	if err := st.backfillMessageIDs(); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
+
+// backfillMessageIDs fills the column for rows stored before it existed. Every
+// row keeps its raw frame, so this is a decode rather than a guess -- and it
+// has to happen for the feature to be usable at all: a filter that only works
+// on traffic captured after the deploy is no use to someone reviewing the hunt
+// they did last night, which is exactly when it is wanted.
+//
+// One pass, then never again: rows are only picked up while message_id IS NULL.
+// A frame the decoder refuses (a TRACE, or a truncated one) gets the empty
+// string rather than staying NULL, so it is not re-examined on every restart.
+func (s *Store) backfillMessageIDs() error {
+	rows, err := s.db.Query(`SELECT id, raw FROM hunter_receptions WHERE message_id IS NULL`)
+	if err != nil {
+		return err
+	}
+	type row struct {
+		id  int64
+		raw string
+	}
+	var todo []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.raw); err != nil {
+			rows.Close()
+			return err
+		}
+		todo = append(todo, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(todo) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(`UPDATE hunter_receptions SET message_id = ? WHERE id = ?`)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	for _, r := range todo {
+		id, _ := meshpacket.MessageID(r.raw) // "" when it cannot be read; stored as such
+		if _, err := stmt.Exec(id, r.id); err != nil {
+			stmt.Close()
+			tx.Rollback()
+			return err
+		}
+	}
+	stmt.Close()
+	return tx.Commit()
 }
 
 func (s *Store) Insert(r Reception) error {
+	// Computed here rather than trusted from the payload: it is derived from the
+	// raw frame the row already carries, so a publisher cannot get it wrong and
+	// the app needs no change to benefit.
+	messageID, _ := meshpacket.MessageID(r.Raw)
 	_, err := s.db.Exec(
 		`INSERT INTO hunter_receptions
 		 (hunter_pubkey,hunter_name,rx_at,ingested_at,snr,rssi,raw,packet_type,
 		  sender_key,sender_keylen,sender_role,sender_kind,sender_id,sender_label,channel_name,
-		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic,message_id)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.HunterPubkey, r.HunterName, r.RxAt, r.IngestedAt, r.SNR, r.RSSI, r.Raw, r.PacketType,
 		r.SenderKey, r.SenderKeylen, r.SenderRole, r.SenderKind, r.SenderID, r.SenderLabel, r.ChannelName,
-		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic,
+		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic, messageID,
 	)
 	return err
 }

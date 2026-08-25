@@ -71,7 +71,12 @@ if (typeof document !== 'undefined') {
   const directLabel = directCb.closest('label')
   const syncDirectActive = () => directLabel.classList.toggle('active', directCb.checked)
   directCb.addEventListener('change', syncDirectActive)
+  const unnamedCb = document.getElementById('f-unnamed')
+  const unnamedLabel = unnamedCb.closest('label')
+  const syncUnnamedActive = () => unnamedLabel.classList.toggle('active', unnamedCb.checked)
+  unnamedCb.addEventListener('change', syncUnnamedActive)
   syncDirectActive()
+  syncUnnamedActive()
 
 
   window.__resetFilters = resetFilters
@@ -99,8 +104,16 @@ if (typeof document !== 'undefined') {
     from: resolveTimeValue(document.getElementById('f-from').value, Date.now()),
     to: resolveTimeValue(document.getElementById('f-to').value, Date.now()),
     types: window.currentTypes(),
-    // direct-only = zero-hop (#138 semantics); empty string drops the param
+    // "No path" = zero path hashes (#138 semantics). Named for what it reads
+    // rather than for what it was hoped to mean: the sender writes the path, so
+    // this is the packet's own claim and not a measurement of distance. An
+    // Amsterdam flood on 2026-08-24 claimed 1 to 37 hops for packets received
+    // at -34 dBm, and the old label ("Direct only") promised the opposite.
     hops: document.getElementById('f-direct').checked ? '0' : '',
+    // Everything the classifier could not attribute. Not an error state: an
+    // unattributable reception is still a real measurement (#455), and it is
+    // all a 1-byte-hash flood leaves behind.
+    unnamed: document.getElementById('f-unnamed').checked ? '1' : '',
   })
 
   // f-hunter's persist/refresh/change wiring now lives in map.js, alongside
