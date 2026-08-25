@@ -1131,9 +1131,13 @@ function buildFilterSheet() {
           </svg>
         </button>
       </div>
-      <label class="fs-row" id="fs-row-direct">
-        <span>Direct only</span>
+      <label class="fs-row" id="fs-row-direct" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet claims, not a measurement of distance.">
+        <span>No path</span>
         <input type="checkbox" id="fs-direct-only" />
+      </label>
+      <label class="fs-row" id="fs-row-unnamed" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has.">
+        <span>Sender unknown</span>
+        <input type="checkbox" id="fs-unnamed" />
       </label>
       <label class="fs-row" id="fs-row-window">
         <span>Plot last:</span>
@@ -1159,19 +1163,23 @@ function buildFilterSheet() {
     </div>`
 
   const chk = el('fs-direct-only')
+  const unnamedChk = el('fs-unnamed')
   const sel = el('fs-window')
 
   chk.checked = state.filter.directOnly
+  unnamedChk.checked = state.filter.unnamed
   sel.value = String(state.filter.windowMs)
 
   // Mark each row active when its own value differs from DEFAULT_FILTER,
   // mirroring the existing .fs-chip.active / .ss-manfix-active pattern —
   // the filter-button badge shows *something* differs, these show *what*.
   const syncDirectRow = () => el('fs-row-direct').classList.toggle('active', chk.checked !== DEFAULT_FILTER.directOnly)
+  const syncUnnamedRow = () => el('fs-row-unnamed').classList.toggle('active', unnamedChk.checked !== DEFAULT_FILTER.unnamed)
   const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
-  syncDirectRow(); syncWindowRow()
+  syncDirectRow(); syncUnnamedRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
+  unnamedChk.addEventListener('change', () => { state.filter.unnamed = unnamedChk.checked; syncUnnamedRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
