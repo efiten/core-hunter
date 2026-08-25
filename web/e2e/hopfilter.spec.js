@@ -28,16 +28,27 @@ test('ordinary traffic gets no notice at all', async ({ page }) => {
   await expect(page.locator('#hop-notice')).toBeHidden()
 })
 
-test('Sender unknown narrows to what nothing could be attributed to', async ({ page }) => {
+test('Sender unknown narrows on the tick, not on the next rolling refresh', async ({ page }) => {
   // The coarse handle for a flood with no sender. The request has to carry it,
   // because the narrowing happens in SQL -- a client-side filter would page
   // through the wrong 25,000 rows.
+  //
+  // The range is absolute on purpose, and that is the whole test. A relative
+  // range keeps updateTimeRangeTimer (map.js) refreshing every 10s, and that
+  // refresh carries whatever currentFilters() returns -- including a param no
+  // control ever asked to apply. Written against the default range, this passes
+  // with #f-unnamed wired to nothing at all, which is how it shipped.
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: flood } }) })
-  await page.goto('/?mode=points')
+  await page.goto('/?mode=points&from=2026-08-24T00:00:00Z&to=2026-08-25T00:00:00Z')
   await expect(page.locator('.leaflet-container')).toBeVisible()
+  // Wait for the initial load to settle before touching the control. Ticking
+  // while the map is still fitting its view lets a moveend refresh carry the
+  // param a few hundred ms later, which looks exactly like the control working.
+  await expect.poll(() => { const n = urls.length; return new Promise((r) => setTimeout(() => r(n === urls.length), 1500)) }).toBe(true)
+  const settled = urls.length
   await page.check('#f-unnamed')
-  await expect.poll(() => urls.some((u) => new URL(u).searchParams.get('unnamed') === '1'), { timeout: 10000 }).toBe(true)
+  await expect.poll(() => urls.slice(settled).some((u) => new URL(u).searchParams.get('unnamed') === '1'), { timeout: 3000 }).toBe(true)
   await expect(page).toHaveURL(/unnamed=1/)
 })
 

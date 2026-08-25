@@ -119,7 +119,11 @@ if (typeof document !== 'undefined') {
   // f-hunter's persist/refresh/change wiring now lives in map.js, alongside
   // the hunter picker itself (#290) -- same reasoning as the sender picker's
   // onChange (urlstate.save() + refresh() there, not a 'change' listener here).
-  for (const id of ['f-sender', 'f-from', 'f-to', 'f-direct']) {
+  // Every input currentFilters() reads has to be in here, or its param only
+  // reaches the server on the next refresh someone else triggers. That is not
+  // visible on a relative range, where updateTimeRangeTimer (map.js) refreshes
+  // every 10s and carries the param anyway (#503).
+  for (const id of ['f-sender', 'f-from', 'f-to', 'f-direct', 'f-unnamed']) {
     const el = document.getElementById(id)
     el.addEventListener('change', () => window.__refresh && window.__refresh())
     if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())
