@@ -105,6 +105,13 @@
     "body": "Picking a target from the list left no trace once the panel closed: the button beside the sender box was a bare arrow, so a filtered map looked exactly like an unfiltered one. It now reads the node's name, or the number of targets when you pick several, and lights up while a pick is active."
   },
   {
+    "id": "2026-08-25-ambient-layer-has-room",
+    "date": "2026-08-25",
+    "where": "app",
+    "title": "Sound mode with the music gets some room",
+    "body": "The ambient layer under the reception sounds was two thin bands of noise and seven fixed notes, so after a few minutes you had heard everything it had. There are three noise layers now, each drifting slowly across the stereo field in a reverb of its own, and the music has ten voices over three octaves that quietly change note every couple of minutes, so the harmony is somewhere else by the end of a drive. The tone the app holds while it sits in your pocket is a chord with a slow breath instead of one flat sine."
+  },
+  {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
     "where": "both",
