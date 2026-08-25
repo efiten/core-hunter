@@ -13,17 +13,19 @@ const toLocalInput = (d) => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-// No cold-start timeframe (#440). This used to default to today 00:00-23:59,
-// which meant a newcomer met however many hours had passed since local midnight
-// -- at 09:00, nine hours of driving, and in most areas on most days a blank
-// map. Everything the project has mapped was hidden from the one person who has
-// not decided to join yet. An empty range asks for all of it, and the heatmap
-// no longer clamps a guest to 24 h (server/internal/httpapi/api.go).
+// Cold-start timeframe (#492), the third answer here. #217 filled today
+// 00:00-23:59, which met a newcomer with however many hours had passed since
+// local midnight and, in most areas on most days, a blank map. #440 replaced
+// it with nothing, so an empty range asked for everything. Neither described
+// what the server returns: /api/heatmap caps at the newest 50 000 rows in the
+// bbox, so "All time" quietly stops being all time as soon as one viewport
+// holds more than that. 30 days is a window the server returns whole.
 //
-// Nothing replaces it rather than something setting a wider range, because this
-// ran BEFORE urlstate restores: it only ever saw empty inputs, so any value it
-// wrote was the cold-start value by definition. A returning visitor's range is
-// applied afterwards and is untouched.
+// It is applied in map.js, right after urlstate.load(), and only when BOTH
+// bounds came back empty. Writing it here, before the restore, would hand a
+// link carrying one bound the other half of a range it never asked for: with
+// `to` pre-filled, /?from=now-6h stops being the open-ended range #285
+// guarantees and silently becomes "Last 6 hours".
 //
 // The Clear button (resetFilters) still means today, deliberately: that is
 // someone already using the map asking for a working default, not a first
