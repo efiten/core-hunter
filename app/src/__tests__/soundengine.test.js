@@ -23,7 +23,10 @@ function fakeParam(value = 0) {
 
 function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
   const oscillators = []
-  const node = (extra = {}) => ({ connect(t) { return t }, ...extra })
+  // `outs` makes the routing observable: some rules in sound.js are about where
+  // a voice is sent, not whether it sounds, and a fake that forgets its wiring
+  // cannot tell those apart.
+  const node = (extra = {}) => ({ outs: [], connect(t) { this.outs.push(t); return t }, ...extra })
   const ctx = {
     state,
     currentTime: 0,
@@ -32,6 +35,7 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     resumeCalls: 0,
     delays: 0,
     bufferSources: 0,
+    sources: [],
     oscillators,
     // Autoplay policy: before a user gesture, resume() does not actually start
     // the clock. Modelling that is the point -- a fake that always succeeds
@@ -53,7 +57,7 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     createConvolver: () => node({ buffer: null }),
     createStereoPanner: () => node({ pan: fakeParam(0) }),
     createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
-    createBufferSource: () => { ctx.bufferSources++; return node({ buffer: null, loop: false, start() {}, stop() {} }) },
+    createBufferSource: () => { ctx.bufferSources++; const n = node({ buffer: null, loop: false, start() {}, stop() {} }); ctx.sources.push(n); return n },
     createDelay: () => { ctx.delays++; return node({ delayTime: fakeParam(0) }) },
     createOscillator() {
       const o = node({
@@ -467,5 +471,40 @@ describe('the voice profile is audible in what the engine builds', () => {
       vi.advanceTimersByTime(100)
     }
     expect(shapes.size, 'families that sound identical').toBeGreaterThanOrEqual(4)
+  })
+})
+
+// The strike is part of "heard through something" too. Routed straight to the
+// master it stayed bright on a relayed reception, which put a crisp transient
+// in front of an echo that is meant to sound like it came off a repeater --
+// the one moment of the cue a busy minute actually leaves room for.
+describe('a relayed strike is damped with the rest of the cue', () => {
+  // Walks the graph from `start` and reports whether anything on the way is the
+  // relayed lowpass. Depth-limited: the master bus feeds a reverb loop.
+  const reaches = (start, hz, depth = 6) => {
+    if (depth === 0) return false
+    for (const out of start.outs || []) {
+      if (out.frequency && out.frequency.value === hz) return true
+      if (reaches(out, hz, depth - 1)) return true
+    }
+    return false
+  }
+
+  it('sends a relayed noise burst through the same lowpass as its tone', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const before = ctx.sources.length
+    e.cue({ family: 'message', damped: true }, -80)
+    const burst = ctx.sources[before]
+    expect(burst, 'the message voice is struck').toBeTruthy()
+    expect(reaches(burst, 500), 'the strike goes through the relayed lowpass').toBe(true)
+  })
+
+  it('leaves a direct strike alone', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const before = ctx.sources.length
+    e.cue({ family: 'message', damped: false }, -80)
+    expect(reaches(ctx.sources[before], 500), 'a direct strike is not damped').toBe(false)
   })
 })

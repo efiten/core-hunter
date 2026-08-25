@@ -570,6 +570,10 @@ export function createSoundEngine() {
     og.gain.setValueAtTime(g, t + len)
     og.gain.linearRampToValueAtTime(0.0001, t + len + v.tail)
 
+    // Where anything else this cue adds has to land. On a relayed reception that
+    // is the damped chain, not the master: a bright strike in front of an echo
+    // reads as a direct reception with something odd after it.
+    let sink = master
     if (c.damped) {
       const lp = ac.createBiquadFilter()
       lp.type = 'lowpass'
@@ -597,6 +601,7 @@ export function createSoundEngine() {
       const life = (DAMP.delayMs / 1000) * DAMP.taps
       fb.gain.setValueAtTime(DAMP.feedback, t + life)
       fb.gain.linearRampToValueAtTime(0, t + life + 0.15)
+      sink = lp
     } else {
       og.connect(master)
     }
@@ -617,7 +622,7 @@ export function createSoundEngine() {
       nf.type = 'bandpass'
       nf.frequency.value = f * 2
       nf.Q.value = 0.7
-      sn.connect(nf).connect(ng).connect(master)
+      sn.connect(nf).connect(ng).connect(sink)
       sn.start(t)
     }
 
