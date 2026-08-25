@@ -116,12 +116,25 @@ export const CUE_GAP_MS = 60
 // the least important sound eating the most important one, in a hotspot, where
 // it matters most.
 //
-// So: a direct cue always plays, a damped one yields to its own family AND to
-// any direct cue inside the gap. Families do not shadow each other.
+// So: a direct cue is never held by a relayed one, a damped one yields to its
+// own family AND to any direct cue inside the gap, and families do not shadow
+// each other.
+//
+// Direct cues do yield to each other, across families (#470 review). Measured
+// on the ingestor DB over 30 days, 39.2% of consecutive receptions per hunter
+// share a timestamp to the millisecond and the groups run up to 40: a batch of
+// BLE frames handled in one turn carries one rx_at. Without this branch all 40
+// start at the same ac.currentTime and sum into a single loud transient, which
+// is the failure this coalescer exists to prevent, inverted -- the burst eating
+// itself rather than one family eating another. The gap is global here and not
+// per family for the same reason: what sums is the instant, not the voice.
 export function coalesceCue(state, cue, nowMs) {
   const st = state || {}
   if (!cue) return { play: false, state: st }
-  if (!cue.damped) return { play: true, state: { ...st, [cue.family]: nowMs, direct: nowMs } }
+  if (!cue.damped) {
+    if (nowMs - (st.direct ?? -Infinity) < CUE_GAP_MS) return { play: false, state: st }
+    return { play: true, state: { ...st, [cue.family]: nowMs, direct: nowMs } }
+  }
   const held = nowMs - (st[cue.family] ?? -Infinity) < CUE_GAP_MS ||
                nowMs - (st.direct ?? -Infinity) < CUE_GAP_MS
   if (held) return { play: false, state: st }

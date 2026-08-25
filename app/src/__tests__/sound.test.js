@@ -200,6 +200,24 @@ describe('coalesceCue', () => {
     expect(coalesceCue(state, { family: 'advert', damped: true }, 1010).play).toBe(true)
   })
 
+  // Review of #470, measured on the ingestor DB: 39.2% of consecutive receptions
+  // share a timestamp to the millisecond, in groups of up to 40. Batched BLE
+  // frames land in one turn and carry one rx_at, so without a gap of their own
+  // 40 direct cues start at the same ac.currentTime and sum into one transient
+  // instead of sounding like 40 dits. Direct cues yield to each other; what they
+  // must not yield to is a relayed one, which is the test above.
+  it('holds a direct cue that follows another direct one inside the gap', () => {
+    const { state } = coalesceCue({}, direct, 1000)
+    expect(coalesceCue(state, direct, 1000).play).toBe(false)
+    expect(coalesceCue(state, direct, 1000 + CUE_GAP_MS - 1).play).toBe(false)
+    expect(coalesceCue(state, direct, 1000 + CUE_GAP_MS).play).toBe(true)
+  })
+
+  it('holds a direct cue behind a direct one of another family, since they sum in the same instant', () => {
+    const { state } = coalesceCue({}, direct, 1000)
+    expect(coalesceCue(state, { family: 'advert', damped: false }, 1000).play).toBe(false)
+  })
+
   it('does not mutate the state it is given', () => {
     const st = {}
     coalesceCue(st, direct, 1000)
