@@ -112,6 +112,7 @@ body {
   .lp-feature { padding: 26px 0 8px; }
   .lp-feature h2 { font-size: 1.5rem; }
   .lp-feature p { font-size: 1rem; }
+  .lp-steps { font-size: 1rem; }
 }
 
 .lp-card {
@@ -129,6 +130,17 @@ body {
 .lp-card a, .lp-card a:visited,
 .lp-feature a, .lp-feature a:visited,
 .lp-sub a, .lp-sub a:visited { color: var(--ch-sig-cool); }
+/* A fragment jump lands the target under .lp-top, which is sticky and 59px
+   tall, so the heading you followed the link for is the one thing you cannot
+   see (#490). 80px is that plus breathing room, and it is the header's tallest
+   state -- the mobile bar is shorter. */
+:target { scroll-margin-top: 80px; }
+
+/* The numbered path to an account (#490). Same measure and size as
+   .lp-feature p, since it is the body copy of that section rather than a list
+   of links. */
+.lp-steps { margin: 0 0 16px; padding-left: 22px; max-width: 700px; font-size: 1.08rem; }
+.lp-steps li { margin: 8px 0; }
 .lp-links { margin: 0; padding-left: 20px; }
 .lp-links li { margin: 6px 0; }
 

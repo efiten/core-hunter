@@ -102,3 +102,55 @@ describe('link colours', () => {
     expect(sel).toMatch(/:visited/)
   })
 })
+
+// #490: how you get an account was one sentence in the two-column block at the
+// foot of the page, after the blog card. A visitor who clicks "Open the map"
+// meets a login form with nothing to register against, so the answer belongs
+// with the product sections it follows from, not in the small print.
+describe('getting an account', () => {
+  const html = read('index.html')
+  const section = (() => {
+    const start = html.indexOf('id="get-an-account"')
+    return start === -1 ? '' : html.slice(start, html.indexOf('</section>', start))
+  })()
+
+  it('has a section of its own', () => {
+    expect(section).not.toBe('')
+  })
+
+  it('names the RX webapp as the only place that can register you', () => {
+    expect(section).toContain('https://rx.mesh-hunter.eu')
+    expect(section).toMatch(/companion/i)
+  })
+
+  it('names the admin step, which no amount of self-service replaces', () => {
+    expect(section).toMatch(/member/i)
+    expect(section).toMatch(/admin/i)
+  })
+
+  it('sits with the product sections, not in the small print at the bottom', () => {
+    // Where it used to live: one sentence inside "About & access", in the
+    // two-column footer block after the blog card. This is the placement the
+    // issue is about, so it is worth pinning.
+    const at = html.indexOf('id="get-an-account"')
+    expect(at).toBeGreaterThan(-1)
+    expect(at).toBeLessThan(html.indexOf('lp-sub'))
+    expect(at).toBeLessThan(html.indexOf('lp-blogcard'))
+  })
+})
+
+describe('in-page anchors', () => {
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const html = read('index.html')
+
+  // .lp-top is sticky, so a fragment jump parks the target heading underneath
+  // it: the reader lands on a section whose title is hidden. Measured at 59px
+  // for the header, so the reserve has to clear that.
+  it('reserves more than the sticky header above a fragment target', () => {
+    expect([...html.matchAll(/href="#([\w-]+)"/g)].length).toBeGreaterThan(0)
+    const rule = css.match(/:target\s*\{([^}]*)\}/)
+    expect(rule, 'no :target rule').not.toBeNull()
+    const px = Number(rule[1].match(/scroll-margin-top:\s*(\d+)px/)?.[1])
+    expect(px).toBeGreaterThan(59)
+  })
+})

@@ -209,6 +209,15 @@
         <button id="login-submit" type="submit">Log in</button>
         <button id="login-cancel" type="button">Cancel</button>
       </div>
+      <!-- Where accounts come from (#490). The card used to end at the buttons,
+           which left someone who has never had an account with nowhere to go:
+           the map cannot register anyone, since /api/auth/register requires a
+           companion_pubkey and only the RX webapp has one. The link is inside
+           the form on purpose, so the focus trap includes it. -->
+      <p class="lc-signup">No account yet?
+        <a href="https://rx.mesh-hunter.eu" target="_blank" rel="noopener">Register in the RX webapp</a>,
+        which links the MeshCore companion your phone is connected to. An admin verifies you as a
+        member afterwards for the full history.</p>
     </form>
   </div>
   <!-- Settings surface (#420). Web had no home for anything that was not a
