@@ -17,6 +17,10 @@ const FILTER_PACKET_TYPES = [
   { value: 'Multipart',   label: 'Multipart' },
   { value: 'Trace',       label: 'Trace' },
   { value: 'RawCustom',   label: 'Raw' },
+  // Not a decoder type: what the hunter app files a packet under when it did
+  // not decode at all (#454). The reception is real, so it filters like any
+  // other type — including through ?types=Unknown on the server query.
+  { value: 'Unknown',     label: 'Unknown' },
 ]
 
 // Friendly label for a raw decoder packet_type — same mapping as the filter

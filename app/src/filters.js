@@ -36,6 +36,11 @@ export const FILTER_PACKET_TYPES = [
   { value: 'Multipart',   label: 'Multipart' },
   { value: 'Trace',       label: 'Trace' },
   { value: 'RawCustom',   label: 'Raw' },
+  // Not a decoder type: what the capture path files a packet under when it did
+  // not decode at all (#454). The reception is real — the 0x88 frame's RSSI and
+  // SNR are read before decoding — so it needs a chip like every other type,
+  // or it is hidden the moment any chip is touched (#341).
+  { value: 'Unknown',     label: 'Unknown' },
 ]
 
 export function packetTypeLabel(rawType) {

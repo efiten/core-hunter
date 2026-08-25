@@ -25,9 +25,12 @@ forwarded it, not the target. Drive toward the strongest zero-hop heat to close 
 
 **"Direct" is not "authenticated" (#320).** The hop count and path are plaintext header fields with
 no signature or MAC over them. MeshCore does authenticate payloads (channel/direct MACs, an Advert's
-Ed25519 signature) but never routing metadata — and core-hunter does not verify Advert signatures
-today, since `decode.js` calls the synchronous decoder (#356). So any node transmitting directly to
-the hunter can claim zero-hop, fabricate a relay path, or replay another node's identity.
+Ed25519 signature) but never routing metadata. core-hunter does verify an Advert's signature (#362),
+and since #454 an advert that fails it keeps its reception and loses its identity: the RSSI, SNR and
+fix are ours, the pubkey, name and advertised position are the attacker's. Everything else names its
+sender with a field nothing signs, so any node transmitting directly to the hunter can claim
+zero-hop, fabricate a relay path, or replay another node's identity — a replayed advert verifies
+exactly as the genuine one does, because it is the genuine one.
 
 RSSI/SNR are measured by our own radio and cannot be forged, so the map's **anonymous** coverage is
 sound. But every claim of the form *"node N was here"* — Locate, drift, per-sender coverage — rests

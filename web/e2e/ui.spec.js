@@ -115,11 +115,23 @@ test('a shared URL with multiple hunters restores the selection (#196)', async (
 test('with no saved/URL view and no data, the map opens on a neutral world view, not the old Belgium-ish default (#218)', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/')
-  // Leaflet snaps setView() to its internal pixel grid, so the center isn't
-  // exact at low zoom -- precision 1 (±0.05°) comfortably covers that drift.
-  const center = await page.evaluate(() => window.__mapCenter())
-  expect(center.lat).toBeCloseTo(20, 1)
-  expect(center.lng).toBeCloseTo(0, 1)
+  // Assert the centring in pixels, not in degrees. setView() lands on Leaflet's
+  // integer pixel grid, and at zoom 2 one pixel is ~0.35° of longitude — so a
+  // degree tolerance tight enough to mean anything is narrower than the
+  // rounding itself, and which side of it the map falls on is decided by the
+  // container's height in pixels. The ±0.05° version passed on that luck and
+  // went red when a 14th filter chip made the bar one row taller (#454), with
+  // the map still centred exactly where this test says it should be. Centred on
+  // (20, 0) is the claim; this asserts it to within a pixel, and the default it
+  // exists to refuse is nowhere near that — measured against [50.8, 4.4], the
+  // centre is 13 px out in x and ~110 px out in y.
+  const off = await page.evaluate(() => {
+    const p = window.__mapProject(20, 0)
+    const r = document.getElementById('map').getBoundingClientRect()
+    return { dx: Math.abs(p.x - r.width / 2), dy: Math.abs(p.y - r.height / 2) }
+  })
+  expect(off.dx).toBeLessThanOrEqual(1)
+  expect(off.dy).toBeLessThanOrEqual(1)
   expect(await page.evaluate(() => window.__mapZoom())).toBe(2)
 })
 
