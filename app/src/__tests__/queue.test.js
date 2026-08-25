@@ -365,3 +365,36 @@ describe('unpublishedCount', () => {
     expect(await new Queue().unpublishedCount()).toBe(0)
   })
 })
+
+// A queued reception was heard by a real companion, and stays owed to the
+// broker whatever the radio does next. The pubkey used to be supplied at
+// publish time from live BLE state, which a deliberate disconnect clears -- so
+// a full queue became unpublishable the moment someone tidied up.
+describe('pendingPubkey', () => {
+  it('names the companion the oldest unsent reception was heard by', async () => {
+    const q = new Queue()
+    await q.add({ rx_at: '2026-08-24T20:11:00Z', raw: '01', rx_pubkey: 'aaaa' })
+    await q.add({ rx_at: '2026-08-24T20:12:00Z', raw: '02', rx_pubkey: 'aaaa' })
+    expect(await q.pendingPubkey()).toBe('aaaa')
+  })
+
+  it('follows the watermark, so a swapped companion publishes under its own id', async () => {
+    // Oldest rather than newest: the drain publishes in id order and the MQTT
+    // client id binds to one companion, so the connection has to belong to
+    // whoever is at the front of the queue.
+    const q = new Queue()
+    await q.add({ rx_at: '2026-08-24T20:11:00Z', raw: '01', rx_pubkey: 'aaaa' })
+    await q.add({ rx_at: '2026-08-24T21:00:00Z', raw: '02', rx_pubkey: 'bbbb' })
+    const rows = await q.unpublishedFrom(0)
+    expect(await q.pendingPubkey()).toBe('aaaa')
+    await q.setWatermark(rows[0].id)
+    expect(await q.pendingPubkey()).toBe('bbbb')
+  })
+
+  it('is empty with nothing owed, and for rows stored before the stamp existed', async () => {
+    const q = new Queue()
+    expect(await q.pendingPubkey()).toBe('')
+    await q.add({ rx_at: '2026-08-24T20:11:00Z', raw: '01' })
+    expect(await q.pendingPubkey()).toBe('')
+  })
+})

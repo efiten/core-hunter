@@ -7,13 +7,30 @@ describe('buildRecord', () => {
     const frame = { snr: -3.5, rssi: -92, raw: new Uint8Array([0xde, 0xad]) }
     const cls = { packetType: 'GroupText', hops: 0, isDirect: true,
       sender: { kind: 'channel_name', id: 'Spammer', label: 'Spammer' }, channel: 'public', text: 'buy now' }
-    const rec = buildRecord(frame, cls, { lat: 51, lon: 4, acc_m: 8 }, '2026-06-29T10:00:00Z')
+    const rec = buildRecord(frame, cls, { lat: 51, lon: 4, acc_m: 8 }, '2026-06-29T10:00:00Z', 'aabbcc')
     expect(rec).toEqual({
-      rx_at: '2026-06-29T10:00:00Z', raw: 'dead', snr: -3.5, rssi: -92, lat: 51, lon: 4, acc_m: 8,
+      rx_at: '2026-06-29T10:00:00Z', rx_pubkey: 'aabbcc', raw: 'dead', snr: -3.5, rssi: -92, lat: 51, lon: 4, acc_m: 8,
       sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer', sender_role: null, channel_name: 'public',
       is_direct: true, hops: 0, packet_type: 'GroupText',
     })
     expect('text' in rec).toBe(false)
+  })
+
+  // #454: the reception is stamped with the companion that heard it, at capture
+  // time. It used to be supplied at publish time from live BLE state, which a
+  // deliberate disconnect clears -- so a queue full of real receptions became
+  // unpublishable the moment someone tidied up, and two hours of driving
+  // reached the server as ten minutes.
+  it('stamps the companion that heard it, so the row can outlive the link', () => {
+    const frame = { snr: -3, rssi: -90, raw: new Uint8Array([0x01]) }
+    const cls = { packetType: 'Advert', hops: 0, isDirect: true, sender: { kind: null, id: null, label: null }, channel: null }
+    const gps = { lat: 51, lon: 4, acc_m: 8 }
+    expect(buildRecord(frame, cls, gps, 'x', 'AABB').rx_pubkey).toBe('AABB')
+    // Never undefined: a row with no pubkey field at all would look like one
+    // stored before the stamp existed, and be published under whatever the
+    // caller happened to be holding.
+    expect(buildRecord(frame, cls, gps, 'x').rx_pubkey).toBe('')
+    expect(buildRecord(frame, cls, gps, 'x', null).rx_pubkey).toBe('')
   })
 })
 

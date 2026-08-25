@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-25-queued-receptions-always-go-out",
+    "date": "2026-08-25",
+    "where": "app",
+    "title": "Waiting receptions always get sent",
+    "body": "Receptions you have captured but not sent yet no longer depend on the radio still being connected. They are stamped with the companion that heard them, so they keep their identity even after you disconnect, and the app now reconnects to the server on its own instead of only trying once when the companion connects. Resuming after a pause works with the radio unplugged too, which it did not before. If you have driven around and the measurements did not arrive, they were not lost - they were waiting, and now they go out."
+  },
+  {
     "id": "2026-08-25-map-keeps-up-with-the-drive",
     "date": "2026-08-25",
     "where": "both",
