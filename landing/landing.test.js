@@ -154,3 +154,32 @@ describe('in-page anchors', () => {
     expect(px).toBeGreaterThan(59)
   })
 })
+
+// The RX webapp is the product; the map is what it produces (2026-08-25). You
+// map by pairing a companion to the RX webapp, and the map is where everyone's
+// results meet. The page used to lead with the map, which sent a first-time
+// visitor to a login screen for data they had no part in yet.
+describe('the RX webapp leads', () => {
+  const home = read('index.html')
+
+  it.each(pages)('%s puts the RX webapp before the map in the nav', (f) => {
+    const nav = read(f).match(/<nav class="lp-nav">[\s\S]*?<\/nav>/)[0]
+    expect(nav.indexOf('rx.mesh-hunter.eu')).toBeLessThan(nav.indexOf('map.mesh-hunter.eu'))
+  })
+
+  it('makes mapping the primary call to action in the hero', () => {
+    const cta = home.match(/<div class="lp-cta">[\s\S]*?<\/div>/)[0]
+    const primary = cta.match(/<a class="lp-btn lp-btn-primary"[^>]*href="([^"]+)"/)
+    expect(primary[1]).toContain('rx.mesh-hunter.eu')
+    expect(cta.indexOf('lp-btn-primary')).toBeLessThan(cta.indexOf('map.mesh-hunter.eu'))
+  })
+
+  it('says what mapping is before it says what the map shows', () => {
+    expect(home.indexOf('>The RX webapp<')).toBeLessThan(home.indexOf('>The map<'))
+  })
+
+  it('names the companion pairing in the hero, not three sections down', () => {
+    const hero = home.match(/<section class="lp-hero">[\s\S]*?<\/section>/)[0]
+    expect(hero).toMatch(/companion/i)
+  })
+})

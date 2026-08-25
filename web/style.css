@@ -45,6 +45,20 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }
+/* #rx-cta is an <a>, so it inherits none of the bar's control styling (#bar
+   names select/input/button only) and would render as a bare link in a row of
+   buttons. Same box, plus the accent border that marks it as the one thing on
+   this bar that is not about the current view. :visited is stated because
+   nothing else in this sheet colours a link. */
+#bar #rx-cta, #bar #rx-cta:visited { display:inline-flex; align-items:center;
+  background:var(--ch-input-bg); border:1px solid var(--ch-accent); border-radius:6px;
+  padding:5px 8px; color:var(--ch-accent); text-decoration:none; white-space:nowrap; }
+#bar #rx-cta:hover { background:var(--ch-accent); color:var(--ch-bg); }
+/* Two labels, because the bar wraps by content width: measured at 375px, the
+   row this lands on holds a control up to ~80px before the whole bar gains a
+   37px row, and "Start mapping" is 109px. The phone is the surface the RX
+   webapp actually runs on, so the button stays; the wording is what gives. */
+.rx-cta-short { display:none; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 /* Checked state highlights the label, mirroring app's .fs-row.active pattern
    for its own direct-only row (#225) -- .active is toggled by filters.js. */
@@ -579,6 +593,8 @@ body.wb-onboarding-on #bar { z-index:710; }
    breakpoint in this stylesheet -- see #423 for the bar itself, which is the
    bigger half of the same problem. */
 @media (max-width: 640px) {
+  .rx-cta-long { display:none; }
+  .rx-cta-short { display:inline; }
   .lc-modal:has(.ss-card) { place-items: end stretch; }
   .ss-card { width: 100%; max-height: 88vh; border-radius: 14px 14px 0 0;
     border-bottom: none; }

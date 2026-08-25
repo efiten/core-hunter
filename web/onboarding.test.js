@@ -60,3 +60,27 @@ describe('panel copy', () => {
   })
 })
 
+
+// The RX webapp is the product the map is downstream of (2026-08-25): you map
+// by pairing a companion to it, and this page is where everyone's results meet.
+// A reader who arrives here first has no way to become a mapper unless the map
+// says so, and the login card alone only reaches the ones who click Log in.
+describe('the mapping call to action', () => {
+  it('stands in the bar next to the login button, not only inside the login card', () => {
+    const at = html.indexOf('id="rx-cta"')
+    expect(at, 'no #rx-cta in the bar').toBeGreaterThan(-1)
+    expect(html.slice(at - 200, at + 200)).toContain('https://rx.mesh-hunter.eu')
+    expect(at).toBeLessThan(html.indexOf('id="auth-btn"'))
+  })
+
+  it('is explained by the tour, anchored to the control itself', () => {
+    const account = ONBOARDING_CALLOUTS.find((c) => c.id === 'wb-co-account')
+    expect(account.targets).toContain('rx-cta')
+  })
+
+  it('says in the panel where mapping happens, not only what the map shows', () => {
+    const copy = [ONBOARDING_TAGLINE, ...ONBOARDING_BASICS].join(' ')
+    expect(copy).toMatch(/RX webapp/i)
+    expect(copy).toMatch(/companion/i)
+  })
+})

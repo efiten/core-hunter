@@ -172,6 +172,14 @@
     </span>
     <button id="clear-filters" title="Clear all filters">Clear</button>
     </div>
+    <!-- The map is downstream of the RX webapp (#490): mapping is what produces
+         everything drawn here, and it needs a paired companion, which only that
+         surface has. The bar carries it as a link rather than burying it in the
+         login card, since most readers never open that card. Outside the
+         filters sheet (#467) on purpose: it is not a filter, and it is the one
+         control a first-time reader is meant to find. -->
+    <a id="rx-cta" class="bar-btn" href="https://rx.mesh-hunter.eu" target="_blank" rel="noopener"
+       title="Pair a companion and map the mesh yourself"><span class="rx-cta-long">Start mapping</span><span class="rx-cta-short">Map it</span></a>
     <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="guest-notice" class="guest-notice" hidden></span>
     <span id="status"></span>

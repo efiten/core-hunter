@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mesh-Hunter · MeshCore node-hunting toolkit</title>
-  <meta name="description" content="Mesh-Hunter is a MeshCore node-hunting toolkit: drive around with the RX webapp and receptions land on a shared coverage map." />
+  <title>Mesh-Hunter · MeshCore mapping and node-hunting</title>
+  <meta name="description" content="Map the MeshCore mesh: pair a companion radio to the Mesh-Hunter RX webapp and every packet it hears lands on a shared coverage map, alongside every other mapper." />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="style.css" />
     <!-- Matomo (self-hosted, cookieless; production hosts only) -->
@@ -30,8 +30,8 @@
   <header class="lp-top">
     <span class="lp-brand">Mesh-Hunter</span>
     <nav class="lp-nav">
-      <a href="https://map.mesh-hunter.eu">Map</a>
       <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+      <a href="https://map.mesh-hunter.eu">Map</a>
       <a href="/blog/">Blog</a>
       <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
     </nav>
@@ -42,49 +42,59 @@
       <!-- Drawn, not a capture: an illustration of what the map shows, so it
            does not claim a mode the web map has (3D is the app's; #465). Kept
            dark in both themes on purpose, the way a product shot is. -->
-      <img class="lp-hero-bg" src="/hero.svg" alt="A 3D view of the coverage map: a hunter drives a route through a city and signal pillars rise where receptions land." />
+      <img class="lp-hero-bg" src="/hero.svg" alt="A 3D view of the coverage map: a mapper drives a route through a city and signal pillars rise where receptions land." />
       <div class="lp-hero-inner">
         <h1>Mesh-Hunter</h1>
-        <p class="lp-lead">A MeshCore node-hunting toolkit. Drive around with the RX webapp, and every
-          reception lands on a shared coverage map, so you can home in on a node in the field.</p>
+        <p class="lp-lead">A MeshCore mapping and node-hunting toolkit. Pair your companion to the RX
+          webapp and map the mesh while you move: every packet your radio hears is placed on the
+          shared map, next to what every other mapper heard.</p>
         <div class="lp-cta">
-          <a class="lp-btn lp-btn-primary" href="https://map.mesh-hunter.eu">Open the map</a>
-          <a class="lp-btn" href="https://rx.mesh-hunter.eu">Open the RX webapp</a>
+          <a class="lp-btn lp-btn-primary" href="https://rx.mesh-hunter.eu">Start mapping</a>
+          <a class="lp-btn" href="https://map.mesh-hunter.eu">See the map</a>
         </div>
       </div>
     </section>
 
     <section class="lp-feature">
-      <h2>The map</h2>
-      <p>The map at <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a> shows where MeshCore
-        nodes have been heard. Without logging in you see recent, coarse coverage. Registered hunters
-        see their own receptions in full detail; verified members see everything.</p>
-      <p><a href="https://map.mesh-hunter.eu">Log in on the map &rarr;</a></p>
+      <h2>The RX webapp</h2>
+      <p>This is where the mapping happens. The RX webapp at
+        <a href="https://rx.mesh-hunter.eu">rx.mesh-hunter.eu</a> pairs with a MeshCore companion
+        radio over Web Bluetooth and logs every packet that radio hears, timestamped and placed with
+        your phone's GPS. Walk or drive, and coverage appears behind you.</p>
+      <p>It installs as a PWA: open it on your phone and add it to your home screen. Your account is
+        made here too, from the companion you paired, and it is what puts your own receptions on the
+        map in full detail.</p>
+      <p><a href="https://rx.mesh-hunter.eu">Start mapping &rarr;</a></p>
     </section>
 
     <section class="lp-feature">
-      <h2>The RX webapp</h2>
-      <p>The RX webapp at <a href="https://rx.mesh-hunter.eu">rx.mesh-hunter.eu</a> turns a phone into
-        a reception logger: Web Bluetooth to a MeshCore companion radio, plus the phone's GPS. Every
-        packet it hears is timestamped, located, and published to the shared map.</p>
-      <p>It installs as a PWA: open it on your phone and add it to your home screen. Register inside
-        the app to link your companion device and unlock your own data on the map.</p>
+      <h2>The map</h2>
+      <p>The map at <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a> is where every
+        mapper's receptions meet: all of them, on one coverage map, so you can see what a node
+        reaches beyond your own radio. It is also the hunting surface, where you follow one node's
+        signal to where it transmits from.</p>
+      <p>Reading it takes no account. Log in with the one you made in the RX webapp to see your own
+        receptions in full detail.</p>
+      <p><a href="https://map.mesh-hunter.eu">See the map &rarr;</a></p>
     </section>
 
     <section class="lp-feature" id="get-an-account">
       <h2>Get an account</h2>
       <p>The map reads fine without one: all-time coverage, coarse positions, and the last 24 hours
-        of individual receptions. An account sharpens that, and it is made in the RX webapp rather
-        than on the map, because it is tied to a radio.</p>
+        of individual receptions. An account sharpens that, and it starts with a radio rather than
+        with a sign-up form, which is why it is made in the RX webapp.</p>
       <ol class="lp-steps">
-        <li>Open the <a href="https://rx.mesh-hunter.eu">RX webapp</a> on your phone and connect your
-          MeshCore companion over Bluetooth.</li>
-        <li>Register there. The account links to that companion, which is why the map itself has no
-          sign-up form.</li>
-        <li>You are now a hunter: your own companion's receptions show on the map in full detail.</li>
+        <li>Pair your MeshCore companion to the <a href="https://rx.mesh-hunter.eu">RX webapp</a> over
+          Bluetooth and start mapping.</li>
+        <li>Register there. The account is made from the companion you paired, which is why the map
+          itself has no sign-up form.</li>
+        <li>Log in with it on the map. Your own receptions now show in full detail, everyone else's
+          stay coarse and recent.</li>
         <li>Ask an admin for member verification. That opens the full history, Locate and the
           CoreScope layers for everyone's data, not only your own.</li>
       </ol>
+      <p>Mapper and hunter are the same account: you map whatever your radio hears, and you hunt when
+        you go after one node in particular.</p>
     </section>
 
     <section class="lp-card lp-blogcard">

@@ -48,21 +48,19 @@ export function isDegradedFor(role) {
 // "not named" rather than "anonymised" for the heat, because they are absent
 // from it rather than pseudonymised: the per-cell hunter list is withheld
 // entirely below member, which is what let the window go (#280).
-// "Log in to see more" was a dead end for a visitor who has never had an
-// account (#490): the map cannot create one -- /api/auth/register rejects a
-// body without a companion_pubkey (httpapi/auth.go) -- so it has to name the
-// surface that can. Guest only: a hunter is already registered.
-//
-// Length is load-bearing here, not style: #bar is flex-wrap, and at 1280px the
-// notice shares its row with the SF counts and the settings button. Measured,
-// the row holds a notice up to ~800px; the first wording of this change ran to
-// 972px and cost the map a whole extra bar row.
+// "Log in to see more" is a dead end for a visitor who has never had an account
+// (#490), and the map cannot create one: /api/auth/register rejects a body
+// without a companion_pubkey (httpapi/auth.go). What answers it is #rx-cta, the
+// Start mapping link standing in the bar a few pixels away, plus the login
+// card's own footer. Not this line: #bar is flex-wrap and the notice shares its
+// row with the SF counts, so naming the RX webapp here cost a whole extra bar
+// row (measured at 1440px: 800px of notice against 703px).
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
     return 'Hunter view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h — filter to your own companion to see those in full. An admin verifies you as a member to see everyone in full.'
   }
-  return 'Guest view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h. Log in, or register in the RX webapp.'
+  return 'Guest view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h. Log in to see more.'
 }
 export async function fetchMe() {
   try {

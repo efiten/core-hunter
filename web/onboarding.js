@@ -13,13 +13,17 @@ const SEEN_KEY = 'ch-onboarding-seen'
 
 export const ONBOARDING_TITLE = 'Mesh-Hunter'
 
+// Mapping is the product; this page is what it produces (2026-08-25). A reader
+// who lands here first should learn that they can add to it, and how, without
+// having to open the login card to find out.
 export const ONBOARDING_TAGLINE =
-  'The shared coverage map: where MeshCore nodes have been heard, pooled from every hunter in the field. Hot = strong = the hunter was close when it heard that node.'
+  'The shared coverage map: where MeshCore nodes have been heard, pooled from every mapper in the field. Hot = strong = that mapper was close when it heard the node.'
 
 export const ONBOARDING_BASICS = [
+  'Map it yourself: pair a companion radio to the RX webapp and your receptions land here too',
   'Pick a time range and a sender to isolate one node',
   'Locate estimates where a node transmits from, out of the readings around it',
-  'Nothing here is live radio — it is what hunters have already logged',
+  'Nothing here is live radio — it is what mappers have already logged',
 ]
 
 // AGENTS.md §7: the map implies node locations, so the disclaimer is part of the
@@ -47,10 +51,10 @@ export const ONBOARDING_CALLOUTS = [
   },
   {
     id: 'wb-co-account',
-    targets: ['auth-btn'],
+    targets: ['rx-cta', 'auth-btn'],
     side: 'below',
     align: 'right',
-    text: 'Registering in the app makes you a hunter: filter to your own companion and you see its captures in full, everyone else stays coarse and 24 h. An admin verifies you as a member for the full history, Locate and the CoreScope layers.',
+    text: 'Start mapping opens the RX webapp: pair a companion there and what it hears lands on this map. Registering happens there too, from that companion, and makes you a hunter: filter to your own companion and you see its captures in full, everyone else stays coarse and 24 h. An admin verifies you as a member for the full history, Locate and the CoreScope layers.',
   },
 ]
 
