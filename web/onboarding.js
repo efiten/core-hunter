@@ -49,12 +49,24 @@ export const ONBOARDING_CALLOUTS = [
     align: 'left',
     text: 'Switch points/hex/both. Locate — an origin estimate from the readings around a node — and the CoreScope and node-position overlays appear here once you are a verified member.',
   },
+  // One box per control, not one box for both (#490). #bar is flex-wrap, so
+  // Start mapping and Log in are neighbours at some widths and on separate rows
+  // at others -- and a callout anchored to the union of the two then points at
+  // the empty space between them. CI caught it at a width this laptop does not
+  // reproduce: the box landed 900px from the button it described.
   {
-    id: 'wb-co-account',
-    targets: ['rx-cta', 'auth-btn'],
+    id: 'wb-co-mapping',
+    targets: ['rx-cta'],
     side: 'below',
     align: 'right',
-    text: 'Start mapping opens the RX webapp: pair a companion there and what it hears lands on this map. Registering happens there too, from that companion, and makes you a hunter: filter to your own companion and you see its captures in full, everyone else stays coarse and 24 h. An admin verifies you as a member for the full history, Locate and the CoreScope layers.',
+    text: 'Start mapping opens the RX webapp: pair a companion radio to your phone over Bluetooth and everything it hears lands on this map. That is where the map comes from.',
+  },
+  {
+    id: 'wb-co-account',
+    targets: ['auth-btn'],
+    side: 'below',
+    align: 'right',
+    text: 'Registering happens in the RX webapp too, from the companion you paired, and makes you a hunter: filter to your own companion and you see its captures in full, everyone else stays coarse and 24 h. An admin verifies you as a member for the full history, Locate and the CoreScope layers.',
   },
 ]
 

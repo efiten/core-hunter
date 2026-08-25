@@ -72,7 +72,7 @@ test('each callout is anchored to the controls it describes, and they are ringed
   // horizontally. An unpositioned fixed box falls to its static spot at the top
   // of the page, which is above the toolbar and fails the first check — that is
   // the failure this asserts, since "is on screen" is true either way.
-  for (const [id, anchor] of [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-account', 'auth-btn']]) {
+  for (const [id, anchor] of [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']]) {
     const box = page.locator(`#${id}`)
     await expect(box).toBeVisible()
     await expect(box).not.toHaveText('')
@@ -87,7 +87,7 @@ test('each callout is anchored to the controls it describes, and they are ringed
   }
 
   // The spotlight ring is applied from the callouts' own target lists.
-  for (const id of ['hp-toggle', 'tr-toggle', 'layer-toggle', 'locate-toggle', 'auth-btn']) {
+  for (const id of ['hp-toggle', 'tr-toggle', 'layer-toggle', 'locate-toggle', 'rx-cta', 'auth-btn']) {
     await expect(page.locator(`#${id}`)).toHaveClass(/wb-spot/)
   }
   // The toolbar is above the scrim, so the tour highlights live controls.
@@ -148,7 +148,7 @@ for (const [w, h] of [[760, 800], [800, 800], [900, 700], [1024, 700]]) {
     await expect(page.locator('#wb-onboarding')).toBeVisible()
     const bad = await page.evaluate(() => {
       const panel = document.querySelector('.wb-panel').getBoundingClientRect()
-      return ['wb-co-filters', 'wb-co-layers', 'wb-co-account'].filter((id) => {
+      return ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account'].filter((id) => {
         const el = document.getElementById(id)
         if (el.hidden) return false
         const r = el.getBoundingClientRect()
@@ -171,8 +171,8 @@ test('a phone-width window drops the floating callouts into the panel', async ({
   await bootstrap(page, false)
   await page.goto('/')
   await expect(page.locator('#wb-onboarding')).toBeVisible()
-  await expect(page.locator('#wb-inline li')).toHaveCount(3)
-  for (const id of ['wb-co-filters', 'wb-co-layers', 'wb-co-account']) {
+  await expect(page.locator('#wb-inline li')).toHaveCount(4)
+  for (const id of ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account']) {
     await expect(page.locator(`#${id}`)).toBeHidden()
   }
   // The controls are still ringed — the tour still points at live controls,
@@ -272,3 +272,48 @@ test('no callout is placed over the bar it is describing', async ({ page }) => {
   })
   expect(overlaps, 'callouts sitting on top of #bar').toEqual([])
 })
+
+// #490 review, found by CI at a width this laptop does not reproduce: the bar
+// wraps by content, so Start mapping and Log in are neighbours at one width and
+// on separate rows at the next. A callout anchored to both was placed against
+// the union of the two and landed in the empty space between them, 900px from
+// either. One box per control fixes it, and this is the check that would have
+// caught it: sweep the widths where the bar re-wraps and demand every box still
+// sit under, and horizontally over, the control it describes.
+// `split` forces the row break between the two buttons rather than hoping a
+// width produces it: which controls share a row depends on font metrics, so the
+// widths that reproduced this on CI are green on a Mac. A margin wide enough to
+// never fit pushes #auth-btn onto the next row, which is exactly the geometry
+// that broke, and the tour re-places its boxes on the resize that follows.
+for (const [w, split] of [[1100, false], [1280, false], [1440, false], [1280, true], [1440, true]]) {
+  test(`every callout stays with its own control at ${w}px${split ? ', with the buttons on separate rows' : ''}`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 800 })
+    await bootstrap(page, false)
+    await page.goto('/')
+    await expect(page.locator('#wb-onboarding')).toBeVisible()
+    if (split) {
+      await page.addStyleTag({ content: '#bar #rx-cta { margin-right: 9999px; }' })
+      await page.setViewportSize({ width: w, height: 799 })
+      const rows = await page.evaluate(() => [document.getElementById('rx-cta').getBoundingClientRect().y,
+        document.getElementById('auth-btn').getBoundingClientRect().y])
+      expect(rows[0], 'the split actually split the row').not.toBe(rows[1])
+    }
+    // The spotlight is allowed to give up and fall back to the panel; what is
+    // not allowed is a visible box away from its target.
+    const placed = await page.evaluate((pairs) => {
+      const out = []
+      for (const [id, anchor] of pairs) {
+        const el = document.getElementById(id)
+        if (el.hidden) continue
+        const r = el.getBoundingClientRect()
+        const t = document.getElementById(anchor).getBoundingClientRect()
+        out.push({ id, anchor, below: r.y >= t.y + t.height, overlaps: r.x <= t.x + t.width + 8 && r.x + r.width >= t.x - 8 })
+      }
+      return out
+    }, [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']])
+    for (const p of placed) {
+      expect(p.below, `${p.id} sits below #${p.anchor}`).toBe(true)
+      expect(p.overlaps, `${p.id} overlaps #${p.anchor} horizontally`).toBe(true)
+    }
+  })
+}

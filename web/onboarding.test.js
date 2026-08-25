@@ -73,9 +73,15 @@ describe('the mapping call to action', () => {
     expect(at).toBeLessThan(html.indexOf('id="auth-btn"'))
   })
 
-  it('is explained by the tour, anchored to the control itself', () => {
-    const account = ONBOARDING_CALLOUTS.find((c) => c.id === 'wb-co-account')
-    expect(account.targets).toContain('rx-cta')
+  // Its own callout rather than a second target on the account one: #bar wraps,
+  // so the two buttons are neighbours at some widths and on different rows at
+  // others, and a box anchored to the union of the two lands between them.
+  it('is explained by a callout of its own, anchored to nothing else', () => {
+    const mapping = ONBOARDING_CALLOUTS.find((c) => c.id === 'wb-co-mapping')
+    expect(mapping.targets).toEqual(['rx-cta'])
+    for (const c of ONBOARDING_CALLOUTS) {
+      if (c.id !== 'wb-co-mapping') expect(c.targets).not.toContain('rx-cta')
+    }
   })
 
   it('says in the panel where mapping happens, not only what the map shows', () => {
