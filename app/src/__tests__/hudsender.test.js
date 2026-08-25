@@ -66,6 +66,15 @@ describe('senderReadout never presents an id as an identity', () => {
     expect(text).toBe('#4a')
   })
 
+  // A 1-byte FLOOD path hash is the same collision space arriving by another
+  // route, so it takes the same mark. It is still a relay we heard, which is
+  // the half that differs from direct_hash.
+  it('marks a path_hash as an id, and keeps the via', () => {
+    const r = senderReadout({ sender_id: '64', sender_label: '64', sender_kind: 'path_hash', hops: 4 })
+    expect(r.text).toBe('via #64')
+    expect(r.viaRelay).toBe(true)
+  })
+
   it('shows a channel name as-is — that one is a real, operator-set name', () => {
     const { text } = senderReadout({ sender_id: 'abcdef', sender_label: 'Gent', sender_kind: 'channel_name' })
     expect(text).toBe('Gent')

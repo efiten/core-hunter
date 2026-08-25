@@ -52,8 +52,22 @@ export function classifyReception(decoded, channelNameFor = () => null) {
     // relayed: only a FLOOD route's path[last] is the immediate transmitter.
     if (isFloodRoute(decoded.routeType) && Array.isArray(decoded.path) && decoded.path.length) {
       const last = String(decoded.path[decoded.path.length - 1]).toLowerCase()
-      if (last.length >= 4) { // >= 2 bytes; 1-byte hashes are collision-prone
+      if (last.length >= 4) { // >= 2 bytes: CoreScope resolves these, and says when one collides
         sender = { kind: 'relay', id: last, role: null, label: null }
+        heardDirect = true
+      } else if (last.length === 2) {
+        // A 1-byte path hash. It names one of 256 buckets, so it is not an
+        // identity, and on a forged path it is a byte the sender wrote himself
+        // (the 2026-08-24 flood: path 04 26 a3 64, all four invented). It was
+        // dropped for those reasons and every surface printed '—' instead.
+        // Naming it is what the hunter asked for (2026-08-25): the byte we
+        // heard tells them more than the dash did.
+        //
+        // Its own kind, so it inherits direct_hash's treatment rather than
+        // 'relay's: marked with # in hudsender.js, outside TARGET_KINDS and
+        // HEX_PREFIX_KINDS in feed.js (a 1-byte prefix would merge with every
+        // node sharing that byte), and below names.js's 4-hex resolve floor.
+        sender = { kind: 'path_hash', id: last, role: null, label: last }
         heardDirect = true
       }
     }
