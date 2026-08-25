@@ -49,9 +49,26 @@ describe('classifyReception', () => {
     const c = classifyReception({ payloadType: 0, pathLength: 2, routeType: 2, path: ['AABB', 'CCDD'], payload: { decoded: {} } })
     expect(c.sender.id).toBeNull(); expect(c.isDirect).toBe(false)
   })
-  it('1-byte flood path hash excluded (collision-prone)', () => {
+  // Named rather than dropped since 2026-08-25. A 1-byte hash is still not an
+  // identity, so it gets its own kind and carries the byte as its own label,
+  // the way direct_hash does — never 'relay', which feed.js would offer as a
+  // target and prefix-merge into every node sharing that byte.
+  it('1-byte flood path hash → path_hash sender, id and label both the byte', () => {
     const c = classifyReception({ payloadType: 0, pathLength: 1, routeType: 1, path: ['AB'], payload: { decoded: {} } })
-    expect(c.sender.id).toBeNull()
+    expect(c.sender).toEqual({ kind: 'path_hash', id: 'ab', role: null, label: 'ab' })
+    expect(c.isDirect).toBe(true)
+  })
+  // The 2-byte boundary, from the other side: widening the path_hash branch to
+  // `length <= 4` would swallow this one and lose a resolvable relay id.
+  it('2-byte flood path hash stays a relay, with no label of its own', () => {
+    const c = classifyReception({ payloadType: 0, pathLength: 1, routeType: 1, path: ['ABCD'], payload: { decoded: {} } })
+    expect(c.sender).toEqual({ kind: 'relay', id: 'abcd', role: null, label: null })
+  })
+  // The route check still gates it: a 1-byte hash on a DIRECT route is not the
+  // immediate transmitter, so naming it would name the wrong node.
+  it('1-byte path hash on a non-FLOOD route is still not attributed', () => {
+    const c = classifyReception({ payloadType: 0, pathLength: 1, routeType: 2, path: ['AB'], payload: { decoded: {} } })
+    expect(c.sender.id).toBeNull(); expect(c.isDirect).toBe(false)
   })
   it('TRACE with a path is never attributed', () => {
     const c = classifyReception({ payloadType: 9, pathLength: 3, routeType: 1, path: ['AABB', 'CCDD', 'EEFF'], payload: { decoded: {} } })

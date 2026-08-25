@@ -121,6 +121,18 @@ describe('dedupeSenders never closes over a non-transitive relation (#268)', () 
     ], {})
     expect(out.map((r) => r.sender_id).sort()).toEqual([A].sort())
   })
+
+  // Same rule for the kind that carries a 1-byte FLOOD path hash. It is named
+  // on screen now, which is exactly why it must stay out of here: 'ab' is a
+  // prefix of every id starting ab, so one merge would swallow unrelated nodes
+  // and one tap would target them.
+  it('never lets a path_hash reach the merge either', () => {
+    const out = senderList([
+      rec({ sender_kind: 'path_hash', sender_id: A.slice(0, 2), ...shared }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
+    ], {})
+    expect(out.map((r) => r.sender_id).sort()).toEqual([A].sort())
+  })
 })
 
 describe('dedupeSenders prefix-aware merging (#267)', () => {

@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-25-name-the-path-byte",
+    "date": "2026-08-25",
+    "where": "both",
+    "title": "A reception with no sender now shows the byte we heard",
+    "body": "Some traffic carries a route mark only one byte wide. One byte is too short to name a node with, so until now the sender simply read as a dash. It now shows the byte itself, written as #64, where the hash mark means this is an id we could not resolve rather than a name. Treat it as a hint, not an identity: one byte has 256 possible values so several nodes share one, and on a forged route it is a byte the sender wrote himself, which is what the 24 August flood near Amsterdam did. One thing to know for filtering: these receptions carry a sender now, so they no longer turn up under Sender unknown."
+  },
+  {
     "id": "2026-08-25-locate-uses-the-whole-signal-field",
     "date": "2026-08-25",
     "where": "both",

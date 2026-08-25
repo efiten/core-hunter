@@ -77,7 +77,6 @@ describe('unattributable receptions end to end (#454)', () => {
   const cases = [
     ['TRACE', { payloadType: 9, pathLength: 3, routeType: 1, path: ['AABB', 'CCDD', 'EEFF'], payload: { decoded: {} } }],
     ['a DIRECT-route relay', { payloadType: 0, pathLength: 2, routeType: 2, path: ['AABB', 'CCDD'], payload: { decoded: {} } }],
-    ['a 1-byte FLOOD hash', { payloadType: 0, pathLength: 1, routeType: 1, path: ['AB'], payload: { decoded: {} } }],
   ]
 
   for (const [name, decoded] of cases) {
@@ -96,4 +95,16 @@ describe('unattributable receptions end to end (#454)', () => {
       expect(rec.lat).toBe(51)
     })
   }
+
+  // A 1-byte FLOOD hash was in the list above until 2026-08-25. It is not
+  // unattributable any more: it is named, weakly, and the record has to carry
+  // the byte all the way through buildRecord or the surfaces still print '—'.
+  it('records a 1-byte FLOOD hash with the byte as its sender', () => {
+    const decoded = { payloadType: 0, pathLength: 1, routeType: 1, path: ['AB'], payload: { decoded: {} } }
+    const rec = buildRecord(frame, classifyReception(decoded), good, '2026-08-22T10:00:00Z')
+    expect(rec.sender_kind).toBe('path_hash')
+    expect(rec.sender_id).toBe('ab')
+    expect(rec.sender_label).toBe('ab')
+    expect(rec.is_direct).toBe(true)
+  })
 })
