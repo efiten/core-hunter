@@ -76,7 +76,7 @@ describe('locate — parity between the app and web copies', () => {
   // confidence this whole file exists to avoid.
   it('exports exactly this set of names, all of it covered below', () => {
     const expected = ['dedupeSpatial', 'densityGrid', 'geometryStats', 'haversineM',
-      'locate', 'rejectOutliers', 'rssiWeight', 'toLocatePoints', 'weightedCentroid']
+      'locate', 'pathlossFit', 'rejectOutliers', 'rssiWeight', 'toLocatePoints', 'weightedCentroid']
     expect(Object.keys(web).sort()).toEqual(expected)
     expect(Object.keys(app).sort()).toEqual(expected)
   })
@@ -141,6 +141,19 @@ describe('locate — parity between the app and web copies', () => {
     const c = app.weightedCentroid(SPREAD)
     expect(web.geometryStats(SPREAD, c)).toEqual(app.geometryStats(SPREAD, c))
     expect(web.geometryStats([], null)).toEqual(app.geometryStats([], null))
+  })
+
+  it('fits the same transmitter position from the same field', () => {
+    // The estimator both copies now lead with (#454). A drift in the exponent
+    // or in the search would move the answer by hundreds of metres on one
+    // surface and not the other, which is the kind of divergence that only
+    // shows up in the field.
+    const w = web.pathlossFit(WIDE)
+    const a = app.pathlossFit(WIDE)
+    expect(w).toEqual(a)
+    expect(w).not.toBeNull()
+    expect(web.pathlossFit(POINTS.slice(0, 2))).toEqual(app.pathlossFit(POINTS.slice(0, 2)))
+    expect(web.pathlossFit(POINTS.slice(0, 2))).toBeNull()
   })
 
   it('returns the same full estimate, including the too-few-points shape', () => {

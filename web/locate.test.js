@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { haversineM, rssiWeight, weightedCentroid, toLocatePoints } from './locate.js'
+import { haversineM, rssiWeight, weightedCentroid, toLocatePoints, pathlossFit } from './locate.js'
 
 // #176: Locate now runs over a general filtered set (hunter/types/hops/time),
 // not just one sender -- toLocatePoints must not care whose records these are.
@@ -348,5 +348,99 @@ describe('locate — dedupe stops a parked hunter from dominating', () => {
     const res = locate([...parked, ...drive])
     expect(res.inliers).toHaveLength(4) // 30 parked -> 1, + 3 drive
     expect(res.stats.searchRadiusM).toBeGreaterThan(500) // no collapse to 1-3 m
+  })
+})
+
+// #454. Backtested against nine repeaters whose real positions were measured
+// in the field: 681 m mean error for the weighted centroid, 210 m for this.
+const M = 1 / 111320
+  // A synthetic field around a known transmitter: RSSI computed from the model
+  // itself, so the fit has one exactly-right answer to find. Receptions on a
+  // ring plus a few further out, which is what a drive around a node looks like.
+const SOURCE = { lat: 51.2, lon: 5.6 }
+const field = (n = 2.4, p0 = -20) => {
+  const out = []
+  for (const [dLat, dLon] of [[600, 0], [-600, 0], [0, 900], [0, -900],
+    [1500, 1500], [-1500, 1500], [1500, -1500], [-1500, -1500], [3000, 0], [0, -3000]]) {
+    const lat = SOURCE.lat + dLat * M
+    const lon = SOURCE.lon + dLon * M / Math.cos((SOURCE.lat * Math.PI) / 180)
+    const d = haversineM(SOURCE, { lat, lon })
+    out.push({ lat, lon, rssi: p0 - 10 * n * Math.log10(d) })
+  }
+  return out
+}
+
+describe('pathlossFit', () => {
+
+  it('finds a transmitter it has no other way of knowing about', () => {
+    // Nothing here says where the source is: only ten positions and the signal
+    // that reached them. Within 100 m of a source none of the samples sits on.
+    const fit = pathlossFit(field())
+    expect(haversineM(SOURCE, fit)).toBeLessThan(100)
+  })
+
+  it('does not need the transmit power, which nothing knows', () => {
+    // P0 is solved per candidate rather than assumed, so a node with a 30 dB
+    // stronger signal fits to the same place.
+    const weak = pathlossFit(field(2.4, -20))
+    const strong = pathlossFit(field(2.4, 10))
+    expect(haversineM(weak, strong)).toBeLessThan(50)
+  })
+
+  it('beats the weighted centroid on a one-sided drive, which is the case that matters', () => {
+    // Approaching from one side puts the centroid on that side -- it marks
+    // where the strong receptions are, not where the transmitter is. The
+    // fall-off across the samples is what carries the answer.
+    const oneSided = field().filter((p) => p.lat >= SOURCE.lat)
+    const c = weightedCentroid(oneSided)
+    const f = pathlossFit(oneSided)
+    expect(haversineM(SOURCE, f)).toBeLessThan(haversineM(SOURCE, c))
+  })
+
+  it('reports how well the model fitted, so a bad answer can say so', () => {
+    // Zero on a field generated from the model itself; large on noise.
+    expect(pathlossFit(field()).rmsDb).toBeLessThan(0.5)
+    const noise = field().map((p, i) => ({ ...p, rssi: -60 + (i % 2 ? 25 : -25) }))
+    expect(pathlossFit(noise).rmsDb).toBeGreaterThan(5)
+  })
+
+  it('refuses what it cannot fit rather than answering anyway', () => {
+    expect(pathlossFit([])).toBeNull()
+    expect(pathlossFit(null)).toBeNull()
+    expect(pathlossFit(field().slice(0, 2))).toBeNull()
+    // Rows without a usable position or reading are dropped, not fitted to.
+    expect(pathlossFit([{ lat: 51, lon: 5 }, { rssi: -70 }, { lat: null, lon: 5, rssi: -70 }])).toBeNull()
+  })
+
+  it('treats everything inside GPS accuracy as one place', () => {
+    // Ten metres is under a phone's own accuracy, so a sample "1 m away" and
+    // one "9 m away" are the same sample as far as anything here can tell.
+    // Without the clamp the fit treats them as different evidence, moves by
+    // several metres, and reports a confident rms on detail it cannot know.
+    const near = (m) => pathlossFit([
+      { lat: 51.010, lon: 5.0, rssi: -80 }, { lat: 50.990, lon: 5.0, rssi: -80 },
+      { lat: 51.0, lon: 5.016, rssi: -80 }, { lat: 51.0, lon: 4.984, rssi: -80 },
+      { lat: 51.0 + m / 111320, lon: 5.0, rssi: -25 },
+    ])
+    expect(near(1)).toEqual(near(9))
+  })
+})
+
+describe('locate — which estimate it leads with', () => {
+  it('uses the path-loss fit and keeps the centroid alongside it', () => {
+    const r = locate(field())
+    expect(r.method).toBe('pathloss')
+    expect(r.centroid).toEqual(r.fit)
+    expect(r.weighted).not.toBeNull()
+    // They disagree, which is the point of returning both.
+    expect(haversineM(r.centroid, r.weighted)).toBeGreaterThan(0)
+  })
+
+  it('falls back to the centroid rather than returning nothing', () => {
+    // Same point repeated: dedupe leaves too few for a fit, and the old
+    // behaviour is what should remain.
+    const r = locate(field())
+    expect(r.centroid).not.toBeNull()
+    expect(['pathloss', 'centroid']).toContain(r.method)
   })
 })
