@@ -77,6 +77,13 @@
     "body": "An advert that fails its signature and a packet we cannot read are now drawn, with no name on them. Unreadable ones get a new Unknown type filter."
   },
   {
+    "id": "2026-08-24-target-search",
+    "date": "2026-08-24",
+    "where": "app",
+    "title": "Search the target list",
+    "body": "The target sheet has a search field. Type part of a name, or the first characters of an id as it appears on the map and in the ticker, and the list narrows to what matches while you type. Clearing the field brings the whole list back; what you already picked stays picked either way."
+  },
+  {
     "id": "2026-08-24-render-tick-cost",
     "date": "2026-08-24",
     "where": "app",

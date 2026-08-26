@@ -541,6 +541,16 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .tl-clear { width: 100%; border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 14px;
   background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; margin-bottom: 8px; }
+/* Type-ahead over the sender list (#449). While a query is active the pinned
+   Top block and the list heading (#ts-browse) are hidden, so the field sits
+   directly on top of its own matches.
+   16px is not a style choice: iOS Safari zooms the whole page in on a focused
+   input under 16px, and this one is tapped mid-hunt with the map behind it. */
+.tl-search { width: 100%; background: transparent; color: var(--ch-text);
+  border: 1px solid var(--ch-border); border-radius: 8px; padding: 8px 10px;
+  font: inherit; font-size: 16px; margin-bottom: 8px; }
+.tl-search::placeholder { color: var(--ch-muted); }
+.tl-empty { padding: 12px 4px; color: var(--ch-muted); font-size: 13px; }
 .tl-pinned-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ch-muted);
   margin: 12px 0 2px; }
 .tl-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }

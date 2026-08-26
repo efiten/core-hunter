@@ -1249,14 +1249,21 @@ function buildTargetSheet() {
         </button>
       </div>
       <button type="button" id="ts-clear" class="tl-clear" hidden>Clear target (showing all)</button>
-      <div class="tl-pinned-label">Top</div>
-      <ul id="ts-pinned" class="tl-list tl-pinned"></ul>
-      <div class="tl-pinned-label">All senders</div>
+      <input type="search" id="ts-search" class="tl-search" placeholder="Search name or id"
+        aria-label="Search senders by name or id"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <div id="ts-browse">
+        <div class="tl-pinned-label">Top</div>
+        <ul id="ts-pinned" class="tl-list tl-pinned"></ul>
+        <div class="tl-pinned-label">All senders</div>
+      </div>
       <ul id="ts-list" class="tl-list"></ul>
     </div>`
 
   state.targetList = createTargetList(el('ts-list'), {
     pinnedEl: el('ts-pinned'),
+    searchEl: el('ts-search'),
+    browseEl: el('ts-browse'),
     // Whole-row tap toggles this sender in the target set; the sheet stays open
     // so several can be picked in a row (#178).
     onSelect: (id, label, ids) => {

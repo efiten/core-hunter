@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -450,3 +450,70 @@ describe('senderList — receptions with no sender (#454)', () => {
   })
 })
 
+
+// #449: the target sheet is browse-only, so picking a node you already know
+// means scrolling to it. matchesTarget is the rule behind the search field:
+// the name matches anywhere, an id matches only from the front. A substring
+// match on an id would make "2b" find every id with those bytes anywhere in
+// it, which for a 3-byte hash is most of them — the front is the only part a
+// user can read off the HUD and type.
+describe('matchesTarget (#449)', () => {
+  const row = (o) => ({ sender_id: 'a1b2c3', sender_label: null, ...o })
+
+  it('matches a name substring, not just its start', () => {
+    const r = row({ sender_label: 'NL-OAS-Walrick-RP01' })
+    expect(matchesTarget(r, 'walr')).toBe(true)
+    expect(matchesTarget(r, 'NL-OAS')).toBe(true)
+  })
+  it('matches case-insensitively on both sides', () => {
+    expect(matchesTarget(row({ sender_label: 'NL-OAS-Walrick-RP01' }), 'WALRICK')).toBe(true)
+    expect(matchesTarget(row({ sender_id: 'A1B2C3' }), 'a1b')).toBe(true)
+  })
+  it('matches an id that is not the first entry in merged_ids (#267)', () => {
+    const r = row({ sender_id: '2beb', merged_ids: ['2beb', 'a1b2c3' + '0'.repeat(58)] })
+    expect(matchesTarget(r, '2beb')).toBe(true)
+    expect(matchesTarget(r, 'a1b2c3')).toBe(true)
+  })
+  it('refuses an id substring that is not a leading prefix', () => {
+    expect(matchesTarget(row({ sender_id: '2beb1f' }), 'eb1f')).toBe(false)
+  })
+  it('falls back to sender_id when the row carries no merged_ids', () => {
+    expect(matchesTarget({ sender_id: 'c0ffee' }, 'c0ff')).toBe(true)
+    expect(matchesTarget({ sender_id: 'c0ffee' }, 'dead')).toBe(false)
+  })
+  it('matches everything on an empty or whitespace-only query', () => {
+    const r = row({ sender_label: 'Walrick' })
+    expect(matchesTarget(r, '')).toBe(true)
+    expect(matchesTarget(r, '   ')).toBe(true)
+    expect(matchesTarget(r, undefined)).toBe(true)
+  })
+  it('matches nothing when neither the name nor an id starts with the query', () => {
+    expect(matchesTarget(row({ sender_label: 'Walrick' }), 'zzz')).toBe(false)
+  })
+  it('still matches on the id when the name has not resolved', () => {
+    expect(matchesTarget(row({ sender_label: null, sender_id: 'a1b2c3' }), 'a1b2')).toBe(true)
+  })
+})
+
+// The search narrows what is shown, so it has to run before the lazy-paging
+// slice: filtering a page instead of paging the filtered set would hide a
+// match that sorts past the first six rows.
+describe('senderList — search query (#449)', () => {
+  const adv = (id, label, at) => ({ sender_kind: 'advert_pubkey', sender_id: pk(id), sender_label: label, rx_at: at })
+  const rows = [
+    adv('a1', 'Alpha', '2026-08-24T10:00:00Z'),
+    adv('b2', 'Bravo', '2026-08-24T10:00:01Z'),
+    adv('c3', 'Charlie', '2026-08-24T10:00:02Z'),
+  ]
+
+  it('filters before the limit slice, so a match past the first page still shows', () => {
+    expect(senderList(rows, { limit: 1, query: 'charlie' }).map((r) => r.sender_label)).toEqual(['Charlie'])
+  })
+  it('leaves the list untouched for an empty query', () => {
+    expect(senderList(rows, { query: '' }).map((r) => r.sender_label)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+    expect(senderList(rows, {}).map((r) => r.sender_label)).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+  it('matches on an id prefix as well as a name', () => {
+    expect(senderList(rows, { query: 'b2' }).map((r) => r.sender_label)).toEqual(['Bravo'])
+  })
+})

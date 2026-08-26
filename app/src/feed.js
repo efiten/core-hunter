@@ -99,11 +99,43 @@ function dedupeSenders(records, ignore) {
   return mergePrefixGroups([...bySender.entries()])
 }
 
+// rowIds lists the lowercased ids a target row answers to. A row from
+// senderList/topSenders always carries merged_ids (#267) — every prefix-
+// compatible variant merged into this node — and a row built outside
+// dedupeSenders falls back to its bare sender_id.
+export function rowIds(rec) {
+  const merged = rec && rec.merged_ids
+  if (Array.isArray(merged) && merged.length) return merged.map((id) => String(id).toLowerCase())
+  return rec && rec.sender_id != null ? [String(rec.sender_id).toLowerCase()] : []
+}
+
+// matchesTarget is the search rule behind the target sheet's field (#449):
+// a row matches when the query appears anywhere in its resolved name, or when
+// any of its ids STARTS with the query. The two halves are deliberately
+// different. A name is read as words, so the middle of it is worth finding;
+// an id is read from the front — it is the prefix that the HUD, the ticker
+// and every popup print (idPrefix), so the front is the only part a user can
+// type from memory. Matching an id substring would make a 2-byte query find
+// most of the ids on screen, which is the opposite of narrowing.
+//
+// An empty (or whitespace-only) query matches everything, so the caller can
+// pass the raw field value and get today's unfiltered list back.
+export function matchesTarget(rec, query) {
+  const q = String(query == null ? '' : query).trim().toLowerCase()
+  if (!q) return true
+  const label = rec && rec.sender_label ? String(rec.sender_label).toLowerCase() : ''
+  if (label.includes(q)) return true
+  return rowIds(rec).some((id) => id.startsWith(q))
+}
+
 // senderList sorts deduped senders by name so the target dropdown stays
 // stable while signals change. `limit` slices the same sort for lazy-loaded
-// batches.
-export function senderList(records, { ignore, limit = Infinity } = {}) {
+// batches, and `query` narrows the set BEFORE that slice — paging the matches
+// rather than filtering a page, so a match sorting past the first page is
+// still reachable.
+export function senderList(records, { ignore, limit = Infinity, query = '' } = {}) {
   return dedupeSenders(records, ignore)
+    .filter((r) => matchesTarget(r, query))
     .sort((a, b) =>
       String(a.sender_label || a.sender_id).localeCompare(String(b.sender_label || b.sender_id), undefined, { sensitivity: 'base' }))
     .slice(0, limit)
