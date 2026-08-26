@@ -900,3 +900,47 @@ func TestDegradeFilterCapClampsNegative(t *testing.T) {
 		}
 	}
 }
+
+// TestFilterFromIgnoresRepeatedParam: ?ignores= is the repeated, verbatim
+// ignore param, sitting beside the comma-separated ?ignore= the operator
+// config has always used. Same split as ?senders= vs ?sender= (#288), for the
+// same reason: ignore matches on sender_id, which for a channel sender is the
+// decrypted display name, i.e. arbitrary operator text. Comma-joined, a node
+// called "Bob, K." becomes two ids, "Bob" and "K.", either of which can match
+// a different node while the one the viewer meant stays on the map (#494).
+func TestFilterFromIgnoresRepeatedParam(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/points?ignores=Bob%2C+K.&ignores=aa11", nil)
+	f := filterFrom(r, nil)
+	if len(f.Ignore) != 2 || f.Ignore[0] != "Bob, K." || f.Ignore[1] != "aa11" {
+		t.Fatalf("repeated ignores not parsed verbatim: %q", f.Ignore)
+	}
+
+	// The comma form still works, for configs and links that carry it.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?ignore=aa,bb", nil)
+	f = filterFrom(r, nil)
+	if len(f.Ignore) != 2 || f.Ignore[0] != "aa" || f.Ignore[1] != "bb" {
+		t.Fatalf("comma ignore not parsed: %q", f.Ignore)
+	}
+
+	// Both at once: neither replaces the other.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?ignore=aa&ignores=b%2Cb", nil)
+	f = filterFrom(r, nil)
+	if len(f.Ignore) != 2 || f.Ignore[0] != "aa" || f.Ignore[1] != "b,b" {
+		t.Fatalf("ignore and ignores must merge: %q", f.Ignore)
+	}
+
+	// The operator's configured list is always enforced, and a per-request one
+	// adds to it rather than replacing it.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?ignores=bb", nil)
+	f = filterFrom(r, []string{"aa"})
+	if len(f.Ignore) != 2 || f.Ignore[0] != "aa" || f.Ignore[1] != "bb" {
+		t.Fatalf("config list must survive a per-request one: %q", f.Ignore)
+	}
+
+	// Empty values are dropped rather than sent to SQL as an empty id.
+	r = httptest.NewRequest(http.MethodGet, "/api/points?ignores=&ignores=+&ignores=aa", nil)
+	f = filterFrom(r, nil)
+	if len(f.Ignore) != 1 || f.Ignore[0] != "aa" {
+		t.Fatalf("empty ignores values must be dropped: %q", f.Ignore)
+	}
+}

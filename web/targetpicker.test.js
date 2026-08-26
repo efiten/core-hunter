@@ -353,3 +353,53 @@ describe('withoutSenderFilters (#288)', () => {
     expect(withoutSenderFilters()).toEqual({})
   })
 })
+
+// The picker lists what you can pick, so an ignored node has no business in
+// it (#494). The app's list takes the same option (app/src/targetlist.js).
+describe('senderList — ignored nodes', () => {
+  const rows = [
+    pt({ sender_id: 'aa', sender_label: 'Alpha' }),
+    pt({ sender_id: 'bb', sender_label: 'Bravo' }),
+  ]
+  it('drops an ignored sender from the list', () => {
+    expect(senderList(rows, { ignore: new Set(['aa']) }).map((r) => r.sender_id)).toEqual(['bb'])
+  })
+  it('matches case-insensitively', () => {
+    expect(senderList([pt({ sender_id: 'AA', sender_label: 'Alpha' })], { ignore: new Set(['aa']) })).toEqual([])
+  })
+  it('lists everything when the set is empty or absent', () => {
+    expect(senderList(rows, { ignore: new Set() })).toHaveLength(2)
+    expect(senderList(rows)).toHaveLength(2)
+  })
+  // A merged row is one node under several prefixes (#331): ignoring it under
+  // any one of them has to take the whole row out, not leave it listed under
+  // the other two.
+  it('drops a merged row when any of its ids is ignored', () => {
+    // The 2-byte relay hash and the advert pubkey are one node, so ignoring it
+    // by the short prefix has to take the merged row out.
+    const merged = [advert(FULL_A), relay('4a4a', { rx_at: '2026-07-22T10:05:00Z' })]
+    expect(senderList(merged, { ignore: new Set() })).toHaveLength(1)
+    expect(senderList(merged, { ignore: new Set(['4a4a']) })).toEqual([])
+    expect(senderList(merged, { ignore: new Set([FULL_A]) })).toEqual([])
+  })
+})
+
+// The pinned Top section picks from the same pool as the list, so it has to
+// drop the same rows (#494) -- otherwise an ignored node stays pinned above a
+// list it is gone from. The app's list passes ignore to both (targetlist.js).
+describe('topSenders — ignored nodes', () => {
+  const NOW = Date.parse('2026-07-22T10:00:00Z')
+  const rows = [
+    pt({ sender_id: 'aa', sender_label: 'Alpha', rssi: -60, rx_at: '2026-07-22T09:59:50Z' }),
+    pt({ sender_id: 'bb', sender_label: 'Bravo', rssi: -90, rx_at: '2026-07-22T09:59:50Z' }),
+  ]
+  it('leaves an ignored sender out of the Top section', () => {
+    expect(topSenders(rows, { count: 3, nowMs: NOW }).map((r) => r.sender_id)).toEqual(['aa', 'bb'])
+    expect(topSenders(rows, { count: 3, nowMs: NOW, ignore: new Set(['aa']) }).map((r) => r.sender_id)).toEqual(['bb'])
+  })
+  it('drops a merged row by any of its ids', () => {
+    const merged = [advert(FULL_A, { rssi: -60 }), relay('4a4a', { rssi: -60, rx_at: '2026-07-22T09:59:55Z' })]
+    expect(topSenders(merged, { count: 3, nowMs: NOW })).toHaveLength(1)
+    expect(topSenders(merged, { count: 3, nowMs: NOW, ignore: new Set(['4a4a']) })).toEqual([])
+  })
+})

@@ -68,10 +68,23 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	if minLat, minLon, maxLat, maxLon, ok := ParseBBox(q.Get("bbox")); ok {
 		f.HasBBox, f.MinLat, f.MinLon, f.MaxLat, f.MaxLon = true, minLat, minLon, maxLat, maxLon
 	}
-	// Server-configured ignore list is always enforced, merged with any per-request ?ignore=.
+	// Server-configured ignore list is always enforced, merged with whatever the
+	// request carries. Two params, mirroring ?senders= / ?sender= (#288):
+	//   ?ignore=   comma-separated, the operator config's shape, kept for links
+	//   ?ignores=  repeated, one id per value, taken verbatim
+	// The repeated form exists because ignore matches on sender_id, which for a
+	// channel sender is the decrypted display name, i.e. arbitrary operator
+	// text. Comma-joined, a node called "Bob, K." splits into "Bob" and "K.",
+	// which can match other nodes while the one the viewer ignored stays on the
+	// map. The map's ignore-list sends this form (#494).
 	f.Ignore = append([]string(nil), baseIgnore...)
 	if ig := strings.TrimSpace(q.Get("ignore")); ig != "" {
-		f.Ignore = append(f.Ignore, strings.Split(ig, ",")...)
+		for _, s := range strings.Split(ig, ",") {
+			if s = strings.TrimSpace(s); s != "" { f.Ignore = append(f.Ignore, s) }
+		}
+	}
+	for _, id := range q["ignores"] {
+		if id = strings.TrimSpace(id); id != "" { f.Ignore = append(f.Ignore, id) }
 	}
 	// ?idclass=a,b filters on sender-id class (#475), same "none means all"
 	// semantics as ?types=. Unknown values are dropped rather than rejected: a

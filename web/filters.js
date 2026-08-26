@@ -147,6 +147,10 @@ if (typeof document !== 'undefined') {
     // unattributable reception is still a real measurement (#455), and it is
     // all a 1-byte-hash flood leaves behind.
     unnamed: document.getElementById('f-unnamed').checked ? '1' : '',
+    // The viewer's ignore-list (#494), one repeated ?ignores= per node, same
+    // pair shape as senderPairs and for the same #288 reason. map.js owns the
+    // set, like it owns the picker selections.
+    ignorePairs: (window.ignoredSenderParams && window.ignoredSenderParams()) || [],
   })
 
   // f-hunter's persist/refresh/change wiring now lives in map.js, alongside
