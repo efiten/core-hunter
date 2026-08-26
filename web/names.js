@@ -26,6 +26,22 @@ const RESOLVABLE = /^[0-9a-f]{4,64}$/i
 export function isFullPubkey(id) { return typeof id === 'string' && FULL_PUBKEY.test(id) }
 export function isResolvableId(id) { return typeof id === 'string' && RESOLVABLE.test(id) }
 
+// resolvableKey decides whether a reception's sender should be looked up.
+// Fill-only: skip when a name is already present. Ported from app/src/names.js
+// so both sides gate resolution the same way.
+export function resolvableKey(rec) {
+  if (!rec || rec.sender_label) return null
+  return isResolvableId(rec.sender_id) ? rec.sender_id.toLowerCase() : null
+}
+
+// A sender id of one byte (2 hex) is a 256-way collision space, so it is never
+// a name, and meshpacket.js carries it as its OWN sender_label for the two
+// kinds below. A surface that prints that label unguarded shows "77" exactly
+// as it would show a resolved short name. Marked with # instead, the house
+// style hudsender.js set, and kept out of the resolver by the 4-hex floor.
+const HASH_ID_KINDS = ['direct_hash', 'path_hash']
+export function isHashIdKind(kind) { return HASH_ID_KINDS.includes(kind) }
+
 // cachedName: resolved name ('' = resolved-but-unknown) or undefined if not yet
 // looked up. Synchronous — use it while rendering.
 export function cachedName(key) {

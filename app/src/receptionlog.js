@@ -1,6 +1,7 @@
 import { relTime } from './feed.js'
 import { rssiTier, tierColorVar } from './signal.js'
 import { packetTypeLabel } from './filters.js'
+import { isHashIdKind } from './names.js'
 
 // Receptions log (#130) — a frameless, log-style tail over the map that
 // replaces the bottom Messages panel. Newest reception at the bottom; a fixed
@@ -78,6 +79,14 @@ function lineMeta(r) {
 // one also fires on plain scroll, and on the map->ticker direction, where
 // focusRecord rolls the playhead after a marker tap — panning there would
 // move the camera off a marker the user just chose.
+// senderText is the ticker's sender cell. meshpacket.js carries a 1-byte hash
+// as its own sender_label, so printing the label unguarded put "77" on screen
+// looking exactly like a resolved short name. Same # mark the HUD uses.
+export function senderText(r) {
+  if (isHashIdKind(r.sender_kind) && r.sender_id) return '#' + String(r.sender_id)
+  return r.sender_label || r.sender_id || '—'
+}
+
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { render() {}, focusRecord() {} }
@@ -118,7 +127,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate } = {
         + '<span class="rx-gt"></span>'
         + '<span class="rx-tm">' + esc(relTime(r.rx_at, nowMs)) + '</span>'
         + '<span class="rx-rs" style="color:' + color + '">' + esc(r.rssi ?? '—') + '</span>'
-        + '<span class="rx-sn">' + esc(r.sender_label || r.sender_id || '—') + ' '
+        + '<span class="rx-sn">' + esc(senderText(r)) + ' '
         + '<span class="rx-me">' + esc(lineMeta(r)) + '</span>' + nm + '</span></div>'
     }
     list.innerHTML = h

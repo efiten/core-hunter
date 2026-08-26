@@ -232,6 +232,26 @@ describe('targetParts — primary/secondary label split', () => {
   it('handles a missing id', () => {
     expect(targetParts(pt({ sender_id: null, sender_label: '' }))).toEqual({ primary: '—', secondary: '' })
   })
+
+  // meshpacket.js carries a 1-byte hash as its own sender_label, so the label
+  // branch would print "77" looking exactly like a resolved short name. This
+  // list has no kind gate (unlike app's feed.js), so it is the only thing
+  // standing between a 256-way collision space and a row that reads as an
+  // identity. Both kinds that carry one are covered.
+  it('marks a 1-byte path hash rather than presenting it as a name', () => {
+    expect(targetParts(pt({ sender_id: '77', sender_label: '77', sender_kind: 'path_hash' })))
+      .toEqual({ primary: '#77', secondary: '77' })
+  })
+  it('marks a 1-byte direct hash the same way', () => {
+    expect(targetParts(pt({ sender_id: '4a', sender_label: '4a', sender_kind: 'direct_hash' })))
+      .toEqual({ primary: '#4a', secondary: '4a' })
+  })
+  // The guard is on the KIND, not on the length: a resolver name that happens
+  // to be short must still render as a name.
+  it('leaves a short resolved name alone', () => {
+    expect(targetParts(pt({ sender_id: 'aa11bb22cc33', sender_label: 'ZZ', sender_kind: 'relay' })))
+      .toEqual({ primary: 'ZZ', secondary: 'aa11bb' })
+  })
 })
 
 describe('relTime — ported from app/src/feed.js (not shared: web\'s data model differs, #223)', () => {

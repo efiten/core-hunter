@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-picker-shows-resolved-names",
+    "date": "2026-08-26",
+    "where": "both",
+    "title": "The target list shows repeater names again",
+    "body": "Every row in the map's target list read \"name not resolved\", even for repeaters whose name the map already knew and showed in the point popup. The list was the one place that never asked the resolver. It does now, so a node heard through a relay reads by its name. Two things stay marked rather than named: a prefix that matches more than one node, which cannot be resolved honestly, and an id of a single byte, which now appears as #77 on the map and in the receptions list instead of sitting there looking like a short name."
+  },
+  {
     "id": "2026-08-25-name-the-path-byte",
     "date": "2026-08-25",
     "where": "both",
