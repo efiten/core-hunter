@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from '../splash.js'
+import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from '../splash.js'
 
 describe('splashState', () => {
   it('hides once a GPS fix has been acquired, regardless of other state', () => {
@@ -18,11 +18,59 @@ describe('splashState', () => {
   it('shows gps-error once connected and the GPS watch reported an error', () => {
     expect(splashState({ hasFix: false, connected: true, bleError: false, gpsError: true })).toBe('gps-error')
   })
+  // #539: the ✕ closes the gate for this session; connecting is not required.
+  it('hides once dismissed, whatever else is going on', () => {
+    expect(splashState({ hasFix: false, connected: false, bleError: true, gpsError: false, dismissed: true })).toBe('hidden')
+    expect(splashState({ hasFix: false, connected: true, bleError: false, gpsError: true, dismissed: true })).toBe('hidden')
+  })
 })
 
-describe('SPLASH_COPY', () => {
-  it('has a copy entry for every non-hidden state', () => {
-    expect(Object.keys(SPLASH_COPY).sort()).toEqual(['ble-error', 'gps-error', 'intro', 'waiting-gps'])
+// #539: the panel is two status rows (Bluetooth, GPS) — the same shape as the
+// settings sheet's Connection block, because both guard the same two things.
+describe('splashRows', () => {
+  it('starts both rows grey with nothing claimed', () => {
+    expect(splashRows('intro', {})).toEqual([
+      { key: 'Bluetooth', dot: 'off', text: 'No companion' },
+      { key: 'GPS', dot: 'off', text: 'No fix yet' },
+    ])
+  })
+  it('ticks Bluetooth with the companion name and SF once connected, GPS still working', () => {
+    expect(splashRows('waiting-gps', { name: 'Kas -2', sf: 7 })).toEqual([
+      { key: 'Bluetooth', dot: 'on', text: 'Kas -2', extra: 'SF7' },
+      { key: 'GPS', spin: true, text: 'Waiting for a fix…' },
+    ])
+  })
+  it('falls back to a plain Connected when the companion has no name yet', () => {
+    const [bt] = splashRows('waiting-gps', { name: '', sf: null })
+    expect(bt).toEqual({ key: 'Bluetooth', dot: 'on', text: 'Connected', extra: null })
+  })
+  it('marks the failing row for each error state and leaves the other honest', () => {
+    expect(splashRows('ble-error', {})).toEqual([
+      { key: 'Bluetooth', dot: 'err', text: 'Not connected' },
+      { key: 'GPS', dot: 'off', text: 'No fix yet' },
+    ])
+    expect(splashRows('gps-error', { name: 'Kas -2', sf: 8 })).toEqual([
+      { key: 'Bluetooth', dot: 'on', text: 'Kas -2', extra: 'SF8' },
+      { key: 'GPS', dot: 'err', text: 'No fix' },
+    ])
+  })
+})
+
+// #539 defect 4: whoever dismisses the gate before the first fix drives
+// around while nothing is logged — the banner is the one reminder left.
+describe('dismissBanner', () => {
+  it('names the missing radio when nothing is connected', () => {
+    expect(dismissBanner({ connected: false })).toBe('No companion connected. Showing your own captures.')
+  })
+  it('names the missing fix when the radio is already on', () => {
+    expect(dismissBanner({ connected: true })).toBe('No GPS fix yet. Nothing is logged without a position.')
+  })
+})
+
+describe('SPLASH_ERRORS', () => {
+  it('has a fallback line for exactly the two retryable states', () => {
+    expect(Object.keys(SPLASH_ERRORS).sort()).toEqual(['ble-error', 'gps-error'])
+    for (const v of Object.values(SPLASH_ERRORS)) expect(v.length).toBeGreaterThan(0)
   })
 })
 
@@ -34,18 +82,37 @@ describe('SPLASH_DISCLAIMER', () => {
   })
 })
 
-describe('SPLASH_BASICS', () => {
-  it('is a non-empty list of non-empty strings', () => {
-    expect(Array.isArray(SPLASH_BASICS)).toBe(true)
-    expect(SPLASH_BASICS.length).toBeGreaterThan(0)
-    for (const b of SPLASH_BASICS) expect(typeof b === 'string' && b.length > 0).toBe(true)
+// The gate's own disclaimer is one sentence (#413 allows a glance-length
+// form); the full AGENTS.md wording stays in About via SPLASH_DISCLAIMER.
+describe('SPLASH_DISCLAIMER_SHORT', () => {
+  it('keeps the listens-only claim and the where-YOU-were rule in one line', () => {
+    expect(SPLASH_DISCLAIMER_SHORT).toMatch(/listens only/i)
+    expect(SPLASH_DISCLAIMER_SHORT).toMatch(/where .*you.* were/i)
   })
 })
 
-describe('SPLASH_TAGLINE', () => {
-  it('is a non-empty one-sentence description of what the app does', () => {
-    expect(typeof SPLASH_TAGLINE).toBe('string')
-    expect(SPLASH_TAGLINE.length).toBeGreaterThan(0)
+// #539/#384: three coach marks beside their own control, each pointing at a
+// real element with a leader line — an arrow at nothing is not an arrow.
+describe('COACH_MARKS', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
+  it('is three marks with copy, each anchored to an element index.html ships', () => {
+    expect(COACH_MARKS).toHaveLength(3)
+    for (const m of COACH_MARKS) {
+      expect(m.html.length).toBeGreaterThan(0)
+      expect(html).toContain(`id="${m.anchor}"`)
+    }
+  })
+  it('sends the account mark to Settings, the one place that is live behind the gate', () => {
+    const menu = COACH_MARKS.find((m) => m.anchor === 'settings-btn')
+    expect(menu.html).toMatch(/register/i)
+    expect(menu.html).toMatch(/settings/i)
+  })
+  it('names all five rail controls in the map-controls mark', () => {
+    const rail = COACH_MARKS.find((m) => m.anchor === 'layer-toggle')
+    const copy = rail.html.toLowerCase()
+    for (const word of ['node locations', 'auto-ping', '2d/3d', 'drive mode', 'sound']) {
+      expect(copy).toContain(word)
+    }
   })
 })
 

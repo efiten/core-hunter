@@ -425,6 +425,17 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   background: color-mix(in srgb, var(--ch-bg) 55%, transparent);
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 
+/* The cold-start GATE (#539): only the menu lives while the splash is up —
+   Settings is where you register, the one act that already makes sense, and
+   Discover transmits. The bar rides above the scrim so the menu is reachable
+   (a child cannot escape the bar's own stacking context), and everything else
+   on it is dimmed and inert instead. The FABs stay under the scrim: visible
+   through it for the coach mark to point at, untouchable (defect 5). */
+body.splash-gate #topbar { z-index: 560; }
+body.splash-gate #topbar-controls, body.splash-gate #ticker-btn {
+  opacity: .45; pointer-events: none; }
+body.splash-gate #settings-btn { color: var(--ch-accent); }
+
 body.onboarding #topbar,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn,
 body.onboarding #sound-toggle, body.onboarding #nodepos-toggle { z-index: 560; }
@@ -441,39 +452,98 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   color: var(--ch-text); font-size: 11.5px; line-height: 1.4; }
 .co-fabs { max-width: 168px; }
 
-.splash-panel { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
-  width: min(300px, calc(100vw - 48px)); z-index: 561; padding: 18px; text-align: center;
-  /* The short-screen fallback moves the callout copy inside, so the panel can
-     outgrow the viewport — scroll it rather than clipping the disclaimer off. */
-  max-height: calc(100vh - 24px); overflow-y: auto;
+/* Top-anchored, not centred (#539): the panel shrinks from the bottom when a
+   step needs fewer rows instead of jumping around its middle. 284px wide so
+   the FAB rail at x352 (on 412) stays clear and a coach mark has room — at
+   300px the two overlapped by 4px, which is why no callout ever fit (#384). */
+.splash-panel { position: absolute; left: 50%; top: min(170px, 25vh); transform: translateX(-50%);
+  width: 284px; max-width: calc(100vw - 48px); z-index: 561; text-align: center;
+  max-height: calc(100vh - 80px); overflow-y: auto;
   background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 16px;
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
-.splash-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; }
-.splash-mark { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--ch-accent) 18%, transparent); color: var(--ch-accent); }
-.splash-panel h1 { margin: 0; font-size: 22px; font-weight: 600; }
-.splash-tagline { margin: 0 0 13px; font-size: 12.5px; line-height: 1.45; color: var(--ch-muted); }
-.splash-callout-list { margin: 0 0 13px; padding: 0; list-style: none; text-align: left;
+.splash-x { position: absolute; top: 8px; right: 8px; z-index: 2; padding: 6px; border: none;
+  background: none; color: var(--ch-muted); cursor: pointer; display: inline-flex; }
+.splash-x:hover { color: var(--ch-text); }
+/* Brand band: the PWA icon is the one mark for the product (#539). */
+.splash-band { position: relative; padding: 14px 18px 11px;
+  background: radial-gradient(120% 130% at 50% 0%,
+    color-mix(in srgb, var(--ch-accent) 14%, transparent) 0%,
+    color-mix(in srgb, var(--ch-sig-cool) 5%, transparent) 45%, transparent 76%); }
+.splash-band::after { content: ""; position: absolute; left: 18px; right: 18px; bottom: 0; height: 1px;
+  background: var(--ch-border); }
+.splash-wordmark { margin: 8px 0 2px; font-size: 21px; font-weight: 700; letter-spacing: .02em; }
+.splash-domain { font-size: 11.5px; letter-spacing: .06em; color: var(--ch-muted);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+.splash-body { padding: 4px 18px 14px; }
+/* Fixed 38px rows: the panel hangs from its top, so a spinner or an SF value
+   appearing must not change a row's height (measured: 2px of jump). */
+.splash-srow { display: flex; align-items: center; gap: 9px; height: 38px; font-size: 13px; text-align: left; }
+.splash-srow + .splash-srow { border-top: 1px solid var(--ch-border); }
+.splash-skey { color: var(--ch-muted); width: 70px; flex: none; }
+.splash-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ch-sig-none); flex: none; }
+.splash-dot.on { background: var(--ch-accent); }
+.splash-dot.err { background: var(--ch-accent-2); }
+.splash-stext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.splash-stext.muted { color: var(--ch-muted); }
+.splash-sextra { margin-left: auto; font-size: 12px; color: var(--ch-muted);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+.splash-spin { width: 13px; height: 13px; border-radius: 50%; flex: none;
+  border: 2px solid color-mix(in srgb, var(--ch-accent) 25%, transparent);
+  border-top-color: var(--ch-accent); animation: splash-spin .9s linear infinite; }
+@keyframes splash-spin { to { transform: rotate(360deg); } }
+/* Three ways on (#539): the CTA with its icon and label back, then the two
+   external surfaces side by side — the same button pair as the landing
+   page's .lp-cta. */
+.splash-ctas { display: flex; flex-direction: column; gap: 9px; padding-top: 11px; margin-top: 0;
+  border-top: 1px solid var(--ch-border); }
+.splash-ctas[hidden] { display: none; }
+.splash-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px;
+  border: none; border-radius: 13px; cursor: pointer;
+  background: var(--ch-accent); color: var(--ch-bg); font-size: 14.5px; font-weight: 600;
+  font-family: system-ui, sans-serif; }
+.splash-cta[hidden] { display: none; }
+.splash-cta:disabled { opacity: .55; cursor: default; }
+.splash-noble { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ch-text); }
+.splash-secrow { display: flex; gap: 9px; }
+.splash-sec { flex: 1; display: inline-flex; align-items: center; justify-content: center; height: 44px;
+  border: 1px solid var(--ch-border); border-radius: 13px; color: var(--ch-text);
+  font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; }
+.splash-callout-list { margin: 10px 0 0; padding: 0; list-style: none; text-align: left;
   font-size: 11.5px; line-height: 1.45; color: var(--ch-muted); }
 .splash-callout-list[hidden] { display: none; }
 .splash-callout-list li { margin: 7px 0; padding-left: 9px; border-left: 2px solid var(--ch-accent); }
-.splash-basics { list-style: none; margin: 0; padding: 13px 0; text-align: left;
-  display: flex; flex-direction: column; gap: 9px;
-  border-top: 1px solid var(--ch-border); border-bottom: 1px solid var(--ch-border); }
-.splash-basics li { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.4; color: var(--ch-text); }
-.splash-basics li::before { content: ""; flex: 0 0 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: var(--ch-accent); }
-.splash-disclaimer { margin: 12px 0 0; font-size: 11px; line-height: 1.5; color: var(--ch-muted); }
+.splash-disclaimer { margin: 12px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ch-muted); }
 .splash-status { margin: 10px 0 0; font-size: 13px; color: var(--ch-text); }
 .splash-status:empty { margin: 0; }
-.splash-retry { margin-top: 10px; border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
-  background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
+.splash-retry { margin-top: 10px; width: 100%; height: 44px; border: 1px solid var(--ch-accent-2);
+  border-radius: 11px; background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
+.splash-retry[hidden] { display: none; }
 
-.splash-connect { position: fixed; left: 24px; right: 24px; bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
-  z-index: 561; height: 48px; border: none; border-radius: 13px; cursor: pointer;
-  background: var(--ch-accent); color: var(--ch-bg); font-size: 14.5px; font-weight: 600;
-  font-family: system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.splash-connect[hidden] { display: none; }
+/* Coach marks (#539/#384): small, muted, each with a thin leader line to a
+   ring on its own target. The target is pointed at, not touched. */
+.splash-cm { position: fixed; z-index: 561; max-width: 154px; padding: 10px 12px;
+  background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 11px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: var(--ch-muted); font-size: 11px; line-height: 1.4; text-align: left; }
+.splash-cm b { color: var(--ch-text); font-weight: 600; }
+.splash-lead { position: fixed; z-index: 561; width: 1px;
+  background: color-mix(in srgb, var(--ch-accent) 55%, transparent); }
+.splash-ring { position: fixed; z-index: 561; width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid var(--ch-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ch-accent) 14%, transparent); }
+
+/* The reminder for whoever dismissed the gate before the first fix (#539). */
+.nc-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;
+  background: var(--ch-surface); border: 1px solid var(--ch-border);
+  border-left: 3px solid var(--ch-accent-2); border-radius: 8px;
+  font-size: 12px; line-height: 1.4; color: var(--ch-text);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.nc-banner[hidden] { display: none; }
+.nc-banner button { border: none; background: none; font: inherit; cursor: pointer; padding: 0; }
+#nc-connect { color: var(--ch-accent-2); font-weight: 600; white-space: nowrap; }
+#nc-close { color: var(--ch-muted); flex: none; }
+
 .splash-close { position: fixed; left: 50%; transform: translateX(-50%); z-index: 562;
   bottom: calc(env(safe-area-inset-bottom, 16px) + 16px); width: 44px; height: 44px; border-radius: 50%;
   border: 1px solid var(--ch-border); background: var(--ch-surface); color: var(--ch-text); cursor: pointer;

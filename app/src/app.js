@@ -43,7 +43,7 @@ import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
-import { splashState, SPLASH_COPY, SPLASH_DISCLAIMER, SPLASH_BASICS, SPLASH_CALLOUTS, SPLASH_FAB_IDS, SPLASH_TAGLINE, APP_NAME } from './splash.js'
+import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
 import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
@@ -151,6 +151,10 @@ const state = {
   senderLabels: new Map(),
   // Startup splash (see splash.js) — hides once the first GPS fix lands.
   hasFix: false,
+  // The gate's ✕ (#539): per-session, never persisted — the gate exists
+  // because nothing is logged without a fix, so every cold start re-asks.
+  splashDismissed: false,
+  ncBannerClosed: false,
   bleError: false,
   // The splash status line for the ble-error state (#539): set from the
   // caught connect() rejection so the copy can name the cause.
@@ -354,15 +358,14 @@ function noteTickerTraffic() {
 // from splash.js. Called once at startup, before the splash is first shown.
 function initSplashContent() {
   el('splash-name').textContent = APP_NAME
-  el('splash-tagline').textContent = SPLASH_TAGLINE
-  el('splash-disclaimer').textContent = SPLASH_DISCLAIMER
+  // The one-sentence form; the full AGENTS.md wording stays in About. Static
+  // module copy, injected as HTML for the <em> on "you".
+  el('splash-disclaimer').innerHTML = SPLASH_DISCLAIMER_SHORT
   el('co-controls').textContent = SPLASH_CALLOUTS.controls
   el('co-menu').textContent = SPLASH_CALLOUTS.menu
   el('co-fabs').textContent = SPLASH_CALLOUTS.fabs
-  el('splash-basics').replaceChildren(
-    ...SPLASH_BASICS.map((b) => { const li = document.createElement('li'); li.textContent = b; return li })
-  )
-  // Same three strings as the callouts, for the short-screen fallback below.
+  for (const m of COACH_MARKS) el(m.id).innerHTML = m.html
+  // Same three strings as the callouts, for the tour's short-screen fallback.
   el('splash-callout-list').replaceChildren(
     ...Object.values(SPLASH_CALLOUTS).map((c) => { const li = document.createElement('li'); li.textContent = c; return li })
   )
@@ -407,27 +410,151 @@ function dismissBgHint() {
   try { localStorage.setItem(BG_HINT_SEEN_KEY, '1') } catch (_) {}
 }
 
-// Splash / onboarding overlay: shown until the first GPS fix (per splashState),
-// and re-openable afterwards via the "?" button (state.showOnboarding). Call
-// wherever hasFix/connected/bleError/gpsError/showOnboarding changes.
+// The current splashState input, in one place so the gate, the banner and
+// the retry button cannot disagree about what state they are in.
+function splashArgs(overrides) {
+  return {
+    hasFix: state.hasFix, connected: state.connected,
+    bleError: state.bleError, gpsError: state.gpsError,
+    dismissed: state.splashDismissed, ...overrides,
+  }
+}
+
+// Splash gate (#539): the connect block IS the splash — brand band, two
+// status rows (Bluetooth, GPS), the ways forward, one-sentence disclaimer.
+// Shown until the first GPS fix (per splashState) or the ✕; re-openable
+// afterwards as the spotlight tour via the "?" button (state.showOnboarding).
+// Call wherever hasFix/connected/bleError/gpsError/showOnboarding changes.
+//
+// Two different overlays share the element. The cold-start GATE dims
+// everything but the menu (body.splash-gate — Settings is where you register,
+// the one act that already makes sense; everything else is inert and Discover
+// transmits) and shows three coach marks. The reopened TOUR keeps the old
+// spotlight behaviour unchanged (body.onboarding): every control lifted and
+// ringed, the three callouts placed beside them.
 function refreshSplash() {
-  const s = splashState(state)
+  const s = splashState(splashArgs())
   const reopened = state.showOnboarding && s === 'hidden'
   const visible = s !== 'hidden' || reopened
   el('splash').hidden = !visible
-  document.body.classList.toggle('onboarding', visible)
-  // Reopened mid-hunt: already connected, so no Connect CTA — show Close instead.
+  document.body.classList.toggle('onboarding', reopened)
+  document.body.classList.toggle('splash-gate', visible && !reopened)
   el('splash-close').hidden = !reopened
-  if (reopened) el('connect-btn').hidden = true
+  el('splash-x').hidden = reopened
+  // The tour is brand + callouts, not a status readout: its splashState is
+  // 'hidden', so the rows would otherwise render the intro's grey pair while
+  // connected.
+  el('splash-rows').hidden = reopened
+  renderSplashRows(s)
+  // The ways forward belong to step 1 only: connected means you are in the
+  // process (the browser's BLE chooser was the step in between), so the
+  // in-progress states offer nothing but the ✕ — and retry on an error.
+  const step1 = !reopened && (s === 'intro' || s === 'ble-error')
+  el('splash-ctas').hidden = !step1
+  // "Open in Chrome or Bluefy" is detected, not told (#539): without Web
+  // Bluetooth the connect button is a dead end, so the message takes its
+  // place as the main line and the two external links remain.
+  const noBle = typeof navigator !== 'undefined' && !navigator.bluetooth
+  el('connect-btn').hidden = noBle || s === 'ble-error'
+  el('splash-noble').hidden = !(step1 && noBle)
+  if (step1 && noBle) el('splash-noble').textContent = 'This browser cannot pair a radio. Open Mesh-Hunter in Chrome, or Bluefy on iOS.'
   el('splash-status').textContent = reopened ? ''
-    : s === 'ble-error' && state.bleErrorMessage ? state.bleErrorMessage
-    : (SPLASH_COPY[s] || '')
-  el('splash-retry-gps').hidden = s !== 'gps-error'
+    : s === 'ble-error' ? (state.bleErrorMessage || SPLASH_ERRORS[s])
+    : s === 'gps-error' ? SPLASH_ERRORS[s]
+    : ''
+  const retry = el('splash-retry')
+  retry.hidden = reopened || (s !== 'gps-error' && s !== 'ble-error')
+  retry.textContent = s === 'gps-error' ? 'Retry location' : 'Connect (retry)'
   // Only the reopened (post-connect "?") tour can be dismissed by tapping
-  // outside the highlights (#216) — the pre-connect states must stay put
-  // until the user actually connects/gets a fix.
+  // outside the highlights (#216) — the pre-fix gate has its own ✕.
   state.splashDismissible = reopened
-  if (visible) positionCallouts()
+  // The tour's three callouts are managed by positionCallouts; during the
+  // gate they must not linger from a previous tour.
+  if (reopened) positionCallouts()
+  else for (const id of ['co-controls', 'co-menu', 'co-fabs']) { const c = el(id); if (c) c.hidden = true }
+  const gate = visible && !reopened
+  for (const m of COACH_MARKS) {
+    el(m.id).hidden = !gate
+    el(m.id + '-ring').hidden = !gate
+    el(m.id + '-lead').hidden = !gate
+  }
+  if (gate) positionCoachMarks()
+  refreshNoCaptureBanner()
+}
+
+// Renders splashRows' model. Rows are a fixed 38px (CSS) so the top-anchored
+// panel does not jump when a spinner or an SF value appears.
+function renderSplashRows(s) {
+  const rows = splashRows(s, { name: state.name, sf: state.sf })
+  el('splash-rows').replaceChildren(...rows.map((r) => {
+    const row = document.createElement('div'); row.className = 'splash-srow'
+    const key = document.createElement('span'); key.className = 'splash-skey'; key.textContent = r.key
+    row.appendChild(key)
+    if (r.spin) { const sp = document.createElement('span'); sp.className = 'splash-spin'; row.appendChild(sp) }
+    else {
+      const dot = document.createElement('i')
+      dot.className = 'splash-dot' + (r.dot === 'on' ? ' on' : r.dot === 'err' ? ' err' : '')
+      row.appendChild(dot)
+    }
+    const tx = document.createElement('span')
+    tx.className = 'splash-stext' + (r.dot === 'on' ? '' : ' muted')
+    tx.textContent = r.text
+    row.appendChild(tx)
+    if (r.extra) { const ex = document.createElement('span'); ex.className = 'splash-sextra'; ex.textContent = r.extra; row.appendChild(ex) }
+    return row
+  }))
+}
+
+// The gate's three coach marks (#539/#384): ring just under the target, a
+// thin leader line down, the box against the near edge. All three anchors
+// hang from the top of the screen except the rail one, which points at the
+// bottom-most FAB and reads downward the same way — the rail stays visible
+// through the scrim, because an arrow at nothing is not an arrow.
+function positionCoachMarks() {
+  const pad = 14
+  for (const m of COACH_MARKS) {
+    const target = el(m.anchor), box = el(m.id), ring = el(m.id + '-ring'), lead = el(m.id + '-lead')
+    if (!target || !box) continue
+    const r = target.getBoundingClientRect()
+    const show = r.width > 0
+    box.hidden = ring.hidden = lead.hidden = !show
+    if (!show) continue
+    if (m.side === 'left') {
+      // Ring on the target's left edge, horizontal line, box to the left of
+      // it — centred on the target where it fits, pushed under the panel's
+      // bottom edge where it does not (the panel spans most of the width, so
+      // a centred box would slide behind it).
+      const cy = Math.round(r.top + r.height / 2)
+      const ringLeft = Math.round(r.left - 13)
+      ring.style.left = ringLeft + 'px'; ring.style.top = (cy - 5) + 'px'
+      lead.style.left = (ringLeft - 22) + 'px'; lead.style.top = cy + 'px'
+      lead.style.width = '22px'; lead.style.height = '1px'
+      box.style.left = 'auto'
+      box.style.right = (window.innerWidth - (ringLeft - 28)) + 'px'
+      const h = box.getBoundingClientRect().height
+      const panelRect = document.querySelector('.splash-panel').getBoundingClientRect()
+      const top = Math.min(Math.max(cy - h / 2, panelRect.bottom + 8), window.innerHeight - h - 8)
+      box.style.top = Math.round(top) + 'px'
+      continue
+    }
+    const cx = Math.round(r.left + r.width / 2)
+    const ringTop = Math.round(r.bottom + 4)
+    ring.style.left = (cx - 5) + 'px'; ring.style.top = ringTop + 'px'
+    lead.style.left = cx + 'px'; lead.style.top = (ringTop + 11) + 'px'
+    lead.style.width = '1px'; lead.style.height = '22px'
+    box.style.top = (ringTop + 35) + 'px'
+    if (m.align === 'left') { box.style.left = pad + 'px'; box.style.right = 'auto' }
+    else { box.style.right = pad + 'px'; box.style.left = 'auto' }
+  }
+}
+
+// The one reminder left after the gate is dismissed pre-fix (#539 defect 4):
+// hasFix and gpsError show nowhere else, and captures need a position.
+function refreshNoCaptureBanner() {
+  const pending = splashState(splashArgs({ dismissed: false })) !== 'hidden'
+  const show = state.splashDismissed && pending && !state.ncBannerClosed
+  el('no-capture-banner').hidden = !show
+  if (show) el('nc-text').textContent = dismissBanner({ connected: state.connected })
 }
 
 // Anchors each onboarding callout to its real target element's current
@@ -928,6 +1055,13 @@ function connectButtons() {
 function applyConnectButtons() {
   const view = connectButton(state.connectPhase)
   for (const btn of connectButtons()) {
+    // The splash CTA keeps its icon (#539 defect 3): write the label into its
+    // span, not over the whole button. Its idle label is the CTA's own.
+    if (btn.id === 'connect-btn') {
+      btn.querySelector('span').textContent = view.label === 'Connect' ? 'Connect companion' : view.label
+      btn.disabled = view.disabled
+      continue
+    }
     btn.textContent = view.label
     btn.disabled = view.disabled
     btn.classList.toggle('ss-disconnect', view.connected && btn.id === 'ss-conn-btn')
@@ -2338,7 +2472,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     state.showOnboarding = false
     refreshSplash()
   })
-  window.addEventListener('resize', () => { if (!el('splash').hidden) positionCallouts() })
+  window.addEventListener('resize', () => {
+    if (el('splash').hidden) return
+    if (document.body.classList.contains('onboarding')) positionCallouts()
+    else positionCoachMarks()
+  })
 
   el('discover-btn').addEventListener('click', toggleAutoPing)
 
@@ -2454,13 +2592,36 @@ window.addEventListener('DOMContentLoaded', async () => {
     syncPopoverTriggers()
   })
 
-  // Retry location — re-starts the GPS watch (e.g. after the user grants the
-  // permission the browser prompted for, or re-enables location services).
-  el('splash-retry-gps').addEventListener('click', () => {
-    state.gpsError = false
+  // One retry button, two meanings (#539): after a GPS error it re-starts the
+  // watch (e.g. once the user grants the permission the browser prompted
+  // for); after a failed connect it runs the connect flow again.
+  el('splash-retry').addEventListener('click', () => {
+    if (splashState(splashArgs()) === 'gps-error') {
+      state.gpsError = false
+      refreshSplash()
+      try { state.gps.stop() } catch (_) {}
+      startGpsWatch()
+    } else {
+      state.wakeLock.enable()
+      connectAll()
+    }
+  })
+
+  // The gate's ✕ (#539): dismiss for this session; the no-capture banner is
+  // what keeps the way back open.
+  el('splash-x').addEventListener('click', () => {
+    state.splashDismissed = true
+    state.ncBannerClosed = false
     refreshSplash()
-    try { state.gps.stop() } catch (_) {}
-    startGpsWatch()
+  })
+  el('nc-connect').addEventListener('click', () => {
+    state.splashDismissed = false
+    refreshSplash()
+    if (!state.connected) { state.wakeLock.enable(); connectAll() }
+  })
+  el('nc-close').addEventListener('click', () => {
+    state.ncBannerClosed = true
+    refreshNoCaptureBanner()
   })
 
   // Reflect the initial filter state on the button (inactive at default)

@@ -69,6 +69,11 @@
     </div>
   </header>
   <div id="toast-stack">
+    <div id="no-capture-banner" class="nc-banner" role="status" hidden>
+      <span id="nc-text"></span>
+      <button type="button" id="nc-connect">Connect</button>
+      <button type="button" id="nc-close" aria-label="Dismiss">✕</button>
+    </div>
     <div id="bg-paused-banner" class="bg-paused-banner" role="status" hidden></div>
     <div id="bg-hint" class="bg-hint" role="status" hidden>
       <span>Keep the screen on and the app in the foreground — screen-off/background pauses capture.</span>
@@ -124,35 +129,70 @@
     <div class="splash-callout co-controls" id="co-controls"></div>
     <div class="splash-callout co-menu" id="co-menu"></div>
     <div class="splash-callout co-fabs" id="co-fabs"></div>
+    <!-- Gate-only coach marks (#539/#384): ring on the target, thin leader
+         line, small box beside its own control. Positioned at runtime. -->
+    <div class="splash-ring" id="cm-controls-ring" hidden></div>
+    <div class="splash-lead" id="cm-controls-lead" hidden></div>
+    <div class="splash-cm" id="cm-controls" hidden></div>
+    <div class="splash-ring" id="cm-menu-ring" hidden></div>
+    <div class="splash-lead" id="cm-menu-lead" hidden></div>
+    <div class="splash-cm" id="cm-menu" hidden></div>
+    <div class="splash-ring" id="cm-fabs-ring" hidden></div>
+    <div class="splash-lead" id="cm-fabs-lead" hidden></div>
+    <div class="splash-cm" id="cm-fabs" hidden></div>
     <div class="splash-panel">
-      <div class="splash-brand">
-        <span class="splash-mark" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.6"/><path d="M10 10l5-3.2"/>
-          </svg>
-        </span>
-        <h1 id="splash-name">Mesh-Hunter</h1>
+      <button type="button" id="splash-x" class="splash-x" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M5 5l10 10M15 5L5 15"/>
+        </svg>
+      </button>
+      <div class="splash-band">
+        <!-- The PWA icon (public/icon.svg) without its background tile: one
+             brand mark for the product (#539). -->
+        <svg width="44" height="44" viewBox="0 0 512 512" aria-hidden="true">
+          <polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="12" stroke-linejoin="round"/>
+          <g fill="none" stroke-width="15" stroke-linecap="round">
+            <path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/>
+            <path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/>
+            <path d="M300 200 A68 68 0 0 1 300 312" stroke="var(--ch-sig-warm)"/>
+            <path d="M212 200 A68 68 0 0 0 212 312" stroke="var(--ch-sig-warm)"/>
+          </g>
+          <g stroke="var(--ch-accent)" stroke-width="10" stroke-linecap="round">
+            <line x1="256" y1="128" x2="256" y2="196"/><line x1="256" y1="316" x2="256" y2="384"/>
+            <line x1="128" y1="256" x2="196" y2="256"/><line x1="316" y1="256" x2="384" y2="256"/>
+          </g>
+          <circle cx="256" cy="256" r="26" fill="var(--ch-sig-hot)"/>
+        </svg>
+        <h1 id="splash-name" class="splash-wordmark">Mesh-Hunter</h1>
+        <div class="splash-domain">mesh-hunter.eu</div>
       </div>
-      <p id="splash-tagline" class="splash-tagline"></p>
-      <ul id="splash-basics" class="splash-basics"></ul>
-      <!-- Short screens get the callout copy in the panel instead: below a
-           certain height the panel itself fills the space the floating boxes
-           would need, and a box shoved clear of it points at nothing (#316). -->
-      <ul id="splash-callout-list" class="splash-callout-list" hidden></ul>
-      <p id="splash-disclaimer" class="splash-disclaimer"></p>
-      <p id="splash-status" class="splash-status"></p>
-      <button type="button" id="splash-retry-gps" class="splash-retry" hidden>Retry location</button>
+      <div class="splash-body">
+        <div id="splash-rows" class="splash-rows"></div>
+        <div id="splash-ctas" class="splash-ctas">
+          <button type="button" id="connect-btn" class="splash-cta">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 6.2l6 7.6-3 2.4V3.8l3 2.4-6 7.6"/>
+            </svg>
+            <span>Connect companion</span>
+          </button>
+          <p id="splash-noble" class="splash-noble" hidden></p>
+          <div class="splash-secrow">
+            <a class="splash-sec" href="https://mesh-hunter.eu" target="_blank" rel="noopener">mesh-hunter.eu</a>
+            <a class="splash-sec" href="https://map.mesh-hunter.eu" target="_blank" rel="noopener">Analyser map</a>
+          </div>
+        </div>
+        <p id="splash-status" class="splash-status"></p>
+        <button type="button" id="splash-retry" class="splash-retry" hidden>Retry</button>
+        <!-- Tour-only fallback (#316): on a screen too cramped for the three
+             floating callouts, their copy moves into the panel instead. -->
+        <ul id="splash-callout-list" class="splash-callout-list" hidden></ul>
+        <p id="splash-disclaimer" class="splash-disclaimer"></p>
+      </div>
     </div>
     <button type="button" id="splash-close" class="splash-close" aria-label="Close" hidden>
       <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
         <path d="M5 5l10 10M15 5L5 15"/>
       </svg>
-    </button>
-    <button type="button" id="connect-btn" class="splash-connect">
-      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M7 6.2l6 7.6-3 2.4V3.8l3 2.4-6 7.6"/>
-      </svg>
-      <span>Connect to MeshCore companion</span>
     </button>
   </aside>
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>

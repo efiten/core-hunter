@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-splash-is-the-connect-block",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "A smaller start screen that guards the radio and the fix",
+    "body": "The start screen is now one small block: Bluetooth and GPS status, connect, or close it and browse your own captures. Three short hints point at the controls they mean."
+  },
+  {
     "id": "2026-08-26-status-tab",
     "date": "2026-08-26",
     "where": "app",
