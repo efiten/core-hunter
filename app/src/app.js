@@ -1354,9 +1354,9 @@ function buildSettingsSheet() {
           <button id="ss-acc-logout" type="button" hidden>Log out</button>
         </div>
         <form id="ss-acc-form" class="ss-acc-form" hidden>
-          <input id="ss-acc-username" type="text" placeholder="Username" autocomplete="username" />
-          <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" autocomplete="current-password" />
-          <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" autocomplete="email" hidden />
+          <input id="ss-acc-username" type="text" placeholder="Username" aria-label="Username" autocomplete="username" />
+          <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" aria-label="Password" autocomplete="current-password" />
+          <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" aria-label="Email, optional, for password reset only" autocomplete="email" hidden />
           <label id="ss-acc-remember-row" hidden><input id="ss-acc-remember" type="checkbox" /> Remember me</label>
           <div id="ss-acc-form-actions" class="ss-acc-form-actions">
             <button id="ss-acc-submit" class="ss-connect" type="submit">Submit</button>

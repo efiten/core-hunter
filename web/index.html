@@ -113,7 +113,7 @@
       </div>
     </span>
     <span class="ms-wrap">
-      <input id="f-sender" type="text" placeholder="sender id (prefix)" />
+      <input id="f-sender" type="text" placeholder="sender id (prefix)" aria-label="Sender id prefix" />
       <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">Select target ▾</button>
       <div id="sender-picker" class="tl-panel" hidden>
         <div class="tl-pinned-label">Top</div>
@@ -236,8 +236,8 @@
   <div id="login-modal" class="lc-modal" hidden>
     <form id="login-form" class="lc-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
       <h4 id="login-title">Log in</h4>
-      <input id="login-user" type="text" placeholder="Username" autocomplete="username" />
-      <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+      <input id="login-user" type="text" placeholder="Username" aria-label="Username" autocomplete="username" />
+      <input id="login-pass" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" />
       <label class="lc-remember"><input id="login-remember" type="checkbox" /> Remember me</label>
       <p id="login-error" class="lc-warn" hidden>Login failed.</p>
       <div class="lc-actions">
