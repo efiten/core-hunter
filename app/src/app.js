@@ -27,7 +27,7 @@ import { senderReadout } from './hudsender.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
-import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES } from './filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
 import { connectButton } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from './settings.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
@@ -1155,6 +1155,13 @@ function buildFilterSheet() {
           ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
         </div>
       </div>
+      <div class="fs-type-row" title="How far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">
+        <span class="fs-type-label">Sender id</span>
+        <div id="fs-idclass-chips" class="fs-type-chips">
+          <button class="fs-chip active" data-idclass="all">All</button>
+          ${SENDER_ID_CLASSES.map(c => `<button class="fs-chip" data-idclass="${c.value}">${c.label}</button>`).join('')}
+        </div>
+      </div>
       <div class="ss-ignore-section">
         <h3>Ignored senders</h3>
         <div id="ss-ignore-list"></div>
@@ -1186,34 +1193,36 @@ function buildFilterSheet() {
     syncWindowRow(); refreshFilterState()
   })
 
-  // Type chips — the "All" chip (default) means no type filter. Picking a
-  // specific type turns All off; clearing the last specific turns All back on.
-  el('fs-type-chips').addEventListener('click', (e) => {
-    const chip = e.target.closest('.fs-chip')
-    if (!chip) return
-    const chips = el('fs-type-chips')
-    const allChip = chips.querySelector('.fs-chip[data-type="all"]')
+  // Chip rows — the "All" chip (default) means no filter on that dimension.
+  // Picking a specific chip turns All off; clearing the last specific one turns
+  // All back on. Both rows behave that way, so the rule is written once (#475).
+  const wireChipRow = (hostId, attr, apply) => {
+    const chips = el(hostId)
+    chips.addEventListener('click', (e) => {
+      const chip = e.target.closest('.fs-chip')
+      if (!chip) return
+      const allChip = chips.querySelector(`.fs-chip[data-${attr}="all"]`)
 
-    if (chip === allChip) {
-      if (allChip.classList.contains('active')) return // already showing all — no-op
-      allChip.classList.add('active')
-      chips.querySelectorAll('.fs-chip:not([data-type="all"]).active').forEach(c => c.classList.remove('active'))
-    } else {
-      chip.classList.toggle('active')
-      allChip.classList.remove('active')
-    }
+      if (chip === allChip) {
+        if (allChip.classList.contains('active')) return // already showing all — no-op
+        allChip.classList.add('active')
+        chips.querySelectorAll(`.fs-chip:not([data-${attr}="all"]).active`).forEach(c => c.classList.remove('active'))
+      } else {
+        chip.classList.toggle('active')
+        allChip.classList.remove('active')
+      }
 
-    const selected = [...chips.querySelectorAll('.fs-chip.active')]
-      .map(c => c.dataset.type)
-      .filter(t => t !== 'all')
-    if (selected.length === 0) {
-      allChip.classList.add('active')   // nothing specific → fall back to All
-      state.filter.types = null
-    } else {
-      state.filter.types = new Set(selected)
-    }
-    refreshFilterState()
-  })
+      const selected = [...chips.querySelectorAll('.fs-chip.active')]
+        .map(c => c.dataset[attr])
+        .filter(v => v !== 'all')
+      // nothing specific → fall back to All
+      if (selected.length === 0) allChip.classList.add('active')
+      apply(selected.length === 0 ? null : new Set(selected))
+      refreshFilterState()
+    })
+  }
+  wireChipRow('fs-type-chips', 'type', (v) => { state.filter.types = v })
+  wireChipRow('fs-idclass-chips', 'idclass', (v) => { state.filter.idClasses = v })
 
   renderIgnoreList(el('ss-ignore-list'))
   el('ss-ignore-clear').addEventListener('click', () => {

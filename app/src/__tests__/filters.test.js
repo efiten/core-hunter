@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { PayloadType, getPayloadTypeName } from '@michaelhart/meshcore-decoder'
-import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel, FILTER_PACKET_TYPES } from '../filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel, FILTER_PACKET_TYPES, senderIdClass } from '../filters.js'
 import { undecodableReception } from '../meshpacket.js'
 
 const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true, hops: 0,
@@ -173,3 +173,58 @@ describe('makeFilter — receptions with no sender (#454)', () => {
   })
 })
 
+
+// Sender-id classes (#475). The bucket is the byte length of sender_id, which
+// reads as how far the sender can be identified at all. It exists because the
+// class that isolates a flood moved: those receptions used to have no sender,
+// so `unnamed` caught them; since #521 they carry a byte and nothing did.
+describe('senderIdClass', () => {
+  it('buckets by byte length, at every boundary', () => {
+    expect(senderIdClass({ sender_id: '77', sender_kind: 'path_hash' })).toBe('1b')
+    expect(senderIdClass({ sender_id: '4a', sender_kind: 'direct_hash' })).toBe('1b')
+    expect(senderIdClass({ sender_id: 'a2a2', sender_kind: 'relay' })).toBe('2b')
+    expect(senderIdClass({ sender_id: 'efef79', sender_kind: 'relay' })).toBe('3b')
+    expect(senderIdClass({ sender_id: '7b0e24700e0c0d3e', sender_kind: 'discover_pubkey' })).toBe('pubkey')
+    expect(senderIdClass({ sender_id: 'ab'.repeat(32), sender_kind: 'advert_pubkey' })).toBe('pubkey')
+  })
+
+  it('calls an absent sender unnamed, however it is absent', () => {
+    expect(senderIdClass({ sender_id: '', sender_kind: '' })).toBe('unnamed')
+    expect(senderIdClass({ sender_id: null })).toBe('unnamed')
+    expect(senderIdClass({})).toBe('unnamed')
+    expect(senderIdClass(null)).toBe('unnamed')
+  })
+
+  // The one bucket that is not a length. Its id is a decrypted display name,
+  // so measuring it would be meaningless -- and a 2-character channel name
+  // would otherwise land in the 1-byte class.
+  it('decides a channel by kind before it measures anything', () => {
+    expect(senderIdClass({ sender_id: 'ab', sender_kind: 'channel_name' })).toBe('channel')
+    expect(senderIdClass({ sender_id: 'Spammer', sender_kind: 'channel_name' })).toBe('channel')
+  })
+})
+
+describe('makeFilter — sender-id classes', () => {
+  const rec = (o) => ({ packet_type: 'Response', hops: 0, rx_at: '2026-08-26T10:00:00Z', ...o })
+  const NOW = Date.parse('2026-08-26T10:00:00Z')
+  const rows = [
+    rec({ sender_id: '77', sender_kind: 'path_hash' }),
+    rec({ sender_id: 'a2a2', sender_kind: 'relay' }),
+    rec({ sender_id: '', sender_kind: '' }),
+  ]
+  const keep = (opts) => rows.filter((r) => makeFilter({ ...DEFAULT_FILTER, windowMs: null, ...opts })(r, NOW))
+
+  it('passes everything when no class is chosen, like the type chips', () => {
+    expect(keep({}).length).toBe(3)
+  })
+  it('narrows to one class', () => {
+    expect(keep({ idClasses: new Set(['1b']) }).map((r) => r.sender_id)).toEqual(['77'])
+  })
+  it('unions several classes', () => {
+    expect(keep({ idClasses: new Set(['1b', 'unnamed']) }).length).toBe(2)
+  })
+  it('counts as a narrowed filter, so the button lights up', () => {
+    expect(isFilterActive({ ...DEFAULT_FILTER, idClasses: new Set(['1b']) })).toBe(true)
+    expect(isFilterActive({ ...DEFAULT_FILTER, idClasses: new Set() })).toBe(false)
+  })
+})

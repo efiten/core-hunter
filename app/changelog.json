@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-sender-id-class-chips",
+    "date": "2026-08-26",
+    "where": "both",
+    "title": "Filter by how well the sender can be identified",
+    "body": "A new row of chips next to Types: Unnamed, 1 byte, 2 bytes, 3 bytes, Pubkey and Channel. It sorts receptions by how far the sender can be pinned down at all, since a one-byte id is a guess between 256 nodes while a pubkey is unique. This is how you isolate a flood now. Those receptions used to carry no sender, so Sender unknown collected them; since they started showing the byte they heard, nothing did. On the hunt near Amsterdam that class held 88 percent of the window. Picking no chip means no filter, the same as the type chips, and the choice travels in the link you share."
+  },
+  {
     "id": "2026-08-26-picker-shows-resolved-names",
     "date": "2026-08-26",
     "where": "both",

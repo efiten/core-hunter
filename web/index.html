@@ -153,6 +153,17 @@
         </button>
       </div>
     <span id="f-types"></span>
+    <!-- Sender-id classes (#475): how far the sender can be identified. The
+         "1 byte" chip is what isolates a flood, since those receptions started
+         carrying a byte (#521) and stopped answering to Sender unknown.
+         Behind a toggle rather than inline: #bar wraps by content width, and a
+         sixth chip row costs ~350px, which is enough to push the walkthrough's
+         floating callouts into their inline fallback at 1280px. -->
+    <span id="f-idclass-wrap" class="ic-wrap">
+      <button id="f-idclass-toggle" type="button" aria-expanded="false" aria-haspopup="true" aria-controls="f-idclass"
+              title="Filter by how far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">Sender id</button>
+      <div id="f-idclass" class="tl-panel ic-panel" hidden></div>
+    </span>
     <label class="cs-cb" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet CLAIMS, not a measurement of distance."><input type="checkbox" id="f-direct" /> No path</label>
       <label class="cs-cb" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has."><input type="checkbox" id="f-unnamed" /> Sender unknown</label>
     <button id="layer-toggle">points</button>

@@ -1,5 +1,5 @@
 import { save } from './urlstate.js'
-import { FILTER_PACKET_TYPES } from './packettypes.js'
+import { FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './packettypes.js'
 import { senderParams } from './targetpicker.js'
 import { resolveTimeValue } from './timerange.js'
 
@@ -59,6 +59,36 @@ if (typeof document !== 'undefined') {
     typesHost.appendChild(b)
   }
 
+  // Sender-id class chips, wired exactly like the type row above: none active
+  // means no filter, and the values travel verbatim as ?idclass= for the server
+  // to bucket in SQL.
+  const classHost = document.getElementById('f-idclass')
+  for (const c of SENDER_ID_CLASSES) {
+    const b = document.createElement('button')
+    b.type = 'button'; b.className = 'f-chip'; b.dataset.idclass = c.value; b.textContent = c.label
+    b.addEventListener('click', () => {
+      b.classList.toggle('active')
+      save()
+      if (window.__refresh) window.__refresh()
+    })
+    classHost.appendChild(b)
+  }
+  // The chips live in a popover, so the toggle carries the only visible sign
+  // that this dimension is narrowed -- same job as #filter-pill-dot.
+  const syncClassToggle = () => {
+    const on = classHost.querySelectorAll('.f-chip.active').length > 0
+    document.getElementById('f-idclass-toggle').classList.toggle('active', on)
+  }
+  classHost.addEventListener('click', syncClassToggle)
+  window.__syncIdClassToggle = syncClassToggle
+  window.currentIdClasses = () =>
+    [...classHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.idclass).join(',')
+  window.setIdClasses = (v) => {
+    const want = new Set(String(v || '').split(',').filter(Boolean))
+    for (const b of classHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.idclass))
+    syncClassToggle()
+  }
+
   // getters/setter used by currentFilters and the urlstate registration (map.js).
   window.currentTypes = () =>
     [...typesHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.type).join(',')
@@ -106,6 +136,7 @@ if (typeof document !== 'undefined') {
     from: resolveTimeValue(document.getElementById('f-from').value, Date.now()),
     to: resolveTimeValue(document.getElementById('f-to').value, Date.now()),
     types: window.currentTypes(),
+    idclass: window.currentIdClasses(),
     // "No path" = zero path hashes (#138 semantics). Named for what it reads
     // rather than for what it was hoped to mean: the sender writes the path, so
     // this is the packet's own claim and not a measurement of distance. An

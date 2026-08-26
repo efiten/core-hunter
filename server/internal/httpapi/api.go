@@ -73,6 +73,17 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	if ig := strings.TrimSpace(q.Get("ignore")); ig != "" {
 		f.Ignore = append(f.Ignore, strings.Split(ig, ",")...)
 	}
+	// ?idclass=a,b filters on sender-id class (#475), same "none means all"
+	// semantics as ?types=. Unknown values are dropped rather than rejected: a
+	// stale bookmark should lose a chip, not the whole request.
+	if cs := strings.TrimSpace(q.Get("idclass")); cs != "" {
+		for _, c := range strings.Split(cs, ",") {
+			switch c = strings.TrimSpace(c); c {
+			case "unnamed", "1b", "2b", "3b", "pubkey", "channel":
+				f.SenderClasses = append(f.SenderClasses, c)
+			}
+		}
+	}
 	if n, err := strconv.Atoi(q.Get("limit")); err == nil { f.Limit = n }
 	if n, err := strconv.Atoi(q.Get("offset")); err == nil { f.Offset = n }
 	// ?hops=<n> filters on exact hop count (direct-only = hops=0, #142);

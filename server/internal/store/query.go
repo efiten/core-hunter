@@ -55,8 +55,16 @@ type Filter struct {
 	// does not exist. Three such singletons, at -34 dBm, sat 9.4 km from every
 	// other clue in that hunt and would have dragged an estimate with them.
 	OriginOnly bool
-	Limit      int
-	Offset     int
+	// SenderClasses narrows to one or more sender-id classes (#475). Empty means
+	// no filter, matching how the packet-type chips behave.
+	//
+	// The class is the byte length of sender_id, which reads directly as how far
+	// the sender can be identified: one byte is 1 in 256, a pubkey is unique.
+	// It is the axis that isolates a flood now that those receptions carry a
+	// byte instead of nothing (#521) and so no longer answer to NoSender.
+	SenderClasses []string
+	Limit         int
+	Offset        int
 }
 
 type Point struct {
@@ -105,6 +113,26 @@ func (f Filter) where() (string, []any) {
 	}
 	if f.NoSender {
 		conds = append(conds, "(sender_id IS NULL OR sender_id = '')")
+	}
+	// Sender-id classes (#475). Mirrors senderIdClass() in app/src/filters.js
+	// and web/packettypes.js -- the bucket is the byte length of sender_id, and
+	// channel is decided by kind before anything is measured, exactly as there.
+	// The two must agree bucket for bucket: the app filters its own records, the
+	// map asks for these rows, and a reception that lands in different chips on
+	// the two surfaces is worse than no chip at all.
+	if len(f.SenderClasses) > 0 {
+		ph := make([]string, len(f.SenderClasses))
+		for i, c := range f.SenderClasses {
+			ph[i] = "?"
+			args = append(args, c)
+		}
+		conds = append(conds, `(CASE
+			WHEN sender_kind = 'channel_name' THEN 'channel'
+			WHEN sender_id IS NULL OR sender_id = '' THEN 'unnamed'
+			WHEN length(sender_id) = 2 THEN '1b'
+			WHEN length(sender_id) = 4 THEN '2b'
+			WHEN length(sender_id) = 6 THEN '3b'
+			ELSE 'pubkey' END) IN (`+strings.Join(ph, ",")+`)`)
 	}
 	if f.Message != "" {
 		conds = append(conds, "message_id = ?")

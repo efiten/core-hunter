@@ -190,3 +190,80 @@ func TestHunterOrdinals(t *testing.T) {
 	if err != nil { t.Fatalf("ordinals: %v", err) }
 	if ord["h1"] != 1 || ord["h2"] != 2 { t.Fatalf("ordinals by first appearance wrong: %+v", ord) }
 }
+
+// Sender-id classes (#475). Every bucket gets a row, so a CASE arm that never
+// fires shows up as a wrong count rather than passing unnoticed, and the
+// boundaries between 2/4/6 hex are all exercised. The values must match
+// senderIdClass() in app/src/filters.js and web/packettypes.js.
+func seedClasses(t *testing.T) *Store {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	base := Reception{HunterPubkey: "h1", HunterName: "A", RSSI: -70, Raw: "00", Lat: 51.0, Lon: 4.0, PacketType: "Response"}
+	rows := []Reception{
+		{SenderID: "", SenderKind: "", RxAt: "2026-08-26T10:00:00Z"},                        // unnamed
+		{SenderID: "77", SenderKind: "path_hash", RxAt: "2026-08-26T10:01:00Z"},             // 1b
+		{SenderID: "4a", SenderKind: "direct_hash", RxAt: "2026-08-26T10:02:00Z"},           // 1b, other kind
+		{SenderID: "a2a2", SenderKind: "relay", RxAt: "2026-08-26T10:03:00Z"},               // 2b
+		{SenderID: "efef79", SenderKind: "relay", RxAt: "2026-08-26T10:04:00Z"},             // 3b
+		{SenderID: "7b0e24700e0c0d3e", SenderKind: "discover_pubkey", RxAt: "2026-08-26T10:05:00Z"}, // 8B -> pubkey
+		{SenderID: "ab", SenderKind: "channel_name", RxAt: "2026-08-26T10:06:00Z"},          // kind wins over length
+	}
+	for _, r := range rows {
+		full := base
+		full.SenderID, full.SenderKind, full.RxAt = r.SenderID, r.SenderKind, r.RxAt
+		if err := st.Insert(full); err != nil {
+			t.Fatalf("insert: %v", err)
+		}
+	}
+	return st
+}
+
+func TestQueryPointsSenderClassBuckets(t *testing.T) {
+	st := seedClasses(t)
+	defer st.Close()
+	for _, tc := range []struct {
+		classes []string
+		want    int
+		label   string
+	}{
+		{nil, 7, "no classes means no filter, exactly like the type chips"},
+		{[]string{"unnamed"}, 1, "an empty sender_id"},
+		{[]string{"1b"}, 2, "both kinds that carry a 1-byte id, which is the flood class"},
+		{[]string{"2b"}, 1, "a 2-byte path hash"},
+		{[]string{"3b"}, 1, "a 3-byte path hash"},
+		{[]string{"pubkey"}, 1, "8 bytes and up folds into pubkey"},
+		{[]string{"channel"}, 1, "decided by kind before length, though its id is 2 hex"},
+		{[]string{"1b", "2b"}, 3, "several chips are a union"},
+	} {
+		got, _, err := st.QueryPoints(Filter{SenderClasses: tc.classes, Limit: 100})
+		if err != nil {
+			t.Fatalf("%s: query: %v", tc.label, err)
+		}
+		if len(got) != tc.want {
+			ids := []string{}
+			for _, p := range got {
+				ids = append(ids, p.SenderID)
+			}
+			t.Fatalf("%s: classes %v got %d rows %v, want %d", tc.label, tc.classes, len(got), ids, tc.want)
+		}
+	}
+}
+
+// A channel row whose id is 2 hex is the case that separates "bucket by kind
+// first" from "bucket by length first". Without it the channel arm could sit
+// anywhere in the CASE and still pass.
+func TestQueryPointsChannelIsNotBucketedByLength(t *testing.T) {
+	st := seedClasses(t)
+	defer st.Close()
+	got, _, err := st.QueryPoints(Filter{SenderClasses: []string{"1b"}, Limit: 100})
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	for _, p := range got {
+		if p.SenderKind == "channel_name" {
+			t.Fatalf("a channel row was bucketed by its id length: %+v", p)
+		}
+	}
+}
