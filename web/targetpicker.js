@@ -331,14 +331,29 @@ export function targetChipLabel(selectedIds, { rows = [], nameOf } = {}) {
   for (const rec of rows || []) {
     const ids = rowIds(rec).map((i) => String(i).toLowerCase())
     if (!ids.some((i) => sel.has(i))) continue
-    nodes.push({ id: ids[0], label: rec.sender_label ? String(rec.sender_label) : '' })
+    // Same guard targetParts makes above, for the same reason and from the same
+    // helper: direct_hash and path_hash carry the 1-byte hash AS their label
+    // (#521), so the label branch would print "77" indistinguishably from a
+    // resolved short name. Marked instead, and the resolver is not consulted
+    // either: there is nothing to resolve, and a guess would put one name on a
+    // byte 255 other nodes share. The button and the row have to agree about
+    // the same node, and the row is the one a hunter reads first.
+    const hashed = isHashIdKind(rec.sender_kind)
+    nodes.push({
+      id: ids[0],
+      label: hashed ? '' : (rec.sender_label ? String(rec.sender_label) : ''),
+      hashed,
+    })
     for (const i of ids) claimed.add(i)
   }
-  for (const id of sel) if (!claimed.has(id)) nodes.push({ id, label: '' })
+  for (const id of sel) if (!claimed.has(id)) nodes.push({ id, label: '', hashed: false })
   const count = nodes.length
-  const name = count === 1
-    ? (nodes[0].label || (nameOf && nameOf(nodes[0].id)) || idPrefix(nodes[0].id))
-    : `${count} targets`
+  const one = nodes[0]
+  const name = count !== 1
+    ? `${count} targets`
+    : one.hashed
+      ? `#${idPrefix(one.id)}`
+      : (one.label || (nameOf && nameOf(one.id)) || idPrefix(one.id))
   return { text: '⌖ ' + name, title: name, count }
 }
 

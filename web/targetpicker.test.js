@@ -474,3 +474,36 @@ describe('targetChipLabel — what the picker button says', () => {
     expect(targetChipLabel(undefined, {}).text).toBe('Select target')
   })
 })
+
+// #499 review: the button and the row have to agree about the same node. Two
+// kinds carry a 1-byte hash AS their label (direct_hash, and path_hash since
+// #521), so taking sender_label first rendered the byte as a name on the
+// button while targetParts marked it with a # in the row right beside it.
+describe('targetChipLabel — a 1-byte hash is never a name', () => {
+  const hashRow = (kind) => ({ sender_id: '77', sender_label: '77', sender_kind: kind, merged_ids: ['77'] })
+
+  for (const kind of ['direct_hash', 'path_hash']) {
+    it(`marks a ${kind} the way the row does, rather than naming it`, () => {
+      const rows = [hashRow(kind)]
+      const chip = targetChipLabel(['77'], { rows })
+      // The row's own rendering is the reference: whatever the list says about
+      // this node, the button says the same thing.
+      expect(targetParts(rows[0]).primary).toBe('#77')
+      expect(chip.text).toBe('⌖ #77')
+      expect(chip.title).toBe('#77')
+    })
+  }
+
+  it('still names a kind whose label is a real name', () => {
+    const rows = [{ sender_id: 'aabb', sender_label: 'KH-01', sender_kind: 'advert_pubkey', merged_ids: ['aabb'] }]
+    expect(targetChipLabel(['aabb'], { rows }).text).toBe('⌖ KH-01')
+  })
+
+  // The resolver is not consulted for these: there is nothing to resolve, and
+  // asking would put a guessed name on a byte that 255 other nodes share.
+  it('does not take a resolved name for a hash id either', () => {
+    const rows = [hashRow('path_hash')]
+    const out = targetChipLabel(['77'], { rows, nameOf: () => 'should never be used' })
+    expect(out.text).toBe('⌖ #77')
+  })
+})

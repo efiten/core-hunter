@@ -339,3 +339,25 @@ test('a long node name clips instead of rewrapping the filter bar', async ({ pag
   expect(await btn.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true)
   await expect(btn).toHaveAttribute('title', 'Repeater-Kortrijk-Noord')
 })
+
+// #499 review: the row and the button must agree. A 1-byte hash is carried as
+// its own label, so the button used to name it while the row beside it marked
+// it with a #. Both surfaces in one test, because the failure was that they
+// disagreed.
+test('a 1-byte hash reads the same on the row and on the button', async ({ page }) => {
+  const HASH = { ...A, sender_id: '77', sender_label: '77', sender_kind: 'path_hash' }
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [HASH] } }))
+  // Nothing to resolve on a byte: if the picker asks anyway, the answer must
+  // not reach the button.
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { prefix: '77', name: 'should never be used', ambiguous: false } }))
+  await page.goto('/?mode=points')
+
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('#tp-list')).toContainText('#77')
+
+  await page.locator('#tp-list .tl-row').first().click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#sp-toggle')).toHaveText('⌖ #77 ▾')
+  await expect(page.locator('#sp-toggle')).not.toContainText('should never be used')
+})
