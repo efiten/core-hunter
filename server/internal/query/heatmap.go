@@ -11,6 +11,12 @@ type FeatureCollection struct {
 	Type      string    `json:"type"`
 	Features  []Feature `json:"features"`
 	Truncated bool      `json:"truncated,omitempty"`
+	// The oldest reception actually in this answer, set only when Truncated.
+	// QueryPoints orders rx_at DESC, so a truncated set is the most RECENT n --
+	// which makes the honest thing to report a date rather than a warning. The
+	// client says "since X" instead of "(capped)", because the map really does
+	// cover everything from here to now and a reader can act on that (#440).
+	CoversFrom string `json:"covers_from,omitempty"`
 }
 type Feature struct {
 	Type       string  `json:"type"`

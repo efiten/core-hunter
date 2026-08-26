@@ -228,3 +228,31 @@ test('new receptions appear on the map without touching it', async ({ page }) =>
   points = [pt(0), pt(1), pt(2), pt(3), pt(4), pt(5), pt(6), pt(7)]
   await expect(status).toHaveText('8 points', { timeout: 25000 })
 })
+
+// #440 follow-up: "N cells (capped)" under a range button reading "All time" is
+// a contradiction the reader cannot resolve. The truncation is the most RECENT
+// n receptions, so the status line reports the date it reaches back to instead,
+// and the mechanism lives in the title where there is room for it.
+test('a truncated heatmap reports the date it reaches back to', async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/heatmap*', (r) => r.fulfill({
+    json: {
+      type: 'FeatureCollection',
+      truncated: true,
+      covers_from: '2026-08-12T09:14:00Z',
+      features: [{
+        type: 'Feature',
+        properties: { cell: '10:1:1', count: 3, best_rssi: -80 },
+        geometry: { type: 'Polygon', coordinates: [[[4, 51], [4.01, 51], [4.01, 51.01], [4, 51.01], [4, 51]]] },
+      }],
+    },
+  }))
+  await page.goto('/?mode=hex')
+  const status = page.locator('#status')
+  await expect(status).toContainText('since', { timeout: 10000 })
+  // The vague warning is what this replaces, so its absence is the assertion.
+  await expect(status).not.toContainText('(capped)')
+  await expect(status).toHaveAttribute('title', /50,000 receptions/)
+})

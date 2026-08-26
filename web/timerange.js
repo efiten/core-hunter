@@ -222,6 +222,50 @@ export function rangeIsLive(from, to, nowMs = Date.now()) {
   return ms >= nowMs
 }
 
+// oldestRxAt is the earliest rx_at in a set of points. The points layer already
+// holds the rows, so its date needs no extra field from the server — but the
+// paged fetch concatenates pages, so this scans rather than reading the last
+// element: "it happens to arrive sorted" is not something a date on screen
+// should rest on.
+export function oldestRxAt(points) {
+  let oldest = ''
+  for (const p of points || []) {
+    const t = p && p.rx_at ? String(p.rx_at) : ''
+    if (t && (!oldest || t < oldest)) oldest = t
+  }
+  return oldest
+}
+
+// coverageLabel is what the status line says after a layer has loaded, and it
+// exists because "N cells (capped)" under a range button reading "All time" is
+// a contradiction the reader cannot resolve.
+//
+// The truncation is deterministic, not arbitrary: QueryPoints is
+// `ORDER BY rx_at DESC LIMIT ?`, so what comes back is the most RECENT n. That
+// makes the honest statement a date rather than a warning — the map really does
+// cover everything from `coversFrom` to now, and saying so tells the reader
+// something useful instead of telling them not to trust what they see.
+//
+// Untruncated answers say nothing extra: the range button already stated the
+// span, and repeating it would make the common case noisier to fix the rare one.
+export function coverageLabel(count, unit, { truncated = false, coversFrom = '' } = {}, nowMs = Date.now()) {
+  const head = `${count} ${unit}`
+  if (!truncated) return head
+  const since = shortAbsolute(coversFrom, nowMs)
+  // A truncated answer with no date is still better served by the old warning
+  // than by a blank claim: something is missing and we cannot say from when.
+  return since ? `${head} · since ${since}` : `${head} (capped)`
+}
+
+// The long form, for the title attribute: the status line has no room for it
+// and a reader who wants the mechanism should not have to guess it.
+export function coverageTitle(limit, { truncated = false, coversFrom = '' } = {}, nowMs = Date.now()) {
+  if (!truncated) return ''
+  const since = shortAbsolute(coversFrom, nowMs)
+  const head = `Showing the most recent ${limit.toLocaleString('en')} receptions`
+  return since ? `${head}, from ${since} onwards. Older ones are not in this view.` : `${head}.`
+}
+
 // absoluteShareUrl rewrites the current URL's from/to to resolved timestamps,
 // so the link stays fixed instead of following now for whoever opens it — the
 // escape hatch that pairs with storing tokens by default.
