@@ -33,7 +33,7 @@ import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from './settings.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
-import { effectivePlotOffset, rssiToPct } from './signal.js'
+import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
 import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
@@ -206,12 +206,17 @@ const el = (id) => document.getElementById(id)
 // ---------------------------------------------------------------------------
 
 function updateHud(rec) {
-  // Hero: RSSI (big green readout)
+  // Hero: RSSI, in its thermal tier colour — the same tier the map paints
+  // this reception with, so the number and the dot speak one language and
+  // the readout replaces the colour-bar legend the HUD used to carry (#539).
   const rssiEl = el('hud-rssi')
+  const offset = effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb)
   if (rec.rssi != null) {
     rssiEl.innerHTML = rec.rssi + '<span class="unit"> dBm</span>'
+    rssiEl.style.color = getComputedStyle(document.documentElement).getPropertyValue(tierColorVar(rssiTier(rec.rssi, offset))).trim()
   } else {
     rssiEl.textContent = '—'
+    rssiEl.style.color = ''
   }
 
   // Secondary: SNR (small muted)
@@ -223,8 +228,8 @@ function updateHud(rec) {
   senderEl.textContent = who.text
   senderEl.classList.toggle('via', who.viaRelay)
 
-  // Thermal bar marker — continuous position from RSSI (calibration + attenuator)
-  const offset = effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb)
+  // Thermal bar marker — continuous position from RSSI (calibration +
+  // attenuator). The bar itself only shows during the splash gate (#539).
   const pct = rssiToPct(rec.rssi, offset)
   el('hud-bar-marker').style.left = pct + '%'
 }
@@ -473,6 +478,11 @@ function refreshSplash() {
   if (reopened) positionCallouts()
   else for (const id of ['co-controls', 'co-menu', 'co-fabs']) { const c = el(id); if (c) c.hidden = true }
   const gate = visible && !reopened
+  // The colour-bar legend belongs to the gate alone (#539): it introduces
+  // hot = strong = close while you wait, and leaves with the splash. The
+  // tier colour lives on in the HUD's RSSI readout.
+  el('hud-bar').hidden = !gate
+  el('hud-bar-labels').hidden = !gate
   for (const m of COACH_MARKS) {
     el(m.id).hidden = !gate
     el(m.id + '-ring').hidden = !gate
@@ -1197,8 +1207,9 @@ async function connectAll() {
 // during "Connecting…" and reappear on disconnect.
 function setHuntingChrome(connected) {
   el('connect-btn').hidden = connected
-  el('hud-bar').hidden = connected
-  el('hud-bar-labels').hidden = connected
+  // The colour bar is no longer part of the hunting HUD (#539): it shows only
+  // while the splash gate is up (refreshSplash), where it introduces the
+  // colour language; afterwards the RSSI readout carries the tier colour.
 }
 
 // What the Account block explains per state (#539). Guest copy is the first

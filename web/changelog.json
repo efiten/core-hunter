@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-rssi-in-thermal-colour",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "The RSSI readout carries the heat colour",
+    "body": "The big RSSI number now takes the same colour as its dot on the map, and the colour-bar legend only appears on the start screen."
+  },
+  {
     "id": "2026-08-26-app-node-labels-declutter",
     "date": "2026-08-26",
     "where": "app",
