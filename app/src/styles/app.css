@@ -73,9 +73,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); cursor: pointer; }
 /* Absolute so the label never shifts the ▲ off its anchored coordinate. The
    layer is opt-in, so names are shown on the map while it is on (#197). */
+.np-label, .np-label-probe { font-size: 11px; line-height: 1; white-space: nowrap; }
 .np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
-  margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
+  margin-left: 4px;
   color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
+/* The declutter's measuring probe (#539): same font box as .np-label but
+   never the class itself, so nothing counting labels counts the probe. */
+.np-label-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
 .np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg);
   background: var(--ch-sig-hot); cursor: pointer; position: relative; }
 /* Bigger touch boxes for the node markers (#539): ▲ measures 14x16 and ● 12px.

@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-app-node-labels-declutter",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "Node names stop covering the map",
+    "body": "The app now draws a node's name only where it fits without covering another, the way the analyser map already does. Zoom in and more names appear; every name stays in its popup."
+  },
+  {
     "id": "2026-08-26-one-brand-mark",
     "date": "2026-08-26",
     "where": "both",

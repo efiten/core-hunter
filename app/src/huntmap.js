@@ -2,6 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
+import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
@@ -93,6 +94,11 @@ export function createHuntMap(containerId) {
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
   let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
+  // One probe per map for the label declutter (#539/#425): widths are
+  // measured inside the map container, where .np-label's font actually
+  // applies (a body probe reads the page's font and measures wrong).
+  let npMeasure = null
+  const labelMeasurer = () => npMeasure || (npMeasure = createLabelMeasurer(map.getContainer()))
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
@@ -470,10 +476,31 @@ export function createHuntMap(containerId) {
       draw.push({ n, est, p })
     }
 
+    // Screen-space label declutter (#539, the map's #425 taken verbatim):
+    // walk the nodes in a stable id order and keep a name only where its
+    // measured box is clear of the ones already kept. The ▲ always stays and
+    // the name is still in the popup. Recomputed per draw, so zooming in
+    // separates the projected points and names come forward on their own —
+    // and at a steep 3D pitch map.project answers through the tilted camera,
+    // so the boxes are where the labels actually paint.
+    const labelled = new Set(unclutteredLabels(
+      [...draw]
+        .sort((a, b) => (a.n.pubkey < b.n.pubkey ? -1 : a.n.pubkey > b.n.pubkey ? 1 : 0))
+        .map((d) => {
+          const pt = map.project([d.n.lon, d.n.lat])
+          return { id: d.n.pubkey, x: pt.x, y: pt.y, label: d.n.name || d.n.pubkey }
+        }),
+      { measure: labelMeasurer() },
+    ))
+
     // Compute signature of what would be drawn — if unchanged, skip rebuild to preserve open popups
     const sig = draw.map((d) => [d.n.pubkey, d.n.lat, d.n.lon, d.p.kind, Math.round(d.p.driftM ?? -1),
       Math.round(d.p.circle ? d.p.circle.radiusM : -1),
       d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+      // The label set depends on the projection, not the rows: a zoom that
+      // changes no node still changes which names fit (#539). Without it in
+      // the signature the early return would freeze the previous zoom's set.
+      + '#' + [...labelled].join(',')
     if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
     nodePosSig = sig
 
@@ -483,8 +510,9 @@ export function createHuntMap(containerId) {
     for (const { n, est, p } of draw) {
       const color = driftColor(p)
       // Only the ▲ is labelled — the ● belongs to the same node, so naming
-      // both would just double the text for one target.
-      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), n.name || n.pubkey)
+      // both would just double the text for one target — and only where the
+      // declutter kept the name (#539).
+      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null)
       if (!est || !est.centroid) continue
       addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], nodePopup(n, p, est))
       lines.push({ type: 'Feature', properties: { color },
