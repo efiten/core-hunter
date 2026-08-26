@@ -55,8 +55,8 @@ describe('senderList', () => {
 
 // #268: prefix compatibility is not transitive, so it must never be closed over.
 // A short relay id can be a prefix of two different full pubkeys; treating that
-// as evidence merges two physically distinct nodes into one target, and Locate
-// then trilaterates RSSI samples from both transmitters as if they were one.
+// as evidence merges two physically distinct nodes into one target, and the
+// hunt then reads RSSI samples from both transmitters as if they were one.
 // The rule is: a prefix attaches to at most ONE full-pubkey anchor, and a prefix
 // matching two or more anchors is evidence AGAINST merging, not for it — the
 // same meaning the resolver's own `ambiguous` flag carries.
@@ -171,7 +171,7 @@ describe('dedupeSenders prefix-aware merging (#267)', () => {
     // The refusal has to count by prefix alone. Gating the count on the name
     // makes it collapse to one match here -- and the hop is equally likely to
     // have come from the other node, so attaching it feeds one node's samples
-    // into the other's Locate estimate.
+    // into the other's estimate.
     const out = senderList([
       rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Repeater-Zuid' }),
       rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2ffff'), sender_label: 'Repeater-Noord' }),
@@ -330,7 +330,7 @@ describe('targetParts', () => {
 // #267/#268 blocker 4: a selection captured at tap time is a snapshot of the
 // ids a node was known by THEN. When that node is later heard under a new
 // variant — its first DISCOVER_RESP prefix, say — those receptions fall
-// outside the stored set and vanish from the map and Locate, while the row
+// outside the stored set and vanish from the map, while the row
 // still renders checked. Silently dropping receptions for the node you are
 // actively hunting is the failure a user is least likely to notice, so the
 // selection has to name the NODE and be expanded to its current ids on use.

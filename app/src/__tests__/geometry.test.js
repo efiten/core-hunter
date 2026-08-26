@@ -1,23 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { haversineM, rssiWeight, weightedCentroid, toLocatePoints } from '../locate.js'
-
-describe('toLocatePoints', () => {
-  it('maps records to {lat,lon,rssi} and drops those missing coordinates', () => {
-    const recs = [
-      { lat: 51, lon: 4, rssi: -70 },
-      { lat: null, lon: 4, rssi: -80 },
-      { lat: 52, lon: undefined, rssi: -90 },
-      { lat: 53, lon: 5, rssi: -60 },
-    ]
-    expect(toLocatePoints(recs)).toEqual([
-      { lat: 51, lon: 4, rssi: -70 },
-      { lat: 53, lon: 5, rssi: -60 },
-    ])
-  })
-  it('is empty for an empty input', () => {
-    expect(toLocatePoints([])).toEqual([])
-  })
-})
+import { haversineM, rssiWeight, weightedCentroid } from '../geometry.js'
 
 describe('haversineM', () => {
   it('is ~0 for identical points', () => {
@@ -72,7 +54,7 @@ describe('weightedCentroid', () => {
   })
 })
 
-import { rejectOutliers } from '../locate.js'
+import { rejectOutliers } from '../geometry.js'
 
 
 describe('rejectOutliers', () => {
@@ -102,8 +84,8 @@ describe('rejectOutliers', () => {
   })
 })
 
-import { densityGrid } from '../locate.js'
-import { geometryStats } from '../locate.js'
+import { densityGrid } from '../geometry.js'
+import { geometryStats } from '../geometry.js'
 
 describe('geometryStats', () => {
   const centroid = { lat: 51, lon: 4 }
@@ -252,46 +234,7 @@ describe('densityGrid', () => {
   })
 })
 
-import { locate } from '../locate.js'
-
-describe('locate', () => {
-  const pts = [
-    { lat: 51.000, lon: 4.000, rssi: -60 },
-    { lat: 51.002, lon: 4.001, rssi: -72 },
-    { lat: 50.999, lon: 3.998, rssi: -75 },
-    { lat: 51.001, lon: 4.003, rssi: -80 },
-  ]
-
-  it('produces a centroid, heatmap and stats for enough inliers', () => {
-    const res = locate(pts)
-    expect(res.centroid).toHaveProperty('lat')
-    expect(res.heatmap.grid.length).toBeGreaterThan(0)
-    expect(res.stats.n).toBe(4)
-    expect(res.outliers).toHaveLength(0)
-  })
-
-  it('exposes the strongest-RSSI inlier (heard-loudest sample)', () => {
-    const res = locate(pts)
-    expect(res.strongest.rssi).toBe(-60)
-    expect(res.strongest.lat).toBeCloseTo(51.0, 6)
-  })
-
-  it('separates a far stray into outliers and excludes it from the centroid', () => {
-    const stray = { lat: 52.0, lon: 5.0, rssi: -95 }
-    const res = locate([...pts, stray])
-    expect(res.outliers).toContainEqual(stray)
-    expect(res.centroid.lat).toBeLessThan(51.01) // stray did not drag it north
-  })
-
-  it('returns null centroid/heatmap when too few inliers', () => {
-    const res = locate(pts.slice(0, 2))
-    expect(res.centroid).toBeNull()
-    expect(res.heatmap).toBeNull()
-    expect(res.stats.searchRadiusM).toBeNull()
-  })
-})
-
-import { dedupeSpatial } from '../locate.js'
+import { dedupeSpatial } from '../geometry.js'
 
 describe('dedupeSpatial', () => {
   it('collapses co-located points to one, keeping the strongest RSSI', () => {
@@ -330,21 +273,5 @@ describe('rejectOutliers — 20 km reception-region floor', () => {
   it('flags a point 25 km out (a genuine far collision)', () => {
     const far25 = { lat: 51.225, lon: 4.0, rssi: -95 } // ~25 km north
     expect(rejectOutliers([...cluster, far25]).outliers).toEqual([far25])
-  })
-})
-
-describe('locate — dedupe stops a parked hunter from dominating', () => {
-  it('collapses a stationary stack and keeps an honest (non-tiny) search radius', () => {
-    // Equal RSSI isolates dedupe's job (stopping 30 co-located samples from
-    // dominating by count) from the power-weighting's strength preference.
-    const parked = Array.from({ length: 30 }, () => ({ lat: 51.0, lon: 4.0, rssi: -70 }))
-    const drive = [
-      { lat: 51.02, lon: 4.00, rssi: -70 },
-      { lat: 50.98, lon: 4.00, rssi: -70 },
-      { lat: 51.00, lon: 4.03, rssi: -70 },
-    ]
-    const res = locate([...parked, ...drive])
-    expect(res.inliers).toHaveLength(4) // 30 parked -> 1, + 3 drive
-    expect(res.stats.searchRadiusM).toBeGreaterThan(500) // no collapse to 1-3 m
   })
 })

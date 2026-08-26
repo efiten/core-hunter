@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-locate-lives-on-the-map",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "Locate moved to the analyser map",
+    "body": "The app no longer has the Locate overlay; the analyser map still does. The top bar now fits on one row."
+  },
+  {
     "id": "2026-08-26-told-when-verified",
     "date": "2026-08-26",
     "where": "map",

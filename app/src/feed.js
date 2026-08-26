@@ -31,7 +31,7 @@ function sameResolvedName(a, b) {
 // transitive relation, so it must not be closed over: a 2-byte relay id can be
 // a prefix of two different full pubkeys, and a connected-components pass would
 // then place both of those nodes in one cluster. Selecting that row feeds two
-// physically separate transmitters to Locate as a single target, which for a
+// physically separate transmitters into one target's map view, which for a
 // direction-finding tool is the wrong answer in the worst possible place.
 //
 // So each prefix attaches to at most ONE anchor — a full 64-hex pubkey with a
@@ -183,7 +183,7 @@ export function targetParts(rec) {
 // A selection stored as the ids a row happened to carry at tap time is a
 // snapshot: when the node is later heard under a new variant — its first
 // DISCOVER_RESP prefix, say — that reception falls outside the stored set and
-// disappears from the map and Locate, while the row still renders checked.
+// disappears from the map, while the row still renders checked.
 // Silently dropping receptions for the node being hunted is the failure a user
 // is least likely to notice.
 //

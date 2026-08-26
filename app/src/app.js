@@ -304,12 +304,9 @@ function stopBatteryPoll() {
 
 // Light the filter pill's badge when the view is narrowed — either the filter
 // differs from the default or the ignore-list (also a display filter) is
-// non-empty. Also re-arms the locate readout glance (resetLocateFade) so the
-// estimate re-shows whenever the user changes what they're looking at. Called
-// wherever state.filter or state.ignore changes.
+// non-empty. Called wherever state.filter or state.ignore changes.
 function refreshFilterState() {
   el('filter-pill').classList.toggle('active', isFilterActive(activeFilter()) || state.ignore.size > 0)
-  resetLocateFade()
 }
 
 // Reflect the topbar popovers' open state on their triggers (aria-expanded
@@ -325,55 +322,6 @@ function syncPopoverTriggers() {
 // state.attenuatorDb or state.unseenChangelog changes.
 function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
-}
-
-// Locate info readout — driven by huntmap.js's onLocate callback, fired every
-// render tick with the single-hunter locate() result for the isolated sender
-// (or null when nothing is isolated). Auto-fades 2s after first becoming
-// visible for this isolation and stays hidden until re-triggered (see
-// resetLocateFade(), called from the isolate-sender handler below) — it's a
-// glance, not a permanent overlay blocking the map.
-const LOCATE_FADE_MS = 2000
-let locateFadeTimer = null
-let locateAllowShow = false
-function resetLocateFade() {
-  locateAllowShow = true
-  if (locateFadeTimer) { clearTimeout(locateFadeTimer); locateFadeTimer = null }
-}
-function updateLocateInfo(res) {
-  const box = el('locate-info')
-  if (!res) {
-    box.hidden = true
-    if (locateFadeTimer) { clearTimeout(locateFadeTimer); locateFadeTimer = null }
-    return
-  }
-  if (!locateAllowShow) return // already auto-faded this isolation — stays hidden
-  box.hidden = false
-  if (!locateFadeTimer) {
-    locateFadeTimer = setTimeout(() => {
-      box.hidden = true
-      locateAllowShow = false
-      locateFadeTimer = null
-    }, LOCATE_FADE_MS)
-  }
-  // AGENTS.md §7: any output implying a target's location must state it is
-  // inferred from radio measurements, not GPS-tracked. Reuse the splash wording.
-  const disclaimer = `<div class="lc-muted lc-disclaimer">${SPLASH_DISCLAIMER}</div>`
-  if (!res.centroid) {
-    box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+, walk/drive around a bit).</div>`
-      + disclaimer
-    return
-  }
-  const s = res.stats
-  const radius = s.searchRadiusM != null ? Math.round(s.searchRadiusM) + ' m' : '—'
-  const enc = Math.round(s.encirclement * 100)
-  const encHint = s.encirclement < 0.5 ? '<div class="lc-warn">One-sided — walk/drive around the estimate to tighten.</div>' : ''
-  const strong = res.strongest ? ` · ★ strongest ${res.strongest.rssi ?? '—'} dBm` : ''
-  box.innerHTML = `<h4>Locate</h4>`
-    + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
-    + encHint
-    + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. From your own readings only.</div>`
-    + disclaimer
 }
 
 // Populates the static onboarding copy (name, basics, callouts, disclaimer)
@@ -582,7 +530,7 @@ async function processFrame(dv) {
   // whose identity is rendered as a name and a self-reported position (#356).
   // Verify before it can name anything: an advert that does not verify is a
   // fabricated identity, and keeping that identity would put a forged name —
-  // and a forged position — into the registry surfaces and into locate().
+  // and a forged position — into the registry surfaces and the node estimates.
   //
   // The identity is refused, the reception is not (#454). The RSSI, the SNR
   // and the fix are ours and are perfectly good coverage; only the parts the
@@ -1403,7 +1351,7 @@ function buildSettingsSheet() {
             <div class="ss-version">v${__APP_VERSION__}</div>
           </div>
         </div>
-        <p class="ss-about-desc">Locate MeshCore nodes by their radio signal. Your logged receptions build a shared coverage map. Built by amateur-radio operators.</p>
+        <p class="ss-about-desc">Hunt MeshCore nodes by their radio signal. Your logged receptions build a shared coverage map. Built by amateur-radio operators.</p>
         <nav class="ss-about-links">
           <button type="button" id="ss-about-howto">
             <span class="ss-link-title">How it works</span>
@@ -2109,7 +2057,7 @@ function applyCourseHeading(heading, speed) {
 // The ids to filter on right now, expanded from the selected NODE keys against
 // the current target-list clusters (#268). Re-derived rather than stored, so a
 // node heard under a new id variant after selection is still caught instead of
-// silently dropping out of the map and Locate.
+// silently dropping out of the map.
 //
 // Memoised on the identity of the rows and the key list, both of which are
 // replaced wholesale rather than mutated (lastRows per tick, keys per
@@ -2323,19 +2271,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     compassState.source = null
     updateCompassIcon()
   })
-  if (state.map) state.map.onLocate(updateLocateInfo)
-
-  // Locate overlay toggle — a styled checkbox in the topbar controls. Unchecked
-  // by default (overlay off); ticking it shows the heatmap/markers/readout over
-  // the filtered set. The estimate keeps computing regardless (see huntmap
-  // drawLocate), so switching it on is instant.
-  const locateCb = el('locate-checkbox')
-  locateCb.checked = false
-  if (state.map) state.map.setLocateVisible(false)
-  locateCb.addEventListener('change', () => {
-    if (state.map) state.map.setLocateVisible(locateCb.checked)
-  })
-
   el('filter-pill').addEventListener('click', () => {
     const sheet = el('filter-sheet')
     sheet.hidden = !sheet.hidden

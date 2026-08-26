@@ -1,7 +1,6 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, heatWeight, extrusionHeight, withAlpha } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha } from './signal.js'
 import { getConfig } from './config.js'
-import { locate, toLocatePoints } from './locate.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
@@ -60,7 +59,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, onLocate() {}, setLocateVisible() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -89,7 +88,7 @@ export function createHuntMap(containerId) {
   } catch (e) { return stub }
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
 
-  let mode = 'both', lastRecords = [], lastSelected = null, onLocateCb = null, locateVisible = true
+  let mode = 'both', lastRecords = [], lastSelected = null
   let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
@@ -97,7 +96,7 @@ export function createHuntMap(containerId) {
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
-  let trail = [], settingBearing = false, locateMarkers = []
+  let trail = [], settingBearing = false
 
   // Follow releases when the user drags; native bearing gesture reports back via
   // onGestureRotate (guarded so our own setBearing calls don't count as user input).
@@ -205,11 +204,6 @@ export function createHuntMap(containerId) {
     if (trail.length < 2) return EMPTY
     return fc([{ type: 'Feature', geometry: { type: 'LineString', coordinates: trail.map(([la, lo]) => [lo, la]) }, properties: {} }])
   }
-  function buildLocateHeatFC(records) {
-    return fc(toLocatePoints(records).map((p) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-      properties: { w: heatWeight(p.rssi) } })))
-  }
-
   // ---- overlays: added on every style load (initial + theme switch) ----
   // overlaysReady flips true once the signal layers are mounted; the fallback
   // timer (armStyleFallback) uses it so a stuck basemap style can't leave the
@@ -254,7 +248,7 @@ export function createHuntMap(containerId) {
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
     applySky()
-    for (const id of ['trail', 'hex', 'locate', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
+    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -298,10 +292,6 @@ export function createHuntMap(containerId) {
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
           'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.75 } })
     }
-    if (!map.getLayer('locate-heat')) map.addLayer({ id: 'locate-heat', type: 'heatmap', source: 'locate',
-      layout: { visibility: locateVisible ? 'visible' : 'none' },
-      paint: { 'heatmap-weight': ['get', 'w'], 'heatmap-intensity': 1, 'heatmap-radius': 32, 'heatmap-opacity': 0.7,
-        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], 0, 'rgba(0,0,0,0)', 0.2, cssVar('--ch-sig-mid'), 0.6, cssVar('--ch-sig-warm'), 1, cssVar('--ch-sig-hot')] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
       layout: { visibility: shown('points') },
       paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'fop'],
@@ -413,7 +403,6 @@ export function createHuntMap(containerId) {
     map.getSource('trail').setData(buildTrailFC())
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
-    drawLocate(records)
     drawNodeLayer(records)
   }
 
@@ -536,34 +525,8 @@ export function createHuntMap(containerId) {
         + `<br><span class="np-muted np-caveat">Advertised position is self-reported by the operator and may be stale.</span></div>`)
   }
 
-  // Locate: RSSI-weighted centroid + density heatmap over the plotted set (same
-  // pure algorithm as web/map.js — see locate.js). The estimate always computes
-  // so the readout is instant; visibility only hides the rendered overlay.
-  function drawLocate(records) {
-    const points = toLocatePoints(records)
-    const res = points.length ? locate(points) : null
-    if (map.getSource('locate')) map.getSource('locate').setData(locateVisible && res ? buildLocateHeatFC(records) : EMPTY)
-    locateMarkers.forEach((m) => m.remove()); locateMarkers = []
-    if (!locateVisible || !res) { if (onLocateCb) onLocateCb(null); return }
-    if (res.centroid) {
-      const el = document.createElement('div'); el.innerHTML = '<div class="lc-centroid"></div>'
-      locateMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([res.centroid.lon, res.centroid.lat]).addTo(map))
-    }
-    if (res.strongest) {
-      const el = document.createElement('div'); el.innerHTML = '<div class="lc-strongest">★</div>'
-      locateMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([res.strongest.lon, res.strongest.lat]).addTo(map))
-    }
-    if (onLocateCb) onLocateCb(res)
-  }
-
   // ---- public API (unchanged from the Leaflet version) ----
   function render(records, selectedIds) { lastRecords = records || []; lastSelected = selectedIds || null; draw() }
-  function onLocate(cb) { onLocateCb = cb }
-  function setLocateVisible(v) {
-    locateVisible = !!v
-    if (map.getLayer('locate-heat')) map.setLayoutProperty('locate-heat', 'visibility', locateVisible ? 'visible' : 'none')
-    draw()
-  }
   function setHighlight(id) { highlightId = id == null ? null : id; if (map.getSource('highlight')) map.getSource('highlight').setData(buildHighlightFC()) }
   function onMarkerFocus(cb) { onMarkerFocusCb = cb }
   function setPosition(lat, lon) {
@@ -644,7 +607,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, onLocate, setLocateVisible, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
 }
 
 function popupHtml(r, selectedIds) {

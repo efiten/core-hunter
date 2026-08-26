@@ -1,6 +1,10 @@
-// Pure transmitter-location estimation from (lat, lon, rssi, acc_m) receive
-// points. RSSI-weighted centroid + kernel-density heatmap; no TX-power
-// calibration, no DOM/Leaflet. See docs/superpowers/specs/2026-06-30-rssi-locate-design.md.
+// Pure geometry and signal-estimation maths over (lat, lon, rssi) points; no
+// TX-power calibration, no DOM/Leaflet. trail.js and autoping.js take
+// haversineM, nodelayer.js takes the estimation helpers for its per-node
+// estimate. The full locate() estimator composed from these lives on the
+// analyser map (web/locate.js) — the app captures, the map analyses (#538).
+// web/parity.test.js pins every export here to its web copy.
+// See docs/superpowers/specs/2026-06-30-rssi-locate-design.md.
 
 const R_EARTH_M = 6371000
 // Receptions at or above this RSSI (dBm) are treated as "on top of the node" and
@@ -31,18 +35,6 @@ export function rssiWeight(rssi) {
   if (rssi == null || Number.isNaN(rssi)) return 0
   const clamped = Math.min(rssi, RSSI_CAP)
   return 10 ** ((clamped - RSSI_CAP) / 10)
-}
-
-// Map reception records to locate() input points, dropping any without GPS
-// coordinates. The caller passes an already-filtered record set (sender / type
-// / window / ignore), so locate estimates over exactly what the map plots.
-export function toLocatePoints(records) {
-  const points = []
-  for (const r of records) {
-    if (r.lat == null || r.lon == null) continue
-    points.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
-  }
-  return points
 }
 
 // RSSI-weighted centroid of [{lat,lon,rssi}]. null when total weight is 0.
@@ -197,13 +189,9 @@ export function dedupeSpatial(points, cellM = DEFAULT_CELL_M) {
   return [...best.values()]
 }
 
-// Full estimate from raw receive points [{lat,lon,rssi}]. Spatially dedupes
-// (so a parked hunter doesn't dominate), rejects far-out collisions, then computes
-// the weighted centroid, density heatmap and geometry stats over the inliers.
-// centroid/heatmap are null when fewer than 3 inliers remain.
 // Path-loss trilateration (#454). Backtested against nine repeaters whose real
 // positions efite measured in the field: mean error 664 m for the weighted
-// centroid this replaces, 211 m for this.
+// centroid, 211 m for this. web/locate.js's locate() leads with it.
 //
 // The two answer different questions. A weighted centroid asks "where is the
 // mass of strong receptions", so it lands wherever the hunter spent time near
@@ -249,7 +237,7 @@ function pathlossCost(points, lat, lon, n) {
 }
 
 // Coarse-to-fine rather than one fine grid: the cost surface is smooth, and
-// this runs on the Locate tick. Five passes of 16x16 is 1,280 evaluations
+// the web copy runs on the Locate tick. Five passes of 16x16 is 1,280 evaluations
 // against 25,000 for a single 160x160 grid, for the same resolution.
 export function pathlossFit(points, { exponent = PATHLOSS_EXPONENT, pad = 0.02 } = {}) {
   const pts = (points || []).filter((p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && Number.isFinite(p.rssi))
@@ -275,40 +263,5 @@ export function pathlossFit(points, { exponent = PATHLOSS_EXPONENT, pad = 0.02 }
     loLon = best.lon - stepLon; hiLon = best.lon + stepLon
   }
   return { lat: best.lat, lon: best.lon, rmsDb: Math.sqrt(best.cost) }
-}
-
-export function locate(points, opts = {}) {
-  const deduped = dedupeSpatial(points, opts.cellM ?? DEFAULT_CELL_M)
-  const { inliers, outliers } = rejectOutliers(deduped, opts)
-  // strongest = the inlier heard loudest; the closest single sample to the node,
-  // shown alongside the centroid (which the weak-signal crowd can pull off it).
-  const strongest = inliers.length
-    ? inliers.reduce((a, b) => ((b.rssi ?? -Infinity) > (a.rssi ?? -Infinity) ? b : a))
-    : null
-  if (inliers.length < 3) {
-    return {
-      centroid: null, heatmap: null, strongest, inliers, outliers,
-      stats: { n: inliers.length, searchRadiusM: null, encirclement: 0 },
-    }
-  }
-  // The estimate is the path-loss fit when one can be made, and the weighted
-  // centroid otherwise (#454). Backtested against nine repeaters whose real
-  // positions were measured in the field: 681 m mean error for the centroid,
-  // 210 m for the fit. Both are returned, because they disagree in a way worth
-  // being able to see: the centroid marks where the strong receptions are, the
-  // fit marks where the whole RSSI field says the transmitter is.
-  //
-  // Applied here and NOT in nodelayer.js's estimateFor, which runs once per
-  // node in view every render tick. The fit costs about 90 ms on 600 points --
-  // fine for one target on demand, far too slow per node per tick.
-  const weighted = weightedCentroid(inliers)
-  const fit = pathlossFit(inliers, opts)
-  const centroid = fit || weighted
-  const heatmap = densityGrid(inliers, opts)
-  // Stats are measured against whatever the estimate ended up being, so
-  // searchRadiusM keeps meaning "how spread out was our sampling around the
-  // answer we are giving" rather than around one we are not.
-  const stats = geometryStats(inliers, centroid)
-  return { centroid, method: fit ? 'pathloss' : 'centroid', weighted, fit, heatmap, strongest, inliers, outliers, stats }
 }
 
