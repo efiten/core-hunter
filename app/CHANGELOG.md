@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.1](https://github.com/efiten/core-hunter/compare/app-v1.19.0...app-v1.19.1) (2026-08-26)
+
+
+### Documentation
+
+* cut the four entries [#519](https://github.com/efiten/core-hunter/issues/519) could not reach ([#534](https://github.com/efiten/core-hunter/issues/534)) ([b47786c](https://github.com/efiten/core-hunter/commit/b47786c336b6079dcc2c24ea592ff83a86f77f4b))
+* cut the release notes back to a glance ([#520](https://github.com/efiten/core-hunter/issues/520)) ([dd3d895](https://github.com/efiten/core-hunter/commit/dd3d8950bb6a8f462d43e13dd2bcf4d508216f17)), closes [#519](https://github.com/efiten/core-hunter/issues/519)
+
 ## [1.19.0](https://github.com/efiten/core-hunter/compare/app-v1.18.0...app-v1.19.0) (2026-08-26)
 
 
