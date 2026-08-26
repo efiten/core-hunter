@@ -1,10 +1,17 @@
 [
   {
+    "id": "2026-08-25-name-the-path-byte",
+    "date": "2026-08-25",
+    "where": "both",
+    "title": "A reception with no sender now shows the byte we heard",
+    "body": "A one-byte route mark now reads as #64, not a dash. A hint, not an identity: 256 nodes share each value, and it no longer counts as Sender unknown."
+  },
+  {
     "id": "2026-08-25-locate-uses-the-whole-signal-field",
     "date": "2026-08-25",
     "where": "both",
     "title": "Locate reads the whole signal field",
-    "body": "Locate now weighs every reading, not only the strongest. Against nine repeaters measured on the ground the average miss went from 680 metres to 210. Still an estimate, not a fix."
+    "body": "Locate now weighs every reading, not only the strongest. Against nine measured repeaters the average miss went from 680 metres to 210. Still an estimate, not a fix."
   },
   {
     "id": "2026-08-25-queued-receptions-always-go-out",
@@ -12,6 +19,13 @@
     "where": "app",
     "title": "Waiting receptions always get sent",
     "body": "Receptions waiting to be sent now go out with the radio unplugged too."
+  },
+  {
+    "id": "2026-08-25-map-opens-on-thirty-days",
+    "date": "2026-08-25",
+    "where": "map",
+    "title": "The map opens on the last 30 days",
+    "body": "A first visit now opens on the last 30 days, because All time quietly capped at 50,000. The short ranges are no longer hidden when logged out."
   },
   {
     "id": "2026-08-25-map-keeps-up-with-the-drive",
@@ -30,9 +44,16 @@
   {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
-    "where": "map",
+    "where": "both",
     "title": "You can now filter a flood that has no sender",
     "body": "You can now filter on traffic with no sender. Direct only is called No path now."
+  },
+  {
+    "id": "2026-08-24-keep-what-cannot-be-named",
+    "date": "2026-08-24",
+    "where": "both",
+    "title": "Two more kinds of reception stay on the map",
+    "body": "An advert that fails its signature and a packet we cannot read are now drawn, with no name on them. Unreadable ones get a new Unknown type filter."
   },
   {
     "id": "2026-08-24-render-tick-cost",

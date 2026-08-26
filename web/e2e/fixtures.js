@@ -133,3 +133,19 @@ export async function openSettings(page, tab = 'settings') {
   await clickUntil(page, '#settings-btn', () => page.locator('#settings-modal').isVisible())
   if (tab) await clickUntil(page, `#ss-tab-${tab}`, () => page.locator(`#ss-panel-${tab}`).isVisible())
 }
+
+// setFilter toggles one of the secondary filters, at any width.
+//
+// Since #423 those controls live behind the Filters pill below 640px, so a
+// phone-width test has to open it the way a user does; above the breakpoint the
+// pill is not rendered and this is a plain check(). The panel is shut again
+// afterwards because it overlays the map, and most callers go on to assert
+// something about what the map is showing.
+export async function setFilter(page, selector, on = true) {
+  const pill = page.locator('#filter-pill')
+  const mobile = await pill.isVisible()
+  if (mobile) await pill.click()
+  if (on) await page.check(selector)
+  else await page.uncheck(selector)
+  if (mobile) await page.keyboard.press('Escape')
+}

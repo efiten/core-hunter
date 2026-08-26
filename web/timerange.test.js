@@ -3,7 +3,9 @@ import {
   isTimeToken, resolveToken, resolveTimeValue,
   QUICK_RANGES, matchQuickRange, rangeLabel, absoluteShareUrl,
   toLocalInput, boundFromField,
-  exceedsGuestWindow, rangeIsLive } from './timerange.js'
+  exceedsGuestWindow, rangeIsLive,
+  COLD_START_RANGE, rangeForRole, rangeLabelFor,
+} from './timerange.js'
 
 // Fixed clock for every case below: 2026-07-22 15:30 local.
 const NOW = new Date(2026, 6, 22, 15, 30, 0, 0).getTime()
@@ -252,5 +254,61 @@ describe('rangeIsLive', () => {
   it('refreshes rather than freezes when the end cannot be read', () => {
     // A stale map is the worse failure: it looks like working data.
     expect(rangeIsLive('', 'not a date', LIVE_NOW)).toBe(true)
+  })
+})
+
+// #492: a cold start asks for 30 days rather than everything. "All time" was
+// never delivered -- /api/heatmap caps at the newest 50 000 rows in the bbox
+// (server/internal/httpapi/api.go), so the button promised a history the
+// server truncates without saying so. 30 days is a window it can return.
+describe('COLD_START_RANGE', () => {
+  it('is a rolling 30 days, stored as tokens so a shared link keeps rolling', () => {
+    expect(COLD_START_RANGE).toEqual({ from: 'now-30d', to: 'now' })
+    expect(isTimeToken(COLD_START_RANGE.from)).toBe(true)
+    expect(isTimeToken(COLD_START_RANGE.to)).toBe(true)
+  })
+  it('is one of the quick ranges, so the picker marks it active', () => {
+    expect(matchQuickRange(COLD_START_RANGE.from, COLD_START_RANGE.to)?.label).toBe('Last 30 days')
+  })
+})
+
+describe('rangeForRole — an empty range is not a state below member (#492)', () => {
+  it('fills an empty range for a degraded role', () => {
+    expect(rangeForRole('', '', { degraded: true })).toEqual(COLD_START_RANGE)
+  })
+  it('leaves a member on all time', () => {
+    expect(rangeForRole('', '', { degraded: false })).toEqual({ from: '', to: '' })
+    expect(rangeForRole('', '')).toEqual({ from: '', to: '' })
+  })
+  // A shared link carrying only one bound stays open-ended: that is a range
+  // somebody chose, not the absence of one (the #285 guarantee).
+  it('does not touch a half-open range', () => {
+    expect(rangeForRole('now-6h', '', { degraded: true })).toEqual({ from: 'now-6h', to: '' })
+    expect(rangeForRole('', 'now', { degraded: true })).toEqual({ from: '', to: 'now' })
+  })
+  it('leaves a range the viewer already has', () => {
+    expect(rangeForRole('now-7d', 'now', { degraded: true })).toEqual({ from: 'now-7d', to: 'now' })
+  })
+})
+
+describe('rangeLabelFor — the clamp note names the layer it applies to (#492)', () => {
+  const NOW = Date.parse('2026-07-22T12:00:00Z')
+  // Since #466 the hex layer is NOT windowed for a guest, only /api/points is
+  // (applyGuestWindowCap). A flat "(24 h max)" described the layer the visitor
+  // is usually not looking at: the map opens on hex.
+  it('says nothing extra on the hex layer, whatever the range', () => {
+    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: true, showsPoints: false })).toBe('Last 30 days')
+  })
+  it('names the points layer when that layer is on and the range exceeds 24 h', () => {
+    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: true, showsPoints: true })).toBe('Last 30 days (points: 24 h)')
+  })
+  it('says nothing for a range inside the window', () => {
+    expect(rangeLabelFor('now-6h', 'now', NOW, { degraded: true, showsPoints: true })).toBe('Last 6 hours')
+  })
+  it('says nothing to a member', () => {
+    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: false, showsPoints: true })).toBe('Last 30 days')
+  })
+  it('falls back to the plain label with no options', () => {
+    expect(rangeLabelFor('now-30d', 'now', NOW)).toBe('Last 30 days')
   })
 })

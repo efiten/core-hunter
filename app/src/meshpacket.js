@@ -33,6 +33,43 @@ export function carriesSignedIdentity(cls) {
   return !!cls && !!cls.sender && cls.sender.kind === 'advert_pubkey'
 }
 
+// The empty identity: what a reception carries when nothing about who sent it
+// may be believed. Shared by both refusals below so they cannot drift apart.
+const NO_SENDER = () => ({ kind: null, id: null, label: null, role: null })
+
+// stripIdentity returns the same reception with its identity removed (#454).
+// Used for an Advert whose Ed25519 signature does not verify: the claim is
+// refused, the measurement is not. RSSI, SNR and our own GPS fix were made by
+// our radio and cannot be forged; the pubkey, the name and the advertised
+// position are exactly the parts an attacker writes, so they go — rather than
+// the whole reception, which is what #356 did and what #455 stopped doing for
+// every other unattributable class.
+//
+// Returns a new object: the caller still reads the original (its text and its
+// id, for the console warning) after the strip.
+export function stripIdentity(cls) {
+  return { ...cls, sender: NO_SENDER() }
+}
+
+// undecodableReception is the classification for a packet that did not decode
+// at all (#454 class 5) — either the decoder threw, or it reported the packet
+// structurally unsound. The 0x88 frame's SNR and RSSI are read before the
+// decoder ever runs (frames.js), so the measurement is intact and the packet
+// is still a reception: something transmitted here, this strongly.
+//
+// It cannot be built from what the decoder returns. Both of its error paths
+// hand back a fully-formed packet whose fields are placeholders rather than
+// readings — payloadType RawCustom, routeType Flood, pathLength 0, path null —
+// so classifying that packet would file junk under the real "Raw" chip and
+// state a hop count nobody measured.
+//
+// hops stays 0 because the ingestor's column is NOT NULL and its parser takes
+// hops as a value type, so a null would arrive as 0 anyway, unmarked. The type
+// is what carries "unknown" here, on both surfaces and in the ?types= query.
+export function undecodableReception() {
+  return { packetType: 'Unknown', hops: 0, isDirect: false, sender: NO_SENDER(), channel: null, text: null }
+}
+
 export function classifyReception(decoded, channelNameFor = () => null) {
   const pt = decoded.payloadType
   const hops = decoded.pathLength || 0
@@ -52,8 +89,22 @@ export function classifyReception(decoded, channelNameFor = () => null) {
     // relayed: only a FLOOD route's path[last] is the immediate transmitter.
     if (isFloodRoute(decoded.routeType) && Array.isArray(decoded.path) && decoded.path.length) {
       const last = String(decoded.path[decoded.path.length - 1]).toLowerCase()
-      if (last.length >= 4) { // >= 2 bytes; 1-byte hashes are collision-prone
+      if (last.length >= 4) { // >= 2 bytes: CoreScope resolves these, and says when one collides
         sender = { kind: 'relay', id: last, role: null, label: null }
+        heardDirect = true
+      } else if (last.length === 2) {
+        // A 1-byte path hash. It names one of 256 buckets, so it is not an
+        // identity, and on a forged path it is a byte the sender wrote himself
+        // (the 2026-08-24 flood: path 04 26 a3 64, all four invented). It was
+        // dropped for those reasons and every surface printed '—' instead.
+        // Naming it is what the hunter asked for (2026-08-25): the byte we
+        // heard tells them more than the dash did.
+        //
+        // Its own kind, so it inherits direct_hash's treatment rather than
+        // 'relay's: marked with # in hudsender.js, outside TARGET_KINDS and
+        // HEX_PREFIX_KINDS in feed.js (a 1-byte prefix would merge with every
+        // node sharing that byte), and below names.js's 4-hex resolve floor.
+        sender = { kind: 'path_hash', id: last, role: null, label: last }
         heardDirect = true
       }
     }

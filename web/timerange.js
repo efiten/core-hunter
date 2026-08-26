@@ -155,6 +155,41 @@ export function exceedsGuestWindow(from, to, nowMs) {
   return (toMs - fromMs) > GUEST_WINDOW_MS
 }
 
+// COLD_START_RANGE is what a first visit asks for (#492). Tokens rather than
+// resolved timestamps, so the window keeps rolling and a shared link means the
+// same thing to whoever opens it (#285).
+//
+// 30 days rather than the empty range #440 left here: an empty range reads as
+// "all time" and the server does not deliver that. /api/heatmap caps at the
+// newest 50 000 rows inside the bbox (server/internal/httpapi/api.go), so once
+// a viewport holds more than that, older coverage drops out under a button
+// that still says All time. 30 days is a window the server returns whole.
+export const COLD_START_RANGE = { from: 'now-30d', to: 'now' }
+
+// rangeForRole applies the one rule that depends on who is asking: below
+// member, no range at all is not a state, because "all time" is exactly the
+// promise the 50 000-row cap cannot keep. A member keeps every range, the
+// empty one included.
+//
+// Only a COMPLETELY empty range is filled. A link carrying one bound is a
+// range somebody chose, and #285 guarantees it survives as it was.
+export function rangeForRole(from, to, { degraded } = {}) {
+  const f = String(from || '').trim(), t = String(to || '').trim()
+  if (!degraded || f || t) return { from, to }
+  return { ...COLD_START_RANGE }
+}
+
+// rangeLabelFor is rangeLabel plus the note that says a layer will not cover
+// the range asked for. Since #466 that is only true of the point layer:
+// /api/points still clamps a sub-member caller to 24 h (applyGuestWindowCap),
+// while the hex the map opens on is not windowed at all. A flat "(24 h max)"
+// therefore described the layer the visitor is usually not looking at.
+export function rangeLabelFor(from, to, nowMs, { degraded, showsPoints } = {}) {
+  const base = rangeLabel(from, to, nowMs)
+  if (!degraded || !showsPoints) return base
+  return exceedsGuestWindow(from, to, nowMs) ? `${base} (points: 24 h)` : base
+}
+
 export function rangeLabel(from, to, nowMs) {
   const q = matchQuickRange(from, to)
   if (q) return q.label

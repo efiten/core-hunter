@@ -15,8 +15,9 @@ import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from '
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
+import { hiddenFiltersActive } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
-import { QUICK_RANGES, matchQuickRange, rangeLabel, rangeIsLive, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField, exceedsGuestWindow } from './timerange.js'
+import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 
@@ -364,11 +365,24 @@ function applyRole(me) {
   notice.textContent = msg || ''
   notice.title = msg ? 'Guests & hunters see: last 24 h, max 500 recent points, ~1 km positions, anonymised hunters. Members see full data.' : ''
   notice.hidden = !msg
-  // Hide quick ranges that exceed the guest 24h cap for guest/hunter roles
-  const isGuest = isDegradedFor(currentRole)   // same rule the server applies (degrade.go)
-  for (const [label, li] of Object.entries(quickRangeElements)) {
-    const exceedsGuestCap = ['Last 2 days', 'Last 7 days', 'Last 30 days'].includes(label)
-    li.hidden = isGuest && exceedsGuestCap
+  // The 2/7/30-day rows are no longer hidden below member (#492). They were,
+  // because /api/points clamps those roles to 24 h and a label reading "Last 7
+  // days" over 24 h of data is a lie (#300). What changed is which layer the
+  // note belongs on: the hex the map opens on is not windowed at all since
+  // #466, so hiding the rows also hid the ranges that layer CAN show. The note
+  // now names the point layer instead (rangeLabelFor), and only while it is on.
+  //
+  // An empty range is not a state below member either: "all time" is the one
+  // promise /api/heatmap's 50 000-row cap cannot keep, so a shared link with
+  // no range lands on the same 30 days a cold start does.
+  // The same rule for the one path applyRange cannot see: the role changing
+  // under a range that is already applied, i.e. a member with an empty range
+  // logging out. Not covered by e2e; applyRange's branch is.
+  const { from: rFrom, to: rTo } = rangeForRole(fFrom.value, fTo.value, { degraded: isDegradedFor(currentRole) })
+  if (rFrom !== fFrom.value || rTo !== fTo.value) {
+    fFrom.value = rFrom; fTo.value = rTo
+    urlstate.save()
+    updateTimeRangeTimer()
   }
   applyLocateGate()
   applyObserverGate()
@@ -410,6 +424,9 @@ document.getElementById('layer-toggle').addEventListener('click', (e) => {
   mode = mode === 'points' ? 'hex' : mode === 'hex' ? 'both' : 'points'
   e.target.textContent = mode
   urlstate.save()
+  // The range label's clamp note is about the point layer (#492), so switching
+  // layers changes whether it applies.
+  syncTimeUi()
   refresh()
 })
 const themeBtn = document.getElementById('theme-toggle')
@@ -1213,8 +1230,10 @@ function syncTimeUi() {
   // Say so when the server is going to clamp this, rather than labelling a
   // range the data does not cover (#300). Hiding the >24h rows only stops a
   // guest picking one; a shared ?from=now-7d link still lands here.
-  const clamped = isDegradedFor(currentRole) && exceedsGuestWindow(fFrom.value, fTo.value, now)
-  trLabelEl.textContent = rangeLabel(fFrom.value, fTo.value, now) + (clamped ? ' (24 h max)' : '')
+  trLabelEl.textContent = rangeLabelFor(fFrom.value, fTo.value, now, {
+    degraded: isDegradedFor(currentRole),
+    showsPoints: mode === 'points' || mode === 'both',
+  })
   const active = matchQuickRange(fFrom.value, fTo.value)
   for (const li of trQuick.children) li.classList.toggle('active', !!active && li.dataset.label === active.label)
   const f = resolveTimeValue(fFrom.value, now), t = resolveTimeValue(fTo.value, now)
@@ -1256,7 +1275,11 @@ function updateTimeRangeTimer() {
 // filter fires, so urlstate.save(), refresh() and the CS-layer/Locate hooks
 // all run exactly as they do for a hand-edited field.
 function applyRange(from, to) {
-  fFrom.value = from; fTo.value = to
+  // Below member an empty range is not a state (#492): clearing both fields
+  // asks for all time, which is the one promise /api/heatmap's 50 000-row cap
+  // cannot keep, so it lands on the cold-start window instead.
+  const r = rangeForRole(from, to, { degraded: isDegradedFor(currentRole) })
+  fFrom.value = r.from; fTo.value = r.to
   fFrom.dispatchEvent(new Event('change', { bubbles: true }))
   fTo.dispatchEvent(new Event('change', { bubbles: true }))
   urlstate.save()
@@ -1488,6 +1511,55 @@ if (rxLog) {
   })
 }
 
+// Filters pill + sheet (#423). Below 640px the secondary controls are a bottom
+// sheet; above it they are inline in #bar and the pill is not rendered, so this
+// wiring is inert there -- the class it toggles has no rule outside the media
+// query.
+//
+// Not wirePopover: that positions an anchored panel with placePopover and uses
+// `hidden`, and this is a full-width sheet that must stay visible on desktop.
+// The dismiss semantics are copied from it deliberately -- outside click in the
+// capture phase, Escape -- so the sheet behaves like every other panel here.
+const barFilters = document.getElementById('bar-filters')
+const filterPill = document.getElementById('filter-pill')
+if (barFilters && filterPill) {
+  const setOpen = (on) => {
+    barFilters.classList.toggle('bf-open', on)
+    filterPill.setAttribute('aria-expanded', String(on))
+  }
+  filterPill.addEventListener('click', () => setOpen(!barFilters.classList.contains('bf-open')))
+  document.getElementById('bf-close').addEventListener('click', () => setOpen(false))
+  document.addEventListener('click', (e) => {
+    if (!barFilters.classList.contains('bf-open')) return
+    if (e.target.closest('#bar-filters') || e.target.closest('#filter-pill')) return
+    setOpen(false)
+  }, true)
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && barFilters.classList.contains('bf-open')) setOpen(false)
+  })
+
+  // The dot says something the bar can no longer show: a filter is on behind
+  // the pill. Recomputed from the DOM rather than tracked, so it cannot drift
+  // from the controls it describes.
+  const refreshFilterPill = () => {
+    const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
+    const active = hiddenFiltersActive({
+      directOnly: on('f-direct'),
+      senderUnknown: on('f-unnamed'),
+      types: window.currentTypes ? window.currentTypes() : null,
+      csAdverts: on('cs-adverts'),
+      csRelays: on('cs-relays'),
+      nodePos: on('f-nodepos'),
+      mode,
+    })
+    document.getElementById('filter-pill-dot').hidden = !active
+  }
+  window.__refreshFilterPill = refreshFilterPill
+  barFilters.addEventListener('change', refreshFilterPill)
+  barFilters.addEventListener('click', refreshFilterPill)
+  refreshFilterPill()
+}
+
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
@@ -1500,6 +1572,16 @@ let locateRestored = false // wantLocate fires at most once, see applyRole() bel
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
+// Cold start (#492): nothing restored a range, so this visit gets the default
+// one. After load() rather than before it, and only when BOTH bounds are
+// empty: a link carrying one bound is an open-ended range somebody chose, and
+// pre-filling the other half would turn /?from=now-6h into "Last 6 hours".
+// The rationale for the value itself is in filters.js.
+if (!fFrom.value && !fTo.value) {
+  fFrom.value = COLD_START_RANGE.from
+  fTo.value = COLD_START_RANGE.to
+  urlstate.save()
+}
 // urlstate applies from/to by assigning .value, which fires no change event, so
 // the listeners that normally arm the tick never run. Without this a shared
 // /?from=now-1h&to=now link — the whole point of storing tokens — renders the

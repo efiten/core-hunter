@@ -11,10 +11,10 @@ test.beforeEach(async ({ page }) => {
 
 test('the button labels the current range and the panel opens/closes', async ({ page }) => {
   await page.goto('/')
-  // A cold start is now unbounded (#440): the map opens on everything that has
-  // been mapped rather than on however many hours have passed since local
-  // midnight. rangeLabel already had a word for an empty range.
-  await expect(page.locator('#tr-label')).toHaveText('All time')
+  // A cold start is the last 30 days (#492): long enough that a newcomer sees
+  // what has been mapped, short enough that the server returns the whole
+  // window rather than the newest 50 000 rows of it.
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
 
   await openPicker(page, '#tr-toggle', '#time-picker')
   await expect(page.locator('#tr-quick .tr-item')).toHaveCount(12)
@@ -90,14 +90,28 @@ test('Clear resets the range back to today and relabels', async ({ page }) => {
   await expect(page.locator('#tr-label')).toHaveText('00:00 → 23:59')
 })
 
-test('a guest is told the range is clamped, not just shown a hidden row (#300)', async ({ page }) => {
+test('a guest is told which layer the clamp applies to (#300, #492)', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
   await page.goto('/?mode=points&from=now-7d&to=now')
-  // Hiding the >24h quick ranges stops a guest picking one, but a shared link
-  // still lands here — and the server clamps to 24h regardless.
-  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (24 h max)')
+  // The clamp is real, and it is the point layer's: /api/points windows a
+  // sub-member caller to 24 h. The note says so rather than claiming the whole
+  // range is capped, because the hex layer covers all 7 days (#466).
+  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (points: 24 h)')
+
+  // The row is no longer hidden: a guest can pick 7 days, and on the layer the
+  // map opens on that is exactly what they get.
   await openPicker(page, '#tr-toggle', '#time-picker')
-  await expect(page.locator('.tr-item', { hasText: 'Last 7 days' })).toBeHidden()
+  await expect(page.locator('.tr-item', { hasText: 'Last 7 days' })).toBeVisible()
+  await expect(page.locator('.tr-item', { hasText: 'Last 30 days' })).toBeVisible()
+})
+
+test('the clamp note follows the layer it is about (#492)', async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.goto('/?mode=hex&from=now-7d&to=now')
+  // Nothing is clamped on the hex layer, so the note has nothing to say.
+  await expect(page.locator('#tr-label')).toHaveText('Last 7 days')
+  await page.locator('#layer-toggle').click() // hex -> both, which draws points
+  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (points: 24 h)')
 })
 
 test('a member sees no clamp note for the same range (#300)', async ({ page }) => {
@@ -105,27 +119,74 @@ test('a member sees no clamp note for the same range (#300)', async ({ page }) =
   await expect(page.locator('#tr-label')).toHaveText('Last 7 days')
 })
 
-// #440: the map's first impression. A newcomer landing on mesh-hunter.eu used
-// to get today only -- at 09:00 that is nine hours of driving, and in most
-// areas on most days a blank map, which is the worst possible advertisement for
-// a mapping project. The server stopped clamping the guest heatmap, but that
-// alone changes nothing while the client still asks for today, so this pins the
-// half that actually reaches the API.
-test('a first visit asks for all coverage, not just today', async ({ page }) => {
+// #440's first impression, kept, with the promise corrected (#492). A newcomer
+// used to get today only, which in most areas on most days is a blank map. An
+// empty range fixed that and overshot: it reads as "All time", and
+// /api/heatmap caps at the newest 50 000 rows in the bbox, so the button
+// promised a history the server truncates without saying so. 30 days is a
+// window the server returns whole.
+test('a first visit asks for 30 days, and says so', async ({ page }) => {
   const heatmapUrls = []
   await page.route('**/api/heatmap*', (r) => { heatmapUrls.push(r.request().url()); r.fulfill({ json: { features: [] } }) })
   await page.goto('/')
-  await expect(page.locator('#tr-label')).toHaveText('All time')
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
 
-  // The inputs are left empty rather than filled with midnight..23:59.
-  await expect(page.locator('#f-from')).toHaveValue('')
-  await expect(page.locator('#f-to')).toHaveValue('')
+  // Tokens, not resolved timestamps: the window keeps rolling, and a link
+  // built from this means "the last 30 days" to whoever opens it (#285).
+  await expect(page.locator('#f-from')).toHaveValue('now-30d')
+  await expect(page.locator('#f-to')).toHaveValue('now')
 
   await expect.poll(() => heatmapUrls.length).toBeGreaterThan(0)
   for (const u of heatmapUrls) {
-    const q = new URL(u).searchParams
-    expect(q.get('from') || '', `heatmap request carried a from: ${u}`).toBe('')
+    const from = new URL(u).searchParams.get('from') || ''
+    expect(from, `heatmap request carried no from: ${u}`).not.toBe('')
+    const days = (Date.now() - Date.parse(from)) / 86400000
+    expect(days, `heatmap from is not ~30 days back: ${from}`).toBeGreaterThan(29.9)
+    expect(days).toBeLessThan(30.1)
   }
+})
+
+// Below member an empty range is not a state (#492): "all time" is the promise
+// the 50 000-row cap cannot keep, so a link carrying no range lands on the same
+// 30 days a cold start does.
+test('a guest link with no range lands on 30 days', async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.goto('/?mode=hex&from=&to=')
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
+})
+
+// A member keeps every range, the empty one included, but only as a range they
+// are holding: an empty from/to is not stored (empty values fall out of the URL
+// and out of storage), so it cannot be told apart from never having chosen. A
+// fresh load therefore gets the cold-start 30 days whatever the role, and this
+// pins the half that is real -- clearing the range leaves it cleared.
+// The other half of "an empty range is not a state" (#492): a guest who empties
+// both fields by hand and applies lands back on the cold-start window, rather
+// than on an All time the 50 000-row cap cannot deliver.
+test('a guest clearing both date fields lands back on 30 days', async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.goto('/?mode=hex&from=now-6h&to=now')
+  await expect(page.locator('#tr-label')).toHaveText('Last 6 hours')
+
+  await openPicker(page, '#tr-toggle', '#time-picker')
+  await page.locator('#tr-from').fill('')
+  await page.locator('#tr-to').fill('')
+  await page.locator('#tr-apply').click()
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
+})
+
+test('a member can go back to all time and stays there', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
+  await page.evaluate(() => {
+    document.getElementById('f-from').value = ''
+    document.getElementById('f-to').value = ''
+    window.__syncTimeUi()
+  })
+  await expect(page.locator('#tr-label')).toHaveText('All time')
+  // Nothing rewrites it underneath them on the next redraw.
+  await page.locator('#layer-toggle').click()
+  await expect(page.locator('#tr-label')).toHaveText('All time')
 })
 
 // The other half of the same rule: a returning visitor keeps whatever range
@@ -143,17 +204,21 @@ const pt = (i) => ({ lat: 52.36 + i * 2e-4, lon: 4.83, rssi: -90, snr: -5, hops:
   sender_id: 'aa', sender_kind: 'relay', sender_label: '', hunter_name: 'Onnix',
   packet_type: 'TextMessage', rx_at: '2026-08-24T20:57:00Z' })
 test('new receptions appear on the map without touching it', async ({ page }) => {
-  // The default range since #440 is All time, which is not a relative token --
-  // so the old "is this range relative" test was false, the refresh timer was
-  // never created, and the map showed whatever loaded on open. The receptions
-  // ticker kept polling, so the page LOOKED alive while the map was frozen.
+  // #440's default was All time, which is not a relative token -- so the old
+  // "is this range relative" test was false, the refresh timer was never
+  // created, and the map showed whatever loaded on open. The receptions ticker
+  // kept polling, so the page LOOKED alive while the map was frozen.
+  //
+  // The default is a token pair again since #492, which would have hidden that
+  // bug rather than fixed it: rangeIsLive is what makes the timer independent
+  // of how the range happens to be written, so this still pins it.
   let points = [pt(0), pt(1)]
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points } }))
   await page.goto('/?mode=points')
-  await expect(page.locator('#tr-label')).toContainText('All time')
+  await expect(page.locator('#tr-label')).toContainText('Last 30 days')
   // The points layer renders to a canvas, so there are no DOM markers to
   // count. The status line carries the number the map is actually showing,
   // which is what a hunter reads anyway.
