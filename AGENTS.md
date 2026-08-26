@@ -397,10 +397,14 @@ developers, what someone would have noticed.
   "date": "2026-08-21",
   "where": "both",
   "title": "Release notes in plain language",
-  "body": "One or two sentences, written for the person using it."
+  "body": "One sentence, written for the person using it. Two if a number or a caveat earns it."
 }
 ```
 
+- **Keep it to a glance.** Aim for about 15 words of `body`, and treat 30 as the ceiling. The
+  panel is scanned, not read: #519 cut 23 entries from 1415 words to 332 because they had drifted
+  to 62 words each. Spend the extra words only on a measured number or on saying what the change
+  does not do.
 - Newest entry first. `id` is a date-prefixed slug and must be unique — the seen-state is a
   position in this list, so an id that changes re-badges every reader.
 - `where` is `app`, `map` or `both`.

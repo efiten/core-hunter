@@ -25,63 +25,63 @@
     "date": "2026-08-25",
     "where": "both",
     "title": "A reception with no sender now shows the byte we heard",
-    "body": "Some traffic carries a route mark only one byte wide. One byte is too short to name a node with, so until now the sender simply read as a dash. It now shows the byte itself, written as #64, where the hash mark means this is an id we could not resolve rather than a name. Treat it as a hint, not an identity: one byte has 256 possible values so several nodes share one, and on a forged route it is a byte the sender wrote himself, which is what the 24 August flood near Amsterdam did. One thing to know for filtering: these receptions carry a sender now, so they no longer turn up under Sender unknown."
+    "body": "A one-byte route mark now reads as #64, not a dash. A hint, not an identity: 256 nodes share each value, and it no longer counts as Sender unknown."
   },
   {
     "id": "2026-08-25-locate-uses-the-whole-signal-field",
     "date": "2026-08-25",
     "where": "both",
     "title": "Locate reads the whole signal field",
-    "body": "Locate used to mark the middle of where you heard a node strongest, which lands on your own route when you approached from one side. It now works out which position best explains every reading you took - the weak ones as well as the strong ones - so the fall-off across your drive points at the transmitter even where you never went. Checked against nine repeaters whose real locations were measured on the ground: the average miss went from about 680 metres to about 210. It is still an estimate from radio measurements, not a fix on the node."
+    "body": "Locate now weighs every reading, not only the strongest. Against nine measured repeaters the average miss went from 680 metres to 210. Still an estimate, not a fix."
   },
   {
     "id": "2026-08-25-queued-receptions-always-go-out",
     "date": "2026-08-25",
     "where": "app",
     "title": "Waiting receptions always get sent",
-    "body": "Receptions you have captured but not sent yet no longer depend on the radio still being connected. They are stamped with the companion that heard them, so they keep their identity even after you disconnect, and the app now reconnects to the server on its own instead of only trying once when the companion connects. Resuming after a pause works with the radio unplugged too, which it did not before. If you have driven around and the measurements did not arrive, they were not lost - they were waiting, and now they go out."
+    "body": "Receptions waiting to be sent now go out with the radio unplugged too."
   },
   {
     "id": "2026-08-25-map-opens-on-thirty-days",
     "date": "2026-08-25",
     "where": "map",
     "title": "The map opens on the last 30 days",
-    "body": "The range button used to read All time on a first visit, and that was never quite true: the server answers with the newest 50,000 receptions in view, so in a busy area the older coverage was quietly left out under a label promising everything. A first visit now asks for the last 30 days, which is a window the server returns whole. You can still pick any range you like, and the 2, 7 and 30 day options are no longer hidden when you are not logged in. Where a range is longer than the individual receptions go back, the button says which layer that applies to instead of capping the whole thing."
+    "body": "A first visit now opens on the last 30 days, because All time quietly capped at 50,000. The short ranges are no longer hidden when logged out."
   },
   {
     "id": "2026-08-25-map-keeps-up-with-the-drive",
     "date": "2026-08-25",
     "where": "both",
     "title": "The map keeps up with the drive",
-    "body": "On the map, new receptions now appear on their own while you are out driving. They did not before unless the time range was one of the rolling ones - and since the range now defaults to All time, that meant the page showed whatever had loaded when you opened it, for as long as you left it open. The receptions list kept updating, so the page looked alive while the map was standing still. In the app there is now a count on the HUD of receptions captured but not sent on yet. The MQTT dot only tells you the connection is open, which is a different thing from your receptions arriving."
+    "body": "New receptions now appear on the map on their own while you drive."
   },
   {
     "id": "2026-08-25-receptions-reach-the-map-on-time",
     "date": "2026-08-25",
     "where": "both",
     "title": "Receptions reach the map on time again",
-    "body": "On a weak mobile link the app could get stuck trying to send one reception over and over, and everything captured after it waited behind. On one hunt that meant the map ran up to two hours behind while the driving was happening, which is exactly when it is no use. The app now moves on after a handful of failed attempts, and the server no longer stores the same reception twice - so a resend costs nothing. If you saw a bright spot on the map that turned out to be one packet counted hundreds of times, that was this."
+    "body": "One reception that will not send no longer holds up everything behind it."
   },
   {
     "id": "2026-08-25-filter-a-flood-with-no-sender",
     "date": "2026-08-25",
     "where": "both",
     "title": "You can now filter a flood that has no sender",
-    "body": "Some traffic arrives with nothing to identify who sent it, and until now there was no way to narrow to it - which is exactly the situation on a spam hunt. Two new handles: Sender unknown shows only the receptions nothing could be attributed to, and the map can group every relayed copy of one transmission together even when nobody can name the sender. The old Direct only tick is now called No path, because that is what it filters on: the path is written by the sender, so it says what the packet claims rather than how far away it was. When that tick would hide everything on screen, the map now says so instead of going blank."
+    "body": "You can now filter on traffic with no sender. Direct only is called No path now."
   },
   {
     "id": "2026-08-24-keep-what-cannot-be-named",
     "date": "2026-08-24",
     "where": "both",
     "title": "Two more kinds of reception stay on the map",
-    "body": "An advert whose signature does not check out, and a packet the app cannot read at all, used to be thrown away whole. Both are now drawn like any other reception, with the signal strength and the position your phone measured, and with no name on them: the measurement is ours, the identity was not to be trusted. Packets that could not be read get a new Unknown type, so the type filters switch them on and off like everything else."
+    "body": "An advert that fails its signature and a packet we cannot read are now drawn, with no name on them. Unreadable ones get a new Unknown type filter."
   },
   {
     "id": "2026-08-24-render-tick-cost",
     "date": "2026-08-24",
     "where": "app",
     "title": "The map keeps up when the log is large",
-    "body": "With the time filter switched off the map redraws everything it holds once a second, and after the capture change that could be enough work to take longer than a second - so the display fell behind and the phone ran hot. It now reuses what cannot have changed since the last redraw. Nothing looks different; it just keeps up. The usual half-hour view was never affected."
+    "body": "The map redraws only what changed, so a large log no longer makes it lag."
   },
   {
     "id": "2026-08-24-all-time-coverage-date",
@@ -95,118 +95,118 @@
     "date": "2026-08-23",
     "where": "map",
     "title": "Node names stop printing over each other",
-    "body": "Where several advertised nodes sit close together their names overlapped into an unreadable smear. Names that would collide are now left off and the marker stays, so tapping it still gives you the name. Which names fit changes as you zoom."
+    "body": "Node names that would overlap are left off. Tap the marker for the name."
   },
   {
     "id": "2026-08-22-capture-everything-heard",
     "date": "2026-08-22",
     "where": "app",
     "title": "The map shows everything the radio hears",
-    "body": "A reception used to be stored only when we could work out which node sent it. That threw away about two thirds of what the radio actually measured, because most relayed packets carry an identifier too short to attribute safely. Those receptions are now kept and drawn: the signal strength and the position are ours and measured, and they say something transmitted here, this strongly, without claiming who. Expect points with no sender name, and roughly three times as many of them."
+    "body": "Receptions we cannot pin to a sender are now kept and drawn, roughly three times as many points."
   },
   {
     "id": "2026-08-22-disclaimer-glance-on-phone",
     "date": "2026-08-22",
     "where": "map",
     "title": "The position note gets out of the way on a phone",
-    "body": "The note explaining that positions come from radio measurements took up about a quarter of a phone screen and stayed there for the whole session. On a narrow screen it now appears and fades; on a desktop, where the corner costs nothing, it stays put. The single line naming what the two marker shapes mean is always on screen either way."
+    "body": "On a phone the position note now appears and fades instead of staying all session."
   },
   {
     "id": "2026-08-22-leaflet-controls-theme",
     "date": "2026-08-22",
     "where": "map",
     "title": "Zoom and attribution follow the theme",
-    "body": "The map's own zoom buttons and attribution strip kept their stock white against a dark page, which made the least important thing on screen the brightest. They now use the same colours as the rest of the map in both themes, and hovering a zoom button visibly does something again."
+    "body": "The map's zoom buttons and attribution now follow the theme."
   },
   {
     "id": "2026-08-21-connect-button-one-owner",
     "date": "2026-08-21",
     "where": "app",
     "title": "The connect button always offers a way back",
-    "body": "When the link to your companion dropped on its own - out of range, radio switched off, flat battery - Settings could still show a Disconnect button next to the words Not connected, and nothing on screen said how to get back. The button now always matches the real state."
+    "body": "The connect button now matches the real state, so a dropped link offers a way back."
   },
   {
     "id": "2026-08-21-pillar-collapse",
     "date": "2026-08-21",
     "where": "app",
     "title": "Readings from one spot draw one bar",
-    "body": "Standing still logged a separate 3D bar for every reception at the same place, and the stacked bars fought over the same pixels: the column flickered between colours as the camera moved. Readings within ten metres now collapse to the strongest one. The receptions list still shows every one of them."
+    "body": "Readings within ten metres now draw one bar instead of a flickering stack."
   },
   {
     "id": "2026-08-21-nodepos-key-glance",
     "date": "2026-08-21",
     "where": "app",
     "title": "The marker key stops covering the receptions list",
-    "body": "The line explaining the two node-position markers stayed on screen for as long as the layer was on, sitting on top of the receptions ticker. It now shows when you switch the layer on and fades a couple of seconds later, and tapping any node still tells you what its markers mean. The line that reports an empty registry does not fade: that one explains why the map is blank rather than labelling something on it."
+    "body": "The marker key now shows on activation and fades, instead of covering the ticker."
   },
   {
     "id": "2026-08-21-readable-release-notes",
     "date": "2026-08-21",
     "where": "both",
     "title": "Release notes in plain language",
-    "body": "This panel used to list commit subjects, so it read like a developer's log: scope prefixes, issue numbers, and a lot of entries about work nobody outside the code could see. From now on it carries one short note per change you can actually notice, and says whether it landed in the app, on the map, or both. The full technical history is still one click away on GitHub."
+    "body": "This panel now carries one short note per change you can notice."
   },
   {
     "id": "2026-08-21-whatsnew-tab",
     "date": "2026-08-21",
     "where": "app",
     "title": "What's new sits in Settings",
-    "body": "Release notes used to open from their own button next to the version. They are now a tab in Settings, alongside the other panels, and the unread dot shows on the Settings button so you can see there is something to read without opening it first."
+    "body": "What's new is now a tab in Settings, with the unread dot on the Settings button."
   },
   {
     "id": "2026-08-21-nodepos-empty",
     "date": "2026-08-21",
     "where": "map",
     "title": "The position layer says why it is empty",
-    "body": "Switching on advertised node positions and getting nothing back looked the same whether the registry was unreachable, returned no nodes, or returned nodes with no coordinates. It now says which of those happened."
+    "body": "The position layer now says why it is empty instead of just showing nothing."
   },
   {
     "id": "2026-08-21-3d-pillars",
     "date": "2026-08-21",
     "where": "app",
     "title": "3D view reads correctly again",
-    "body": "Receptions taken at the same spot stacked into overlapping pillars that hid each other; they now collapse into one. The signal colour is also no longer darkened by the map's lighting, so a bar's colour means the same thing as the matching point on the flat map."
+    "body": "Pillars at the same spot collapse into one, and a bar's colour matches the flat map."
   },
   {
     "id": "2026-08-21-battery-warning",
     "date": "2026-08-21",
     "where": "app",
     "title": "Low-battery warning matches the radio",
-    "body": "The warning used its own threshold and fired well after the companion had already decided the pack was low. It now warns when the firmware does. On boards with no battery sense the reading is left out rather than shown as empty."
+    "body": "The low-battery warning now fires when the firmware does."
   },
   {
     "id": "2026-08-19-sf8-positions",
     "date": "2026-08-19",
     "where": "both",
     "title": "SF8 nodes on the position layer",
-    "body": "The advertised-position layer only ever drew SF7 nodes, and said nothing about the gap. SF8 nodes are now drawn too, so the layer covers both areas the tool is used in."
+    "body": "SF8 nodes are now drawn on the advertised-position layer, which only showed SF7."
   },
   {
     "id": "2026-08-19-website-tour",
     "date": "2026-08-19",
     "where": "map",
     "title": "A short tour for first-time visitors",
-    "body": "The map now offers a walkthrough of what it shows and what a hunter is, pointing at the controls it describes. It runs once and can be reopened from the map's controls."
+    "body": "The map now offers a short walkthrough, once, reopenable from the controls."
   },
   {
     "id": "2026-08-19-sky-and-tilt",
     "date": "2026-08-19",
     "where": "app",
     "title": "3D camera can look along the ground",
-    "body": "The tilt now reaches 85 degrees instead of stopping short of the horizon, and there is a sky matching the time of day behind it, so a near-horizontal view reads as a view rather than as a broken map."
+    "body": "The 3D camera now tilts to 85 degrees, with a sky behind it."
   },
   {
     "id": "2026-08-19-ticker-readable",
     "date": "2026-08-19",
     "where": "both",
     "title": "The receptions ticker is readable at a glance",
-    "body": "The rows were too small and too tight to take in while driving. They are now sized so a reception can be read at a glance instead of studied."
+    "body": "The receptions ticker rows are now sized to read at a glance while driving."
   },
   {
     "id": "2026-08-19-node-positions",
     "date": "2026-08-19",
     "where": "map",
     "title": "Advertised node positions on the map",
-    "body": "An optional layer draws where nodes say they are, from the node registry. That is what a node advertises about itself, not a measurement, so it is drawn separately from the receptions heat and stays out of the Locate view."
+    "body": "An optional layer draws where nodes say they are. Self-reported, not measured."
   }
 ]
