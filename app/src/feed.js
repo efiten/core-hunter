@@ -145,9 +145,15 @@ export function senderList(records, { ignore, limit = Infinity, query = '' } = {
 // pinned section above the alphabetical list. Every 30s since the last
 // reception costs roughly 1 dB, so a strong-but-stale sender still loses
 // ground to a weaker one heard moments ago.
+//
+// Empty when everything would be pinned (#539): with `count` or fewer senders
+// heard, Top is the full list re-sorted — a duplicate, not a shortlist — so
+// the section reports nothing and the caller hides it.
 export function topSenders(records, { ignore, count = 3, nowMs } = {}) {
   const score = (r) => r.rssi - (nowMs - Date.parse(r.rx_at)) / 1000 / 30
-  return dedupeSenders(records, ignore)
+  const rows = dedupeSenders(records, ignore)
+  if (rows.length <= count) return []
+  return rows
     .sort((a, b) => score(b) - score(a))
     .slice(0, count)
 }

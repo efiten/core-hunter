@@ -1254,7 +1254,7 @@ function buildTargetSheet() {
         aria-label="Search senders by name or id"
         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
       <div id="ts-browse">
-        <div class="tl-pinned-label">Top</div>
+        <div class="tl-pinned-label" id="ts-pinned-label">Top</div>
         <ul id="ts-pinned" class="tl-list tl-pinned"></ul>
         <div class="tl-pinned-label">All senders</div>
       </div>
@@ -1263,6 +1263,7 @@ function buildTargetSheet() {
 
   state.targetList = createTargetList(el('ts-list'), {
     pinnedEl: el('ts-pinned'),
+    pinnedLabelEl: el('ts-pinned-label'),
     searchEl: el('ts-search'),
     browseEl: el('ts-browse'),
     // Whole-row tap toggles this sender in the target set; the sheet stays open
