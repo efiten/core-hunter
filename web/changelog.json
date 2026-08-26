@@ -1,52 +1,24 @@
 [
   {
-    "id": "2026-08-26-rssi-in-thermal-colour",
+    "id": "2026-08-26-app-design-pass",
     "date": "2026-08-26",
     "where": "app",
-    "title": "The RSSI readout carries the heat colour",
-    "body": "The big RSSI number now takes the same colour as its dot on the map, and the colour-bar legend only appears on the start screen."
+    "title": "A design pass over the app",
+    "body": "A smaller start screen, a Status tab, a closable ticker card, decluttered node names, and the RSSI readout in heat colours."
   },
   {
-    "id": "2026-08-26-app-node-labels-declutter",
+    "id": "2026-08-26-map-filter-panel",
     "date": "2026-08-26",
-    "where": "app",
-    "title": "Node names stop covering the map",
-    "body": "The app now draws a node's name only where it fits without covering another, the way the analyser map already does. Zoom in and more names appear; every name stays in its popup."
+    "where": "map",
+    "title": "All filters in one panel",
+    "body": "The filters live in one panel behind the Filters button, which now counts what is narrowed. The layer choice became three buttons and Clear says what it clears."
   },
   {
-    "id": "2026-08-26-one-brand-mark",
+    "id": "2026-08-26-cross-surface-polish",
     "date": "2026-08-26",
     "where": "both",
-    "title": "One brand mark, real icons",
-    "body": "The hex icon from the app is now the one mark everywhere, the clock and moon emoji became drawn icons, and links use one colour across the app, the map and the site."
-  },
-  {
-    "id": "2026-08-26-splash-is-the-connect-block",
-    "date": "2026-08-26",
-    "where": "app",
-    "title": "A smaller start screen that guards the radio and the fix",
-    "body": "The start screen is now one small block: Bluetooth and GPS status, connect, or close it and browse your own captures. Three short hints point at the controls they mean."
-  },
-  {
-    "id": "2026-08-26-status-tab",
-    "date": "2026-08-26",
-    "where": "app",
-    "title": "A Status tab that says what is connected",
-    "body": "Settings opens on a Status tab: Bluetooth with its own connect button, MQTT with how much is queued, your account with its role, and the version. The Pause MQTT toggle is gone; publishing manages itself."
-  },
-  {
-    "id": "2026-08-26-ticker-can-close",
-    "date": "2026-08-26",
-    "where": "app",
-    "title": "The receptions ticker can be put away",
-    "body": "The ticker is now a card with a close button; the list icon in the top bar brings it back and lights up while traffic arrives unseen."
-  },
-  {
-    "id": "2026-08-26-small-fixes-design-review",
-    "date": "2026-08-26",
-    "where": "both",
-    "title": "Small fixes from a design review",
-    "body": "Clearer ticker tags, bigger touch targets, one naming style for the map buttons, and a connect error that says what went wrong."
+    "title": "One brand, clearer controls",
+    "body": "One brand mark everywhere, drawn icons instead of emoji, one link colour, bigger touch targets, and error messages that name their cause."
   },
   {
     "id": "2026-08-26-locate-lives-on-the-map",
