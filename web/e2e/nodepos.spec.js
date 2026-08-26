@@ -1,4 +1,4 @@
-import { test, expect, clickUntil, mapSettled, setFilter } from './fixtures.js'
+import { test, expect, mapSettled, setFilter, openFilters, closeFilters, toggleLocate } from './fixtures.js'
 import { NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
@@ -43,8 +43,10 @@ test.beforeEach(async ({ page }) => {
 test('layer is off by default and the toggle is visible to a member', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
+  await openFilters(page) // the layer toggle lives in the filter panel (#539)
   await expect(page.locator('.np-layer-toggle')).toBeVisible()
   await expect(page.locator('#f-nodepos')).not.toBeChecked()
+  await closeFilters(page)
   await expect(page.locator('#nodepos-note')).toBeHidden()
 })
 
@@ -108,7 +110,9 @@ test('the layer is hidden from a guest, whose resolve responses carry no positio
     json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false },
   }))
   await page.goto('/')
+  await openFilters(page) // asserted with the panel open, or hidden is vacuous
   await expect(page.locator('.np-layer-toggle')).toBeHidden()
+  await closeFilters(page)
   await expect(page.locator('.np-advert')).toHaveCount(0)
 })
 
@@ -121,9 +125,9 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await setFilter(page, '#f-nodepos', true)
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  await toggleLocate(page) // Locate lives in the filter panel (#539)
   await expect(page.locator('.np-advert')).toHaveCount(0)
-  await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === 0)
+  await toggleLocate(page, false)
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
 
@@ -268,7 +272,7 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
   // is on the map yet.
   await expect(page.locator('.np-advert')).toHaveCount(0)
 
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  await toggleLocate(page) // Locate lives in the filter panel (#539)
   releaseRegistry()
   // The draw resumes inside focus mode and must stay out of it.
   await expect(page.locator('.np-advert')).toHaveCount(0)
@@ -276,7 +280,7 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
   expect(await page.locator('.np-advert').count(), 'no marker repainted into focus mode').toBe(0)
 
   // And the layer still comes back when Locate is switched off.
-  await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === 0)
+  await toggleLocate(page, false)
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
 
