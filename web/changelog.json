@@ -4,21 +4,21 @@
     "date": "2026-08-26",
     "where": "map",
     "title": "You are told when your member verification comes through",
-    "body": "Registering made you a hunter and then said an admin would verify you as a member, and nothing ever said when that happened. The map now tells you, once, the moment it notices: on the page you already have open, without you touching anything, and again at your next login if you were away. If you gave an email address when you registered you also get a message, but most accounts have none, so the map no longer depends on it. A demotion is not announced, and nothing is said on a first visit, since arriving somewhere is not the same as being let in."
+    "body": "The map now tells you once when an admin verifies you as a member, even on a page you left open. Email too, if you gave an address."
   },
   {
     "id": "2026-08-26-sender-id-class-chips",
     "date": "2026-08-26",
     "where": "both",
     "title": "Filter by how well the sender can be identified",
-    "body": "A new row of chips next to Types: Unnamed, 1 byte, 2 bytes, 3 bytes, Pubkey and Channel. It sorts receptions by how far the sender can be pinned down at all, since a one-byte id is a guess between 256 nodes while a pubkey is unique. This is how you isolate a flood now. Those receptions used to carry no sender, so Sender unknown collected them; since they started showing the byte they heard, nothing did. On the hunt near Amsterdam that class held 88 percent of the window. Picking no chip means no filter, the same as the type chips, and the choice travels in the link you share."
+    "body": "A new chip row filters by how far the sender can be identified. One byte is a guess between 256 nodes, and it is what isolates a flood."
   },
   {
     "id": "2026-08-26-picker-shows-resolved-names",
     "date": "2026-08-26",
     "where": "both",
     "title": "The target list shows repeater names again",
-    "body": "Every row in the map's target list read \"name not resolved\", even for repeaters whose name the map already knew and showed in the point popup. The list was the one place that never asked the resolver. It does now, so a node heard through a relay reads by its name. Two things stay marked rather than named: a prefix that matches more than one node, which cannot be resolved honestly, and an id of a single byte, which now appears as #77 on the map and in the receptions list instead of sitting there looking like a short name."
+    "body": "The target list shows repeater names again. An id too short or too ambiguous to trust is still shown as an id, not guessed at."
   },
   {
     "id": "2026-08-25-name-the-path-byte",
@@ -88,7 +88,7 @@
     "date": "2026-08-24",
     "where": "map",
     "title": "The map says how far back it goes",
-    "body": "With the range set to All time the map could only fit so much on screen at once, and it said so with the word capped - which told you something was missing but not what. It now names the date it reaches back to, so you can see at a glance whether the area you are looking at is covered for the period you care about."
+    "body": "When the map cannot fit everything in view, it now names the date it reaches back to instead of just saying capped."
   },
   {
     "id": "2026-08-23-node-names-declutter",
