@@ -49,18 +49,18 @@
     "body": "Some traffic arrives with nothing to identify who sent it, and until now there was no way to narrow to it - which is exactly the situation on a spam hunt. Two new handles: Sender unknown shows only the receptions nothing could be attributed to, and the map can group every relayed copy of one transmission together even when nobody can name the sender. The old Direct only tick is now called No path, because that is what it filters on: the path is written by the sender, so it says what the packet claims rather than how far away it was. When that tick would hide everything on screen, the map now says so instead of going blank."
   },
   {
-    "id": "2026-08-24-keep-what-cannot-be-named",
-    "date": "2026-08-24",
-    "where": "both",
-    "title": "Two more kinds of reception stay on the map",
-    "body": "An advert whose signature does not check out, and a packet the app cannot read at all, used to be thrown away whole. Both are now drawn like any other reception, with the signal strength and the position your phone measured, and with no name on them: the measurement is ours, the identity was not to be trusted. Packets that could not be read get a new Unknown type, so the type filters switch them on and off like everything else."
-  },
-  {
     "id": "2026-08-25-where-accounts-come-from",
     "date": "2026-08-25",
     "where": "map",
     "title": "Mapping has a way in from the map",
     "body": "The map is what mapping produces, but nothing here said so: the login box offered logging in and nothing else, so anyone without an account was left with nowhere to click. Start mapping now stands in the toolbar and opens the RX webapp, where you pair a companion radio and your own receptions start landing here. That is also where the account is made, from the companion you paired, which is why this page has no sign-up form. The walkthrough and mesh-hunter.eu spell out the rest, including the admin verification that opens the full history."
+  },
+  {
+    "id": "2026-08-24-keep-what-cannot-be-named",
+    "date": "2026-08-24",
+    "where": "both",
+    "title": "Two more kinds of reception stay on the map",
+    "body": "An advert whose signature does not check out, and a packet the app cannot read at all, used to be thrown away whole. Both are now drawn like any other reception, with the signal strength and the position your phone measured, and with no name on them: the measurement is ours, the identity was not to be trusted. Packets that could not be read get a new Unknown type, so the type filters switch them on and off like everything else."
   },
   {
     "id": "2026-08-24-render-tick-cost",
