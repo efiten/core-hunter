@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.0](https://github.com/efiten/core-hunter/compare/web-v1.14.0...web-v1.15.0) (2026-08-26)
+
+
+### Features
+
+* **web,server:** tell a hunter when their member verification comes through ([#531](https://github.com/efiten/core-hunter/issues/531)) ([54981ca](https://github.com/efiten/core-hunter/commit/54981ca8c40788c8f63c27324308e93f23bd4a1d))
+
 ## [1.14.0](https://github.com/efiten/core-hunter/compare/web-v1.13.1...web-v1.14.0) (2026-08-26)
 
 
