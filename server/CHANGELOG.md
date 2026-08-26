@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/efiten/core-hunter/compare/server-v1.5.0...server-v1.5.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **web,server:** say how far back the map reaches instead of "capped" ([#488](https://github.com/efiten/core-hunter/issues/488)) ([5a26e51](https://github.com/efiten/core-hunter/commit/5a26e51ce63675c6e9d703223806df6821850dad)), closes [#440](https://github.com/efiten/core-hunter/issues/440)
+
 ## [1.5.0](https://github.com/efiten/core-hunter/compare/server-v1.4.0...server-v1.5.0) (2026-08-25)
 
 
