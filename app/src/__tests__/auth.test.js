@@ -72,12 +72,17 @@ describe('accountDisplayState', () => {
   it('guest offers login and register', () => {
     const s = accountDisplayState({ role: 'guest' }, '')
     expect(s).toMatchObject({ loggedIn: false, showLogin: true, showRegister: true, showLogout: false, showLink: false })
-    expect(s.label).toBe('Not logged in')
+    expect(s.username).toBeNull()
+    expect(s.role).toBeNull()
   })
-  it('authed shows username, role and logout', () => {
+  // #539: the role is a chip next to the name, not "alice (hunter)" in a
+  // sentence — so the state hands the renderer the two parts, not a label.
+  it('authed exposes username and role separately, and logout', () => {
     const s = accountDisplayState({ role: 'hunter', username: 'alice', companions: ['ff'] }, 'ff')
     expect(s).toMatchObject({ loggedIn: true, showLogin: false, showRegister: false, showLogout: true, showLink: false })
-    expect(s.label).toBe('alice (hunter)')
+    expect(s.username).toBe('alice')
+    expect(s.role).toBe('hunter')
+    expect(s.label).toBeUndefined()
   })
   it('offers to link a connected but unlinked companion', () => {
     const s = accountDisplayState({ role: 'hunter', username: 'alice', companions: ['ff'] }, 'aa')

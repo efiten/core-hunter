@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-status-tab",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "A Status tab that says what is connected",
+    "body": "Settings opens on a Status tab: Bluetooth with its own connect button, MQTT with how much is queued, your account with its role, and the version. The Pause MQTT toggle is gone; publishing manages itself."
+  },
+  {
     "id": "2026-08-26-ticker-can-close",
     "date": "2026-08-26",
     "where": "app",

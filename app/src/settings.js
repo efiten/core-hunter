@@ -83,8 +83,10 @@ export function isSettingsActive({ attenuatorDb, unseenChangelog } = {}) {
 
 // initialSettingsTab picks the tab the sheet opens on. Unread release notes
 // win once: opening that tab acknowledges them (saveChangelogSeen), so the
-// next open finds unseenChangelog false and lands back on Settings. Without
-// that write this would strand the reader on the notes every single time.
+// next open finds unseenChangelog false and lands back on the first tab.
+// Without that write this would strand the reader on the notes every time.
+// The first tab is Status since #539 — the web copy's is Settings, so only
+// the unread-notes decision is shared (web/parity.test.js).
 export function initialSettingsTab({ unseenChangelog } = {}) {
-  return unseenChangelog ? 'whatsnew' : 'settings'
+  return unseenChangelog ? 'whatsnew' : 'status'
 }

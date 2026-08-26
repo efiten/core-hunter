@@ -40,14 +40,14 @@ describe('backlogState', () => {
     expect(backlogState(0, { connected: false }).show).toBe(false)
   })
 
-  it('states a pause rather than warning about it, and still shows the number', () => {
-    // The hunter chose this. But "I paused it" and "I paused it and 4,000
-    // receptions are waiting" are different situations.
+  // #539 removed the Pause toggle, so there is no paused level left to
+  // render — a leftover flag reads as an ordinary disconnected backlog.
+  it('treats a leftover paused flag as a plain disconnected backlog', () => {
     const s = backlogState(4000, { paused: true, connected: false })
-    expect(s.show, 'a paused drain with a backlog still has to show it').toBe(true)
-    expect(s.level).toBe('paused')
-    expect(s.text).toContain('paused')
+    expect(s.show).toBe(true)
+    expect(s.level).toBe('alarm')
     expect(s.text).toContain('4,000')
+    expect(s.text).not.toContain('paused')
   })
 
   it('answers for input the render tick can actually hand it', () => {

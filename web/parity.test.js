@@ -768,21 +768,18 @@ describe('nodeposnotice — parity of the two shared lines', () => {
 // export set, and the cases are the two branches plus the shapes a caller can
 // actually pass — a missing flag is what a first visit hands it.
 describe('initialSettingsTab — parity between the app and web copies', () => {
-  const CASES = [
-    ['unread notes', { unseenChangelog: true }],
-    ['notes read', { unseenChangelog: false }],
-    ['flag absent', {}],
-    ['no argument at all', undefined],
-  ]
-  it.each(CASES)('agrees on %s', (_label, input) => {
-    expect(webInitialTab(input)).toBe(appInitialTab(input))
-  })
-
-  // Both agreeing on the wrong answer is still parity, so pin the value once:
-  // without this, two copies that each returned 'settings' unconditionally
-  // would pass every case above.
+  // The shared decision is "unread notes win once"; the read fallback is each
+  // surface's own first tab (#539 gave the app a Status tab, web opens on
+  // Settings), so only the notes branch is compared cross-copy.
   it('sends an unread reader to the notes, on both surfaces', () => {
     expect(webInitialTab({ unseenChangelog: true })).toBe('whatsnew')
     expect(appInitialTab({ unseenChangelog: true })).toBe('whatsnew')
+  })
+
+  it('falls back to its surface-first tab once the notes are read', () => {
+    for (const input of [{ unseenChangelog: false }, {}, undefined]) {
+      expect(webInitialTab(input)).toBe('settings')
+      expect(appInitialTab(input)).toBe('status')
+    }
   })
 })

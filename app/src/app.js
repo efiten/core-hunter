@@ -116,10 +116,6 @@ const state = {
   gps: new Gps(),
   queue: new Queue(),
   publisher: null,
-  // Manual override (Settings) — while true, MQTT stays disconnected and the
-  // connect flow skips it entirely; un-pausing reconnects and the drain loop
-  // catches up on whatever piled up in IndexedDB while paused.
-  mqttPaused: false,
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
@@ -254,11 +250,10 @@ async function renderBacklog() {
   try { pending = await state.queue.unpublishedCount() } catch (_) { return }
   const s = backlogState(pending, {
     connected: Boolean(state.publisher && state.publisher.connected()),
-    paused: Boolean(state.mqttPaused),
   })
   elx.hidden = !s.show
   elx.textContent = s.text
-  for (const lvl of ['warn', 'alarm', 'paused']) elx.classList.toggle(`hud-backlog-${lvl}`, s.show && s.level === lvl)
+  for (const lvl of ['warn', 'alarm']) elx.classList.toggle(`hud-backlog-${lvl}`, s.show && s.level === lvl)
 }
 
 function renderBattery() {
@@ -639,6 +634,10 @@ function enrichNames(rows) {
 async function drawOnce() {
   try {
     setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
+    // The Status tab's MQTT group has no events of its own (mqttlifecycle
+    // reconnects in the background), so while the sheet is open the tick is
+    // what keeps its dot and queued count honest.
+    if (!el('settings-sheet').hidden) refreshConnState()
     const now = Date.now()
     // The map shows the chosen window, so read exactly that (#230). A null
     // windowMs means "no time filter", which retention now bounds at 7 days.
@@ -957,7 +956,7 @@ async function ensureMqtt() {
   if (!owner) {
     try { owner = await state.queue.pendingPubkey() } catch (_) { owner = '' }
   }
-  const run = mqttShouldRun({ configured: Boolean(cfg && cfg.mqttUrl), paused: state.mqttPaused, rxPubkey: owner })
+  const run = mqttShouldRun({ configured: Boolean(cfg && cfg.mqttUrl), rxPubkey: owner })
   switch (mqttAction(run, Boolean(state.publisher))) {
     case 'connect': connectMqtt(owner); break
     case 'end':
@@ -1032,13 +1031,12 @@ async function connectAll() {
     // 3. GPS
     startGpsWatch()
 
-    // 4. MQTT publisher — non-fatal, and skipped entirely while paused (see
-    // the Settings "Pause MQTT" toggle). Receptions are written to IndexedDB
+    // 4. MQTT publisher — non-fatal. Receptions are written to IndexedDB
     // first and the drain loop publishes them, so a slow or unreachable
     // broker must not fail the connect or tear down BLE. Connect in the
     // background; the render tick keeps dot-mqtt in sync with the live
     // publisher state.
-    if (!state.mqttPaused) connectMqtt()
+    connectMqtt()
 
     // 5. Register frame handler
     state.transport.onFrame(processFrame)
@@ -1069,22 +1067,49 @@ function setHuntingChrome(connected) {
   el('hud-bar-labels').hidden = connected
 }
 
+// What the Account block explains per state (#539). Guest copy is the first
+// sentence of the web onboarding's account step, adapted to the app; the
+// member line says what verification bought. A linked hunter gets no note —
+// the next step (an admin verifying) is not theirs to take.
+const ACC_NOTES = {
+  guest: 'Registering makes you a hunter: filter to your own companion on the analyser map to see its captures in full.',
+  member: "Verified. Every hunter's receptions show in full on the analyser map.",
+}
+
 // Fetch the current account/session and reflect it in the Account section:
-// status label + which of Register/Login/Logout/Link are visible. Called
+// name + role chip + which of Register/Login/Logout/Link are visible. Called
 // whenever the Settings sheet opens (and once on first build).
 async function refreshAccount() {
   const me = await fetchMe()
   state.account = me
   const s = accountDisplayState(me, state.rxPubkey)
-  el('ss-account-status').textContent = s.label
+  el('ss-acc-name').textContent = s.loggedIn ? s.username : 'Not logged in'
+  el('ss-acc-name').classList.toggle('ss-acc-guest', !s.loggedIn)
+  // The avatar carries the first two letters of the name; a generic outline
+  // when nobody is logged in.
+  el('ss-acc-avatar').textContent = s.loggedIn ? String(s.username).slice(0, 2).toLowerCase() : ''
+  el('ss-acc-avatar').classList.toggle('ss-acc-av-authed', s.loggedIn)
+  const chip = el('ss-acc-role')
+  chip.hidden = !s.loggedIn
+  if (s.loggedIn) {
+    chip.textContent = s.role.charAt(0).toUpperCase() + s.role.slice(1)
+    chip.classList.toggle('active', s.role === 'member' || s.role === 'admin')
+  }
+  const note = el('ss-acc-note')
+  const noteText = !s.loggedIn ? ACC_NOTES.guest : (s.role === 'member' || s.role === 'admin') ? ACC_NOTES.member : ''
+  note.textContent = noteText
+  note.hidden = !noteText
   el('ss-acc-register').hidden = !s.showRegister
   el('ss-acc-login').hidden = !s.showLogin
   el('ss-acc-logout').hidden = !s.showLogout
   el('ss-acc-link').hidden = !s.showLink
 }
 
-// Mirror the connection state into the BLE-settings Connection section. No-op
-// until the settings sheet has been built.
+// Mirror the connection state into the Status tab's Connection block. No-op
+// until the settings sheet has been built. Two groups, one channel each
+// (#539): the connect button lives INSIDE the Bluetooth group so its position
+// says what it disconnects; MQTT has no button at all — mqttlifecycle.js
+// reconnects on its own and the drain publishes from IndexedDB regardless.
 function refreshConnState() {
   if (!el('ss-conn-btn')) return
   const connected = state.connected
@@ -1096,21 +1121,20 @@ function refreshConnState() {
   el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
   renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
-  el('ss-conn-mqtt').textContent = state.mqttPaused
-    ? 'Paused'
-    : (state.publisher && state.publisher.connected() ? 'Connected' : 'Not connected')
-
-  const mqttBtn = el('ss-mqtt-pause-btn')
-  if (mqttBtn) {
-    if (state.mqttPaused) {
-      mqttBtn.textContent = 'Resume MQTT'
-      mqttBtn.classList.remove('ss-disconnect')
-      mqttBtn.classList.add('ss-connect')
-    } else {
-      mqttBtn.textContent = 'Pause MQTT'
-      mqttBtn.classList.remove('ss-connect')
-      mqttBtn.classList.add('ss-disconnect')
-    }
+  el('ss-ble-dot').classList.toggle('on', connected)
+  const mqttOn = Boolean(state.publisher && state.publisher.connected())
+  el('ss-conn-mqtt').textContent = mqttOn ? 'Connected' : 'Not connected'
+  el('ss-mqtt-dot').classList.toggle('on', mqttOn)
+  // While MQTT is down the one thing worth knowing is how much is waiting.
+  // Async on purpose: the count comes from IndexedDB and this refresher is
+  // called from sync paths; the row keeps its last value until the count
+  // lands, and the guard stops a late count from unhiding a row that a
+  // reconnect just hid.
+  el('ss-mqtt-queued-row').hidden = mqttOn
+  if (!mqttOn) {
+    state.queue.unpublishedCount().then((n) => {
+      if (!(state.publisher && state.publisher.connected())) el('ss-mqtt-queued').textContent = String(n)
+    }).catch(() => {})
   }
 }
 
@@ -1347,8 +1371,9 @@ function buildSettingsSheet() {
     <div class="settings-page-inner">
       <div class="sheet-head">
         <div class="ss-tabs" role="tablist" aria-label="Settings sections">
-          <button type="button" class="ss-tab active" id="ss-tab-settings" role="tab" aria-selected="true" aria-controls="ss-panel-settings">Settings</button>
-          <button type="button" class="ss-tab" id="ss-tab-whatsnew" role="tab" aria-selected="false" aria-controls="ss-panel-whatsnew">What's new<span id="ss-whatsnew-dot" class="ss-whatsnew-dot" hidden aria-hidden="true"></span></button>
+          <button type="button" class="ss-tab active" id="ss-tab-status" role="tab" aria-selected="true" aria-controls="ss-panel-status">Status</button>
+          <button type="button" class="ss-tab" id="ss-tab-settings" role="tab" aria-selected="false" aria-controls="ss-panel-settings">Settings</button>
+          <button type="button" class="ss-tab" id="ss-tab-whatsnew" role="tab" aria-selected="false" aria-controls="ss-panel-whatsnew">Changelog<span id="ss-whatsnew-dot" class="ss-whatsnew-dot" hidden aria-hidden="true"></span></button>
           <button type="button" class="ss-tab" id="ss-tab-about" role="tab" aria-selected="false" aria-controls="ss-panel-about">About</button>
         </div>
         <button class="sheet-close" id="ss-close" aria-label="Close">
@@ -1357,43 +1382,70 @@ function buildSettingsSheet() {
           </svg>
         </button>
       </div>
-      <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
+      <div class="ss-panel active" id="ss-panel-status" role="tabpanel" aria-labelledby="ss-tab-status">
       <div class="ss-conn-section">
         <h3>Connection</h3>
-        <dl class="ss-conn-status">
-          <dt>Companion</dt><dd id="ss-conn-name">—</dd>
-          <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
-          <dt>Spreading factor</dt><dd id="ss-conn-sf">—</dd>
-          <dt>Battery</dt><dd id="ss-conn-battery">—</dd>
-          <dt>BLE</dt><dd id="ss-conn-ble">—</dd>
-          <dt>MQTT</dt><dd id="ss-conn-mqtt">—</dd>
-        </dl>
-        <button id="ss-conn-btn" class="ss-connect">Connect</button>
-        <button id="ss-mqtt-pause-btn" class="ss-disconnect">Pause MQTT</button>
+        <div class="ss-grp">
+          <div class="ss-grp-head">
+            <span>Bluetooth</span>
+            <span class="ss-grp-state"><i id="ss-ble-dot" class="ss-state-dot"></i><span id="ss-conn-ble">Not connected</span></span>
+          </div>
+          <dl class="ss-conn-status">
+            <dt>Companion</dt><dd id="ss-conn-name">—</dd>
+            <dt>Signal</dt><dd id="ss-conn-sf">—</dd>
+            <dt>Battery</dt><dd id="ss-conn-battery">—</dd>
+            <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
+          </dl>
+          <button id="ss-conn-btn" class="ss-connect">Connect</button>
+        </div>
+        <div class="ss-grp">
+          <div class="ss-grp-head">
+            <span>MQTT</span>
+            <span class="ss-grp-state"><i id="ss-mqtt-dot" class="ss-state-dot"></i><span id="ss-conn-mqtt">Not connected</span></span>
+          </div>
+          <dl class="ss-conn-status" id="ss-mqtt-queued-row" hidden>
+            <dt>Queued</dt><dd id="ss-mqtt-queued">—</dd>
+          </dl>
+        </div>
       </div>
       <div class="ss-account-section">
         <h3>Account</h3>
-        <p id="ss-account-status" class="ss-acc-status">Not logged in</p>
-        <div class="ss-acc-actions">
-          <div class="ss-acc-mode-tabs" role="tablist" aria-label="Register or log in">
-            <button id="ss-acc-register" class="ss-acc-mode-tab" type="button" role="tab">Register</button>
-            <button id="ss-acc-login" class="ss-acc-mode-tab" type="button" role="tab">Log in</button>
+        <div class="ss-grp">
+          <div class="ss-acc-row">
+            <span id="ss-acc-avatar" class="ss-acc-av" aria-hidden="true"></span>
+            <span id="ss-acc-name" class="ss-acc-name">Not logged in</span>
+            <span id="ss-acc-role" class="fs-chip" hidden></span>
+            <button id="ss-acc-logout" class="ss-acc-logout" type="button" hidden>Log out</button>
           </div>
-          <button id="ss-acc-link" type="button" hidden>Link this companion</button>
-          <button id="ss-acc-logout" type="button" hidden>Log out</button>
+          <p id="ss-acc-note" class="ss-acc-note" hidden></p>
+          <div class="ss-acc-actions">
+            <button id="ss-acc-register" class="ss-connect" type="button">Register</button>
+            <button id="ss-acc-login" class="ss-plain" type="button">Log in</button>
+            <button id="ss-acc-link" class="ss-connect" type="button" hidden>Link this companion</button>
+          </div>
+          <form id="ss-acc-form" class="ss-acc-form" hidden>
+            <input id="ss-acc-username" type="text" placeholder="Username" aria-label="Username" autocomplete="username" />
+            <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" aria-label="Password" autocomplete="current-password" />
+            <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" aria-label="Email, optional, for password reset only" autocomplete="email" hidden />
+            <label id="ss-acc-remember-row" hidden><input id="ss-acc-remember" type="checkbox" /> Remember me</label>
+            <div id="ss-acc-form-actions" class="ss-acc-form-actions">
+              <button id="ss-acc-submit" class="ss-connect" type="submit">Submit</button>
+              <button id="ss-acc-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+          <p id="ss-acc-msg" class="ss-acc-msg" hidden></p>
         </div>
-        <form id="ss-acc-form" class="ss-acc-form" hidden>
-          <input id="ss-acc-username" type="text" placeholder="Username" aria-label="Username" autocomplete="username" />
-          <input id="ss-acc-password" type="password" placeholder="Password (min 10 chars)" aria-label="Password" autocomplete="current-password" />
-          <input id="ss-acc-email" type="email" placeholder="Email (optional — reset only)" aria-label="Email, optional, for password reset only" autocomplete="email" hidden />
-          <label id="ss-acc-remember-row" hidden><input id="ss-acc-remember" type="checkbox" /> Remember me</label>
-          <div id="ss-acc-form-actions" class="ss-acc-form-actions">
-            <button id="ss-acc-submit" class="ss-connect" type="submit">Submit</button>
-            <button id="ss-acc-cancel" type="button">Cancel</button>
-          </div>
-        </form>
-        <p id="ss-acc-msg" class="ss-acc-msg" hidden></p>
       </div>
+      <div class="ss-version-section">
+        <h3>Version</h3>
+        <div class="ss-grp ss-version-row">
+          <span class="ss-version">v${__APP_VERSION__}</span>
+          <span id="ss-update-status" class="ss-update-status" hidden></span>
+          <button id="ss-reload-btn" class="ss-reload" type="button">Reload app</button>
+        </div>
+      </div>
+      </div>
+      <div class="ss-panel" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings" hidden>
       <div class="ss-radio-section">
         <h3>Radio</h3>
         <label class="ss-radio-row" id="ss-row-atten">
@@ -1410,10 +1462,6 @@ function buildSettingsSheet() {
         <input type="checkbox" id="ss-theme" />
         Light theme
       </label>
-      <div class="ss-version-row">
-        <span id="ss-update-status" class="ss-update-status" hidden></span>
-        <button id="ss-reload-btn" class="ss-reload" type="button">Reload</button>
-      </div>
       </div>
       <div class="ss-panel" id="ss-panel-whatsnew" role="tabpanel" aria-labelledby="ss-tab-whatsnew" hidden>
         <div id="ss-whatsnew" class="ss-whatsnew-panel"></div>
@@ -1495,15 +1543,6 @@ function buildSettingsSheet() {
   })
   refreshConnState()
 
-  el('ss-mqtt-pause-btn').addEventListener('click', () => {
-    state.mqttPaused = !state.mqttPaused
-    // Both directions go through ensureMqtt: resuming used to be gated on BLE
-    // being connected, so with the radio down it did nothing and the queue
-    // stayed put (#454).
-    ensureMqtt()
-    refreshConnState()
-  })
-
   const atten = el('ss-atten')
   atten.value = String(state.attenuatorDb)
   const syncAttenRow = () => el('ss-row-atten').classList.toggle('active', (Number(atten.value) || 0) !== 0)
@@ -1530,7 +1569,7 @@ function buildSettingsSheet() {
   // Tab switching (#203): one panel at a time. All panels stay in the DOM so
   // each keeps its own scroll position independently.
   settingsSelectTab = function selectTab(which) {
-    for (const k of ['settings', 'whatsnew', 'about']) {
+    for (const k of ['status', 'settings', 'whatsnew', 'about']) {
       const on = k === which
       el('ss-tab-' + k).classList.toggle('active', on)
       el('ss-tab-' + k).setAttribute('aria-selected', String(on))
@@ -1542,6 +1581,7 @@ function buildSettingsSheet() {
     // there is no rejection to leak.
     if (which === 'whatsnew') void showWhatsNew()
   }
+  el('ss-tab-status').addEventListener('click', () => settingsSelectTab('status'))
   el('ss-tab-settings').addEventListener('click', () => settingsSelectTab('settings'))
   el('ss-tab-whatsnew').addEventListener('click', () => settingsSelectTab('whatsnew'))
   el('ss-tab-about').addEventListener('click', () => settingsSelectTab('about'))
@@ -1566,14 +1606,10 @@ function buildSettingsSheet() {
     el('ss-acc-password').value = ''
     el('ss-acc-email').value = ''
     el('ss-acc-submit').textContent = submitLabelForMode(mode)
-    el('ss-acc-register').classList.toggle('active', mode === 'register')
-    el('ss-acc-login').classList.toggle('active', mode === 'login')
   }
   function closeAccForm() {
     el('ss-acc-form').hidden = true
     accFormMode = null
-    el('ss-acc-register').classList.remove('active')
-    el('ss-acc-login').classList.remove('active')
   }
   function accMsg(text, ok) {
     const m = el('ss-acc-msg'); m.textContent = text; m.hidden = false

@@ -313,6 +313,31 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   box-shadow: 0 12px 34px rgba(0,0,0,.4); z-index: 600; }
 [hidden] { display: none !important; }
 .ss-conn-section { margin-top: 12px; }
+/* Status blocks (#539): one bordered group per channel/topic. The connect
+   button sits INSIDE the Bluetooth group — its place says what it disconnects,
+   which is what the old loose "Disconnect" under a mixed BLE+MQTT list could
+   not. */
+.ss-grp { border: 1px solid var(--ch-border); border-radius: 10px; padding: 12px; margin: 10px 0; }
+.ss-grp .ss-connect, .ss-grp .ss-disconnect { width: 100%; margin-top: 4px; }
+.ss-grp-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.ss-grp-state { margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 400; color: var(--ch-muted); }
+.ss-state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ch-sig-none); flex: none; }
+.ss-state-dot.on { background: var(--ch-accent); }
+.ss-acc-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ss-acc-av { width: 34px; height: 34px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ch-bar-track); color: var(--ch-muted);
+  font-size: 13px; font-weight: 700; text-transform: lowercase; }
+.ss-acc-av-authed { background: var(--ch-bar-track); color: var(--ch-accent); }
+.ss-acc-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-acc-name.ss-acc-guest { color: var(--ch-muted); }
+.ss-acc-logout { margin-left: auto; border: none; background: none; color: var(--ch-muted);
+  font: inherit; font-size: 13px; cursor: pointer; }
+.ss-acc-logout:hover { color: var(--ch-text); }
+.ss-acc-note { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: var(--ch-muted); }
+.ss-plain { border: 1px solid var(--ch-muted); border-radius: 11px; padding: 9px 18px;
+  background: transparent; color: var(--ch-text); font-weight: 600; cursor: pointer; }
 .ss-conn-status { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 10px;
   font-size: 13px; }
 .ss-conn-status dt { color: var(--ch-muted); }
@@ -331,14 +356,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   opacity: 0.45; }
 .ss-account-section { margin-top: 1rem; }
 .ss-account-section h3 { margin: 0 0 .4rem; }
-.ss-acc-status { color: var(--ch-muted); margin: 0 0 .5rem; }
-.ss-acc-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.ss-acc-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 10px; }
 .ss-acc-actions > button { flex: 1 1 auto; }
-.ss-acc-mode-tabs { display: flex; gap: 14px; flex: 1 1 100%; }
-.ss-acc-mode-tab { border: none; background: transparent; color: var(--ch-muted); font: inherit;
-  font-size: 14px; font-weight: 600; padding: 6px 2px; cursor: pointer;
-  border-bottom: 2px solid transparent; }
-.ss-acc-mode-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
+.ss-acc-actions .ss-connect, .ss-acc-actions .ss-plain { width: auto; margin-top: 0; }
 .ss-acc-form { display: flex; flex-direction: column; gap: .5rem; margin-top: .6rem; }
 .ss-acc-form input[type="text"],
 .ss-acc-form input[type="password"],
@@ -353,8 +373,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-radio-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--ch-text); }
 .ss-radio-row select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 14px; }
-.ss-version-row { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; }
+.ss-version-row { display: flex; align-items: center; gap: 8px; }
 .ss-version { font-size: 12px; color: var(--ch-muted); }
+.ss-version-row .ss-version { font-size: 14px; color: var(--ch-text);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
 .ss-update-status { font-size: 12px; font-weight: 600; color: var(--ch-accent-2); }
 .ss-reload { margin-left: auto; border: 1px solid var(--ch-muted); border-radius: 11px;
   padding: 7px 16px; background: transparent; color: var(--ch-text); font-weight: 600;
@@ -366,7 +388,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   color: var(--ch-muted); background: var(--ch-surface); }
 #hud-backlog.hud-backlog-warn { color: var(--ch-sig-mid); }
 #hud-backlog.hud-backlog-alarm { color: var(--ch-sig-hot); font-weight: 600; }
-#hud-backlog.hud-backlog-paused { color: var(--ch-muted); }
 
 /* When a newer build is live, pull the eye to the reload button. */
 .ss-reload-update { border-color: var(--ch-accent-2); color: var(--ch-accent-2); }

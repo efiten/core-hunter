@@ -54,11 +54,15 @@ export function submitLabelForMode(mode) {
   return 'Submit'
 }
 
+// Username and role are separate fields, not a "alice (hunter)" label (#539):
+// the sheet renders the role as a chip next to the name, and the one thing
+// that decides what you see on the map should be readable at a glance.
 export function accountDisplayState(me, rxPubkey) {
   const guest = !me || me.role === 'guest' || !me.username
   if (guest) {
     return {
-      label: 'Not logged in',
+      username: null,
+      role: null,
       loggedIn: false,
       showLogin: true,
       showRegister: true,
@@ -68,7 +72,8 @@ export function accountDisplayState(me, rxPubkey) {
   }
   const companions = me.companions || []
   return {
-    label: `${me.username} (${me.role})`,
+    username: me.username,
+    role: me.role,
     loggedIn: true,
     showLogin: false,
     showRegister: false,

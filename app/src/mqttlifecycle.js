@@ -11,12 +11,12 @@
 // drain publishes from there, so publishing needs no radio: a hunter who has
 // parked with a full queue and unplugged the companion is exactly who most
 // needs the backlog to go out. What publishing does need is somewhere to send
-// it (a broker in the config), permission (not paused), and an identity for the
+// it (a broker in the config) and an identity for the
 // topic and client id (the companion pubkey, which survives a dropped link and
 // is only cleared by a deliberate disconnect).
 
-export function mqttShouldRun({ configured = false, paused = false, rxPubkey = '' } = {}) {
-  return Boolean(configured) && !paused && Boolean(rxPubkey)
+export function mqttShouldRun({ configured = false, rxPubkey = '' } = {}) {
+  return Boolean(configured) && Boolean(rxPubkey)
 }
 
 // What to do about the gap between what should be running and what is.
