@@ -77,6 +77,13 @@
     "body": "You can now filter on traffic with no sender. Direct only is called No path now."
   },
   {
+    "id": "2026-08-25-where-accounts-come-from",
+    "date": "2026-08-25",
+    "where": "map",
+    "title": "Mapping has a way in from the map",
+    "body": "The map is what mapping produces, but nothing here said so: the login box offered logging in and nothing else, so anyone without an account was left with nowhere to click. Start mapping now stands in the toolbar and opens the RX webapp, where you pair a companion radio and your own receptions start landing here. That is also where the account is made, from the companion you paired, which is why this page has no sign-up form. The walkthrough and mesh-hunter.eu spell out the rest, including the admin verification that opens the full history."
+  },
+  {
     "id": "2026-08-24-keep-what-cannot-be-named",
     "date": "2026-08-24",
     "where": "both",

@@ -60,3 +60,37 @@ describe('panel copy', () => {
   })
 })
 
+
+// The RX webapp is the product the map is downstream of (2026-08-25): you map
+// by pairing a companion to it, and this page is where everyone's results meet.
+// A reader who arrives here first has no way to become a mapper unless the map
+// says so, and the login card alone only reaches the ones who click Log in.
+describe('the mapping call to action', () => {
+  it('stands in the bar next to the login button, not only inside the login card', () => {
+    const at = html.indexOf('id="rx-cta"')
+    expect(at, 'no #rx-cta in the bar').toBeGreaterThan(-1)
+    expect(html.slice(at - 200, at + 200)).toContain('https://rx.mesh-hunter.eu')
+    expect(at).toBeLessThan(html.indexOf('id="auth-btn"'))
+  })
+
+  // Its own callout rather than a second target on the account one: #bar wraps,
+  // so the two buttons are neighbours at some widths and on different rows at
+  // others, and a box anchored to the union of the two lands between them --
+  // 900px from either button, which is what CI caught. This assertion is the
+  // guard, not the e2e sweep beside it: the split cannot be forced in a browser
+  // without either distorting the bar or dropping the tour into its inline
+  // fallback, so only the shape of the config rules it out.
+  it('is explained by a callout of its own, anchored to nothing else', () => {
+    const mapping = ONBOARDING_CALLOUTS.find((c) => c.id === 'wb-co-mapping')
+    expect(mapping.targets).toEqual(['rx-cta'])
+    for (const c of ONBOARDING_CALLOUTS) {
+      if (c.id !== 'wb-co-mapping') expect(c.targets).not.toContain('rx-cta')
+    }
+  })
+
+  it('says in the panel where mapping happens, not only what the map shows', () => {
+    const copy = [ONBOARDING_TAGLINE, ...ONBOARDING_BASICS].join(' ')
+    expect(copy).toMatch(/RX webapp/i)
+    expect(copy).toMatch(/companion/i)
+  })
+})

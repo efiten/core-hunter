@@ -69,4 +69,11 @@ describe('role helpers', () => {
   it('does not promise a guest any exact data — they have no companion of their own', () => {
     expect(guestNotice('guest')).not.toMatch(/your own/i)
   })
+  // #490 is answered by #rx-cta and the login card, not here: this line shares a
+  // flex-wrap row with the SF counts, and naming the RX webapp in it pushed them
+  // onto a row of their own (measured at 1440px). Kept short on purpose.
+  it('stays short enough to share its bar row, and leaves registering to the controls beside it', () => {
+    expect(guestNotice('guest').length).toBeLessThan(140)
+    expect(guestNotice('guest')).not.toMatch(/register/i)
+  })
 })

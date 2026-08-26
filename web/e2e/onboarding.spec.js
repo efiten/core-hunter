@@ -72,7 +72,7 @@ test('each callout is anchored to the controls it describes, and they are ringed
   // horizontally. An unpositioned fixed box falls to its static spot at the top
   // of the page, which is above the toolbar and fails the first check — that is
   // the failure this asserts, since "is on screen" is true either way.
-  for (const [id, anchor] of [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-account', 'auth-btn']]) {
+  for (const [id, anchor] of [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']]) {
     const box = page.locator(`#${id}`)
     await expect(box).toBeVisible()
     await expect(box).not.toHaveText('')
@@ -87,7 +87,7 @@ test('each callout is anchored to the controls it describes, and they are ringed
   }
 
   // The spotlight ring is applied from the callouts' own target lists.
-  for (const id of ['hp-toggle', 'tr-toggle', 'layer-toggle', 'locate-toggle', 'auth-btn']) {
+  for (const id of ['hp-toggle', 'tr-toggle', 'layer-toggle', 'locate-toggle', 'rx-cta', 'auth-btn']) {
     await expect(page.locator(`#${id}`)).toHaveClass(/wb-spot/)
   }
   // The toolbar is above the scrim, so the tour highlights live controls.
@@ -148,7 +148,7 @@ for (const [w, h] of [[760, 800], [800, 800], [900, 700], [1024, 700]]) {
     await expect(page.locator('#wb-onboarding')).toBeVisible()
     const bad = await page.evaluate(() => {
       const panel = document.querySelector('.wb-panel').getBoundingClientRect()
-      return ['wb-co-filters', 'wb-co-layers', 'wb-co-account'].filter((id) => {
+      return ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account'].filter((id) => {
         const el = document.getElementById(id)
         if (el.hidden) return false
         const r = el.getBoundingClientRect()
@@ -171,8 +171,8 @@ test('a phone-width window drops the floating callouts into the panel', async ({
   await bootstrap(page, false)
   await page.goto('/')
   await expect(page.locator('#wb-onboarding')).toBeVisible()
-  await expect(page.locator('#wb-inline li')).toHaveCount(3)
-  for (const id of ['wb-co-filters', 'wb-co-layers', 'wb-co-account']) {
+  await expect(page.locator('#wb-inline li')).toHaveCount(4)
+  for (const id of ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account']) {
     await expect(page.locator(`#${id}`)).toBeHidden()
   }
   // The controls are still ringed — the tour still points at live controls,
@@ -272,3 +272,49 @@ test('no callout is placed over the bar it is describing', async ({ page }) => {
   })
   expect(overlaps, 'callouts sitting on top of #bar').toEqual([])
 })
+
+// #490 review, found by CI at a width this laptop does not reproduce: the bar
+// wraps by content, so Start mapping and Log in are neighbours at one width and
+// on separate rows at the next. A callout anchored to both was placed against
+// the union of the two and landed in the empty space between them, 900px from
+// either. One box per control fixes it, and this is the check that would have
+// caught it: sweep the widths where the bar re-wraps and demand every box still
+// sit under, and horizontally over, the control it describes.
+// #490 review. The bar wraps by content, so which controls share a row moves
+// with font metrics: CI placed Start mapping and Log in on separate rows at a
+// width where this laptop keeps them together. A callout anchored to both was
+// then positioned against the union of the two and landed in the empty middle,
+// 900px from either button.
+//
+// This sweep is the cheap half of the guard: it walks the widths where the bar
+// re-wraps and demands every visible box still sit under, and horizontally
+// over, the control it describes. It does NOT reproduce the split on demand --
+// forcing one (a margin, a narrower bar) either distorts the layout or drops
+// the tour into its inline fallback, where there are no boxes to measure. What
+// rules the shape out for good is the one-target-per-button assertion in
+// onboarding.test.js; this catches the ordinary regressions.
+for (const w of [1100, 1280, 1440]) {
+  test(`every callout stays with its own control at ${w}px`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: 800 })
+    await bootstrap(page, false)
+    await page.goto('/')
+    await expect(page.locator('#wb-onboarding')).toBeVisible()
+    // The spotlight is allowed to give up and fall back to the panel; what is
+    // not allowed is a visible box away from its target.
+    const placed = await page.evaluate((pairs) => {
+      const out = []
+      for (const [id, anchor] of pairs) {
+        const el = document.getElementById(id)
+        if (el.hidden) continue
+        const r = el.getBoundingClientRect()
+        const t = document.getElementById(anchor).getBoundingClientRect()
+        out.push({ id, anchor, below: r.y >= t.y + t.height, overlaps: r.x <= t.x + t.width + 8 && r.x + r.width >= t.x - 8 })
+      }
+      return out
+    }, [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']])
+    for (const p of placed) {
+      expect(p.below, `${p.id} sits below #${p.anchor}`).toBe(true)
+      expect(p.overlaps, `${p.id} overlaps #${p.anchor} horizontally`).toBe(true)
+    }
+  })
+}

@@ -48,6 +48,13 @@ export function isDegradedFor(role) {
 // "not named" rather than "anonymised" for the heat, because they are absent
 // from it rather than pseudonymised: the per-cell hunter list is withheld
 // entirely below member, which is what let the window go (#280).
+// "Log in to see more" is a dead end for a visitor who has never had an account
+// (#490), and the map cannot create one: /api/auth/register rejects a body
+// without a companion_pubkey (httpapi/auth.go). What answers it is #rx-cta, the
+// Start mapping link standing in the bar a few pixels away, plus the login
+// card's own footer. Not this line: #bar is flex-wrap and the notice shares its
+// row with the SF counts, so naming the RX webapp here cost a whole extra bar
+// row (measured at 1440px: 800px of notice against 703px).
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
