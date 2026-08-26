@@ -584,3 +584,14 @@ body.wb-onboarding-on #bar { z-index:710; }
 .ic-panel:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
 .ic-panel { width: 260px; }
 #f-idclass-toggle.active { border-color: var(--ch-accent); color: var(--ch-accent); }
+
+/* The role-rise notice (#530). Accent-bordered rather than muted like
+   .guest-notice: that one describes a standing state, this one is a change the
+   reader has been waiting for. */
+.role-notice { display: inline-flex; align-items: center; gap: 8px; font-size: .85em;
+  color: var(--ch-text); background: var(--ch-surface);
+  border: 1px solid var(--ch-accent); border-radius: 8px; padding: 3px 6px 3px 10px; }
+.role-notice[hidden] { display: none; }
+#role-notice-close { background: none; border: 0; color: var(--ch-muted); cursor: pointer;
+  font-size: 16px; line-height: 1; padding: 2px 4px; }
+#role-notice-close:hover { color: var(--ch-text); }

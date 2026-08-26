@@ -33,6 +33,17 @@ func BuildReset(baseURL, token string) Message {
 	}
 }
 
+// BuildMemberVerified closes the loop both surfaces promise: "an admin verifies
+// you as a member afterwards" (#530). No link and no token -- there is nothing
+// to click, the access simply exists now -- so it names what opened up instead.
+func BuildMemberVerified(baseURL string) Message {
+	return Message{
+		Subject: "You are verified as a Mesh-Hunter member",
+		Body: "An admin has verified your Mesh-Hunter account as a member.\n\n" +
+			"You now see the full history, hunters by name, and Locate:\n" + baseURL + "\n",
+	}
+}
+
 type Sender struct {
 	Host   string
 	Port   int

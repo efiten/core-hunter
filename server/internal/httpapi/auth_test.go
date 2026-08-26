@@ -141,6 +141,10 @@ func (f *fakeMailer) SendReset(to, token string) error {
 	f.lastTo, f.lastToken, f.kind = to, token, "reset"
 	return nil
 }
+func (f *fakeMailer) SendMemberVerified(to string) error {
+	f.lastTo, f.lastToken, f.kind = to, "", "verified"
+	return nil
+}
 
 func TestResetFlow(t *testing.T) {
 	h, st := newAuthAPI(t)

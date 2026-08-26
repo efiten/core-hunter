@@ -148,3 +148,7 @@ func (m *mailerAdapter) SendSetPassword(to, token string) error {
 func (m *mailerAdapter) SendReset(to, token string) error {
 	return m.sender.Send(to, mail.BuildReset(m.baseURL, token))
 }
+
+func (m *mailerAdapter) SendMemberVerified(to string) error {
+	return m.sender.Send(to, mail.BuildMemberVerified(m.baseURL))
+}

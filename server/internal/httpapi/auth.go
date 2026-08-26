@@ -13,10 +13,12 @@ import (
 	"github.com/efiten/core-hunter/server/internal/store"
 )
 
-// Mailer sends account emails (set-password invites and password resets).
+// Mailer sends account emails: set-password invites, password resets, and the
+// one that says a member verification came through (#530).
 type Mailer interface {
 	SendSetPassword(to, token string) error
 	SendReset(to, token string) error
+	SendMemberVerified(to string) error
 }
 
 const CookieName = "ch_session"
