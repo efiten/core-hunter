@@ -194,10 +194,42 @@ describe('names — parity of the shared matching core', () => {
   })
 
   it('keeps the shared core present on both sides', () => {
-    for (const name of ['isFullPubkey', 'isResolvableId', 'cachedName', 'cachedPosition', 'resolveName']) {
+    for (const name of ['isFullPubkey', 'isResolvableId', 'cachedName', 'cachedPosition', 'resolveName',
+                        'resolvableKey', 'isHashIdKind']) {
       expect(webNames).toHaveProperty(name)
       expect(appNames).toHaveProperty(name)
     }
+  })
+
+  // Which kinds carry a 1-byte id as their own label. Drift here is silent and
+  // ugly: one side marks "77" as an id, the other prints it as a name. The
+  // false cases are what stop a `=> true` from passing.
+  it('agrees on which sender kinds carry a hash as their label', () => {
+    for (const k of ['direct_hash', 'path_hash', 'relay', 'advert_pubkey', 'discover_pubkey',
+                     'channel_name', null, undefined, '']) {
+      expect(webNames.isHashIdKind(k)).toBe(appNames.isHashIdKind(k))
+    }
+    expect(webNames.isHashIdKind('path_hash')).toBe(true)
+    expect(webNames.isHashIdKind('direct_hash')).toBe(true)
+    expect(webNames.isHashIdKind('relay')).toBe(false)
+  })
+
+  // resolvableKey is fill-only on both sides: a row that already has a name is
+  // never looked up again, and a 1-byte id never at all.
+  it('agrees on which receptions are worth resolving', () => {
+    const recs = [
+      { sender_id: 'aa11bb22cc33', sender_label: '' },
+      { sender_id: 'aa11bb22cc33', sender_label: 'NEO7HI' },
+      { sender_id: 'AA11', sender_label: null },
+      { sender_id: '77', sender_label: '77' },
+      { sender_id: null, sender_label: null },
+      null,
+    ]
+    for (const r of recs) expect(webNames.resolvableKey(r)).toBe(appNames.resolvableKey(r))
+    expect(webNames.resolvableKey(recs[0])).toBe('aa11bb22cc33')
+    expect(webNames.resolvableKey(recs[1])).toBeNull()
+    expect(webNames.resolvableKey(recs[2])).toBe('aa11')
+    expect(webNames.resolvableKey(recs[3])).toBeNull()
   })
 
   describe('the cache contract, exercised rather than assumed', () => {

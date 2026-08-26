@@ -174,6 +174,9 @@ export function topSenders(points, { count = 3, nowMs } = {}) {
     .slice(0, count)
 }
 
+
+import { isHashIdKind } from './names.js'
+
 const ID_PREFIX_HEX_CHARS = 6
 const idPrefix = (id) => id.slice(0, ID_PREFIX_HEX_CHARS)
 
@@ -185,7 +188,15 @@ export function targetParts(rec) {
   const label = rec.sender_label ? String(rec.sender_label) : ''
   if (!id) return { primary: label || '—', secondary: '' }
   const prefix = idPrefix(id)
+  // A 1-byte id is carried as its own label, so the label branch below would
+  // print "77" indistinguishably from a resolved short name. It gets the #
+  // mark instead; unlike the app, this list has no kind gate keeping those
+  // rows out (see the module docstring), so the guard has to live here.
+  if (isHashIdKind(rec.sender_kind)) return { primary: `#${prefix}`, secondary: prefix }
   if (label) return { primary: label, secondary: prefix }
+  // The resolver answers 2- and 3-byte relay prefixes, and map.js fills
+  // sender_label from its cache before rendering. A row still without one has
+  // either not been looked up yet or came back ambiguous.
   return { primary: `${prefix} (name not resolved)`, secondary: prefix }
 }
 

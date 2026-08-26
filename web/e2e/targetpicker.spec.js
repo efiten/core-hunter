@@ -211,3 +211,50 @@ test('typing a prefix clears an active pick instead of being ignored (#299)', as
   await expect.poll(() => urls.some((u) => new URL(u).searchParams.get('sender') === 'cc33')).toBe(true)
   await expect.poll(() => urls.every((u) => sendersOf(u).length === 0)).toBe(true)
 })
+
+// The rows the map already has, but with no server-side label: exactly what a
+// relay path hash looks like. The name has to come from the resolver, and
+// before #525 the picker never asked for one, so every such row read
+// "(name not resolved)" while the same node showed its name in a point popup.
+const UNNAMED = { ...A, sender_id: '4a4abe', sender_label: '', sender_kind: 'relay' }
+const HASH = { ...A, sender_id: '77', sender_label: '77', sender_kind: 'direct_hash',
+  rx_at: '2026-07-22T14:59:59Z' }
+
+test('a row with no label takes its name from the resolver', async ({ page }) => {
+  const asked = []
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [UNNAMED] } }))
+  await page.route('**/api/resolve*', (r) => {
+    asked.push(new URL(r.request().url()).searchParams.get('prefix'))
+    return r.fulfill({ json: { prefix: '4a4abe', name: 'BE-MGU-RP01', ambiguous: false } })
+  })
+  await page.goto('/?mode=points')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('#tp-list')).toContainText('BE-MGU-RP01', { timeout: 10000 })
+  await expect(page.locator('#tp-list')).not.toContainText('name not resolved')
+  expect(asked).toContain('4a4abe')
+})
+
+test('an ambiguous prefix keeps the marker instead of guessing a name', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [UNNAMED] } }))
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { prefix: '4a4abe', name: '', ambiguous: true } }))
+  await page.goto('/?mode=points')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('#tp-list')).toContainText('name not resolved')
+})
+
+test('a 1-byte id is marked, and never sent to the resolver', async ({ page }) => {
+  const asked = []
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [HASH] } }))
+  await page.route('**/api/resolve*', (r) => {
+    asked.push(new URL(r.request().url()).searchParams.get('prefix'))
+    return r.fulfill({ json: { name: 'should never be used', ambiguous: false } })
+  })
+  await page.goto('/?mode=points')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#tp-list .tl-row')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('#tp-list')).toContainText('#77')
+  await expect(page.locator('#tp-list')).not.toContainText('should never be used')
+  expect(asked).toEqual([])
+})

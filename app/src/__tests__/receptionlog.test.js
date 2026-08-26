@@ -1,7 +1,30 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
+
+// The ticker prints sender_label straight into the row. meshpacket.js carries
+// a 1-byte hash AS that label, so without a guard "77" appears in the same
+// place, same style, as a resolved name -- the exact confusion hudsender.js
+// was given the # mark to prevent.
+describe('senderText — an id is never dressed as a name', () => {
+  it('marks a 1-byte path hash', () => {
+    expect(senderText({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toBe('#77')
+  })
+  it('marks a 1-byte direct hash', () => {
+    expect(senderText({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: '4a' })).toBe('#4a')
+  })
+  it('ignores a hash-kind label even when it looks like a real name', () => {
+    expect(senderText({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toBe('#4a')
+  })
+  it('prints a resolved name for every other kind', () => {
+    expect(senderText({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: 'repeater-3' })).toBe('repeater-3')
+  })
+  it('falls back to the id, then to a dash', () => {
+    expect(senderText({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: '' })).toBe('a1b2f3')
+    expect(senderText({ sender_kind: 'relay', sender_id: null, sender_label: null })).toBe('—')
+  })
+})
 
 describe('rxView — source select, ascending by rx_at, recent cap', () => {
   const filtered = [rec({ id: 1, rx_at: '2026-06-29T10:00:00Z' }), rec({ id: 2, rx_at: '2026-06-29T10:02:00Z' })]

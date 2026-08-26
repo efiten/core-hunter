@@ -1,6 +1,6 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
@@ -474,6 +474,36 @@ function filtersQs() {
 //
 // Only fetched while the panel is actually open -- an extra request on every
 // redraw would be pure waste for a control that is closed almost all the time.
+// enrichNames fills sender_label in place from the resolver cache, mirroring
+// app.js's function of the same name. The picker reads sender_label and
+// nothing else, so without this every relay row read "(name not resolved)"
+// while the very same node showed its name in a point popup, which resolves
+// through senderName(). Returns the ids that still need a lookup.
+function enrichNames(rows) {
+  const misses = new Set()
+  for (const r of rows) {
+    const key = resolvableKey(r)
+    if (!key) continue
+    const hit = cachedName(key)
+    if (hit === undefined) misses.add(key)
+    else if (hit) r.sender_label = hit
+  }
+  return misses
+}
+
+// renderPickerRows enriches, renders, and re-renders once the outstanding
+// lookups land. It terminates: the second pass finds every key in the cache,
+// including the ones that resolved to '' (ambiguous or unknown), so it has no
+// misses of its own.
+function renderPickerRows(points) {
+  const misses = enrichNames(points)
+  targetPicker.render(points, Date.now())
+  if (!misses.size) return
+  Promise.all([...misses].map((k) => resolveName(k))).then((names) => {
+    if (names.some((n) => n)) nameRedraw.run('picker', () => renderPickerRows(points))
+  })
+}
+
 let cachedCandidatePoints = []
 let cachedCandidatureSig = null
 async function refreshPickerCandidates() {
@@ -488,7 +518,7 @@ async function refreshPickerCandidates() {
   const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
   if (sig === cachedCandidatureSig) {
     // Filter unchanged, just re-render with current selection state
-    targetPicker.render(cachedCandidatePoints, Date.now())
+    renderPickerRows(cachedCandidatePoints)
     return
   }
   for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
@@ -496,7 +526,7 @@ async function refreshPickerCandidates() {
     const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
     cachedCandidatePoints = points
     cachedCandidatureSig = sig
-    targetPicker.render(points, Date.now())
+    renderPickerRows(points)
   } catch (_) { /* keep the last good list; retried on the next redraw */ }
 }
 

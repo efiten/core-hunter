@@ -49,6 +49,14 @@ export function resolvableKey(rec) {
   return isResolvableId(rec.sender_id) ? rec.sender_id.toLowerCase() : null;
 }
 
+// A sender id of one byte (2 hex) is a 256-way collision space, so it is never
+// a name, and meshpacket.js carries it as its OWN sender_label for the two
+// kinds below. A surface that prints that label unguarded shows "77" exactly
+// as it would show a resolved short name. Marked with # instead, the house
+// style hudsender.js set, and kept out of the resolver by the 4-hex floor.
+const HASH_ID_KINDS = ['direct_hash', 'path_hash']
+export function isHashIdKind(kind) { return HASH_ID_KINDS.includes(kind) }
+
 // cachedName returns a previously-resolved name ('' = resolved-but-unknown) for
 // a key, or undefined when it has not been resolved yet. Synchronous — safe to
 // call from a render loop; pair with a fire-and-forget resolveName() for misses.
