@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-ticker-can-close",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "The receptions ticker can be put away",
+    "body": "The ticker is now a card with a close button; the list icon in the top bar brings it back and lights up while traffic arrives unseen."
+  },
+  {
     "id": "2026-08-26-small-fixes-design-review",
     "date": "2026-08-26",
     "where": "both",

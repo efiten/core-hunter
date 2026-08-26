@@ -338,6 +338,23 @@ function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
+// Ticker visibility (#539). The ticker is a fixed card that can be put away
+// with its ✕; the topbar list button brings it back and lights accent while
+// traffic arrives unseen. Persisted like the view and sound FABs — Discover
+// is the deliberate exception (see state.autoPing).
+function loadTickerVisible() {
+  try { return localStorage.getItem('core-hunter-ticker') !== 'closed' } catch (_) { return true }
+}
+function setTickerVisible(v) {
+  el('rx-log').hidden = !v
+  el('ticker-btn').hidden = v
+  if (v) el('ticker-btn').classList.remove('active')
+  try { localStorage.setItem('core-hunter-ticker', v ? 'open' : 'closed') } catch (_) {}
+}
+function noteTickerTraffic() {
+  if (el('rx-log').hidden) el('ticker-btn').classList.add('active')
+}
+
 // Populates the static onboarding copy (name, basics, callouts, disclaimer)
 // from splash.js. Called once at startup, before the splash is first shown.
 function initSplashContent() {
@@ -588,6 +605,7 @@ async function processFrame(dv) {
   await state.queue.add(rec)
   state.lastPacketAt = Date.now()
   updateHud(rec)
+  noteTickerTraffic()
   // Sound (#145): a morse dit per DIRECT reception inside the active filter
   // set — you hear exactly what the map plots, minus relayed traffic.
   if (shouldPing(rec, state.soundMode, makeFilter({ ...state.filter, ignore: state.ignore }), Date.now())) {
@@ -2258,8 +2276,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.
     onRowActivate: (rec) => { if (state.map) state.map.focusReception(rec) },
+    onClose: () => setTickerVisible(false),
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
+  el('ticker-btn').addEventListener('click', () => setTickerVisible(true))
+  setTickerVisible(loadTickerVisible())
 
   // Build sheets (static HTML injected once)
   buildFilterSheet()

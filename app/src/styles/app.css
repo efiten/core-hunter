@@ -5,7 +5,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
      active BLE/MQTT connection when triggered by an accidental downward
      drag on the map or a panel. */
   overscroll-behavior-y: contain; }
-#map { position: fixed; inset: 0; }
+/* absolute, not fixed (#539): position:fixed forces a stacking context, which
+   trapped every MapLibre popup under the ticker card (z 480) no matter its own
+   z-index — measured with elementFromPoint. The page never scrolls, so
+   absolute against the initial containing block is the same box; without the
+   forced context the popup's z-index below competes globally. */
+#map { position: absolute; inset: 0; }
 
 /* ---- Topbar ---- */
 #topbar { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
@@ -244,6 +249,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 /* Active-settings indicator: same accent dot, on the topbar settings button */
 #settings-btn.active { color: var(--ch-accent); }
+/* The ticker's way back (#539): visible only while the card is closed, and
+   accent once traffic has arrived unseen since it was closed. */
+#ticker-btn.active { color: var(--ch-accent); }
 #settings-btn.active::after { content: ''; position: absolute; top: -2px; right: -2px;
   width: 9px; height: 9px; border-radius: 50%;
   background: var(--ch-accent); border: 2px solid var(--ch-surface); }
@@ -451,42 +459,52 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   display: inline-flex; align-items: center; justify-content: center; }
 
 /* ---- Receptions log (#130) ----
-   Frameless, log-style tail over the map. Newest at the bottom; a fixed
-   playhead lane (scroll-padding-top / LANE) that lines snap to like a
-   combination-lock dial. No background panel — text-shadow carries legibility.
+   Log-style tail over the map. Newest at the bottom; a fixed playhead lane
+   (scroll-padding-top / LANE) that lines snap to like a combination-lock dial.
 
-   Sizing and layout are #322. The block runs the full width of the viewport
-   and centres its rows, rather than sitting in a 214px column on the right:
-   at 12px in that column a sender name got ~14 characters including its meta
-   text, so names ellipsed away and rows could not be told apart. Rows stay
-   left-aligned inside the centred block — centring each row would ragged both
-   edges and break the column grid that makes the log scannable at a glance.
+   #539 gave it a card: a fixed backing plate (--ch-surface-thin, more
+   transparent than --ch-surface so the map reads through) with the header as
+   its title row and a ✕ that puts the whole thing away. The topbar list
+   button brings it back. No drag frame — the card's position is fixed, which
+   is what makes a close control sufficient. The card swallows the gestures
+   inside its own footprint; the map is reachable everywhere else, or by
+   closing it.
 
-   The centred block has a fixed measure rather than hugging its longest row:
-   a max-content block re-centres every time a name resolves, sliding the whole
-   ticker ~50px sideways in the corner of the driver's eye.
+   Sizing and layout are #322: a centred fixed measure rather than a 214px
+   right column (names got ~14 characters there) or a max-content hug (the
+   block would re-centre every time a name resolves).
 
    --ch-rx-line-h is the one row-height number, declared on :root in tokens.css
    because the module reads it through getComputedStyle(documentElement). The
    list height, the playhead offset and the bottom padding are derived from it
-   here. web/style.css carries the same block; web/parity.test.js pins them. */
-#rx-log { position: fixed; top: 52px; left: 0; right: 0; z-index: 480;
-  padding: 0 24px; pointer-events: none;
+   here. web/style.css carries the same line geometry; web/parity.test.js pins
+   the shared declarations. */
+#rx-log { position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+  width: min(680px, calc(100vw - 20px)); z-index: 480;
+  background: var(--ch-surface-thin); backdrop-filter: blur(10px);
+  border: 1px solid var(--ch-border); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  width: min(680px, 100%); margin: 0 auto;
+  height: 36px; padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
-  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
+  text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
+.rx-close { width: 36px; height: 36px; margin-left: auto; border: none; background: none;
+  color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.rx-close:hover { color: var(--ch-text); }
 /* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
    6-above/3-below geometry rxFade's divisors encode. */
-.rx-list { width: min(680px, 100%); margin: 0 auto;
+.rx-list { width: 100%;
   height: calc(10 * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
   scroll-snap-type: y mandatory; scroll-padding-top: calc(6 * var(--ch-rx-line-h));
-  padding: calc(6 * var(--ch-rx-line-h)) 0 calc(3 * var(--ch-rx-line-h));
-  pointer-events: none; /* the padding is dead space over the map; rows re-enable below */ }
+  padding: calc(6 * var(--ch-rx-line-h)) 12px calc(3 * var(--ch-rx-line-h));
+  pointer-events: none; /* the padding is inert; rows re-enable below, the card catches the rest */ }
 .rx-list::-webkit-scrollbar { display: none; }
+/* No receptions -> just the header strip, not ten empty lanes of plate. */
+#rx-log.rx-empty .rx-list { display: none; }
+#rx-log.rx-empty .rx-hd { border-bottom: none; }
 /* width: max-content keeps the click target on the text. Across a full-width
    band a stretched row would swallow every drag and wheel the map needs.
    content-visibility cannot come back with it: paired with
@@ -512,6 +530,10 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
 /* MapLibre popup themed to the app surface (#147) — default is white. */
+/* Above the ticker card (480), below the topbar (500): a popup opened from a
+   point under the card must be readable, and the ticker has its own ✕ if the
+   card is in the way for longer (#539). */
+.maplibregl-popup { z-index: 490; }
 .maplibregl-popup-content { background: var(--ch-surface); color: var(--ch-text);
   border: 1px solid var(--ch-border); border-radius: 8px; padding: 10px 12px;
   backdrop-filter: blur(8px); font-size: 12px; line-height: 1.45; }
