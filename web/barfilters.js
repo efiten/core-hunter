@@ -38,11 +38,13 @@
 // sheet without lighting the dot -- filtered map, pill says nothing.
 export const DEFAULT_MODE = 'hex'
 
-export function hiddenFiltersActive({ directOnly = false, senderUnknown = false, types = null, csAdverts = false, csRelays = false, nodePos = false, mode = DEFAULT_MODE } = {}) {
+export function hiddenFiltersActive({ directOnly = false, senderUnknown = false, types = null, idClasses = null, csAdverts = false, csRelays = false, nodePos = false, mode = DEFAULT_MODE } = {}) {
   if (directOnly || senderUnknown) return true
   // An empty/absent set means "no type filter" -- same convention as the app's
   // isFilterActive, where `types` present and non-empty is the active state.
   if (types && [...types].length > 0) return true
+  // Same convention for the sender-id class row (#475).
+  if (idClasses && [...idClasses].length > 0) return true
   if (csAdverts || csRelays || nodePos) return true
   return mode !== DEFAULT_MODE
 }

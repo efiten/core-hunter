@@ -18,8 +18,8 @@ import * as webNames from './names.js'
 import * as appNames from '../app/src/names.js'
 import * as webChangelog from './changelog.js'
 import * as appChangelog from '../app/src/changelog.js'
-import { FILTER_PACKET_TYPES as webTypes, packetTypeLabel as webPacketTypeLabel } from './packettypes.js'
-import { FILTER_PACKET_TYPES as appTypes, packetTypeLabel as appPacketTypeLabel } from '../app/src/filters.js'
+import { FILTER_PACKET_TYPES as webTypes, packetTypeLabel as webPacketTypeLabel, SENDER_ID_CLASSES as webClasses, senderIdClass as webSenderIdClass } from './packettypes.js'
+import { FILTER_PACKET_TYPES as appTypes, packetTypeLabel as appPacketTypeLabel, SENDER_ID_CLASSES as appClasses, senderIdClass as appSenderIdClass } from '../app/src/filters.js'
 import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
 import { initialSettingsTab as webInitialTab } from './settingssheet.js'
@@ -297,6 +297,48 @@ describe('packet-type chips — parity between the app and web copies', () => {
 
   it('falls back to the raw type identically for a value neither list knows', () => {
     expect(webPacketTypeLabel('NotAType')).toBe(appPacketTypeLabel('NotAType'))
+  })
+
+  // Sender-id classes (#475) travel the same way: the app buckets its own
+  // records, the map sends the values verbatim as ?idclass= and the server
+  // buckets in SQL. Three implementations of one rule, so a reception that
+  // lands in different chips on two surfaces is the failure to guard against.
+  it('ships the same sender-id classes, values and labels', () => {
+    expect(webClasses.map((c) => c.value)).toEqual(appClasses.map((c) => c.value))
+    expect(webClasses.map((c) => c.label)).toEqual(appClasses.map((c) => c.label))
+  })
+
+  it('buckets the same reception the same way, at every boundary', () => {
+    const RECS = [
+      { sender_id: '77', sender_kind: 'path_hash' },
+      { sender_id: '4a', sender_kind: 'direct_hash' },
+      { sender_id: 'a2a2', sender_kind: 'relay' },
+      { sender_id: 'efef79', sender_kind: 'relay' },
+      { sender_id: '7b0e24700e0c0d3e', sender_kind: 'discover_pubkey' },
+      { sender_id: 'ab'.repeat(32), sender_kind: 'advert_pubkey' },
+      // A channel whose id is 2 hex: the case that separates "kind first" from
+      // "length first". Without it either order passes.
+      { sender_id: 'ab', sender_kind: 'channel_name' },
+      { sender_id: '', sender_kind: '' },
+      { sender_id: null },
+      {},
+      null,
+    ]
+    for (const r of RECS) expect(webSenderIdClass(r)).toBe(appSenderIdClass(r))
+    // Pinned absolutely too, so a matching drift on both sides still fails.
+    expect(webSenderIdClass(RECS[0])).toBe('1b')
+    expect(webSenderIdClass(RECS[2])).toBe('2b')
+    expect(webSenderIdClass(RECS[3])).toBe('3b')
+    expect(webSenderIdClass(RECS[4])).toBe('pubkey')
+    expect(webSenderIdClass(RECS[6])).toBe('channel')
+    expect(webSenderIdClass(RECS[7])).toBe('unnamed')
+  })
+
+  // Every value the chips can produce must be one the server accepts, or the
+  // chip filters on one surface and returns nothing on the other.
+  it('uses only values the server ?idclass= whitelist knows', () => {
+    const SERVER_ACCEPTS = ['unnamed', '1b', '2b', '3b', 'pubkey', 'channel']
+    expect(appClasses.map((c) => c.value).sort()).toEqual([...SERVER_ACCEPTS].sort())
   })
 })
 

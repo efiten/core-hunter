@@ -1599,6 +1599,7 @@ if (barFilters && filterPill) {
       directOnly: on('f-direct'),
       senderUnknown: on('f-unnamed'),
       types: window.currentTypes ? window.currentTypes() : null,
+      idClasses: window.currentIdClasses ? window.currentIdClasses() : null,
       csAdverts: on('cs-adverts'),
       csRelays: on('cs-relays'),
       nodePos: on('f-nodepos'),
@@ -1614,6 +1615,7 @@ if (barFilters && filterPill) {
 
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
+urlstate.register({ key: 'idclass', get: () => window.currentIdClasses(), set: (v) => window.setIdClasses(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
 // so 'senders' is not a registered field yet when load() normalizes the address
 // bar — and normalizing drops unregistered keys, taking a pasted ?senders= with

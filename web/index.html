@@ -153,6 +153,10 @@
         </button>
       </div>
     <span id="f-types"></span>
+    <!-- Sender-id classes (#475): how far the sender can be identified.
+         The "1 byte" chip is what isolates a flood since those receptions
+         started carrying a byte (#521) and stopped answering to Sender unknown. -->
+    <span id="f-idclass" title="How far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique."></span>
     <label class="cs-cb" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet CLAIMS, not a measurement of distance."><input type="checkbox" id="f-direct" /> No path</label>
       <label class="cs-cb" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has."><input type="checkbox" id="f-unnamed" /> Sender unknown</label>
     <button id="layer-toggle">points</button>
