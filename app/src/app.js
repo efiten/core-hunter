@@ -177,6 +177,9 @@ const state = {
   lastRows: [],
   // Auto-ping (#233): toggled by the Discover FAB. lastLat/lastLon track the
   // position at the last fire, for the movement half of the fire gate.
+  // Deliberately NOT persisted, unlike the view and sound FABs (#539): Discover
+  // transmits, so every session starts with it off and turning it on is an
+  // explicit choice. Do not "fix" this with a localStorage key.
   autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [] },
   // Trace-pings we sent and may still get an answer to (#481). The tag on the
   // reply is what names the target it came back from; tracetag.js holds the rule.
@@ -800,7 +803,7 @@ function updateDiscoverBtnVisual() {
   const targeting = state.autoPing.enabled && selectedRepeaterTargets().length > 0
   btn.classList.toggle('auto-on', state.autoPing.enabled)
   btn.classList.toggle('auto-target', targeting)
-  btn.setAttribute('aria-label', !state.autoPing.enabled ? 'Discover'
+  btn.setAttribute('aria-label', !state.autoPing.enabled ? 'Auto-discover: off'
     : targeting ? 'Auto-discover + target ping: on' : 'Auto-discover: on')
 }
 
@@ -1817,7 +1820,7 @@ function updateViewIcon() {
   // `|| ''` so a state added without an icon degrades to a bare ring rather
   // than writing the string "undefined" into the button.
   el('layer-toggle').innerHTML = fabRingSvg(viewIdx, VIEW_STATES.length) + (VIEW_ICONS[key] || '')
-  el('layer-toggle').setAttribute('aria-label', `Toggle view (${VIEW_LABELS[key]})`)
+  el('layer-toggle').setAttribute('aria-label', `View: ${VIEW_LABELS[key]}`)
 }
 
 function cycleView() {
@@ -1975,10 +1978,14 @@ const SOUND_ICONS = {
     <path d="M7 15.5V5l9-1.5V14"/><circle cx="5" cy="15.5" r="2"/><circle cx="14" cy="14" r="2"/>
   </svg>`,
 }
+// FAB-rail label grammar (#539): every rail button is labelled "Name: state"
+// (binary toggles carry their state in aria-pressed instead). The rail had
+// three grammars at once — "Discover", "Auto-discover: on", "Toggle sound
+// (off)" — and this is the one that survived.
 const SOUND_LABELS = {
-  off: 'Toggle sound (off)',
-  rxtx: 'Toggle sound (reception + transmit cues only)',
-  full: 'Toggle sound (soundbed + music + reception/transmit cues)',
+  off: 'Sound: off',
+  rxtx: 'Sound: reception and transmit cues',
+  full: 'Sound: full (soundbed, music, cues)',
 }
 
 function updateSoundIcon() {
@@ -2033,10 +2040,10 @@ const COMPASS_ICONS = {
   </svg>`,
 }
 const COMPASS_LABELS = {
-  following: 'Rotate map with heading (compass mode)',
-  heading: 'Switch to driving mode (GPS course)',
-  driving: 'Back to north-up',
-  static: 'Resume following (compass mode)',
+  following: 'Compass: north up',
+  heading: 'Compass: device heading',
+  driving: 'Compass: driving (GPS course)',
+  static: 'Compass: off',
 }
 
 // Cycle order for the progress ring (#259) — tap destinations only. Static is
@@ -2046,9 +2053,9 @@ const COMPASS_CYCLE = ['following', 'heading', 'driving']
 
 let compassState = { follow: true, source: null }
 function updateCompassIcon() {
-  // Icon = the state a tap produces (preview); label = the action from here.
-  // Ring = the CURRENT state's position (not the preview), so the two don't
-  // contradict each other at a glance.
+  // Icon = the state a tap produces (preview); label = the CURRENT state,
+  // "Name: state" like the rest of the rail (#539). Ring = the current
+  // state's position too, so ring and label agree and only the icon previews.
   const currentIdx = COMPASS_CYCLE.indexOf(compassGlyph(compassState))
   el('recenter-btn').innerHTML = fabRingSvg(currentIdx, COMPASS_CYCLE.length) + COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
   el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[compassGlyph(compassState)])
