@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.20.0](https://github.com/efiten/core-hunter/compare/app-v1.19.1...app-v1.20.0) (2026-08-26)
+
+
+### Features
+
+* **app:** search the target sheet by name or id prefix ([#477](https://github.com/efiten/core-hunter/issues/477)) ([c69c57c](https://github.com/efiten/core-hunter/commit/c69c57ca329f732e7457e4ff5b293b4ca9b851c8))
+* **web,landing:** lead with mapping, and say where accounts come from ([#491](https://github.com/efiten/core-hunter/issues/491)) ([f9f326c](https://github.com/efiten/core-hunter/commit/f9f326c29ae4cf57cff0f589f30a7c82c1f1c2fa))
+* **web,server:** ignore a sender from the map ([#500](https://github.com/efiten/core-hunter/issues/500)) ([1b62809](https://github.com/efiten/core-hunter/commit/1b6280983d8de66c79c836fefe1da77122b893c6))
+
 ## [1.19.1](https://github.com/efiten/core-hunter/compare/app-v1.19.0...app-v1.19.1) (2026-08-26)
 
 
