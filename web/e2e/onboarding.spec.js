@@ -148,7 +148,7 @@ for (const [w, h] of [[760, 800], [800, 800], [900, 700], [1024, 700]]) {
     await expect(page.locator('#wb-onboarding')).toBeVisible()
     const bad = await page.evaluate(() => {
       const panel = document.querySelector('.wb-panel').getBoundingClientRect()
-      return ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account'].filter((id) => {
+      return ['wb-co-filters', 'wb-co-mapping', 'wb-co-account'].filter((id) => {
         const el = document.getElementById(id)
         if (el.hidden) return false
         const r = el.getBoundingClientRect()

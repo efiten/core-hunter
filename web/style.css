@@ -45,6 +45,11 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }
+/* The view controls sit left, the meta/account cluster right (#539): with
+   the fourteen chips gone the bar is one short row, and left-packed the
+   Start-mapping/Log-in pair landed mid-bar — under the walkthrough's centred
+   panel, where its two below-callouts could never be placed clear. */
+#rx-cta { margin-left: auto; }
 /* #rx-cta is an <a>, so it inherits none of the bar's control styling (#bar
    names select/input/button only) and would render as a bare link in a row of
    buttons. Same box, plus the accent border that marks it as the one thing on
