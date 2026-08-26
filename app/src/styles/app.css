@@ -241,11 +241,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   width: 9px; height: 9px; border-radius: 50%;
   background: var(--ch-accent); border: 2px solid var(--ch-surface); }
 
-/* Each filter on its own row: label then control, left-aligned */
+/* Each filter on its own row, left-aligned. Checkbox rows lead with the box
+   (#539): the map's rows already do, and a leading checkbox is the standard
+   list-row shape; value rows (a select) keep label-then-control. */
 .fs-row { display: flex; align-items: center; gap: 8px;
   margin: 8px 0; font-size: 14px; color: var(--ch-text); }
 /* Non-default value for this specific row (vs. the whole-sheet badge dot) */
-.fs-row.active > span:first-child, .ss-radio-row.active > span:first-child { color: var(--ch-accent); }
+.fs-row.active > span, .ss-radio-row.active > span:first-child { color: var(--ch-accent); }
 
 /* Overlay sheet header: title left, themed X close right */
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }

@@ -1133,12 +1133,12 @@ function buildFilterSheet() {
         </button>
       </div>
       <label class="fs-row" id="fs-row-direct" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet claims, not a measurement of distance.">
-        <span>No path</span>
         <input type="checkbox" id="fs-direct-only" />
+        <span>No path</span>
       </label>
       <label class="fs-row" id="fs-row-unnamed" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has.">
-        <span>Sender unknown</span>
         <input type="checkbox" id="fs-unnamed" />
+        <span>Sender unknown</span>
       </label>
       <label class="fs-row" id="fs-row-window">
         <span>Plot last:</span>
