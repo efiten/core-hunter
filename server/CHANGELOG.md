@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/efiten/core-hunter/compare/server-v1.5.1...server-v1.6.0) (2026-08-26)
+
+
+### Features
+
+* **app,web,server:** filter receptions by sender-id class ([#528](https://github.com/efiten/core-hunter/issues/528)) ([f10b1ac](https://github.com/efiten/core-hunter/commit/f10b1ace28d7dc55cc80dfc051b2ff58e983aca7))
+
 ## [1.5.1](https://github.com/efiten/core-hunter/compare/server-v1.5.0...server-v1.5.1) (2026-08-26)
 
 
