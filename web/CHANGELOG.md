@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.1](https://github.com/efiten/core-hunter/compare/web-v1.13.0...web-v1.13.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **web,app:** resolve the names in the target list, and mark the ids that cannot ([#526](https://github.com/efiten/core-hunter/issues/526)) ([9fe9067](https://github.com/efiten/core-hunter/commit/9fe906726cc7bca23cea3e8617983a7c25e9dc7b))
+* **web,server:** say how far back the map reaches instead of "capped" ([#488](https://github.com/efiten/core-hunter/issues/488)) ([5a26e51](https://github.com/efiten/core-hunter/commit/5a26e51ce63675c6e9d703223806df6821850dad)), closes [#440](https://github.com/efiten/core-hunter/issues/440)
+
 ## [1.13.0](https://github.com/efiten/core-hunter/compare/web-v1.12.0...web-v1.13.0) (2026-08-25)
 
 
