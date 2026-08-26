@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-small-fixes-design-review",
+    "date": "2026-08-26",
+    "where": "both",
+    "title": "Small fixes from a design review",
+    "body": "Clearer ticker tags, bigger touch targets, one naming style for the map buttons, and a connect error that says what went wrong."
+  },
+  {
     "id": "2026-08-26-locate-lives-on-the-map",
     "date": "2026-08-26",
     "where": "app",
