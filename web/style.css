@@ -246,6 +246,16 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   color: var(--ch-muted); font: inherit; pointer-events: auto; }
 .rx-fold::before { content: '\2212'; }            /* minus while open */
 #rx-log.rx-folded .rx-fold::before { content: '\002B'; }  /* plus while folded */
+/* 44px hit areas (#539). The four smallest controls measured 11x14 to 40x29;
+   the glyph keeps its size and an ::after extension carries the touch box to
+   44px. No layout change, so the bar's measured geometry stays as it is.
+   The extension can reach a few pixels past a neighbour's edge; that lands
+   almost entirely in the gaps between controls, and where boxes do stack,
+   DOM order decides an edge pixel — acceptable against a 11px-wide target. */
+#bar #settings-btn::after, #auth-btn::after, .ms-toggle::after, .rx-fold::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%); }
+#auth-btn, .ms-toggle, .rx-fold { position: relative; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
   width: min(680px, 100%); margin: 0 auto;
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);

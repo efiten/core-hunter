@@ -72,7 +72,14 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
   color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
 .np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg);
-  background: var(--ch-sig-hot); cursor: pointer; }
+  background: var(--ch-sig-hot); cursor: pointer; position: relative; }
+/* Bigger touch boxes for the node markers (#539): ▲ measures 14x16 and ● 12px.
+   30px rather than the full 44px, deliberately: a marker element swallows the
+   pan gesture that starts on it, so 33 markers x 44px would turn a dense
+   cluster into a patch of map that cannot be dragged. 30px doubles the target
+   without making that dead zone dominant. */
+.np-advert::after, .np-estimate::after { content: ''; position: absolute;
+  left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
 .np-muted { color: var(--ch-muted); }
 .np-caveat { font-size: 11px; }
 
