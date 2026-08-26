@@ -135,6 +135,21 @@ func (h *AdminAPI) UserPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.Store.AddAudit(AuthOf(r).UserID, "user_patch", u.Username, clientIP(r), newRole+"/"+newStatus)
+	// Say so, when we can (#530). Both surfaces promise that an admin verifies
+	// you as a member, and until this the promise ended here: a role change and
+	// an audit row, and the person waiting was told nothing.
+	//
+	// The condition is CROSSING the member line, not merely rising: promoting a
+	// member to admin would otherwise send "you are verified as a member" to
+	// someone who has been one for months. A demotion is the admin's to explain,
+	// and an unrelated status edit must not re-send, or people learn to ignore
+	// it. Mail is the addition rather than the mechanism -- an address is
+	// optional at registration, so most accounts have none, and the map tells
+	// them on its own either way.
+	if h.Mailer != nil && u.Email != "" &&
+		roleRank[u.Role] < roleRank["member"] && roleRank[newRole] >= roleRank["member"] {
+		_ = h.Mailer.SendMemberVerified(u.Email)
+	}
 	w.WriteHeader(204)
 }
 

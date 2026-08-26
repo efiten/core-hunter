@@ -185,6 +185,14 @@
     </div>
     <button id="auth-btn" class="bar-btn">Log in</button>
     <span id="guest-notice" class="guest-notice" hidden></span>
+    <!-- Said once, when the role rises (#530). Separate from #guest-notice,
+         which is a standing description of what you can see: this is news, and
+         it is dismissible because news stops being news. aria-live so a reader
+         who is not looking at the bar still gets it. -->
+    <span id="role-notice" class="role-notice" role="status" aria-live="polite" hidden>
+      <span id="role-notice-text"></span>
+      <button id="role-notice-close" type="button" aria-label="Dismiss">&times;</button>
+    </span>
     <span id="status"></span>
     <span id="sf-counts"></span>
     <button id="settings-btn" type="button" title="Settings, release notes and about" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-modal">

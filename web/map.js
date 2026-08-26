@@ -1,6 +1,7 @@
 import { rssiTier, tierColorVar, fillOpacity } from './signal.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
@@ -11,7 +12,7 @@ import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
-import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor } from './auth.js'
+import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters } from './targetpicker.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
@@ -380,8 +381,24 @@ function applyObserverGate() {
   }
 }
 
+// announceRoleRise says, once, that the wait ended (#530). Called from
+// applyRole, so it covers every path that learns a role: first load, a login,
+// and the focus re-check below.
+function announceRoleRise(role) {
+  const el = document.getElementById('role-notice')
+  if (!el) return
+  const seen = loadSeenRole()
+  saveSeenRole(role)
+  if (!roleRose(seen, role)) return
+  const text = roleNotice(role)
+  if (!text) return
+  document.getElementById('role-notice-text').textContent = text
+  el.hidden = false
+}
+
 function applyRole(me) {
   currentRole = me.role || 'guest'
+  announceRoleRise(currentRole)
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
   notice.textContent = msg || ''
@@ -1803,3 +1820,17 @@ window.__rxHighlightLatLng = () => { // test hook
 // Role-aware boot: fetch /api/auth/me, wire the auth bar, and re-apply
 // role-dependent UI (guest notice + Tasks 5/9 gating) whenever it changes.
 initAuthBar(applyRole)
+
+document.getElementById('role-notice-close').addEventListener('click', () => {
+  document.getElementById('role-notice').hidden = true
+})
+
+// A hunter waiting to be verified leaves this page open, and nothing else
+// re-reads /api/auth/me -- which is why the bar could keep saying "Hunter view"
+// long after an admin had acted. Only re-applies when the role actually moved:
+// applyRole re-runs the range and layer gates, and doing that on every tab
+// switch would be cost for nothing.
+window.addEventListener('focus', async () => {
+  const me = await fetchMe()
+  if ((me.role || 'guest') !== currentRole) applyRole(me)
+})

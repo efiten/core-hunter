@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-26-told-when-verified",
+    "date": "2026-08-26",
+    "where": "web",
+    "title": "You are told when your member verification comes through",
+    "body": "Registering made you a hunter and then said an admin would verify you as a member, and nothing ever said when that happened. The map now tells you, once, the moment it notices: on the page you already have open, without you touching anything, and again at your next login if you were away. If you gave an email address when you registered you also get a message, but most accounts have none, so the map no longer depends on it. A demotion is not announced, and nothing is said on a first visit, since arriving somewhere is not the same as being let in."
+  },
+  {
     "id": "2026-08-26-sender-id-class-chips",
     "date": "2026-08-26",
     "where": "both",
