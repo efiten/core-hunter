@@ -35,3 +35,29 @@ const RENDERING = {
 export function connectButton(phase) {
   return RENDERING[phase] || RENDERING.idle
 }
+
+// connectFailureMessage turns a connect() rejection into the splash status
+// line (#539). Web Bluetooth reports the cause in the DOMException name, and
+// the old copy ("Could not connect. Tap Connect to retry.") threw that away —
+// the reproduced case being a companion already claimed by another tab, which
+// looked identical to out-of-range. Each branch names the cause and the way
+// out; anything unrecognised carries its own message through instead of
+// hiding it.
+export function connectFailureMessage(err) {
+  const name = err && err.name
+  if (name === 'NotFoundError') {
+    // The chooser was dismissed without a pick — not a radio problem.
+    return 'No companion was picked. Tap Connect to choose one.'
+  }
+  if (name === 'NetworkError') {
+    // GATT connect failed: out of range, powered off, or (the reproduced
+    // case) already claimed by another tab or app — BLE allows one link.
+    return 'The companion did not answer. If another tab or app holds its connection, close that one; then tap Connect to retry.'
+  }
+  if (name === 'SecurityError') {
+    return 'The browser blocked Bluetooth for this site. Allow Bluetooth in the site settings, then tap Connect to retry.'
+  }
+  const detail = err && typeof err.message === 'string' ? err.message.trim() : ''
+  if (detail) return `Could not connect: ${detail}. Tap Connect to retry.`
+  return 'Could not connect. Tap Connect to retry.'
+}

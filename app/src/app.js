@@ -29,7 +29,7 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
-import { connectButton } from './connectstate.js'
+import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from './settings.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
@@ -156,6 +156,9 @@ const state = {
   // Startup splash (see splash.js) — hides once the first GPS fix lands.
   hasFix: false,
   bleError: false,
+  // The splash status line for the ble-error state (#539): set from the
+  // caught connect() rejection so the copy can name the cause.
+  bleErrorMessage: null,
   // How many consecutive drain passes have failed on one reception (#454).
   // Carried on state because the drain loop restarts every 5 s.
   drainStall: { id: null, count: 0 },
@@ -404,7 +407,9 @@ function refreshSplash() {
   // Reopened mid-hunt: already connected, so no Connect CTA — show Close instead.
   el('splash-close').hidden = !reopened
   if (reopened) el('connect-btn').hidden = true
-  el('splash-status').textContent = reopened ? '' : (SPLASH_COPY[s] || '')
+  el('splash-status').textContent = reopened ? ''
+    : s === 'ble-error' && state.bleErrorMessage ? state.bleErrorMessage
+    : (SPLASH_COPY[s] || '')
   el('splash-retry-gps').hidden = s !== 'gps-error'
   // Only the reopened (post-connect "?") tour can be dismissed by tapping
   // outside the highlights (#216) — the pre-connect states must stay put
@@ -964,6 +969,7 @@ async function connectAll() {
   state.connectPhase = 'connecting'
   applyConnectButtons()
   state.bleError = false
+  state.bleErrorMessage = null
   state.gpsError = false
   refreshSplash()
 
@@ -1027,6 +1033,7 @@ async function connectAll() {
   } catch (e) {
     console.error('[connect]', e)
     state.bleError = true
+    state.bleErrorMessage = connectFailureMessage(e)
     // The phase is passed in rather than set here and preserved by a flag: the
     // old code set the label first and then called disconnectAll(silent) to
     // stop it being overwritten, which is an ordering dependency waiting to be
