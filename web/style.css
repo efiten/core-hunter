@@ -572,3 +572,15 @@ body.wb-onboarding-on #bar { z-index:710; }
   .ss-card { width: 100%; max-height: 88vh; border-radius: 14px 14px 0 0;
     border-bottom: none; }
 }
+
+/* Sender-id class chips (#475), in a popover for the reason recorded in
+   index.html. Wider than .tl-panel's 240px default so six short chips sit on
+   two rows rather than six, and the dot mirrors #filter-pill-dot: the toggle
+   has to say that something is narrowed while the chips are out of sight. */
+.ic-wrap { position: relative; display: inline-flex; }
+/* :not([hidden]) is load-bearing: a bare `display: flex` outranks the UA's
+   [hidden] { display: none }, so the panel keeps intercepting clicks while it
+   is supposed to be closed. */
+.ic-panel:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
+.ic-panel { width: 260px; }
+#f-idclass-toggle.active { border-color: var(--ch-accent); color: var(--ch-accent); }

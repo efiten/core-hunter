@@ -1,5 +1,12 @@
 import { test, expect } from './fixtures.js'
 
+// The chips live in a popover (#bar wraps by content width and a sixth inline
+// row pushes the walkthrough into its fallback), so every case opens it first.
+const openClasses = async (page) => {
+  await page.locator('#f-idclass-toggle').click()
+  await expect(page.locator('#f-idclass')).toBeVisible()
+}
+
 // Sender-id classes (#475). The class that isolates a flood moved: before #521
 // those receptions had no sender, so `Sender unknown` caught them; they carry a
 // byte now and nothing did. These pin the whole chain -- chip, query param,
@@ -35,6 +42,7 @@ test('picking a class sends it to the server and narrows the map', async ({ page
   const status = page.locator('#status')
   await expect(status).toHaveText('2 points', { timeout: 10000 })
 
+  await openClasses(page)
   await page.locator('#f-idclass .f-chip', { hasText: '1 byte' }).click()
   await expect(status).toHaveText('1 points', { timeout: 10000 })
   await expect.poll(() => urls.some((u) => u === '1b')).toBe(true)
@@ -48,6 +56,7 @@ test('several chips are a union, and none means no filter', async ({ page }) => 
   })
   await page.goto('/?mode=points')
   await expect(page.locator('#status')).toHaveText('2 points', { timeout: 10000 })
+  await openClasses(page)
   await page.locator('#f-idclass .f-chip', { hasText: '1 byte' }).click()
   await page.locator('#f-idclass .f-chip', { hasText: '2 bytes' }).click()
   await expect.poll(() => urls.some((u) => u === '1b,2b')).toBe(true)
@@ -61,8 +70,13 @@ test('several chips are a union, and none means no filter', async ({ page }) => 
 test('a picked class survives a reload, so a shared link carries it', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [FLOOD] } }))
   await page.goto('/?mode=points')
+  await openClasses(page)
   await page.locator('#f-idclass .f-chip', { hasText: '1 byte' }).click()
   await expect.poll(() => new URL(page.url()).searchParams.get('idclass')).toBe('1b')
   await page.reload()
-  await expect(page.locator('#f-idclass .f-chip.active', { hasText: '1 byte' })).toBeVisible({ timeout: 10000 })
+  // The toggle carries the state while the chips are out of sight, which is the
+  // only signal a reader has that the map is narrowed.
+  await expect(page.locator('#f-idclass-toggle')).toHaveClass(/active/, { timeout: 10000 })
+  await openClasses(page)
+  await expect(page.locator('#f-idclass .f-chip.active', { hasText: '1 byte' })).toBeVisible()
 })

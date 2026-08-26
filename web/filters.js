@@ -73,11 +73,20 @@ if (typeof document !== 'undefined') {
     })
     classHost.appendChild(b)
   }
+  // The chips live in a popover, so the toggle carries the only visible sign
+  // that this dimension is narrowed -- same job as #filter-pill-dot.
+  const syncClassToggle = () => {
+    const on = classHost.querySelectorAll('.f-chip.active').length > 0
+    document.getElementById('f-idclass-toggle').classList.toggle('active', on)
+  }
+  classHost.addEventListener('click', syncClassToggle)
+  window.__syncIdClassToggle = syncClassToggle
   window.currentIdClasses = () =>
     [...classHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.idclass).join(',')
   window.setIdClasses = (v) => {
     const want = new Set(String(v || '').split(',').filter(Boolean))
     for (const b of classHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.idclass))
+    syncClassToggle()
   }
 
   // getters/setter used by currentFilters and the urlstate registration (map.js).

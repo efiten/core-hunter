@@ -1615,6 +1615,12 @@ if (barFilters && filterPill) {
 
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
+wirePopover({
+  toggleEl: document.getElementById('f-idclass-toggle'),
+  panelEl: document.getElementById('f-idclass'),
+  wrapEl: document.getElementById('f-idclass-wrap'),
+  wrapSelector: '#f-idclass-wrap',
+})
 urlstate.register({ key: 'idclass', get: () => window.currentIdClasses(), set: (v) => window.setIdClasses(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
 // so 'senders' is not a registered field yet when load() normalizes the address
