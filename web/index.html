@@ -130,7 +130,7 @@
     <input id="f-to" type="hidden" />
     <span class="tr-wrap">
       <button id="tr-toggle" type="button" aria-expanded="false" title="Change the time range">
-        <span aria-hidden="true">&#128339;</span> <span id="tr-label">Today</span>
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg> <span id="tr-label">Today</span>
       </button>
       <div id="time-picker" class="tr-panel" hidden>
         <div class="tr-cols">
@@ -282,7 +282,10 @@
       <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
         <label class="ss-row">
           <span class="ss-row-label">Light theme</span>
-          <button id="theme-toggle" type="button" title="Toggle light/dark">🌙</button>
+          <button id="theme-toggle" type="button" title="Toggle light/dark">
+            <svg class="th-moon" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 12.5A7 7 0 0 1 7.5 4 7 7 0 1 0 16 12.5z"/></svg>
+            <svg class="th-sun" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
+          </button>
         </label>
         <!-- Ignored senders (#494): the same section the app carries, and the
              only place an ignored node can be found again — it is gone from the

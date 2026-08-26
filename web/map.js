@@ -457,7 +457,8 @@ document.getElementById('layer-toggle').addEventListener('click', (e) => {
   refresh()
 })
 const themeBtn = document.getElementById('theme-toggle')
-const syncThemeBtn = () => { themeBtn.textContent = theme === 'dark' ? '🌙' : '☀️' }
+// The moon/sun SVGs swap on data-theme via CSS (#539: no emoji as icons).
+const syncThemeBtn = () => {}
 syncThemeBtn()
 themeBtn.addEventListener('click', () => {
   theme = theme === 'dark' ? 'light' : 'dark'

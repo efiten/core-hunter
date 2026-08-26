@@ -13,11 +13,15 @@ test('theme toggle flips data-theme, persists, reflects in URL, and swaps the gl
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await openSettings(page)
-  await expect(page.locator('#theme-toggle')).toHaveText('🌙')
+  // #539: the glyphs are two SVGs swapped on data-theme by CSS — assert which
+  // one is painted, since the button no longer carries text.
+  await expect(page.locator('#theme-toggle .th-moon')).toBeVisible()
+  await expect(page.locator('#theme-toggle .th-sun')).toBeHidden()
 
   await page.click('#theme-toggle')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await expect(page.locator('#theme-toggle .th-sun')).toBeVisible()
+  await expect(page.locator('#theme-toggle .th-moon')).toBeHidden()
   await expect(page).toHaveURL(/theme=light/)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ch-state')).theme)).toBe('light')
 })
@@ -27,7 +31,7 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
   await page.goto('/?theme=light&mode=hex&sender=4a2b&z=15')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await openSettings(page)
-  await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await expect(page.locator('#theme-toggle .th-sun')).toBeVisible()
   await page.click('#ss-close')
   await expect(page.locator('#layer-toggle')).toHaveText('hex')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')

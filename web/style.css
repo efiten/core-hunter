@@ -310,6 +310,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #bar #settings-btn:hover { color:var(--ch-text); }
 .wn-dot { width:7px; height:7px; border-radius:50%; background:var(--ch-accent-2); }
 #bar #settings-btn .wn-dot { position:absolute; top:2px; right:2px; }
+/* Theme toggle glyphs (#539): SVG moon/sun swapped on data-theme, no emoji. */
+[data-theme="light"] #theme-toggle .th-moon { display: none; }
+:root:not([data-theme="light"]) #theme-toggle .th-sun { display: none; }
+#theme-toggle svg { display: block; }
 /* Ignored senders (#494). Mirrors the app's section (app/src/styles/app.css):
    a row per node with the label on the left and Remove on the right. */
 .ss-ignore-section { border-top: 1px solid var(--ch-border); margin-top: 12px; padding-top: 12px; }
@@ -497,7 +501,8 @@ body.wb-onboarding-on #bar { z-index:710; }
    rather than --ch-accent: the accent is 3.3:1 on the light surface, under the
    4.5:1 this size of text needs. :visited is part of the rule, not an
    afterthought; without it the UA still owns that state. */
-.lc-signup a, .lc-signup a:visited { color: var(--ch-text); text-decoration: underline; }
+/* Links are accent-2 on every surface (#539). */
+.lc-signup a, .lc-signup a:visited { color: var(--ch-accent-2); text-decoration: underline; }
 
 /* Leaflet's own controls (#427). Neither stylesheet had a single rule for
    them, so the zoom buttons and the attribution strip kept Leaflet's defaults:

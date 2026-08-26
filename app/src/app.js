@@ -1603,8 +1603,13 @@ function buildSettingsSheet() {
       <div class="ss-panel" id="ss-panel-about" role="tabpanel" aria-labelledby="ss-tab-about" hidden>
         <div class="ss-about-brand">
           <span class="ss-about-mark" aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.6"/><path d="M10 10l5-3.2"/>
+            <svg width="28" height="28" viewBox="0 0 512 512" fill="none">
+              <polygon points="424,256 340,111 172,111 88,256 172,401 340,401" stroke="var(--ch-accent)" stroke-width="18" stroke-linejoin="round"/>
+              <g stroke-width="20" stroke-linecap="round">
+                <path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/>
+                <path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/>
+              </g>
+              <circle cx="256" cy="256" r="30" fill="var(--ch-sig-hot)"/>
             </svg>
           </span>
           <div>
