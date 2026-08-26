@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/efiten/core-hunter/compare/server-v1.7.0...server-v1.8.0) (2026-08-26)
+
+
+### Features
+
+* **web,server:** ignore a sender from the map ([#500](https://github.com/efiten/core-hunter/issues/500)) ([1b62809](https://github.com/efiten/core-hunter/commit/1b6280983d8de66c79c836fefe1da77122b893c6))
+
 ## [1.7.0](https://github.com/efiten/core-hunter/compare/server-v1.6.0...server-v1.7.0) (2026-08-26)
 
 
