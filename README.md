@@ -34,3 +34,5 @@ Contributor guide and working rules: [`AGENTS.md`](AGENTS.md). Design specs and 
 
 - [MeshCore](https://meshcore.io), the mesh networking project this toolkit is built for.
 - [CoreScope](https://analyzer.on8ar.eu/#/home), the mesh observatory Mesh-Hunter builds on.
+
+More community tools are linked in the [Community section on mesh-hunter.eu](https://mesh-hunter.eu/#community).
