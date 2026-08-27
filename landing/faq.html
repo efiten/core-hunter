@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FAQ · Mesh-Hunter</title>
+  <meta name="description" content="Short answers about mapping, hunting, accounts and what the Mesh-Hunter map shows." />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/style.css" />
+    <!-- Matomo (self-hosted, cookieless; production hosts only) -->
+    <script>
+      if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {
+        var _paq = window._paq = window._paq || [];
+        _paq.push(['disableCookies']);
+        _paq.push(['setDomains', ['*.mesh-hunter.eu']]);
+        _paq.push(['trackPageView']);
+        _paq.push(['enableLinkTracking']);
+        (function() {
+          var u="https://analytics.fiten.eu/";
+          _paq.push(['setTrackerUrl', u+'matomo.php']);
+          _paq.push(['setSiteId', '10']);
+          var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+          g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+      }
+    </script>
+    <!-- End Matomo Code -->
+</head>
+<body>
+  <header class="lp-top">
+    <a class="lp-brand" href="/" style="color:inherit;text-decoration:none">Mesh-Hunter</a>
+    <nav class="lp-nav">
+      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+      <a href="https://map.mesh-hunter.eu">Map</a>
+      <a href="/faq.html" class="active">FAQ</a>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
+    </nav>
+  </header>
+
+  <main class="lp-main">
+    <section class="faq-head">
+      <h1>FAQ</h1>
+      <p>Short answers about mapping, hunting, accounts and what the map shows.</p>
+    </section>
+
+    <section class="faq-list">
+      <details>
+        <summary>What is Mesh-Hunter?</summary>
+        <p>A mapping and node-hunting toolkit for MeshCore. The
+          <a href="https://rx.mesh-hunter.eu">RX webapp</a> logs every packet your companion radio
+          hears, placed with your phone's GPS. The <a href="https://map.mesh-hunter.eu">shared map</a>
+          shows every mapper's receptions together, and is where you follow one node's signal to
+          where it transmits from.</p>
+      </details>
+      <details>
+        <summary>What do I need to start mapping?</summary>
+        <p>A MeshCore companion radio, and a phone with GPS and a browser that supports Web
+          Bluetooth, such as Chrome on Android or the Bluefy browser on iOS. Open the
+          <a href="https://rx.mesh-hunter.eu">RX webapp</a>, pair the radio over Bluetooth, and walk
+          or drive. The webapp installs as a PWA: add it to your home screen.</p>
+      </details>
+      <details>
+        <summary>Do I need an account?</summary>
+        <p>Not to read the map: without one you see all-time coarse coverage and the last 24 hours
+          of individual receptions. An account shows your own receptions in full detail. It is made
+          in the RX webapp, from the companion you paired, which is why the map itself has no
+          sign-up form. Member verification, granted by the admins, opens the full history, Locate
+          and the CoreScope layers.</p>
+      </details>
+      <details>
+        <summary>Does the map show where my node is?</summary>
+        <p>No. Position is inferred from radio measurements (RSSI/SNR) via mesh topology, not from
+          GPS tracking of any target node. The coordinates stored with each reception are the
+          mapping phone's own position at the moment of reception. The map shows where a mapper was
+          when they heard your node and how well, not where your node stands.</p>
+      </details>
+      <details>
+        <summary>Who sees what my radio hears?</summary>
+        <p>Every reception you map is published to the shared map. Visitors without an account see
+          it coarse and recent, you see your own receptions in full detail, and verified members
+          see everything.</p>
+      </details>
+      <details>
+        <summary>Does it cost anything?</summary>
+        <p>No. Mesh-Hunter is run by amateur-radio operators; accounts and member verification are
+          free.</p>
+      </details>
+      <details>
+        <summary>Which nodes can I hunt?</summary>
+        <p>Any node that transmits: a companion, a repeater, a sensor or a room server. Hunting
+          means driving toward where its signal is heard strongest, so anything that transmits can
+          be found.</p>
+      </details>
+      <details>
+        <summary>How does Mesh-Hunter relate to the other community tools?</summary>
+        <p>Mesh-Hunter builds on <a href="https://analyzer.on8ar.eu/#/home">CoreScope</a>, the mesh
+          observatory by ON8AR. The <a href="/#community">Community section</a> on the front page
+          links the wider ecosystem: the Dutch MeshCore Community, the DMC Triangulator, MC Radar
+          and MeshWiki.</p>
+      </details>
+    </section>
+  </main>
+
+  <footer class="lp-foot">
+    <span>Mesh-Hunter</span>
+  </footer>
+
+  <script>
+    (function () {
+      var KEY = 'ch-theme';
+      var root = document.documentElement;
+      var saved = null;
+      try { saved = localStorage.getItem(KEY); } catch (e) {}
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      var btn = document.getElementById('lp-theme');
+      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
+      sync();
+      btn.addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
+        sync();
+      });
+    })();
+  </script>
+</body>
+</html>
