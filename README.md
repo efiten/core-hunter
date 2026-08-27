@@ -1,43 +1,36 @@
 # core-hunter
 
-A MeshCore **node-hunting / direction-finding** tool. Drive (or walk) toward a target node using a
-live **scanner** and an on-screen **map** that visualizes where you heard it and how strong — to
-home in on its physical location.
+Mesh-Hunter: a MeshCore **mapping and node-hunting** toolkit, live at
+[mesh-hunter.eu](https://mesh-hunter.eu). Pair a companion radio to the RX webapp and every packet
+it hears lands on a shared coverage map, next to what every other mapper heard. The map is also the
+hunting surface: follow one node's signal to where it transmits from.
 
-Two reused building blocks:
+- **[rx.mesh-hunter.eu](https://rx.mesh-hunter.eu)**, the RX webapp: Web Bluetooth to a MeshCore
+  companion radio; every reception is timestamped and placed with the phone's GPS. Installs as a
+  PWA. Accounts are made here, from the companion you paired.
+- **[map.mesh-hunter.eu](https://map.mesh-hunter.eu)**, the shared map: reads without an account
+  (all-time coarse coverage and the last 24 hours of receptions). Log in to see your own receptions
+  in full detail; member verification opens the full history, Locate and the CoreScope layers.
 
-1. **Scanner** — based on **CoreDrive RX** (`corescope-rx`): BLE to a companion radio, captures every
-   direct reception (SNR/RSSI from the `0x88` RX-log frame), tags it with the phone's GPS.
-   The RX tool already ships a local map (`localmap.js`) + hex grid (`hexgrid.js`) to build on.
-2. **Map & point visualization** — a slice of the **CoreScope** backend: the map setup, point/marker
-   layers, coverage/hex rendering and SNR/RSSI colour scaling used on the Reach/coverage page.
-
-Goal: combine live scanning with map visualization so you can **hunt a specific node in the field**
-(e.g. the recurring public-channel flooder), complementing the after-the-fact relay-triangulation
-done in the `Spammer` project.
-
-## Status
-
-- **Phase A — Go MQTT ingestor (`server/`):** complete. Subscribes to
-  `meshcore/hunter/+/packets`, validates and stores every reception with no
-  purge. Unit-tested.
-- **Phase B — mobile hunter PWA (`app/`):** implemented. BLE scanner,
-  live thermal hunt map (thermal points + hex-heat), IndexedDB persistence,
-  MQTT drain. Pending field verification with hardware and deploy of the
-  ingestor. Iteration-2 changes implemented: capture/publish gated on a usable GPS
-  fix rather than on naming the sender (#454), RSSI-based signal metric,
-  ignore-list, and multi-resolver name resolution.
+**Position disclaimer:** position is inferred from radio measurements (RSSI/SNR) via mesh topology,
+not from GPS tracking of the target node. The stored coordinates are the mapping phone's own
+position at the moment of reception. The map shows where you were when you heard a node and how
+well, not where that node is.
 
 ## Components
 
 | Directory | Description |
 |---|---|
-| [`server/`](server/) | Go MQTT ingestor — subscribes to `meshcore/hunter/+/packets`, stores every reception |
-| [`app/`](app/) | Mobile hunter PWA — BLE scanner + live thermal hunt map; see [`app/README.md`](app/README.md) |
+| [`app/`](app/) | Mobile hunter PWA: BLE scanner + live thermal hunt map. See [`app/README.md`](app/README.md). |
+| [`web/`](web/) | The shared map website (map.mesh-hunter.eu): coverage, hunting, accounts, admin. |
+| [`server/`](server/) | Go MQTT ingestor: subscribes to `meshcore/hunter/+/packets`, stores every reception. |
+| [`nameresolver/`](nameresolver/) | Name resolver: decodes adverts into a `pubkey → name` table and serves `/api/nodes/resolve`. See [`nameresolver/README.md`](nameresolver/README.md). |
+| [`landing/`](landing/) | The landing page at mesh-hunter.eu. |
+
+Contributor guide and working rules: [`AGENTS.md`](AGENTS.md). Design specs and decision logs:
+[`docs/`](docs/).
 
 ## Related projects
 
-- `corescope-rx` — CoreDrive RX, the mobile RX-coverage PWA → the **scanner** base.
-- `CoreScope` — the analyzer/backend → the **map + point-visualization** base, plus live DB & ingestor.
-- `Spammer` — public-channel flooder investigation + relay-triangulation method & report generators.
-- `TDOA` — time-difference RX-fleet localization upgrade.
+- [MeshCore](https://meshcore.io), the mesh networking project this toolkit is built for.
+- [CoreScope](https://analyzer.on8ar.eu/#/home), the mesh observatory Mesh-Hunter builds on.
