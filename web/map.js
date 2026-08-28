@@ -5,7 +5,6 @@ import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.j
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
-import { warnHopFilter } from './hopfilter.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
@@ -14,7 +13,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime } from './targetpicker.js'
+import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hiddenFiltersActive } from './barfilters.js'
@@ -186,21 +185,6 @@ const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;',
 // server/internal/httpapi/api.go), so this stays a plain pass-through -- no
 // client-side narrowing, and hex/heatmap honours a multi-sender pick exactly
 // like the point layer does.
-// The Direct only notice. Placed beside the status line, not as a modal: it is
-// a caveat about a control, and it has to be readable while the control is
-// being used rather than dismissed before it is.
-function showHopNotice(points) {
-  const el = document.getElementById('hop-notice')
-  if (!el) return
-  const active = document.getElementById('f-direct').checked
-  const text = warnHopFilter(points, { active })
-  el.textContent = text
-  el.hidden = !text
-  // Louder when the control is already on and the map is empty because of it:
-  // that is the state someone is staring at wondering what broke.
-  el.classList.toggle('hop-notice-active', Boolean(text) && active)
-}
-
 function qs() {
   const b = map.getBounds()
   const p = new URLSearchParams({ bbox: [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(','), z: String(map.getZoom()) })
@@ -289,11 +273,6 @@ async function drawPoints() {
   // than from a second server field.
   const cover = { truncated: capped, coversFrom: oldestRxAt(points) }
   setStatus(coverageLabel(points.length, 'points', cover) + ignoreSuffix(), coverageTitle(POINTS_CAP, cover))
-  // Direct only reads as "what I heard from nearby", filters on a field the
-  // sender writes, and on a forged path hides everything -- silently, which is
-  // how it emptied the map on a real hunt (#454 follow-up). Say so, against the
-  // set actually on screen rather than as a standing warning.
-  showHopNotice(points)
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a
   // name — but not out from under an open popup (#271).
   if (unresolved.size) {
@@ -1443,6 +1422,7 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   // filters survive Clear with no UI trace.
   targetPicker.setSelected([])
   hunterPicker.setSelected([])
+  syncTargetToggleLabel()
   syncHunterToggleLabel()
   csAdvertCb.checked = false; csRelayCb.checked = false
   csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
@@ -1850,12 +1830,34 @@ syncIgnoreToggleLabel()
 // popover, not a sheet. The hunter picker below (#290) shares the same shape.
 const spToggle = document.getElementById('sp-toggle')
 senderPicker = document.getElementById('sender-picker')
+// The button is the only thing on screen once the panel closes, so it carries
+// the selection (#495) -- the same lesson the hunter button records below, and
+// the app's target chip solves the same way. targetChipLabel holds the rules
+// (node count over id variants, no full-length id, the empty state); this only
+// wires them to the DOM. Must be called from every path that moves the
+// selection: a pick, Clear, the ?senders= restore, and the typing handler that
+// drops a pick.
+function syncTargetToggleLabel() {
+  const ids = targetPicker.getSelected()
+  // senderList() is the picker's own row set, so a merged node reads the same
+  // on the button as in the list. It is only needed when something is picked,
+  // and cachedCandidatePoints is empty until the panel has been opened once,
+  // which is exactly when targetChipLabel falls back to nameOf.
+  const { text, title, count } = targetChipLabel(ids, {
+    rows: ids.length ? senderList(cachedCandidatePoints) : [],
+    nameOf: (id) => cachedName(id) || '',
+  })
+  spToggle.textContent = `${text} ▾`
+  spToggle.title = title || 'Pick from heard senders'
+  spToggle.classList.toggle('has-selection', count > 0)
+}
+
 targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
   pinnedEl: document.getElementById('tp-pinned'),
   ignored: () => ignored,
   // The picker owns its selection now (#288), so the field's own input/urlstate
   // wiring no longer carries it -- refresh and persist explicitly instead.
-  onChange: () => { urlstate.save(); refresh() },
+  onChange: () => { syncTargetToggleLabel(); urlstate.save(); refresh() },
 })
 // currentFilters (filters.js) reads the selection through this rather than
 // importing the picker, keeping the filter module free of DOM-component wiring.
@@ -1869,6 +1871,7 @@ document.getElementById('f-sender').addEventListener('input', (e) => {
   if (!e.target.value.trim()) return
   if (!targetPicker.getSelected().length) return
   targetPicker.setSelected([])
+  syncTargetToggleLabel()
   urlstate.save()
   refresh()
 })
@@ -1877,9 +1880,10 @@ document.getElementById('f-sender').addEventListener('input', (e) => {
 // stored form can no more be delimiter-joined than the query params can (#288).
 urlstate.register({ key: 'senders',
   get: () => encodeSelection(targetPicker.getSelected()),
-  set: (v) => targetPicker.setSelected(decodeSelection(v)) })
+  set: (v) => { targetPicker.setSelected(decodeSelection(v)); syncTargetToggleLabel() } })
 // load() already ran, so apply the pre-load capture now that the field exists.
 if (initialSenders) targetPicker.setSelected(decodeSelection(initialSenders))
+syncTargetToggleLabel()
 // Open/close + outside-click/Escape (#223) is shared with the hunter picker
 // below via wirePopover (#290) -- see multiselect.js for why outside-click
 // runs in the capture phase.

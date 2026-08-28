@@ -4,30 +4,11 @@ const flood = Array.from({ length: 60 }, (_, i) => ({
   hops: 1 + (i % 12), sender_id: '', sender_kind: '', sender_label: '',
   hunter_name: 'Onnix', packet_type: 'TextMessage', rx_at: '2026-08-24T20:57:00Z',
 }))
-const normal = flood.map((p, i) => ({ ...p, hops: i % 3 === 0 ? 0 : 4 }))
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
 })
-test('a flood with no zero-hop reception explains why Direct only would empty the map', async ({ page }) => {
-  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: flood } }))
-  await page.goto('/?mode=points')
-  const n = page.locator('#hop-notice')
-  await expect(n).toBeVisible({ timeout: 10000 })
-  await expect(n).toContainText('would hide every one')
-  await expect(n).toContainText('-34 dBm')
-  await page.check('#f-direct')
-  await expect(n).toContainText('hiding all', { timeout: 10000 })
-})
-test('ordinary traffic gets no notice at all', async ({ page }) => {
-  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: normal } }))
-  await page.goto('/?mode=points')
-  await expect(page.locator('.leaflet-container')).toBeVisible()
-  await page.waitForTimeout(1500)
-  await expect(page.locator('#hop-notice')).toBeHidden()
-})
-
 test('Sender unknown narrows on the tick, not on the next rolling refresh', async ({ page }) => {
   // The coarse handle for a flood with no sender. The request has to carry it,
   // because the narrowing happens in SQL -- a client-side filter would page

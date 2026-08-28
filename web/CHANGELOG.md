@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.17.0](https://github.com/efiten/core-hunter/compare/web-v1.16.0...web-v1.17.0) (2026-08-28)
+
+
+### Features
+
+* **app:** name a trace reply after the node we pinged ([#483](https://github.com/efiten/core-hunter/issues/483)) ([04eded1](https://github.com/efiten/core-hunter/commit/04eded1708612b9462888e0d4925e0b4b5d285ef))
+* **web:** name the picked target on the picker button ([#499](https://github.com/efiten/core-hunter/issues/499)) ([cabe596](https://github.com/efiten/core-hunter/commit/cabe5969eec5f3038ecbe3aa68d018b8af981464))
+
+
+### Bug Fixes
+
+* **web:** drop the hop notice from the map ([#508](https://github.com/efiten/core-hunter/issues/508)) ([ac925df](https://github.com/efiten/core-hunter/commit/ac925df2a26296f96e392be0a301001fde367777))
+
 ## [1.16.0](https://github.com/efiten/core-hunter/compare/web-v1.15.1...web-v1.16.0) (2026-08-26)
 
 
