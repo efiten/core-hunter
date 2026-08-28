@@ -14,7 +14,7 @@ import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
-import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime } from './targetpicker.js'
+import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { hiddenFiltersActive } from './barfilters.js'
@@ -1443,6 +1443,7 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   // filters survive Clear with no UI trace.
   targetPicker.setSelected([])
   hunterPicker.setSelected([])
+  syncTargetToggleLabel()
   syncHunterToggleLabel()
   csAdvertCb.checked = false; csRelayCb.checked = false
   csAdvertLayer.clearLayers(); csRelayLayer.clearLayers()
@@ -1850,12 +1851,34 @@ syncIgnoreToggleLabel()
 // popover, not a sheet. The hunter picker below (#290) shares the same shape.
 const spToggle = document.getElementById('sp-toggle')
 senderPicker = document.getElementById('sender-picker')
+// The button is the only thing on screen once the panel closes, so it carries
+// the selection (#495) -- the same lesson the hunter button records below, and
+// the app's target chip solves the same way. targetChipLabel holds the rules
+// (node count over id variants, no full-length id, the empty state); this only
+// wires them to the DOM. Must be called from every path that moves the
+// selection: a pick, Clear, the ?senders= restore, and the typing handler that
+// drops a pick.
+function syncTargetToggleLabel() {
+  const ids = targetPicker.getSelected()
+  // senderList() is the picker's own row set, so a merged node reads the same
+  // on the button as in the list. It is only needed when something is picked,
+  // and cachedCandidatePoints is empty until the panel has been opened once,
+  // which is exactly when targetChipLabel falls back to nameOf.
+  const { text, title, count } = targetChipLabel(ids, {
+    rows: ids.length ? senderList(cachedCandidatePoints) : [],
+    nameOf: (id) => cachedName(id) || '',
+  })
+  spToggle.textContent = `${text} ▾`
+  spToggle.title = title || 'Pick from heard senders'
+  spToggle.classList.toggle('has-selection', count > 0)
+}
+
 targetPicker = createTargetPicker('f-sender', document.getElementById('tp-list'), {
   pinnedEl: document.getElementById('tp-pinned'),
   ignored: () => ignored,
   // The picker owns its selection now (#288), so the field's own input/urlstate
   // wiring no longer carries it -- refresh and persist explicitly instead.
-  onChange: () => { urlstate.save(); refresh() },
+  onChange: () => { syncTargetToggleLabel(); urlstate.save(); refresh() },
 })
 // currentFilters (filters.js) reads the selection through this rather than
 // importing the picker, keeping the filter module free of DOM-component wiring.
@@ -1869,6 +1892,7 @@ document.getElementById('f-sender').addEventListener('input', (e) => {
   if (!e.target.value.trim()) return
   if (!targetPicker.getSelected().length) return
   targetPicker.setSelected([])
+  syncTargetToggleLabel()
   urlstate.save()
   refresh()
 })
@@ -1877,9 +1901,10 @@ document.getElementById('f-sender').addEventListener('input', (e) => {
 // stored form can no more be delimiter-joined than the query params can (#288).
 urlstate.register({ key: 'senders',
   get: () => encodeSelection(targetPicker.getSelected()),
-  set: (v) => targetPicker.setSelected(decodeSelection(v)) })
+  set: (v) => { targetPicker.setSelected(decodeSelection(v)); syncTargetToggleLabel() } })
 // load() already ran, so apply the pre-load capture now that the field exists.
 if (initialSenders) targetPicker.setSelected(decodeSelection(initialSenders))
+syncTargetToggleLabel()
 // Open/close + outside-click/Escape (#223) is shared with the hunter picker
 // below via wirePopover (#290) -- see multiselect.js for why outside-click
 // runs in the capture phase.

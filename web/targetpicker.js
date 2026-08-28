@@ -308,6 +308,55 @@ function rowIds(rec) {
 }
 
 
+// targetChipLabel is what the picker's button reads (#495). Ported from the
+// app's target chip (app/src/app.js), which had to solve the same three things:
+//
+//   count NODES, not id variants -- multiselect.js selects a merged row as a
+//     unit, so one tap on a 3-prefix node puts 3 ids in the selection, and
+//     counting those reported "3 targets" for one tap (#268)
+//   never render a full-length id -- an unresolved node falls back to the same
+//     6-char prefix the list rows use; the unbounded form pushed the topbar
+//     off screen (#305)
+//   say something when nothing is picked -- the button is the only thing left
+//     on screen once the panel closes (the hunter button's lesson, #290)
+//
+// rows is the picker's current row set (senderList output). It is empty on a
+// cold start with ?senders= in the URL, so a selected id that no row claims
+// counts as its own node and takes nameOf, the caller's resolver, for a label.
+export function targetChipLabel(selectedIds, { rows = [], nameOf } = {}) {
+  const sel = new Set((selectedIds || []).filter(Boolean).map((i) => String(i).toLowerCase()))
+  if (sel.size === 0) return { text: 'Select target', title: '', count: 0 }
+  const nodes = []
+  const claimed = new Set()
+  for (const rec of rows || []) {
+    const ids = rowIds(rec).map((i) => String(i).toLowerCase())
+    if (!ids.some((i) => sel.has(i))) continue
+    // Same guard targetParts makes above, for the same reason and from the same
+    // helper: direct_hash and path_hash carry the 1-byte hash AS their label
+    // (#521), so the label branch would print "77" indistinguishably from a
+    // resolved short name. Marked instead, and the resolver is not consulted
+    // either: there is nothing to resolve, and a guess would put one name on a
+    // byte 255 other nodes share. The button and the row have to agree about
+    // the same node, and the row is the one a hunter reads first.
+    const hashed = isHashIdKind(rec.sender_kind)
+    nodes.push({
+      id: ids[0],
+      label: hashed ? '' : (rec.sender_label ? String(rec.sender_label) : ''),
+      hashed,
+    })
+    for (const i of ids) claimed.add(i)
+  }
+  for (const id of sel) if (!claimed.has(id)) nodes.push({ id, label: '', hashed: false })
+  const count = nodes.length
+  const one = nodes[0]
+  const name = count !== 1
+    ? `${count} targets`
+    : one.hashed
+      ? `#${idPrefix(one.id)}`
+      : (one.label || (nameOf && nameOf(one.id)) || idPrefix(one.id))
+  return { text: '⌖ ' + name, title: name, count }
+}
+
 // createTargetPicker builds the browsable multi-select dropdown.
 //
 // The picker owns its selection (#288). It used to write a delimiter-joined id

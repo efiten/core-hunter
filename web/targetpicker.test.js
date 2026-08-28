@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   dedupeSenders, senderList, topSenders, targetParts, relTime,
-  senderParams, encodeSelection, decodeSelection, withoutSenderFilters,
+  senderParams, encodeSelection, decodeSelection, withoutSenderFilters, targetChipLabel,
 } from './targetpicker.js'
 
 const pt = (o) => ({ lat: 51, lon: 4, rssi: -80, rx_at: '2026-07-22T10:00:00Z', ...o })
@@ -401,5 +401,109 @@ describe('topSenders — ignored nodes', () => {
     const merged = [advert(FULL_A, { rssi: -60 }), relay('4a4a', { rssi: -60, rx_at: '2026-07-22T09:59:55Z' })]
     expect(topSenders(merged, { count: 3, nowMs: NOW })).toHaveLength(1)
     expect(topSenders(merged, { count: 3, nowMs: NOW, ignore: new Set(['4a4a']) })).toEqual([])
+  })
+})
+
+// The picker's button label (#495). The app's chip is the reference
+// (app/src/app.js:2039): a name for one node, a count above that, never a
+// full-length id, and it counts NODES rather than id variants (#268).
+describe('targetChipLabel — what the picker button says', () => {
+  const row = (o) => ({ sender_id: 'aa', sender_label: '', merged_ids: ['aa'], ...o })
+
+  it('reads Select target with nothing picked', () => {
+    const out = targetChipLabel([], { rows: [row()] })
+    expect(out.text).toBe('Select target')
+    expect(out.count).toBe(0)
+    expect(out.title).toBe('')
+  })
+
+  it('names the node when one is picked', () => {
+    const rows = [row({ sender_id: 'aabb', sender_label: 'KH-01', merged_ids: ['aabb'] })]
+    const out = targetChipLabel(['aabb'], { rows })
+    expect(out.text).toBe('⌖ KH-01')
+    expect(out.title).toBe('KH-01')
+    expect(out.count).toBe(1)
+  })
+
+  // The #268 trap, in the map's own shape: multiselect.js selects every id
+  // variant of a merged row, so a single tap puts three ids in the selection.
+  it('counts a merged row as one target, not as its id variants', () => {
+    const rows = [row({
+      sender_id: 'aabbccdd', sender_label: 'KH-01',
+      merged_ids: ['aabb', 'aabbcc', 'aabbccdd'],
+    })]
+    const out = targetChipLabel(['aabb', 'aabbcc', 'aabbccdd'], { rows })
+    expect(out.count).toBe(1)
+    expect(out.text).toBe('⌖ KH-01')
+  })
+
+  it('counts separate rows separately', () => {
+    const rows = [
+      row({ sender_id: 'aabb', sender_label: 'KH-01', merged_ids: ['aabb'] }),
+      row({ sender_id: 'ccdd', sender_label: 'KH-02', merged_ids: ['ccdd'] }),
+    ]
+    const out = targetChipLabel(['aabb', 'ccdd'], { rows })
+    expect(out.text).toBe('⌖ 2 targets')
+    expect(out.title).toBe('2 targets')
+    expect(out.count).toBe(2)
+  })
+
+  // A deep link restores a selection before the picker has ever rendered, so
+  // there are no rows to read a label from.
+  it('falls back to a resolved name when the picker holds no rows', () => {
+    const out = targetChipLabel(['aabbccdd'], { rows: [], nameOf: (id) => (id === 'aabbccdd' ? 'KH-09' : '') })
+    expect(out.text).toBe('⌖ KH-09')
+    expect(out.count).toBe(1)
+  })
+
+  // #305: a full-length id pushed the topbar off screen, so an unresolved id
+  // shows the same 6-char prefix the target list uses.
+  it('never renders a full-length id', () => {
+    const id = 'a'.repeat(64)
+    const out = targetChipLabel([id], { rows: [] })
+    expect(out.text).toBe('⌖ aaaaaa')
+    expect(out.text).not.toContain(id)
+  })
+
+  it('matches case-insensitively, since the selection is lower-cased', () => {
+    const rows = [row({ sender_id: 'AABB', sender_label: 'KH-01', merged_ids: ['AABB'] })]
+    expect(targetChipLabel(['aabb'], { rows }).count).toBe(1)
+  })
+
+  it('handles a missing selection', () => {
+    expect(targetChipLabel(undefined, {}).text).toBe('Select target')
+  })
+})
+
+// #499 review: the button and the row have to agree about the same node. Two
+// kinds carry a 1-byte hash AS their label (direct_hash, and path_hash since
+// #521), so taking sender_label first rendered the byte as a name on the
+// button while targetParts marked it with a # in the row right beside it.
+describe('targetChipLabel — a 1-byte hash is never a name', () => {
+  const hashRow = (kind) => ({ sender_id: '77', sender_label: '77', sender_kind: kind, merged_ids: ['77'] })
+
+  for (const kind of ['direct_hash', 'path_hash']) {
+    it(`marks a ${kind} the way the row does, rather than naming it`, () => {
+      const rows = [hashRow(kind)]
+      const chip = targetChipLabel(['77'], { rows })
+      // The row's own rendering is the reference: whatever the list says about
+      // this node, the button says the same thing.
+      expect(targetParts(rows[0]).primary).toBe('#77')
+      expect(chip.text).toBe('⌖ #77')
+      expect(chip.title).toBe('#77')
+    })
+  }
+
+  it('still names a kind whose label is a real name', () => {
+    const rows = [{ sender_id: 'aabb', sender_label: 'KH-01', sender_kind: 'advert_pubkey', merged_ids: ['aabb'] }]
+    expect(targetChipLabel(['aabb'], { rows }).text).toBe('⌖ KH-01')
+  })
+
+  // The resolver is not consulted for these: there is nothing to resolve, and
+  // asking would put a guessed name on a byte that 255 other nodes share.
+  it('does not take a resolved name for a hash id either', () => {
+    const rows = [hashRow('path_hash')]
+    const out = targetChipLabel(['77'], { rows, nameOf: () => 'should never be used' })
+    expect(out.text).toBe('⌖ #77')
   })
 })

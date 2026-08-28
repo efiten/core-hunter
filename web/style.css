@@ -82,12 +82,23 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    (#372), so a relative wrapper would only look like it still anchored it. */
 .ms-wrap { display: inline-flex; }
 .ms-toggle { padding: 5px 6px; }
-.ms-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
-/* A picker that is holding something has to say so with the panel closed, when
-   the button is all that is left of it (#494). #bar-prefixed because `#bar
-   select, #bar input, #bar button` sets colour and border at (1,0,1), which
-   beats a bare class -- the same claim .f-chip.active above has to make. */
+/* #bar-prefixed for the same reason .f-chip.active above is: `#bar select,
+   #bar input, #bar button` sets colour and border at (1,0,1), so the bare
+   class this used to be never reached either picker's button. */
+#bar .ms-toggle[aria-expanded="true"] { color: var(--ch-accent); border-color: var(--ch-accent); }
+/* A picked selection has to read at a glance with the panel CLOSED, which is
+   when the button is all that is left of it (#290, #495). The class has been
+   set on the hunter button since #290 and had no rule, so its label carried
+   the state alone. It takes the accent colour, the same one the open-panel
+   rule above asks for.
+   Prefixed with #bar for the same reason .f-chip.active above is: `#bar select,
+   #bar input, #bar button` (line 46) sets colour and border at (1,0,1), so a
+   bare class never reaches this button. */
 #bar .ms-toggle.has-selection { color: var(--ch-accent); border-color: var(--ch-accent); }
+/* A node name is operator text of any length, so the label clips at the same
+   130px the app's chip clips at, for the same reason: unbounded, it pushed the
+   topbar off screen (#305). The full name stays in the title. */
+#bar #sp-toggle { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* position:fixed with left/top written by placePopover (#372): #bar wraps, so
    the toggle these were anchored to can end up anywhere on any row, and CSS
    anchoring cannot flip or shift a panel back onto the screen. */
