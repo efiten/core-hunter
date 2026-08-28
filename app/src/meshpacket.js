@@ -33,6 +33,18 @@ export function carriesSignedIdentity(cls) {
   return !!cls && !!cls.sender && cls.sender.kind === 'advert_pubkey'
 }
 
+// traceTagOf reads the tag off a decoded TRACE packet — the 4 bytes we wrote
+// ourselves when sending the ping, echoed back by whichever node retransmitted
+// it. Any other payload type leaves it absent, so this is null everywhere else.
+// Normalised to lowercase 8-hex here so the one comparison in tracetag.js does
+// not have to know which side produced the value.
+export function traceTagOf(decoded) {
+  const d = decoded && decoded.payload && decoded.payload.decoded
+  const t = d && d.traceTag
+  if (typeof t !== 'string' || !/^[0-9a-f]{1,8}$/i.test(t)) return null
+  return t.toLowerCase().padStart(8, '0')
+}
+
 // The empty identity: what a reception carries when nothing about who sent it
 // may be believed. Shared by both refusals below so they cannot drift apart.
 const NO_SENDER = () => ({ kind: null, id: null, label: null, role: null })

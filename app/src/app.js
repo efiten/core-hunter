@@ -14,7 +14,8 @@
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'
-import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception } from './meshpacket.js'
+import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, traceTagOf } from './meshpacket.js'
+import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
 import { backlogState } from './backlog.js'
@@ -176,6 +177,9 @@ const state = {
   // Auto-ping (#233): toggled by the Discover FAB. lastLat/lastLon track the
   // position at the last fire, for the movement half of the fire gate.
   autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [] },
+  // Trace-pings we sent and may still get an answer to (#481). The tag on the
+  // reply is what names the target it came back from; tracetag.js holds the rule.
+  tracePings: [],
   // Companion battery (#281): polled periodically while connected, since it
   // doesn't arrive with each packet the way RSSI/SNR do.
   battery: { mv: null, timer: null, failures: 0 },
@@ -567,7 +571,19 @@ async function processFrame(dv) {
   // may be copied onto the record. undecodableReception says so explicitly.
   let decoded = null
   try { decoded = decodePacket(bytesToHex(frame.raw)) } catch (e) { decoded = null }
-  let cls = decoded && decoded.isValid ? classifyReception(decoded, channelNameFor) : undecodableReception()
+  const decodedOk = !!(decoded && decoded.isValid)
+  let cls = decodedOk ? classifyReception(decoded, channelNameFor) : undecodableReception()
+  // A TRACE reply to a ping we sent is not anonymous traffic: we generated its
+  // tag, so it names the node we asked (#481). Everything else stays as
+  // classifyReception left it — a TRACE packet's path bytes are SNR values, not
+  // ids, and overheard trace traffic is attributable to nobody.
+  //
+  // Only for a packet that decoded: an undecodable one has no payload to read a
+  // tag off, and its fields are placeholders rather than readings (#454).
+  if (decodedOk && cls.sender.id == null) {
+    const target = matchTraceTarget(state.tracePings, traceTagOf(decoded), Date.now())
+    if (target) cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null } }
+  }
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
     // The only reason left to refuse is the fix, and that is the one worth
@@ -796,6 +812,9 @@ function sendTracePing(id) {
   if (Number.isNaN(hashByte)) return false
   const tag = crypto.getRandomValues(new Uint32Array(1))[0]
   state.transport.send(buildTracePathFrame(tag, 0, [hashByte])).catch(() => {})
+  // Remember the tag before the reply can arrive: the retransmission echoes it,
+  // and that is the only thing tying the reception back to the node we asked.
+  state.tracePings = rememberPing(state.tracePings, tag, id, Date.now())
   return true
 }
 
