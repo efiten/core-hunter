@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/efiten/core-hunter/compare/web-v1.18.0...web-v1.19.0) (2026-08-29)
+
+
+### Features
+
+* **app,web,landing:** the 26 August design pass ([#541](https://github.com/efiten/core-hunter/issues/541)) ([5a04962](https://github.com/efiten/core-hunter/commit/5a049624e14191a632512091754556337ab1dd8e))
+
 ## [1.18.0](https://github.com/efiten/core-hunter/compare/web-v1.17.0...web-v1.18.0) (2026-08-29)
 
 
