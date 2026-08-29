@@ -35,11 +35,23 @@ const toLocalInput = (d) => {
 // The hunter picker's own selection lives in map.js (like the sender picker,
 // #223/#290), so map.js's clear-filters handler clears it directly.
 // Exposed for the "Clear" button; map.js handles the layer/locate/redraw side.
+// The chips and checkboxes are cleared here too (#539): the button now says
+// "Clear N filters" with N counting exactly these dimensions, and until this
+// it silently left every one of them standing — sender field and time range
+// were all it ever reset.
 function resetFilters() {
   const s = document.getElementById('f-sender'); s.value = ''; s.title = ''
   const now = new Date()
   document.getElementById('f-from').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0))
   document.getElementById('f-to').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59))
+  if (window.setTypes) window.setTypes('')
+  if (window.setIdClasses) window.setIdClasses('')
+  // Through a change event, not a bare .checked write: the label sync and the
+  // node-position teardown both listen for one.
+  for (const id of ['f-direct', 'f-unnamed', 'f-nodepos']) {
+    const el = document.getElementById(id)
+    if (el && el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })) }
+  }
 }
 
 // All DOM wiring below is guarded so this module can be imported under Vitest
@@ -73,13 +85,9 @@ if (typeof document !== 'undefined') {
     })
     classHost.appendChild(b)
   }
-  // The chips live in a popover, so the toggle carries the only visible sign
-  // that this dimension is narrowed -- same job as #filter-pill-dot.
-  const syncClassToggle = () => {
-    const on = classHost.querySelectorAll('.f-chip.active').length > 0
-    document.getElementById('f-idclass-toggle').classList.toggle('active', on)
-  }
-  classHost.addEventListener('click', syncClassToggle)
+  // Inline in the panel since #539: the chips say it themselves, and the
+  // pill's count carries the closed-state signal the old popover toggle did.
+  const syncClassToggle = () => {}
   window.__syncIdClassToggle = syncClassToggle
   window.currentIdClasses = () =>
     [...classHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.idclass).join(',')

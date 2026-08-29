@@ -1,10 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mesh-Hunter">
   <rect width="512" height="512" fill="#0b0e14"/>
-  <g fill="none" stroke="#38e0a6" stroke-width="16" stroke-linecap="round">
-    <circle cx="256" cy="256" r="160"/>
-    <circle cx="256" cy="256" r="86"/>
-    <line x1="256" y1="64" x2="256" y2="448"/>
-    <line x1="64" y1="256" x2="448" y2="256"/>
+  <polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="#38e0a6" stroke-width="12" stroke-linejoin="round"/>
+  <g fill="none" stroke-width="15" stroke-linecap="round">
+    <path d="M326 168 A112 112 0 0 1 326 344" stroke="#40c8ff"/>
+    <path d="M186 168 A112 112 0 0 0 186 344" stroke="#40c8ff"/>
+    <path d="M300 200 A68 68 0 0 1 300 312" stroke="#ff9f0a"/>
+    <path d="M212 200 A68 68 0 0 0 212 312" stroke="#ff9f0a"/>
   </g>
-  <circle cx="256" cy="256" r="22" fill="#38e0a6"/>
+  <g stroke="#38e0a6" stroke-width="10" stroke-linecap="round">
+    <line x1="256" y1="128" x2="256" y2="196"/>
+    <line x1="256" y1="316" x2="256" y2="384"/>
+    <line x1="128" y1="256" x2="196" y2="256"/>
+    <line x1="316" y1="256" x2="384" y2="256"/>
+  </g>
+  <circle cx="256" cy="256" r="26" fill="#ff453a"/>
 </svg>

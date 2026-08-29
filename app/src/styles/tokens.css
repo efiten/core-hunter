@@ -20,12 +20,17 @@
   --ch-bar-track: #1b2230;   /* HUD signal-bar track */
   --ch-border:    rgba(255,255,255,0.08);
   --ch-building:  #39465a;   /* 3D-mode building extrusions (#147) */
+  /* Ticker backing plate (#539): more transparent than --ch-surface so the
+     map still reads through the card, but enough plate to keep the lines
+     legible over busy streets. */
+  --ch-surface-thin: rgba(18, 23, 33, 0.72);
 }
 
 /* ---- LIGHT theme: warm paper + teal accent (its own identity, not inverted dark) ---- */
 [data-theme="light"] {
   --ch-bg:        #f4f1ea;
   --ch-surface:   rgba(255, 252, 245, 0.86);
+  --ch-surface-thin: rgba(255, 252, 245, 0.72);
   --ch-text:      #1b2430;
   --ch-muted:     #5a6675;
   --ch-accent:    #0e9f7e;   /* teal — primary accent */

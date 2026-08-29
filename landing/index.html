@@ -28,12 +28,24 @@
 </head>
 <body>
   <header class="lp-top">
-    <span class="lp-brand">Mesh-Hunter</span>
+    <span class="lp-brand">
+      <svg width="22" height="22" viewBox="0 0 512 512" aria-hidden="true">
+        <polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="24" stroke-linejoin="round"/>
+        <g fill="none" stroke-width="26" stroke-linecap="round">
+          <path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/>
+          <path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/>
+        </g>
+        <circle cx="256" cy="256" r="34" fill="var(--ch-sig-hot)"/>
+      </svg>
+      Mesh-Hunter</span>
     <nav class="lp-nav">
       <a href="https://rx.mesh-hunter.eu">RX webapp</a>
       <a href="https://map.mesh-hunter.eu">Map</a>
       <a href="/faq.html">FAQ</a>
-      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">
+        <svg class="lp-th-moon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 12.5A7 7 0 0 1 7.5 4 7 7 0 1 0 16 12.5z"/></svg>
+        <svg class="lp-th-sun" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
+      </button>
     </nav>
   </header>
 
@@ -137,7 +149,7 @@
       try { saved = localStorage.getItem(KEY); } catch (e) {}
       if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
       var btn = document.getElementById('lp-theme');
-      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
+      function sync() { /* the two SVGs swap on data-theme via CSS */ }
       sync();
       btn.addEventListener('click', function () {
         root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';

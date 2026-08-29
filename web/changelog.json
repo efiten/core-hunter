@@ -1,5 +1,26 @@
 [
   {
+    "id": "2026-08-26-app-design-pass",
+    "date": "2026-08-26",
+    "where": "app",
+    "title": "A design pass over the app",
+    "body": "A smaller start screen, a Status tab, a closable ticker card, decluttered node names, and the RSSI readout in heat colours."
+  },
+  {
+    "id": "2026-08-26-map-filter-panel",
+    "date": "2026-08-26",
+    "where": "map",
+    "title": "All filters in one panel",
+    "body": "The filters live in one panel behind the Filters button, which now counts what is narrowed. The layer choice became three buttons and Clear says what it clears."
+  },
+  {
+    "id": "2026-08-26-cross-surface-polish",
+    "date": "2026-08-26",
+    "where": "both",
+    "title": "One brand, clearer controls",
+    "body": "One brand mark everywhere, drawn icons instead of emoji, one link colour, bigger touch targets, and error messages that name their cause."
+  },
+  {
     "id": "2026-08-26-locate-lives-on-the-map",
     "date": "2026-08-26",
     "where": "app",

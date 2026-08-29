@@ -1,4 +1,4 @@
-import { test, expect, openPicker } from './fixtures.js'
+import { test, expect, openPicker, clickClearFilters } from './fixtures.js'
 
 // Hunter picker (#290) — generalizes the #223 target-list picker pattern to
 // #f-hunter's role: browsable multi-select parity, replacing the native
@@ -112,7 +112,7 @@ test('Clear also clears the hunter selection', async ({ page }) => {
   urls.length = 0
   await page.keyboard.press('Escape')
   await expect(page.locator('#hunter-picker')).toBeHidden()
-  await page.click('#clear-filters')
+  await clickClearFilters(page) // Clear lives in the filter panel (#539)
   await expect.poll(() => urls.length > 0 && urls.every((u) => !hunterOf(u))).toBe(true)
   await expect(page).not.toHaveURL(/hunter=/)
 })

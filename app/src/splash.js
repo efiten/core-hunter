@@ -1,31 +1,58 @@
-// Cold-start splash / onboarding overlay: shown until the first GPS fix arrives,
-// per AGENTS.md (no coverage without a position, so hunting cannot start before
-// that). It doubles as the onboarding surface — a spotlight over the live
-// controls plus getting-started basics — and is re-openable via the "?" button.
+// Cold-start gate (#539): one block guarding the two things a hunt needs —
+// the radio and the fix — shown until the first GPS fix arrives, per AGENTS.md
+// (no coverage without a position). Connecting is not required: the ✕
+// dismisses it for the session (the app holds your own local captures, and
+// those are readable without a radio), after which the no-capture banner is
+// the one reminder left. The full spotlight tour still exists, but only
+// behind the "?" button and About — never on a cold start.
 // splashState resolves the display state from the connection/GPS status.
-export function splashState({ hasFix, connected, bleError, gpsError }) {
-  if (hasFix) return 'hidden'
+export function splashState({ hasFix, connected, bleError, gpsError, dismissed }) {
+  if (hasFix || dismissed) return 'hidden'
   if (bleError) return 'ble-error'
   if (!connected) return 'intro'
   if (gpsError) return 'gps-error'
   return 'waiting-gps'
 }
 
+// The two status rows the panel renders per state — the same shape as the
+// settings sheet's Connection block, because both guard the same two things.
+// Rows are a fixed 38px in CSS, so nothing here may change a row's height:
+// the panel hangs from its top and must not jump when a spinner or an SF
+// value appears.
+export function splashRows(s, { name, sf } = {}) {
+  const bluetoothOn = { key: 'Bluetooth', dot: 'on', text: name || 'Connected', extra: sf ? 'SF' + sf : null }
+  if (s === 'waiting-gps') return [bluetoothOn, { key: 'GPS', spin: true, text: 'Waiting for a fix…' }]
+  if (s === 'gps-error') return [bluetoothOn, { key: 'GPS', dot: 'err', text: 'No fix' }]
+  if (s === 'ble-error') {
+    return [
+      { key: 'Bluetooth', dot: 'err', text: 'Not connected' },
+      { key: 'GPS', dot: 'off', text: 'No fix yet' },
+    ]
+  }
+  return [
+    { key: 'Bluetooth', dot: 'off', text: 'No companion' },
+    { key: 'GPS', dot: 'off', text: 'No fix yet' },
+  ]
+}
+
+// The banner for whoever dismissed the gate before the first fix (#539
+// defect 4): hasFix/gpsError show nowhere else, so without this someone
+// drives around while nothing is logged.
+export function dismissBanner({ connected } = {}) {
+  return connected
+    ? 'No GPS fix yet. Nothing is logged without a position.'
+    : 'No companion connected. Showing your own captures.'
+}
+
 // User-facing product name (internal identifiers stay core-hunter).
 export const APP_NAME = 'Mesh-Hunter'
 
-// One-sentence description of what the app does, shown above the
-// getting-started basics in the glass panel (#216).
-export const SPLASH_TAGLINE =
-  'A MeshCore node-hunting toolkit — pair your companion radio, drive around, and every direct reception lands on a live heat-map where hot = strong = close.'
-
-// Status line under the glass panel. `intro` has none — the Connect button is
-// the call to action there.
-export const SPLASH_COPY = {
-  intro: '',
-  'waiting-gps': 'Waiting for a GPS fix…',
-  'gps-error': 'Could not get your location. Make sure location access is allowed for this site, then tap Retry location.',
-  'ble-error': 'Could not connect. Tap Connect to retry.',
+// Fallback lines for the two retryable states. The ble-error line is only
+// the fallback: connectFailureMessage (connectstate.js) names the actual
+// cause when one was caught.
+export const SPLASH_ERRORS = {
+  'gps-error': 'Could not get your location. Make sure location access is allowed for this site, then retry.',
+  'ble-error': 'Could not connect. Retry to try again.',
 }
 
 // Pinned in the glass panel: the AGENTS.md §7 position statement. The splash
@@ -37,11 +64,30 @@ export const SPLASH_COPY = {
 export const SPLASH_DISCLAIMER =
   'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where you were when you heard it. Advertised positions are self-reported by the operator and may be stale.'
 
-// Getting-started basics (was #143), shown as a short list in the glass panel.
-export const SPLASH_BASICS = [
-  'Open in Chrome or Bluefy (iOS)',
-  'Pair your companion — tap Connect',
-  'Listens only — nothing sent unless you enable Discover',
+// The gate's own one-sentence form (#539), allowed since the #413 amendment:
+// shown when position output is switched on and reachable afterwards, not
+// permanent — and the gate shows no position output itself. Injected as HTML
+// (the emphasis on "you" is the sentence's whole point), so it must never
+// carry user data.
+export const SPLASH_DISCLAIMER_SHORT =
+  'Listens only. The map shows where <em>you</em> were when you heard a node, not where it is.'
+
+// The three coach marks beside their own controls (#539, the app half of
+// #384): a thin leader line to a small ring on the target — the target is
+// pointed at, not touched, so the boxes have air. Injected as innerHTML
+// (static copy only). The register mark is the important one: without an
+// account your work lands nowhere you can see it. The filters mark is a
+// reassurance, not a signpost.
+export const COACH_MARKS = [
+  { id: 'cm-controls', anchor: 'filter-pill', align: 'left',
+    html: '<b>Filters</b> change what you see. Everything is recorded either way.' },
+  { id: 'cm-menu', anchor: 'settings-btn', align: 'right',
+    html: '<b>Register in Settings</b>, then find your packets on the desktop analyser map.' },
+  // side 'left': beside the rail rather than under it — the bottom FAB sits
+  // ~590px down on a 667 screen, so a box below it would run off-screen into
+  // the HUD. The line runs horizontally to a ring on the FAB's edge.
+  { id: 'cm-fabs', anchor: 'layer-toggle', side: 'left',
+    html: '<b>Map controls:</b> node locations, auto-ping (zero-hop), 2D/3D, drive mode, sound modes.' },
 ]
 
 // The FAB stack the onboarding spotlight lifts, rings and points its `fabs`

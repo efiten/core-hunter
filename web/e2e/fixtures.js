@@ -149,3 +149,54 @@ export async function setFilter(page, selector, on = true) {
   else await page.uncheck(selector)
   if (mobile) await page.keyboard.press('Escape')
 }
+
+// The filter panel (#539): everything that narrows the view lives behind the
+// Filters pill at every width. These are the one way a test drives those
+// controls, so a change to the panel's mechanics lands here once.
+export async function openFilters(page) {
+  const panel = page.locator('#bar-filters')
+  if (await panel.evaluate((el) => el.classList.contains('bf-open'))) return
+  await clickUntil(page, '#filter-pill', () => panel.evaluate((el) => el.classList.contains('bf-open')))
+}
+
+export async function closeFilters(page) {
+  const panel = page.locator('#bar-filters')
+  if (!(await panel.evaluate((el) => el.classList.contains('bf-open')))) return
+  await page.keyboard.press('Escape')
+}
+
+// Clicks one of the panel's chips (type or id-class) by its data attribute.
+export async function clickPanelChip(page, selector) {
+  await openFilters(page)
+  await page.click(selector)
+  await closeFilters(page)
+}
+
+// Sets the layer mode via the segmented control in the panel.
+export async function setLayerMode(page, mode) {
+  await openFilters(page)
+  await page.click(`#lm-${mode}`)
+  await closeFilters(page)
+}
+
+// Locate and Clear live in the panel too (#539).
+export async function clickLocate(page) {
+  await openFilters(page)
+  await page.click('#locate-toggle')
+  await closeFilters(page)
+}
+
+export async function clickClearFilters(page) {
+  await openFilters(page)
+  await page.click('#clear-filters')
+  await closeFilters(page)
+}
+
+// Toggles Locate via the panel and leaves the panel shut. The .on class is
+// asserted by count, not visibility: the button is only visible while the
+// panel is open.
+export async function toggleLocate(page, expectOn = true) {
+  await openFilters(page)
+  await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === (expectOn ? 1 : 0))
+  await closeFilters(page)
+}

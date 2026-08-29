@@ -34,6 +34,8 @@ import * as appLayer from '../app/src/nodelayer.js'
 import * as webNotice from './nodeposnotice.js'
 import * as appNotice from '../app/src/nodeposnotice.js'
 import * as webTicker from './receptionticker.js'
+import * as webLabels from './nodelabels.js'
+import * as appLabels from '../app/src/nodelabels.js'
 import * as appTicker from '../app/src/receptionlog.js'
 
 // ~15 m and ~70 m north of the origin point: the first collapses under the
@@ -148,6 +150,32 @@ describe('locate — parity between the app and web copies', () => {
     expect(w).not.toBeNull()
     expect(web.pathlossFit(POINTS.slice(0, 2))).toEqual(app.pathlossFit(POINTS.slice(0, 2)))
     expect(web.pathlossFit(POINTS.slice(0, 2))).toBeNull()
+  })
+})
+
+// nodelabels.js is a verbatim copy on both sides (#539): the app's node
+// layer has the same screen-space overlap problem the map solved in #425.
+describe('nodelabels — parity between the app and web copies', () => {
+  it('exports exactly the same names', () => {
+    expect(Object.keys(appLabels).sort()).toEqual(Object.keys(webLabels).sort())
+  })
+  it('keeps and drops the same labels for the same screen items', () => {
+    // Two overlapping at the same y, one clear below, one empty name: the
+    // greedy walk must agree on every branch (kept, dropped, skipped).
+    const items = [
+      { id: 'a', x: 100, y: 200, label: 'NL-DR-GTN-OBS01' },
+      { id: 'b', x: 140, y: 205, label: 'ON8AR' },
+      { id: 'c', x: 100, y: 260, label: 'nl-dr-gtn-rp02' },
+      { id: 'd', x: 300, y: 200, label: '' },
+    ]
+    expect(appLabels.unclutteredLabels(items)).toEqual(webLabels.unclutteredLabels(items))
+    expect(appLabels.unclutteredLabels(items)).toEqual(['a', 'c'])
+    expect(appLabels.labelBox(items[0])).toEqual(webLabels.labelBox(items[0]))
+  })
+  it('agrees on the fallback metrics', () => {
+    expect(appLabels.LABEL_CHAR_PX).toBe(webLabels.LABEL_CHAR_PX)
+    expect(appLabels.LABEL_HEIGHT_PX).toBe(webLabels.LABEL_HEIGHT_PX)
+    expect(appLabels.LABEL_OFFSET_PX).toBe(webLabels.LABEL_OFFSET_PX)
   })
 })
 
@@ -768,21 +796,18 @@ describe('nodeposnotice — parity of the two shared lines', () => {
 // export set, and the cases are the two branches plus the shapes a caller can
 // actually pass — a missing flag is what a first visit hands it.
 describe('initialSettingsTab — parity between the app and web copies', () => {
-  const CASES = [
-    ['unread notes', { unseenChangelog: true }],
-    ['notes read', { unseenChangelog: false }],
-    ['flag absent', {}],
-    ['no argument at all', undefined],
-  ]
-  it.each(CASES)('agrees on %s', (_label, input) => {
-    expect(webInitialTab(input)).toBe(appInitialTab(input))
-  })
-
-  // Both agreeing on the wrong answer is still parity, so pin the value once:
-  // without this, two copies that each returned 'settings' unconditionally
-  // would pass every case above.
+  // The shared decision is "unread notes win once"; the read fallback is each
+  // surface's own first tab (#539 gave the app a Status tab, web opens on
+  // Settings), so only the notes branch is compared cross-copy.
   it('sends an unread reader to the notes, on both surfaces', () => {
     expect(webInitialTab({ unseenChangelog: true })).toBe('whatsnew')
     expect(appInitialTab({ unseenChangelog: true })).toBe('whatsnew')
+  })
+
+  it('falls back to its surface-first tab once the notes are read', () => {
+    for (const input of [{ unseenChangelog: false }, {}, undefined]) {
+      expect(webInitialTab(input)).toBe('settings')
+      expect(appInitialTab(input)).toBe('status')
+    }
   })
 })

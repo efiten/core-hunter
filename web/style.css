@@ -45,6 +45,11 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   padding:8px 12px; background:var(--ch-surface); backdrop-filter:blur(8px); font-size:14px; }
 #bar select, #bar input, #bar button { background:var(--ch-input-bg); color:var(--ch-text); border:1px solid var(--ch-border); border-radius:6px; padding:5px 8px; font:inherit; }
 #bar button { cursor:pointer; }
+/* The view controls sit left, the meta/account cluster right (#539): with
+   the fourteen chips gone the bar is one short row, and left-packed the
+   Start-mapping/Log-in pair landed mid-bar — under the walkthrough's centred
+   panel, where its two below-callouts could never be placed clear. */
+#rx-cta { margin-left: auto; }
 /* #rx-cta is an <a>, so it inherits none of the bar's control styling (#bar
    names select/input/button only) and would render as a bare link in a row of
    buttons. Same box, plus the accent border that marks it as the one thing on
@@ -246,6 +251,16 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   color: var(--ch-muted); font: inherit; pointer-events: auto; }
 .rx-fold::before { content: '\2212'; }            /* minus while open */
 #rx-log.rx-folded .rx-fold::before { content: '\002B'; }  /* plus while folded */
+/* 44px hit areas (#539). The four smallest controls measured 11x14 to 40x29;
+   the glyph keeps its size and an ::after extension carries the touch box to
+   44px. No layout change, so the bar's measured geometry stays as it is.
+   The extension can reach a few pixels past a neighbour's edge; that lands
+   almost entirely in the gaps between controls, and where boxes do stack,
+   DOM order decides an edge pixel — acceptable against a 11px-wide target. */
+#bar #settings-btn::after, #auth-btn::after, .ms-toggle::after, .rx-fold::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 44px; height: 44px; transform: translate(-50%, -50%); }
+#auth-btn, .ms-toggle, .rx-fold { position: relative; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
   width: min(680px, 100%); margin: 0 auto;
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
@@ -300,6 +315,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #bar #settings-btn:hover { color:var(--ch-text); }
 .wn-dot { width:7px; height:7px; border-radius:50%; background:var(--ch-accent-2); }
 #bar #settings-btn .wn-dot { position:absolute; top:2px; right:2px; }
+/* Theme toggle glyphs (#539): SVG moon/sun swapped on data-theme, no emoji. */
+[data-theme="light"] #theme-toggle .th-moon { display: none; }
+:root:not([data-theme="light"]) #theme-toggle .th-sun { display: none; }
+#theme-toggle svg { display: block; }
 /* Ignored senders (#494). Mirrors the app's section (app/src/styles/app.css):
    a row per node with the label on the left and Remove on the right. */
 .ss-ignore-section { border-top: 1px solid var(--ch-border); margin-top: 12px; padding-top: 12px; }
@@ -487,7 +506,8 @@ body.wb-onboarding-on #bar { z-index:710; }
    rather than --ch-accent: the accent is 3.3:1 on the light surface, under the
    4.5:1 this size of text needs. :visited is part of the rule, not an
    afterthought; without it the UA still owns that state. */
-.lc-signup a, .lc-signup a:visited { color: var(--ch-text); text-decoration: underline; }
+/* Links are accent-2 on every surface (#539). */
+.lc-signup a, .lc-signup a:visited { color: var(--ch-accent-2); text-decoration: underline; }
 
 /* Leaflet's own controls (#427). Neither stylesheet had a single rule for
    them, so the zoom buttons and the attribution strip kept Leaflet's defaults:
@@ -523,49 +543,72 @@ body.wb-onboarding-on #bar { z-index:710; }
 }
 .leaflet-container .leaflet-control-attribution a { color: var(--ch-accent-2); }
 
-/* Mobile filter sheet (#423). The stylesheet had no breakpoint at all, so #bar
-   wrapped its controls into six rows on a phone and left the map the bottom
-   half of the screen.
+/* The filter panel (#423 built it for phones; #539 made it the only
+   presentation). The bar keeps five controls; everything that narrows the
+   view lives in this panel, in named groups, at every width. The pill
+   carries the count ("Filters (3)") the way the hunter picker's button does.
 
-   Above the breakpoint this changes nothing: #bar-filters is `display:
-   contents`, so its children remain direct flex items of #bar and lay out
-   exactly as they did, and the pill is not rendered. Nothing is re-parented,
-   which is what keeps placePopover's toggle measurements valid (#372, #385). */
-#filter-pill { display: none; }
-#bar-filters { display: contents; }
-#bar-filters .bf-head { display: none; }
-/* :not([hidden]) is load-bearing: any author rule setting `display` beats the
-   UA's [hidden] { display: none }, so without it the dot paints while carrying
-   the attribute that is supposed to hide it -- measured, not assumed. */
-.fp-dot:not([hidden]) { display: inline-block; }
-.fp-dot { width: 6px; height: 6px; margin-left: 6px; border-radius: 50%;
-  background: var(--ch-accent); vertical-align: middle; }
+   The panel hangs under the bar (`top: 100%`), and that is forced rather
+   than chosen: #bar sets backdrop-filter, which makes it a containing block
+   for position:fixed descendants, so `bottom: 0` resolves against the bar's
+   box (measured: top -263px on a 780px viewport). The scrim (#bf-scrim) is a
+   body child for the same reason — inside the bar it could never cover the
+   viewport — and sits below the bar's z (630) so the panel paints above it. */
+#filter-pill { display: inline-flex; align-items: center; }
+#bar #filter-pill.has-selection { color: var(--ch-accent); border-color: var(--ch-accent); }
+.fp-count { white-space: pre; }
+#bf-scrim { position: fixed; inset: 0; z-index: 600;
+  background: color-mix(in srgb, var(--ch-bg) 45%, transparent); }
+#bf-scrim[hidden] { display: none; }
+#bar-filters { display: none; }
+#bar-filters.bf-open {
+  display: flex; flex-direction: column; align-items: stretch; gap: 12px;
+  position: fixed; left: 12px; top: 100%; z-index: 700;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(72vh, 640px); overflow-y: auto;
+  padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--ch-surface); border: 1px solid var(--ch-border);
+  border-top: none; border-radius: 0 0 14px 14px; backdrop-filter: blur(8px);
+}
+#bar-filters.bf-open .bf-head { display: flex; align-items: center; gap: 10px; }
+#bar-filters.bf-open .bf-head h2 { margin: 0; font-size: 15px; }
+.bf-count { font-size: 12px; color: var(--ch-accent); }
+#bar-filters.bf-open .bf-close { background: none; border: none; color: var(--ch-muted);
+  padding: 4px; cursor: pointer; margin-left: auto; }
+#bar-filters.bf-open > * { flex: 0 0 auto; }
+/* Named groups (F15): the strip without groups is what the panel replaces. */
+/* The Overlays group is role-gated content under a static heading: with every
+   toggle hidden (guest), the heading would sit over nothing. */
+#bf-overlays:not(:has(.cs-layer-toggle:not([hidden]), .np-layer-toggle:not([hidden]))) { display: none; }
+.bf-group { display: flex; flex-direction: column; gap: 8px; }
+.bf-group + .bf-group { border-top: 1px solid var(--ch-border); padding-top: 10px; }
+.bf-group-head { font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ch-muted); display: flex; align-items: baseline; gap: 8px; }
+.bf-group-count { text-transform: none; letter-spacing: 0; color: var(--ch-accent); }
+#bar-filters.bf-open #f-types, .bf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Segmented layer control: one button per mode, the active one filled. */
+.bf-seg { display: inline-flex; }
+.bf-seg button { border-radius: 0; }
+.bf-seg button:first-child { border-radius: 6px 0 0 6px; }
+.bf-seg button:last-child { border-radius: 0 6px 6px 0; }
+.bf-seg button + button { border-left: none; }
+.bf-seg button.active { background: var(--ch-accent); border-color: var(--ch-accent);
+  color: var(--ch-bg); font-weight: 600; }
+.bf-types-more { align-self: flex-start; }
+.bf-foot { display: flex; align-items: center; gap: 10px;
+  border-top: 1px solid var(--ch-border); padding-top: 10px; }
+.bf-live { font-size: 12px; color: var(--ch-muted); }
+#clear-filters { margin-left: auto; color: var(--ch-accent-2); border-color: var(--ch-accent-2); }
 
 @media (max-width: 640px) {
-  #filter-pill { display: inline-flex; align-items: center; }
-  /* Hangs under the bar rather than off the bottom of the viewport, and that
-     is forced rather than chosen: #bar sets backdrop-filter, which makes it a
-     containing block for position:fixed descendants, so `bottom: 0` resolves
-     against the bar's box and puts the panel off the top of the screen
-     (measured: top -263px on a 780px viewport). `top: 100%` anchors it to the
-     bar's lower edge, which is where a dropdown from a bar belongs anyway.
-     The alternative was re-parenting out of #bar, which is what this whole
-     approach exists to avoid (#372, #385). */
-  #bar-filters { display: none; }
-  #bar-filters.bf-open {
-    display: flex; flex-direction: column; align-items: stretch; gap: 10px;
-    position: fixed; left: 0; right: 0; top: 100%; z-index: 700;
-    max-height: 70vh; overflow-y: auto;
-    padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
-    background: var(--ch-surface); border-bottom: 1px solid var(--ch-border);
-    border-radius: 0 0 14px 14px; backdrop-filter: blur(8px);
-  }
-  #bar-filters.bf-open .bf-head { display: flex; align-items: center; justify-content: space-between; }
-  #bar-filters.bf-open .bf-head h2 { margin: 0; font-size: 15px; }
-  #bar-filters.bf-open .bf-close { background: none; border: none; color: var(--ch-muted); padding: 4px; cursor: pointer; }
-  /* Rows rather than a wrapped strip: the sheet has the width the bar did not. */
-  #bar-filters.bf-open > * { flex: 0 0 auto; }
-  #bar-filters.bf-open #f-types { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* Full-width sheet on a phone, and the six least-used type chips behind
+     "+N more": fourteen 44px chips are four rows at 412px, and then the rest
+     of the panel is under the fold. Active chips always show — a hidden
+     active filter is the thing the panel exists to prevent. */
+  #bar-filters.bf-open { left: 0; width: 100vw; border-radius: 0 0 14px 14px; max-height: 70vh; }
+  #bar-filters:not(.bf-types-all) #f-types .f-chip:nth-child(n+7):not(.active) { display: none; }
+  #bar-filters.bf-open .cs-cb, #bar-filters.bf-open .bf-seg button,
+  #bar-filters.bf-open #f-types .f-chip, #bar-filters.bf-open .bf-chips .f-chip { min-height: 44px; }
 }
 
 /* Settings sheet (#420). Two presentations of one element: a centred card on
@@ -621,17 +664,8 @@ body.wb-onboarding-on #bar { z-index:710; }
     border-bottom: none; }
 }
 
-/* Sender-id class chips (#475), in a popover for the reason recorded in
-   index.html. Wider than .tl-panel's 240px default so six short chips sit on
-   two rows rather than six, and the dot mirrors #filter-pill-dot: the toggle
-   has to say that something is narrowed while the chips are out of sight. */
-.ic-wrap { position: relative; display: inline-flex; }
-/* :not([hidden]) is load-bearing: a bare `display: flex` outranks the UA's
-   [hidden] { display: none }, so the panel keeps intercepting clicks while it
-   is supposed to be closed. */
-.ic-panel:not([hidden]) { display: flex; flex-wrap: wrap; gap: 6px; }
-.ic-panel { width: 260px; }
-#f-idclass-toggle.active { border-color: var(--ch-accent); color: var(--ch-accent); }
+/* The id-class chips (#475) sit inline in the filter panel since #539
+   (.bf-chips): the panel has the room the bar did not. */
 
 /* The role-rise notice (#530). Accent-bordered rather than muted like
    .guest-notice: that one describes a standing state, this one is a change the

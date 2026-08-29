@@ -87,13 +87,20 @@ export function senderText(r) {
   return r.sender_label || r.sender_id || '—'
 }
 
-export function createReceptionLog(rootId, { onActiveChange, onRowActivate } = {}) {
+export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { render() {}, focusRecord() {} }
-  root.innerHTML = '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span></div><div class="rx-list" id="rx-list"></div>'
+  // The ✕ hides the whole ticker (#539) — the card has a fixed position, so
+  // putting it away is the one size control it has. The app (onClose) owns
+  // the visibility and the topbar button that brings it back.
+  root.innerHTML = '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span>'
+    + '<button type="button" class="rx-close" aria-label="Hide receptions">'
+    + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>'
+    + '</button></div><div class="rx-list" id="rx-list"></div>'
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')
   const list = root.querySelector('.rx-list')
+  if (onClose) root.querySelector('.rx-close').addEventListener('click', onClose)
 
   let mode = 'filtered'
   let follow = true
@@ -113,6 +120,10 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate } = {
 
   function rebuild() {
     view = rxView(filtered, all, mode, CAP)
+    // With nothing to show the card collapses to its header (#539): ten empty
+    // lanes on a visible plate is a large dark rectangle over the map for no
+    // information, where the old frameless band was simply invisible.
+    root.classList.toggle('rx-empty', view.length === 0)
     const filteredIds = new Set(filtered.map((r) => r.id))
     countEl.textContent = view.length + ' rx'
     tgEl.innerHTML = mode === 'filtered'
@@ -122,7 +133,10 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate } = {
     for (let i = 0; i < view.length; i++) {
       const r = view[i]
       const color = cssVar(tierColorVar(rssiTier(r.rssi)))
-      const nm = mode === 'all' && !filteredIds.has(r.id) ? ' <span class="rx-nm">no marker</span>' : ''
+      // "outside filter", not "no marker" (#539): the tag means the reception
+      // is outside the current filter so the map draws nothing for it — it
+      // says nothing about whether the sender is identified.
+      const nm = mode === 'all' && !filteredIds.has(r.id) ? ' <span class="rx-nm" title="Outside your current filter, so it has no marker on the map.">outside filter</span>' : ''
       h += '<div class="rx-ln" data-idx="' + i + '" data-id="' + esc(r.id) + '">'
         + '<span class="rx-gt"></span>'
         + '<span class="rx-tm">' + esc(relTime(r.rx_at, nowMs)) + '</span>'

@@ -57,8 +57,10 @@ function row(rec, nowMs, onSelect, selectedIds) {
 }
 
 // createTargetList wires the target-sheet dropdown:
-// - pinnedEl: top senders by combined recency+RSSI score, always the same
-//   PINNED_COUNT rows regardless of scroll (may repeat entries from listEl).
+// - pinnedEl: top senders by combined recency+RSSI score, at most PINNED_COUNT
+//   rows regardless of scroll (may repeat entries from listEl). Hidden — with
+//   pinnedLabelEl, its "Top" heading — when topSenders reports nothing,
+//   i.e. when the section would repeat the whole list (#539).
 // - listEl: the full sender list, name-sorted, lazily grown as the user
 //   scrolls instead of rendering every sender ever heard up front.
 // - searchEl: the query field (#449). Its value narrows listEl live.
@@ -68,7 +70,7 @@ function row(rec, nowMs, onSelect, selectedIds) {
 //   picking the wrong row.
 // selectedIds is the Set of lowercased target ids (multi-select, #178); each
 // row reflects membership and the whole row toggles it.
-export function createTargetList(listEl, { onSelect, pinnedEl, searchEl, browseEl } = {}) {
+export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, searchEl, browseEl } = {}) {
   let visible = PAGE_SIZE
   let lastRows = []
   let lastIgnore = new Set()
@@ -89,6 +91,8 @@ export function createTargetList(listEl, { onSelect, pinnedEl, searchEl, browseE
 
     if (pinnedEl && !q) {
       const pinned = topSenders(rows, { ignore, count: PINNED_COUNT, nowMs })
+      pinnedEl.hidden = pinned.length === 0
+      if (pinnedLabelEl) pinnedLabelEl.hidden = pinned.length === 0
       const pinnedSig = pinned.map((r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at).join('|') + '@' + selKey
       if (pinnedSig !== _lastPinnedSig) {
         _lastPinnedSig = pinnedSig

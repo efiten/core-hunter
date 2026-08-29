@@ -1,4 +1,4 @@
-import { test, expect, openPicker } from './fixtures.js'
+import { test, expect, openPicker, clickClearFilters } from './fixtures.js'
 
 // Target-list picker (#223) — browsable multi-select parity with app's target sheet.
 
@@ -97,7 +97,7 @@ test('Clear also clears the pick, not just the typed prefix', async ({ page }) =
   // time-range control alongside it, an open panel overlays the Clear button.
   await page.keyboard.press('Escape')
   await expect(page.locator('#sender-picker')).toBeHidden()
-  await page.click('#clear-filters')
+  await clickClearFilters(page) // Clear lives in the filter panel (#539)
   // The pick lives in the picker, not in #f-sender, so Clear has to reach it —
   // otherwise the filter survives with no visible trace of why.
   await expect.poll(() => urls.length > 0 && urls.every((u) => sendersOf(u).length === 0)).toBe(true)

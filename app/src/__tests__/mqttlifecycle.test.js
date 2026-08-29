@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { mqttShouldRun, mqttAction } from '../mqttlifecycle.js'
 
 describe('mqttShouldRun', () => {
-  const ok = { configured: true, paused: false, rxPubkey: 'aabb' }
+  const ok = { configured: true, rxPubkey: 'aabb' }
 
   it('runs whenever there is somewhere to send, permission, and an identity', () => {
     expect(mqttShouldRun(ok)).toBe(true)
@@ -17,8 +17,10 @@ describe('mqttShouldRun', () => {
     expect(mqttShouldRun(ok)).toBe(true)
   })
 
-  it('stops for a pause, which is a choice the hunter made', () => {
-    expect(mqttShouldRun({ ...ok, paused: true })).toBe(false)
+  // #539 removed the Pause toggle: publishing is not a setting. A stray
+  // legacy flag must not stop the drain.
+  it('ignores a leftover paused flag', () => {
+    expect(mqttShouldRun({ ...ok, paused: true })).toBe(true)
   })
 
   it('stops with no broker configured and no identity to publish under', () => {

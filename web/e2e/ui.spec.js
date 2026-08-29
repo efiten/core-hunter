@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, openPicker, openSettings } from './fixtures.js'
+import { test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -13,23 +13,35 @@ test('theme toggle flips data-theme, persists, reflects in URL, and swaps the gl
   await page.goto('/')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await openSettings(page)
-  await expect(page.locator('#theme-toggle')).toHaveText('🌙')
+  // #539: the glyphs are two SVGs swapped on data-theme by CSS — assert which
+  // one is painted, since the button no longer carries text.
+  await expect(page.locator('#theme-toggle .th-moon')).toBeVisible()
+  await expect(page.locator('#theme-toggle .th-sun')).toBeHidden()
 
   await page.click('#theme-toggle')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await expect(page.locator('#theme-toggle .th-sun')).toBeVisible()
+  await expect(page.locator('#theme-toggle .th-moon')).toBeHidden()
   await expect(page).toHaveURL(/theme=light/)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ch-state')).theme)).toBe('light')
 })
+
+// The layer mode is a segmented control in the filter panel (#539); the
+// pressed segment is the mode. aria-pressed is readable panel-open or shut.
+const expectMode = async (page, mode) => {
+  for (const m of ['points', 'hex', 'both']) {
+    await expect(page.locator(`#lm-${m}`)).toHaveAttribute('aria-pressed', String(m === mode))
+  }
+}
 
 test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)', async ({ page }) => {
   // Open a link carrying full state — a second viewer must see the same thing.
   await page.goto('/?theme=light&mode=hex&sender=4a2b&z=15')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await openSettings(page)
-  await expect(page.locator('#theme-toggle')).toHaveText('☀️')
+  await expect(page.locator('#theme-toggle .th-sun')).toBeVisible()
   await page.click('#ss-close')
-  await expect(page.locator('#layer-toggle')).toHaveText('hex')
+  await expectMode(page, 'hex')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
   expect(await page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(15)
 })
@@ -39,30 +51,29 @@ test('settings survive a reload via localStorage (no URL params)', async ({ page
   await openSettings(page)
   await page.click('#theme-toggle') // -> light
   await page.click('#ss-close')
-  await page.click('#layer-toggle') // hex -> both
-  await expect(page.locator('#layer-toggle')).toHaveText('both')
+  await setLayerMode(page, 'both')
+  await expectMode(page, 'both')
 
   // Reload with a bare URL: the URL was rewritten by replaceState, so strip it to
   // prove the state is also restored from localStorage alone.
   await page.evaluate(() => history.replaceState(null, '', location.pathname))
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expect(page.locator('#layer-toggle')).toHaveText('both')
+  await expectMode(page, 'both')
 })
 
-test('map starts in hex mode (#141), fetches /api/heatmap, and the toggle cycles hex → both → points', async ({ page }) => {
+test('map starts in hex mode (#141), fetches /api/heatmap, and the segments switch it', async ({ page }) => {
   const heatmapReq = page.waitForRequest('**/api/heatmap*')
   await page.goto('/')
-  const btn = page.locator('#layer-toggle')
-  await expect(btn).toHaveText('hex')
+  await expectMode(page, 'hex')
   await heatmapReq // the cold default drew the heatmap layer
 
-  await btn.click()
-  await expect(btn).toHaveText('both')
-  await btn.click()
-  await expect(btn).toHaveText('points')
-  await btn.click()
-  await expect(btn).toHaveText('hex')
+  await setLayerMode(page, 'both')
+  await expectMode(page, 'both')
+  await setLayerMode(page, 'points')
+  await expectMode(page, 'points')
+  await setLayerMode(page, 'hex')
+  await expectMode(page, 'hex')
 })
 
 test('hunter picker lists hunters from /api/hunters', async ({ page }) => {
@@ -291,8 +302,10 @@ test('CoreScope relays checkbox (off by default) draws observer points with reso
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
 
+  await openFilters(page) // the CS toggles live in the filter panel (#539)
   await expect(page.locator('#cs-relays')).not.toBeChecked() // off by default
   await page.check('#cs-relays')
+  await closeFilters(page)
 
   await mapSettled(page)
   await expect(async () => {
@@ -322,7 +335,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   })
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
-  await page.check('#cs-relays')
+  await setFilter(page, '#cs-relays')
 
   const locateReq = page.waitForRequest((r) => r.url().includes('/observer-points') && r.url().includes('heard_key=1d6f'))
   await mapSettled(page)
@@ -354,9 +367,9 @@ test('unchecking a CS layer clears it even if a name-resolution redraw is in fli
   })
   await page.goto('/')
 
-  await page.check('#cs-relays')
+  await setFilter(page, '#cs-relays')
   await expect(page.locator('path.leaflet-interactive')).toHaveCount(1) // point drawn
-  await page.uncheck('#cs-relays')
+  await setFilter(page, '#cs-relays', false)
   await expect(page.locator('path.leaflet-interactive')).toHaveCount(0) // cleared now
   await expect(page).toHaveURL((u) => !u.searchParams.has('rel'))
   // Wait past the resolver delay: the pending redraw must NOT re-add the point.
@@ -366,14 +379,23 @@ test('unchecking a CS layer clears it even if a name-resolution redraw is in fli
 
 test('Clear button resets filters, drops CS layers, and leaves the URL clean', async ({ page }) => {
   await page.route('**/api/observer-points*', (r) => r.fulfill({ json: { points: [] } }))
-  await page.goto('/?sender=4a2b&adv=1')
+  await page.goto('/?sender=4a2b&adv=1&direct=1&types=Advert')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
+  await openFilters(page) // the CS toggles and Clear live in the panel (#539)
   await expect(page.locator('#cs-adverts')).toBeChecked()
+  await expect(page.locator('#f-direct')).toBeChecked()
 
   await page.click('#clear-filters')
   await expect(page.locator('#f-sender')).toHaveValue('')
   await expect(page.locator('#cs-adverts')).not.toBeChecked()
-  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv'))
+  // The panel dimensions too (#539): Clear's label counts them, so it has to
+  // clear them — before this it silently left every chip and checkbox standing.
+  await expect(page.locator('#f-direct')).not.toBeChecked()
+  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(0)
+  await expect(page.locator('#filter-pill-count')).toBeHidden()
+  await closeFilters(page)
+  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv')
+    && !u.searchParams.has('direct') && !u.searchParams.has('types'))
 })
 
 test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
@@ -429,7 +451,7 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
     r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
   })
   await page.goto('/')
-  await page.check('#cs-relays')
+  await setFilter(page, '#cs-relays')
   await expect(page.locator('path.leaflet-interactive')).toHaveCount(1, { timeout: 10000 })
 
   // Open the popup while the lookup is still in flight. Pinned as "not yet

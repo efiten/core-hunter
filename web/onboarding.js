@@ -35,19 +35,17 @@ export const ONBOARDING_DISCLAIMER =
 // are element ids; the box is placed against the union of the ones present, so
 // a control that is hidden for the current role simply drops out.
 export const ONBOARDING_CALLOUTS = [
+  // One callout for the whole filter row (#539): the type chips, the sender
+  // classes, No path, the overlays and the points/hex view all moved behind
+  // the pill, so the box that used to point at six inline controls points at
+  // the row that ends in the pill. Two separate boxes (row + pill) cannot
+  // both sit below targets this close together without overlapping.
   {
     id: 'wb-co-filters',
-    targets: ['hp-toggle', 'f-sender', 'sp-toggle', 'tr-toggle', 'f-types', 'f-direct'],
+    targets: ['hp-toggle', 'f-sender', 'sp-toggle', 'tr-toggle', 'filter-pill'],
     side: 'below',
     align: 'left',
-    text: 'Choose hunters and a sender, a time range, and which packet types to plot. Direct only keeps the zero-hop receptions that actually place a transmitter.',
-  },
-  {
-    id: 'wb-co-layers',
-    targets: ['layer-toggle', 'locate-toggle', 'cs-adverts', 'cs-relays', 'f-nodepos'],
-    side: 'below',
-    align: 'left',
-    text: 'Switch points/hex/both. Locate — an origin estimate from the readings around a node — and the CoreScope and node-position overlays appear here once you are a verified member.',
+    text: 'Choose hunters, a sender and a time range. Everything else — packet types, sender classes, zero-hop only, the overlays, the points/hex view, and (for members) Locate — lives behind Filters. Filtering changes what you see, not what is kept.',
   },
   // One box per control, not one box for both (#490). #bar is flex-wrap, so
   // Start mapping and Log in are neighbours at some widths and on separate rows

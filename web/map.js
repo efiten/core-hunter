@@ -16,7 +16,7 @@ import { packetTypeLabel } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
-import { hiddenFiltersActive } from './barfilters.js'
+import { activeFilterCount } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
@@ -133,7 +133,17 @@ const MODES = ['points', 'hex', 'both']
 // Cold default is hex (#141) — a URL-/persisted mode still wins via urlstate.
 let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
 const bar = document.getElementById('bar')
-document.getElementById('layer-toggle').textContent = mode
+// The layer mode is a segmented control in the filter panel (#539): one
+// button per mode, the active one pressed, instead of a cycling button whose
+// label was the only trace of where you were in the cycle.
+const syncLayerSeg = () => {
+  for (const b of document.querySelectorAll('#layer-seg button')) {
+    const on = b.dataset.mode === mode
+    b.classList.toggle('active', on)
+    b.setAttribute('aria-pressed', String(on))
+  }
+}
+syncLayerSeg()
 // A wrapped bar -- more filter chips than fit on one line, or a narrow viewport
 // -- grows taller than any fixed offset would assume, so the map's top comes
 // from the bar's actual rendered height rather than a guessed constant.
@@ -447,17 +457,21 @@ export function refresh() {
   }, 250)
 }
 
-document.getElementById('layer-toggle').addEventListener('click', (e) => {
-  mode = mode === 'points' ? 'hex' : mode === 'hex' ? 'both' : 'points'
-  e.target.textContent = mode
-  urlstate.save()
-  // The range label's clamp note is about the point layer (#492), so switching
-  // layers changes whether it applies.
-  syncTimeUi()
-  refresh()
-})
+for (const segBtn of document.querySelectorAll('#layer-seg button')) {
+  segBtn.addEventListener('click', () => {
+    if (segBtn.dataset.mode === mode) return
+    mode = segBtn.dataset.mode
+    syncLayerSeg()
+    urlstate.save()
+    // The range label's clamp note is about the point layer (#492), so
+    // switching layers changes whether it applies.
+    syncTimeUi()
+    refresh()
+  })
+}
 const themeBtn = document.getElementById('theme-toggle')
-const syncThemeBtn = () => { themeBtn.textContent = theme === 'dark' ? '🌙' : '☀️' }
+// The moon/sun SVGs swap on data-theme via CSS (#539: no emoji as icons).
+const syncThemeBtn = () => {}
 syncThemeBtn()
 themeBtn.addEventListener('click', () => {
   theme = theme === 'dark' ? 'light' : 'dark'
@@ -1455,7 +1469,7 @@ senderEl.addEventListener('input', () => { clearTimeout(senderTitleTimer); sende
 urlstate.register({ key: 'theme', get: () => theme,
   set: (v) => { if (v === 'light' || v === 'dark') { theme = v; document.documentElement.setAttribute('data-theme', theme); tiles.setUrl(tileUrl(theme)); syncThemeBtn() } } })
 urlstate.register({ key: 'mode', get: () => mode,
-  set: (v) => { if (MODES.includes(v)) { mode = v; document.getElementById('layer-toggle').textContent = mode } } })
+  set: (v) => { if (MODES.includes(v)) { mode = v; syncLayerSeg() } } })
 // Map view: applied synchronously at construction (top of file); here we only
 // need the getters so pan/zoom lands in the URL and storage.
 urlstate.register({ key: 'lat', get: () => map.getCenter().lat.toFixed(5), set: () => {} })
@@ -1569,21 +1583,26 @@ if (rxLog) {
   })
 }
 
-// Filters pill + sheet (#423). Below 640px the secondary controls are a bottom
-// sheet; above it they are inline in #bar and the pill is not rendered, so this
-// wiring is inert there -- the class it toggles has no rule outside the media
-// query.
+// Filters pill + panel (#423 built it for phones, #539 made it the only
+// presentation). The panel opens under the bar at every width; the scrim
+// under it is a body child, since #bar's backdrop-filter makes the bar the
+// containing block for its own fixed descendants and a scrim inside it could
+// never cover the viewport.
 //
 // Not wirePopover: that positions an anchored panel with placePopover and uses
-// `hidden`, and this is a full-width sheet that must stay visible on desktop.
-// The dismiss semantics are copied from it deliberately -- outside click in the
-// capture phase, Escape -- so the sheet behaves like every other panel here.
+// `hidden`. The dismiss semantics are copied from it deliberately -- outside
+// click in the capture phase, Escape -- so the panel behaves like every other
+// panel here.
 const barFilters = document.getElementById('bar-filters')
 const filterPill = document.getElementById('filter-pill')
 if (barFilters && filterPill) {
+  const scrim = document.getElementById('bf-scrim')
   const setOpen = (on) => {
     barFilters.classList.toggle('bf-open', on)
     filterPill.setAttribute('aria-expanded', String(on))
+    if (scrim) scrim.hidden = !on
+    // The "+N more" count is only measurable with the panel open.
+    if (on) refreshFilterPill()
   }
   filterPill.addEventListener('click', () => setOpen(!barFilters.classList.contains('bf-open')))
   document.getElementById('bf-close').addEventListener('click', () => setOpen(false))
@@ -1596,37 +1615,66 @@ if (barFilters && filterPill) {
     if (e.key === 'Escape' && barFilters.classList.contains('bf-open')) setOpen(false)
   })
 
-  // The dot says something the bar can no longer show: a filter is on behind
-  // the pill. Recomputed from the DOM rather than tracked, so it cannot drift
-  // from the controls it describes.
+  // The pill carries the count the bar can no longer show: how many filter
+  // dimensions are narrowed behind it, the way the hunter picker's button
+  // carries its selection count. Recomputed from the DOM rather than tracked,
+  // so it cannot drift from the controls it describes. The same number feeds
+  // the panel header, the Clear button's label and the phone-width "+N"
+  // reveal on the type chips.
   const refreshFilterPill = () => {
     const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
-    const active = hiddenFiltersActive({
+    const types = window.currentTypes ? window.currentTypes() : ''
+    const typeCount = String(types || '').split(',').filter(Boolean).length
+    const count = activeFilterCount({
       directOnly: on('f-direct'),
       senderUnknown: on('f-unnamed'),
-      types: window.currentTypes ? window.currentTypes() : null,
-      idClasses: window.currentIdClasses ? window.currentIdClasses() : null,
+      types: String(types || '').split(',').filter(Boolean),
+      idClasses: String((window.currentIdClasses ? window.currentIdClasses() : '') || '').split(',').filter(Boolean),
       csAdverts: on('cs-adverts'),
       csRelays: on('cs-relays'),
       nodePos: on('f-nodepos'),
-      mode,
     })
-    document.getElementById('filter-pill-dot').hidden = !active
+    const pillCount = document.getElementById('filter-pill-count')
+    pillCount.hidden = count === 0
+    pillCount.textContent = count ? ` (${count})` : ''
+    filterPill.classList.toggle('has-selection', count > 0)
+    const headCount = document.getElementById('bf-count')
+    headCount.hidden = count === 0
+    headCount.textContent = count === 1 ? '1 active' : `${count} active`
+    const typesCount = document.getElementById('bf-types-count')
+    typesCount.hidden = typeCount === 0
+    typesCount.textContent = `${typeCount} of ${document.querySelectorAll('#f-types .f-chip').length}`
+    // Never disabled at 0: Clear also resets the sender/hunter picks and the
+    // time range, none of which the panel's count includes.
+    const clearBtn = document.getElementById('clear-filters')
+    clearBtn.textContent = count > 0 ? `Clear ${count} ${count === 1 ? 'filter' : 'filters'}` : 'Clear filters'
+    // Phone width hides the inactive tail of the type chips (the style.css
+    // cap); the button says how many are out of sight. Measurable only while
+    // the panel is open — closed, the button is out of sight anyway.
+    const moreBtn = document.getElementById('bf-types-more')
+    if (barFilters.classList.contains('bf-types-all')) {
+      moreBtn.hidden = false
+      moreBtn.textContent = 'Fewer types'
+    } else {
+      const hiddenChips = barFilters.classList.contains('bf-open')
+        ? [...document.querySelectorAll('#f-types .f-chip')].filter((c) => c.offsetWidth === 0).length
+        : 0
+      moreBtn.hidden = hiddenChips === 0
+      moreBtn.textContent = hiddenChips ? `+${hiddenChips} more` : ''
+    }
   }
   window.__refreshFilterPill = refreshFilterPill
   barFilters.addEventListener('change', refreshFilterPill)
   barFilters.addEventListener('click', refreshFilterPill)
+  document.getElementById('bf-types-more').addEventListener('click', () => {
+    barFilters.classList.toggle('bf-types-all')
+    refreshFilterPill()
+  })
   refreshFilterPill()
 }
 
 urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
-wirePopover({
-  toggleEl: document.getElementById('f-idclass-toggle'),
-  panelEl: document.getElementById('f-idclass'),
-  wrapEl: document.getElementById('f-idclass-wrap'),
-  wrapSelector: '#f-idclass-wrap',
-})
 urlstate.register({ key: 'idclass', get: () => window.currentIdClasses(), set: (v) => window.setIdClasses(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
 // so 'senders' is not a registered field yet when load() normalizes the address
@@ -1638,6 +1686,9 @@ let locateRestored = false // wantLocate fires at most once, see applyRole() bel
 urlstate.register({ key: 'locate', get: () => (locateActive ? '1' : ''), set: () => {} }) // restored below
 
 urlstate.load()
+// The pill's count reads the controls urlstate just restored; without this a
+// shared link opens narrowed with the pill claiming nothing (#539).
+if (window.__refreshFilterPill) window.__refreshFilterPill()
 // Cold start (#492): nothing restored a range, so this visit gets the default
 // one. After load() rather than before it, and only when BOTH bounds are
 // empty: a link carrying one bound is an open-ended range somebody chose, and
