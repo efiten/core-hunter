@@ -1,4 +1,4 @@
-import { haversineM } from './locate.js'
+import { haversineM } from './geometry.js'
 
 // Auto-ping gate (#233): fires when EITHER the interval has elapsed OR the
 // hunter has moved past the threshold since the last fire, whichever comes

@@ -1,4 +1,4 @@
-import { haversineM } from './locate.js'
+import { haversineM } from './geometry.js'
 
 // Session route trail (#148): the hunter's own driven/walked GPS track, so you
 // can see which streets you've already covered. appendTrailPoint adds a fix to

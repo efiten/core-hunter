@@ -13,15 +13,14 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 13px; z-index: 500; }
 #topbar-left { display: inline-flex; align-items: center; min-width: 0; }
 
-/* Connected segmented control: target chip · filters · locate read as one unit.
+/* Connected segmented control: target chip · filters read as one unit.
    Each child is a borderless segment; a single outer border + inner dividers
-   join them. Target opens a top-anchored popover, filters likewise, and locate
-   is a styled checkbox that toggles the overlay. */
+   join them. Target opens a top-anchored popover, filters likewise. */
 /* min-width:0 so the group can shrink below its content width. Without it the
    chip's own max-width is not enough: #topbar-left already has min-width:0, so
    the group overflows it and lands on top of #topbar-right instead (measured:
    7px of overlap at 375px with a 130px chip). The chip is the only child that
-   can give — the pill and locate are nowrap with no min-width — so the deficit
+   can give — the pill is nowrap with no min-width — so the deficit
    lands there, down to its 3.5rem floor. */
 #topbar-controls { display: inline-flex; align-items: stretch; min-width: 0;
   border: 1px solid var(--ch-border); border-radius: 10px; }
@@ -52,9 +51,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    clip against the segmented container's divider). */
 #filter-pill.active { color: var(--ch-accent); }
 
-/* Locate: a styled checkbox segment (replaces the old locate FAB). */
-#locate-seg { gap: 6px; }
-#locate-checkbox { width: 14px; height: 14px; margin: 0; accent-color: var(--ch-accent); cursor: pointer; }
 /* BLE + MQTT status: two small dots stacked inside the menu button, so the
    whole control is one tap target that opens the connection pane (#281). */
 #status-dots { display: inline-flex; flex-direction: column; gap: 3px; align-items: center; }
@@ -65,24 +61,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    without occupying HUD space (#281). */
 #status-dots i.low { background: var(--ch-accent-2); }
 
-/* Single-hunter locate readout — floats top-left under the topbar, beside the
-   receptions log (top-right); shown only while a sender is isolated. */
-#locate-info { position: fixed; top: 50px; left: 12px; width: 170px; z-index: 550;
-  background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
-  border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
-#locate-info h4 { margin: 0 0 6px; font-size: 13px; }
-#locate-info .lc-warn { color: var(--ch-sig-warm); }
-#locate-info .lc-muted { color: var(--ch-muted); }
-#locate-info .lc-disclaimer { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--ch-border);
-  font-size: 11px; }
-.lc-centroid { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--ch-bg);
-  background: var(--ch-sig-hot); box-shadow: 0 0 0 2px var(--ch-sig-hot); }
-.lc-strongest { font-size: 16px; line-height: 18px; text-align: center; color: var(--ch-sig-warm);
-  text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
-
 /* Node-position layer (#197): ▲ = the node's own advertised position, ● = our
-   RSSI estimate. The estimate deliberately reuses .lc-centroid's look so it
-   reads as the same kind of thing Locate already draws. */
+   RSSI estimate — a solid hot dot, the same mark the analyser map's Locate
+   uses for its estimate, so the two surfaces agree on what the glyph means. */
 .np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; color: var(--ch-text);
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); cursor: pointer; }
 /* Absolute so the label never shifts the ▲ off its anchored coordinate. The

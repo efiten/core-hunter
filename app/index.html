@@ -38,7 +38,7 @@
   <div id="map"></div>
   <header id="topbar">
     <div id="topbar-left">
-      <div id="topbar-controls" role="group" aria-label="Target, filters and locate">
+      <div id="topbar-controls" role="group" aria-label="Target and filters">
         <button id="target-chip" aria-haspopup="true" aria-expanded="false">Select target</button>
         <button id="filter-pill" aria-label="Filters" aria-haspopup="true" aria-expanded="false">
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
@@ -49,10 +49,6 @@
             <path d="M6 8l4 4 4-4"/>
           </svg>
         </button>
-        <label id="locate-seg">
-          <input type="checkbox" id="locate-checkbox" />
-          <span>Locate</span>
-        </label>
       </div>
     </div>
     <div id="topbar-right">
@@ -67,7 +63,6 @@
       </button>
     </div>
   </header>
-  <div id="locate-info" class="locate-info" hidden></div>
   <div id="toast-stack">
     <div id="bg-paused-banner" class="bg-paused-banner" role="status" hidden></div>
     <div id="bg-hint" class="bg-hint" role="status" hidden>

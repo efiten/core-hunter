@@ -1,9 +1,12 @@
-// app/ and web/ carry duplicate copies of locate.js and names.js. #238 asked
-// whether to extract them into one shared module; the answer (2026-08-15) is
-// no — neither deploy path can ship a file outside its own directory, since
-// the app image builds with `app/` as its Docker context and the website
-// deploys as a flat file list. So the copies stay, and these assertions are
-// what makes a silent drift impossible instead of merely unlikely.
+// app/ and web/ carry duplicate copies of the locate maths (web/locate.js,
+// app/src/geometry.js) and of names.js. #238 asked whether to extract them
+// into one shared module; the answer (2026-08-15) is no — neither deploy path
+// can ship a file outside its own directory, since the app image builds with
+// `app/` as its Docker context and the website deploys as a flat file list.
+// So the copies stay, and these assertions are what makes a silent drift
+// impossible instead of merely unlikely. Since #538 the app copy is a strict
+// subset: locate() itself and toLocatePoints live only on the map, where
+// Locate stayed; the shared maths below is still pinned function-for-function.
 //
 // A parity suite is only worth what its fixtures reach. The first version of
 // this file passed 9 of 10 deliberate one-constant drifts, because every
@@ -13,7 +16,7 @@
 // constant is load-bearing — if you add a case, make it fail for a reason.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as web from './locate.js'
-import * as app from '../app/src/locate.js'
+import * as app from '../app/src/geometry.js'
 import * as webNames from './names.js'
 import * as appNames from '../app/src/names.js'
 import * as webChangelog from './changelog.js'
@@ -65,27 +68,17 @@ const WIDE = [km(0, -60), km(5, -70), km(10, -80), km(15, -90), km(20, -100), km
 // WIDE alone only catches a factor that grew.
 const DOWN = [...[0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40].map((n) => km(n, -80)), km(60, -80)]
 
-const RECORDS = [
-  { lat: 51, lon: 4, rssi: -80, sender_id: 'aa' },
-  { lat: 0, lon: 0, rssi: -80, sender_id: 'null-island' }, // 0 is a coordinate, not a miss
-  { lat: null, lon: 4, rssi: -80, sender_id: 'bb' },
-  { lat: 51, lon: null, rssi: -80, sender_id: 'cc' },
-]
-
 describe('locate — parity between the app and web copies', () => {
   // Asserted as a literal, not just set-equal: two copies that gain the same
   // untested function are "at parity" by construction, which is the false
   // confidence this whole file exists to avoid.
   it('exports exactly this set of names, all of it covered below', () => {
-    const expected = ['dedupeSpatial', 'densityGrid', 'geometryStats', 'haversineM',
-      'locate', 'pathlossFit', 'rejectOutliers', 'rssiWeight', 'toLocatePoints', 'weightedCentroid']
-    expect(Object.keys(web).sort()).toEqual(expected)
-    expect(Object.keys(app).sort()).toEqual(expected)
-  })
-
-  it('maps records to locate points identically, including the null island', () => {
-    expect(web.toLocatePoints(RECORDS)).toEqual(app.toLocatePoints(RECORDS))
-    expect(web.toLocatePoints(RECORDS)).toHaveLength(2) // lat/lon 0 is kept
+    const shared = ['dedupeSpatial', 'densityGrid', 'geometryStats', 'haversineM',
+      'pathlossFit', 'rejectOutliers', 'rssiWeight', 'weightedCentroid']
+    // web keeps the two composed entry points the app dropped in #538; the
+    // maths under them stays shared and is what the rest of this file pins.
+    expect(Object.keys(web).sort()).toEqual([...shared, 'locate', 'toLocatePoints'].sort())
+    expect(Object.keys(app).sort()).toEqual(shared)
   })
 
   it('measures distance identically', () => {
@@ -126,7 +119,6 @@ describe('locate — parity between the app and web copies', () => {
     expect(web.rejectOutliers(SPREAD, {})).toEqual(app.rejectOutliers(SPREAD, {}))
     expect(web.rejectOutliers(WIDE, {})).toEqual(app.rejectOutliers(WIDE, {})) // a grown factor keeps the 60 km stray
     expect(web.rejectOutliers(DOWN, {})).toEqual(app.rejectOutliers(DOWN, {})) // a shrunk factor rejects it
-    expect(web.locate(WIDE)).toEqual(app.locate(WIDE))
     // Each copy's DEFAULTS against the other's EXPLICIT values: this pins the
     // constants themselves, not merely that the two agree with each other.
     expect(web.rejectOutliers(DOWN, {})).toEqual(app.rejectOutliers(DOWN, { factor: 4, floorM: 20000 }))
@@ -156,13 +148,6 @@ describe('locate — parity between the app and web copies', () => {
     expect(w).not.toBeNull()
     expect(web.pathlossFit(POINTS.slice(0, 2))).toEqual(app.pathlossFit(POINTS.slice(0, 2)))
     expect(web.pathlossFit(POINTS.slice(0, 2))).toBeNull()
-  })
-
-  it('returns the same full estimate, including the too-few-points shape', () => {
-    expect(web.locate(SPREAD)).toEqual(app.locate(SPREAD))
-    expect(web.locate(POINTS)).toEqual(app.locate(POINTS))
-    expect(web.locate(SPREAD.slice(0, 2))).toEqual(app.locate(SPREAD.slice(0, 2)))
-    expect(web.locate([])).toEqual(app.locate([]))
   })
 })
 

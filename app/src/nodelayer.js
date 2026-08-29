@@ -6,7 +6,7 @@
 // relayed via the name resolver. It is operator-self-reported, so a gap between
 // it and our estimate is called "drift", never "error": it does not imply our
 // estimate is the wrong one.
-import { haversineM, dedupeSpatial, rejectOutliers, weightedCentroid, geometryStats } from './locate.js'
+import { haversineM, dedupeSpatial, rejectOutliers, weightedCentroid, geometryStats } from './geometry.js'
 
 const M_PER_DEG_LAT = 111320
 
@@ -18,8 +18,8 @@ export const TIGHT_DRIFT_M = 100
 // not how accurate the estimate is. A tight cluster of readings taken far from a
 // node yields a small radius around a badly wrong estimate. encirclement (the
 // fraction of 8 azimuth sectors containing a reading) is the existing
-// counterweight, and 0.5 is already the app's one-sided cutoff — the same
-// threshold behind the Locate box's "One-sided — walk/drive around" warning.
+// counterweight, and 0.5 is already the one-sided cutoff — the same threshold
+// behind the "One-sided" warning the analyser map's Locate readout shows.
 // Below it we make no accuracy claim and fall back to a plain drift circle.
 export const TRUSTED_ENCIRCLEMENT = 0.5
 
@@ -53,7 +53,7 @@ export function nodesInView(nodes, bounds) {
 }
 
 // driftPresentation decides how one node is drawn, given its advertised
-// position and our locate() result for it. Returns a `kind` plus, where both
+// position and our estimateFor() result for it. Returns a `kind` plus, where both
 // positions exist, the drift distance and which circle (if any) to draw:
 //
 //   none            neither position — draw nothing
@@ -174,11 +174,12 @@ export function groupSenderPoints(records) {
   return out
 }
 
-// estimateFor is locate() without the density grid: the layer needs a centroid
-// and geometry stats per node, and densityGrid is O(cols*rows*points) — far too
-// expensive to run for every node in view on every render tick. Same dedupe,
-// outlier rejection and <3-inlier rule as locate(), so an estimate here agrees
-// with the one Locate shows for the same sender.
+// estimateFor is web/locate.js's locate() without the density grid and the
+// path-loss fit: the layer needs a centroid and geometry stats per node, and
+// both extras are far too expensive to run for every node in view on every
+// render tick (densityGrid is O(cols*rows*points), the fit ~90 ms on 600
+// points). Same dedupe, outlier rejection and <3-inlier rule, so an estimate
+// here agrees with the one the analyser map's Locate shows for the same sender.
 export function estimateFor(points) {
   const { inliers } = rejectOutliers(dedupeSpatial(points || []))
   if (inliers.length < 3) return null

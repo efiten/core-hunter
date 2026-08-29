@@ -54,7 +54,7 @@ export function pillarRadiusM(lat, zoom, baseM, minPx) {
 }
 
 // Merge distance for coincident pillars (#402). 10 m is dedupeSpatial's cell
-// (locate.js), reused deliberately: both answer "these samples are one place,
+// (geometry.js), reused deliberately: both answer "these samples are one place,
 // not several", and a hunter standing still is exactly the case each was
 // written for. Comfortably wider than the 3 m pillar radius, so anything left
 // standing after a collapse cannot overlap its neighbour's footprint.

@@ -88,7 +88,7 @@ export function packetTypeLabel(rawType) {
 
 export function makeFilter(opts) {
   const { sender, types, windowMs, directOnly, unnamed, idClasses, ignore } = opts
-  // Target selection is a set of sender ids — the map/Locate run over their
+  // Target selection is a set of sender ids — the map runs over their
   // union (OR). An empty/absent set means no sender filter (see #178).
   const wantIds = sender && Array.isArray(sender.ids) && sender.ids.length
     ? new Set(sender.ids.map((x) => String(x).toLowerCase()))

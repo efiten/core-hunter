@@ -55,7 +55,7 @@ export const SPLASH_FAB_IDS = ['layer-toggle', 'discover-btn', 'recenter-btn', '
 // Spotlight callouts (was #119, updated for the #128 topbar). Each points at a
 // live control group revealed through the scrim.
 export const SPLASH_CALLOUTS = {
-  controls: 'Select repeaters or senders and filter for traffic type. Use Locate to estimate the origin position.',
+  controls: 'Select repeaters or senders and filter for traffic type.',
   menu: 'Settings, connection and your account. Registering makes you a hunter and puts your captures on the shared coverage map.',
   // Listed bottom-to-top, in the order the buttons actually stack.
   fabs: 'View: points/hex/both in 2D and 3D · auto-discover, which pings selected repeaters too · compass mode · sound pings · node positions: ▲ advertised, ● our estimate',

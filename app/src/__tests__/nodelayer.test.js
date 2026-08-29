@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
-import { haversineM } from '../locate.js'
+import { haversineM } from '../geometry.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
 // A bounds box around Antwerp-ish coordinates.
