@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-29-heard-us-snr",
+    "date": "2026-08-29",
+    "where": "app",
+    "title": "How well a node heard you",
+    "body": "Ping a node and the reply's row in the ticker shows the SNR it heard you at."
+  },
+  {
     "id": "2026-08-26-app-design-pass",
     "date": "2026-08-26",
     "where": "app",
