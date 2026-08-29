@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -542,5 +542,36 @@ describe('selectedRepeaterIds — the target answered our ping (#481)', () => {
       { sender_kind: 'trace_reply', sender_id: 'cd34', rx_at: at(5) },
     ]
     expect(selectedRepeaterIds(rows, new Set(['cd34']))).toEqual(['cd34'])
+  })
+})
+
+// #479: with no target selected the sweep needs the same reading over
+// everything heard. Same collapse rule, so one frame is never sent twice.
+describe('heardRepeaterIds (#479)', () => {
+  const at = (s) => `2026-08-24T12:00:${String(s).padStart(2, '0')}Z`
+
+  it('lists every repeater heard, not only a selection', () => {
+    const rows = [
+      { sender_kind: 'relay', sender_id: 'ab12', rx_at: at(0) },
+      { sender_kind: 'advert_pubkey', sender_role: 'Repeater', sender_id: 'cd34', rx_at: at(1) },
+    ]
+    expect(heardRepeaterIds(rows).sort()).toEqual(['ab12', 'cd34'])
+  })
+
+  it('leaves out what does not forward, so the sweep never pings a companion', () => {
+    const rows = [
+      { sender_kind: 'advert_pubkey', sender_role: 'ChatNode', sender_id: 'ef56', rx_at: at(0) },
+      { sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: at(1) },
+      { sender_kind: 'relay', sender_id: 'ab12', rx_at: at(2) },
+    ]
+    expect(heardRepeaterIds(rows)).toEqual(['ab12'])
+  })
+
+  it('collapses ids that would produce the byte-identical trace frame', () => {
+    const rows = [
+      { sender_kind: 'relay', sender_id: 'ab', rx_at: at(0) },
+      { sender_kind: 'relay', sender_id: 'ab12cd', rx_at: at(1) },
+    ]
+    expect(heardRepeaterIds(rows)).toEqual(['ab12cd'])
   })
 })
