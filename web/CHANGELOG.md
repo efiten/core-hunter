@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.0](https://github.com/efiten/core-hunter/compare/web-v1.17.0...web-v1.18.0) (2026-08-29)
+
+
+### Features
+
+* **app:** remove Locate, rename its maths to geometry.js ([#540](https://github.com/efiten/core-hunter/issues/540)) ([6dd94ae](https://github.com/efiten/core-hunter/commit/6dd94ae8358ecf0d5b17904c70fccc995c0645ee))
+* **app:** sweep the repeaters you can hear when no target is picked ([#484](https://github.com/efiten/core-hunter/issues/484)) ([7f2eafb](https://github.com/efiten/core-hunter/commit/7f2eafb06b75af869cdca959c616e2e0eeab1b57))
+
 ## [1.17.0](https://github.com/efiten/core-hunter/compare/web-v1.16.0...web-v1.17.0) (2026-08-28)
 
 
