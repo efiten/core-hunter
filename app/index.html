@@ -15,6 +15,21 @@
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="/src/styles/tokens.css" />
   <link rel="stylesheet" href="/src/styles/app.css" />
+  <!-- Theme before first paint (#563). app.js is a module, so it runs after
+       the document is parsed; resolving the theme there alone means a stored
+       light theme flashes the dark below it on every load. This must stay the
+       same rule as resolveTheme() in src/theme.js: an explicit dark/light
+       wins, anything else follows the device, and an unknown device
+       preference leaves the data-theme already on the element. theme.test.js
+       runs this script and compares it to resolveTheme rather than trusting
+       the two to stay in step. -->
+  <script>
+    try {
+      var p = localStorage.getItem('core-hunter-theme')
+      document.documentElement.dataset.theme = (p === 'dark' || p === 'light') ? p
+        : matchMedia('(prefers-color-scheme: dark)').matches === false ? 'light' : 'dark'
+    } catch (e) {}
+  </script>
     <!-- Matomo (self-hosted, cookieless; production hosts only) -->
     <script>
       if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {

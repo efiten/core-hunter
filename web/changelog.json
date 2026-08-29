@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-29-theme-follows-your-device",
+    "date": "2026-08-29",
+    "where": "app",
+    "title": "The theme can follow your device, and is remembered",
+    "body": "Dark, light, or whatever your phone is set to. The choice used to be a checkbox that reset to dark on every reload."
+  },
+  {
     "id": "2026-08-26-app-design-pass",
     "date": "2026-08-26",
     "where": "app",

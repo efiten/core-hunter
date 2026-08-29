@@ -293,6 +293,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   border-bottom: 2px solid transparent; }
 .ss-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
 .ss-panel { flex: 1; min-height: 0; overflow: auto; padding: 16px; }
+/* The Settings tab is two controls, so it used to stop at 187px on a 915px
+   sheet and leave 80% of it blank (#563). A column with the version pushed to
+   the foot gives the tab a bottom edge instead of a cut-off, which is where a
+   version belongs on a settings screen anyway. */
+#ss-panel-settings:not([hidden]) { display: flex; flex-direction: column; }
+#ss-panel-settings .ss-version-section { margin-top: auto; padding-top: 24px; }
 /* About tab */
 .ss-about-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .ss-about-mark { width: 46px; height: 46px; border-radius: 12px; flex: 0 0 auto;
@@ -308,7 +314,24 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-link-desc { display: block; color: var(--ch-muted); font-size: 12.5px; line-height: 1.45; margin-top: 2px; }
 .ss-about-disclaimer { font-size: 12px; line-height: 1.5; color: var(--ch-muted);
   border-top: 1px solid var(--ch-border); padding-top: 12px; margin: 0; }
-.ss-theme-row { display: inline-flex; align-items: center; gap: 8px; margin-top: 16px; }
+.ss-theme-row { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 14px;
+  color: var(--ch-text); }
+/* Segmented control (#563), replacing the one native checkbox left in the app:
+   three states where a checkbox has two, and it could not say "follow the
+   device". 44px tall because it is the size rule the rest of the surfaces
+   moved to (F7); the checkbox it replaces was 13x13. */
+.ss-seg { display: inline-flex; border: 1px solid var(--ch-muted); border-radius: 9px;
+  overflow: hidden; margin-left: auto; }
+.ss-seg button { min-height: 44px; padding: 0 14px; border: none; border-right: 1px solid var(--ch-muted);
+  background: transparent; color: var(--ch-text); font: inherit; font-size: 13px; cursor: pointer; }
+.ss-seg button:last-child { border-right: none; }
+.ss-seg button[aria-pressed="true"] { background: var(--ch-accent); color: var(--ch-bg); font-weight: 600; }
+/* The checkboxes that stay checkboxes, because they are booleans and a
+   segmented control would be three states for a yes/no: the two filter rows
+   and Remember me. Without this they paint in the browser's own blue, which
+   was the only blue on any of the three surfaces (#563, same reasoning as
+   F17's one link colour). */
+:root { accent-color: var(--ch-accent); }
 /* Target + filter dropdowns — top-anchored popovers under the topbar controls
    (not bottom sheets); scroll when their lists grow. */
 #filter-sheet, #target-sheet { position: fixed; top: 52px; left: 12px; width: 270px; max-width: calc(100vw - 24px);

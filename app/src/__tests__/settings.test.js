@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from '../settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -51,6 +51,26 @@ describe('initialSettingsTab', () => {
   it('opens on Status for missing/undefined input', () => {
     expect(initialSettingsTab({})).toBe('status')
     expect(initialSettingsTab(undefined)).toBe('status')
+  })
+})
+
+describe('loadThemePref', () => {
+  it('returns a stored preference the control can offer', () => {
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-theme': 'light' }))
+    expect(loadThemePref()).toBe('light')
+  })
+  // The pre-#563 app stored nothing, so every existing install arrives here
+  // with an empty slot and must land on system rather than on the hardcoded
+  // dark index.html happens to paint.
+  it('falls back to system for a missing or corrupt value', () => {
+    vi.stubGlobal('localStorage', storageWith({}))
+    expect(loadThemePref()).toBe('system')
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-theme': 'Light' }))
+    expect(loadThemePref()).toBe('system')
+  })
+  it('returns system instead of throwing when storage access throws', () => {
+    vi.stubGlobal('localStorage', throwingStorage())
+    expect(loadThemePref()).toBe('system')
   })
 })
 
