@@ -1,9 +1,10 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, openFilters } from './fixtures.js'
 
-// The chips live in a popover (#bar wraps by content width and a sixth inline
-// row pushes the walkthrough into its fallback), so every case opens it first.
+// The chips sit inline in the filter panel (#539), so every case opens the
+// panel first.
 const openClasses = async (page) => {
-  await page.locator('#f-idclass-toggle').click()
+  // The chips sit inline in the filter panel since #539.
+  await openFilters(page)
   await expect(page.locator('#f-idclass')).toBeVisible()
 }
 
@@ -74,9 +75,9 @@ test('a picked class survives a reload, so a shared link carries it', async ({ p
   await page.locator('#f-idclass .f-chip', { hasText: '1 byte' }).click()
   await expect.poll(() => new URL(page.url()).searchParams.get('idclass')).toBe('1b')
   await page.reload()
-  // The toggle carries the state while the chips are out of sight, which is the
-  // only signal a reader has that the map is narrowed.
-  await expect(page.locator('#f-idclass-toggle')).toHaveClass(/active/, { timeout: 10000 })
+  // The pill's count carries the state while the chips are out of sight, which
+  // is the only signal a reader has that the map is narrowed (#539).
+  await expect(page.locator('#filter-pill')).toHaveClass(/has-selection/, { timeout: 10000 })
   await openClasses(page)
   await expect(page.locator('#f-idclass .f-chip.active', { hasText: '1 byte' })).toBeVisible()
 })

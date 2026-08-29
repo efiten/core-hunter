@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, setFilter } from './fixtures.js'
 const flood = Array.from({ length: 60 }, (_, i) => ({
   lat: 52.36 + i * 1e-4, lon: 4.83, rssi: i < 2 ? -34 : -95, snr: -5,
   hops: 1 + (i % 12), sender_id: '', sender_kind: '', sender_label: '',
@@ -28,7 +28,7 @@ test('Sender unknown narrows on the tick, not on the next rolling refresh', asyn
   // param a few hundred ms later, which looks exactly like the control working.
   await expect.poll(() => { const n = urls.length; return new Promise((r) => setTimeout(() => r(n === urls.length), 1500)) }).toBe(true)
   const settled = urls.length
-  await page.check('#f-unnamed')
+  await setFilter(page, '#f-unnamed') // lives in the filter panel (#539)
   await expect.poll(() => urls.slice(settled).some((u) => new URL(u).searchParams.get('unnamed') === '1'), { timeout: 3000 }).toBe(true)
   await expect(page).toHaveURL(/unnamed=1/)
 })

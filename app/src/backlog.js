@@ -19,12 +19,8 @@ export const BACKLOG_NOTICE_MIN = 25
 // it is minutes of catching up, and on a hunt that is the map lying to you.
 export const BACKLOG_ALARM = 250
 
-export function backlogState(pending, { connected = true, paused = false } = {}) {
+export function backlogState(pending, { connected = true } = {}) {
   const n = Number.isFinite(pending) ? Math.max(0, Math.trunc(pending)) : 0
-  // Paused is a choice the hunter made, so it is stated rather than warned
-  // about -- but the number still shows, because "I paused it" and "I paused it
-  // and 4,000 receptions are waiting" are different situations.
-  if (paused) return { show: n > 0, level: 'paused', pending: n, text: `${n.toLocaleString('en')} queued · MQTT paused` }
   // Disconnected with nothing waiting is not worth a line: the drain has
   // nothing to do either way.
   if (!connected) return { show: n > 0, level: n >= BACKLOG_ALARM ? 'alarm' : 'warn', pending: n, text: `${n.toLocaleString('en')} queued · not connected` }

@@ -5,7 +5,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
      active BLE/MQTT connection when triggered by an accidental downward
      drag on the map or a panel. */
   overscroll-behavior-y: contain; }
-#map { position: fixed; inset: 0; }
+/* absolute, not fixed (#539): position:fixed forces a stacking context, which
+   trapped every MapLibre popup under the ticker card (z 480) no matter its own
+   z-index — measured with elementFromPoint. The page never scrolls, so
+   absolute against the initial containing block is the same box; without the
+   forced context the popup's z-index below competes globally. */
+#map { position: absolute; inset: 0; }
 
 /* ---- Topbar ---- */
 #topbar { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
@@ -68,11 +73,22 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); cursor: pointer; }
 /* Absolute so the label never shifts the ▲ off its anchored coordinate. The
    layer is opt-in, so names are shown on the map while it is on (#197). */
+.np-label, .np-label-probe { font-size: 11px; line-height: 1; white-space: nowrap; }
 .np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
-  margin-left: 4px; font-size: 11px; line-height: 1; white-space: nowrap;
+  margin-left: 4px;
   color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
+/* The declutter's measuring probe (#539): same font box as .np-label but
+   never the class itself, so nothing counting labels counts the probe. */
+.np-label-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
 .np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg);
-  background: var(--ch-sig-hot); cursor: pointer; }
+  background: var(--ch-sig-hot); cursor: pointer; position: relative; }
+/* Bigger touch boxes for the node markers (#539): ▲ measures 14x16 and ● 12px.
+   30px rather than the full 44px, deliberately: a marker element swallows the
+   pan gesture that starts on it, so 33 markers x 44px would turn a dense
+   cluster into a patch of map that cannot be dragged. 30px doubles the target
+   without making that dead zone dominant. */
+.np-advert::after, .np-estimate::after { content: ''; position: absolute;
+  left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
 .np-muted { color: var(--ch-muted); }
 .np-caveat { font-size: 11px; }
 
@@ -237,15 +253,20 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 /* Active-settings indicator: same accent dot, on the topbar settings button */
 #settings-btn.active { color: var(--ch-accent); }
+/* The ticker's way back (#539): visible only while the card is closed, and
+   accent once traffic has arrived unseen since it was closed. */
+#ticker-btn.active { color: var(--ch-accent); }
 #settings-btn.active::after { content: ''; position: absolute; top: -2px; right: -2px;
   width: 9px; height: 9px; border-radius: 50%;
   background: var(--ch-accent); border: 2px solid var(--ch-surface); }
 
-/* Each filter on its own row: label then control, left-aligned */
+/* Each filter on its own row, left-aligned. Checkbox rows lead with the box
+   (#539): the map's rows already do, and a leading checkbox is the standard
+   list-row shape; value rows (a select) keep label-then-control. */
 .fs-row { display: flex; align-items: center; gap: 8px;
   margin: 8px 0; font-size: 14px; color: var(--ch-text); }
 /* Non-default value for this specific row (vs. the whole-sheet badge dot) */
-.fs-row.active > span:first-child, .ss-radio-row.active > span:first-child { color: var(--ch-accent); }
+.fs-row.active > span, .ss-radio-row.active > span:first-child { color: var(--ch-accent); }
 
 /* Overlay sheet header: title left, themed X close right */
 .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -296,6 +317,31 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   box-shadow: 0 12px 34px rgba(0,0,0,.4); z-index: 600; }
 [hidden] { display: none !important; }
 .ss-conn-section { margin-top: 12px; }
+/* Status blocks (#539): one bordered group per channel/topic. The connect
+   button sits INSIDE the Bluetooth group — its place says what it disconnects,
+   which is what the old loose "Disconnect" under a mixed BLE+MQTT list could
+   not. */
+.ss-grp { border: 1px solid var(--ch-border); border-radius: 10px; padding: 12px; margin: 10px 0; }
+.ss-grp .ss-connect, .ss-grp .ss-disconnect { width: 100%; margin-top: 4px; }
+.ss-grp-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.ss-grp-state { margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+  font-weight: 400; color: var(--ch-muted); }
+.ss-state-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ch-sig-none); flex: none; }
+.ss-state-dot.on { background: var(--ch-accent); }
+.ss-acc-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ss-acc-av { width: 34px; height: 34px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--ch-bar-track); color: var(--ch-muted);
+  font-size: 13px; font-weight: 700; text-transform: lowercase; }
+.ss-acc-av-authed { background: var(--ch-bar-track); color: var(--ch-accent); }
+.ss-acc-name { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-acc-name.ss-acc-guest { color: var(--ch-muted); }
+.ss-acc-logout { margin-left: auto; border: none; background: none; color: var(--ch-muted);
+  font: inherit; font-size: 13px; cursor: pointer; }
+.ss-acc-logout:hover { color: var(--ch-text); }
+.ss-acc-note { margin: 10px 0 0; font-size: 13px; line-height: 1.5; color: var(--ch-muted); }
+.ss-plain { border: 1px solid var(--ch-muted); border-radius: 11px; padding: 9px 18px;
+  background: transparent; color: var(--ch-text); font-weight: 600; cursor: pointer; }
 .ss-conn-status { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 8px 0 10px;
   font-size: 13px; }
 .ss-conn-status dt { color: var(--ch-muted); }
@@ -314,14 +360,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   opacity: 0.45; }
 .ss-account-section { margin-top: 1rem; }
 .ss-account-section h3 { margin: 0 0 .4rem; }
-.ss-acc-status { color: var(--ch-muted); margin: 0 0 .5rem; }
-.ss-acc-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.ss-acc-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: 10px; }
 .ss-acc-actions > button { flex: 1 1 auto; }
-.ss-acc-mode-tabs { display: flex; gap: 14px; flex: 1 1 100%; }
-.ss-acc-mode-tab { border: none; background: transparent; color: var(--ch-muted); font: inherit;
-  font-size: 14px; font-weight: 600; padding: 6px 2px; cursor: pointer;
-  border-bottom: 2px solid transparent; }
-.ss-acc-mode-tab.active { color: var(--ch-text); border-bottom-color: var(--ch-accent); }
+.ss-acc-actions .ss-connect, .ss-acc-actions .ss-plain { width: auto; margin-top: 0; }
 .ss-acc-form { display: flex; flex-direction: column; gap: .5rem; margin-top: .6rem; }
 .ss-acc-form input[type="text"],
 .ss-acc-form input[type="password"],
@@ -336,8 +377,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-radio-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--ch-text); }
 .ss-radio-row select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 14px; }
-.ss-version-row { display: flex; align-items: center; gap: 8px; margin: 16px 0 0; }
+.ss-version-row { display: flex; align-items: center; gap: 8px; }
 .ss-version { font-size: 12px; color: var(--ch-muted); }
+.ss-version-row .ss-version { font-size: 14px; color: var(--ch-text);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
 .ss-update-status { font-size: 12px; font-weight: 600; color: var(--ch-accent-2); }
 .ss-reload { margin-left: auto; border: 1px solid var(--ch-muted); border-radius: 11px;
   padding: 7px 16px; background: transparent; color: var(--ch-text); font-weight: 600;
@@ -349,7 +392,6 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   color: var(--ch-muted); background: var(--ch-surface); }
 #hud-backlog.hud-backlog-warn { color: var(--ch-sig-mid); }
 #hud-backlog.hud-backlog-alarm { color: var(--ch-sig-hot); font-weight: 600; }
-#hud-backlog.hud-backlog-paused { color: var(--ch-muted); }
 
 /* When a newer build is live, pull the eye to the reload button. */
 .ss-reload-update { border-color: var(--ch-accent-2); color: var(--ch-accent-2); }
@@ -387,6 +429,17 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   background: color-mix(in srgb, var(--ch-bg) 55%, transparent);
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
 
+/* The cold-start GATE (#539): only the menu lives while the splash is up —
+   Settings is where you register, the one act that already makes sense, and
+   Discover transmits. The bar rides above the scrim so the menu is reachable
+   (a child cannot escape the bar's own stacking context), and everything else
+   on it is dimmed and inert instead. The FABs stay under the scrim: visible
+   through it for the coach mark to point at, untouchable (defect 5). */
+body.splash-gate #topbar { z-index: 560; }
+body.splash-gate #topbar-controls, body.splash-gate #ticker-btn {
+  opacity: .45; pointer-events: none; }
+body.splash-gate #settings-btn { color: var(--ch-accent); }
+
 body.onboarding #topbar,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn,
 body.onboarding #sound-toggle, body.onboarding #nodepos-toggle { z-index: 560; }
@@ -403,81 +456,150 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   color: var(--ch-text); font-size: 11.5px; line-height: 1.4; }
 .co-fabs { max-width: 168px; }
 
-.splash-panel { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%);
-  width: min(300px, calc(100vw - 48px)); z-index: 561; padding: 18px; text-align: center;
-  /* The short-screen fallback moves the callout copy inside, so the panel can
-     outgrow the viewport — scroll it rather than clipping the disclaimer off. */
-  max-height: calc(100vh - 24px); overflow-y: auto;
+/* Top-anchored, not centred (#539): the panel shrinks from the bottom when a
+   step needs fewer rows instead of jumping around its middle. 284px wide so
+   the FAB rail at x352 (on 412) stays clear and a coach mark has room — at
+   300px the two overlapped by 4px, which is why no callout ever fit (#384). */
+.splash-panel { position: absolute; left: 50%; top: min(170px, 25vh); transform: translateX(-50%);
+  width: 284px; max-width: calc(100vw - 48px); z-index: 561; text-align: center;
+  max-height: calc(100vh - 80px); overflow-y: auto;
   background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 16px;
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
-.splash-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 14px; }
-.splash-mark { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--ch-accent) 18%, transparent); color: var(--ch-accent); }
-.splash-panel h1 { margin: 0; font-size: 22px; font-weight: 600; }
-.splash-tagline { margin: 0 0 13px; font-size: 12.5px; line-height: 1.45; color: var(--ch-muted); }
-.splash-callout-list { margin: 0 0 13px; padding: 0; list-style: none; text-align: left;
+.splash-x { position: absolute; top: 8px; right: 8px; z-index: 2; padding: 6px; border: none;
+  background: none; color: var(--ch-muted); cursor: pointer; display: inline-flex; }
+.splash-x:hover { color: var(--ch-text); }
+/* Brand band: the PWA icon is the one mark for the product (#539). */
+.splash-band { position: relative; padding: 14px 18px 11px;
+  background: radial-gradient(120% 130% at 50% 0%,
+    color-mix(in srgb, var(--ch-accent) 14%, transparent) 0%,
+    color-mix(in srgb, var(--ch-sig-cool) 5%, transparent) 45%, transparent 76%); }
+.splash-band::after { content: ""; position: absolute; left: 18px; right: 18px; bottom: 0; height: 1px;
+  background: var(--ch-border); }
+.splash-wordmark { margin: 8px 0 2px; font-size: 21px; font-weight: 700; letter-spacing: .02em; }
+.splash-domain { font-size: 11.5px; letter-spacing: .06em; color: var(--ch-muted);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+.splash-body { padding: 4px 18px 14px; }
+/* Fixed 38px rows: the panel hangs from its top, so a spinner or an SF value
+   appearing must not change a row's height (measured: 2px of jump). */
+.splash-srow { display: flex; align-items: center; gap: 9px; height: 38px; font-size: 13px; text-align: left; }
+.splash-srow + .splash-srow { border-top: 1px solid var(--ch-border); }
+.splash-skey { color: var(--ch-muted); width: 70px; flex: none; }
+.splash-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ch-sig-none); flex: none; }
+.splash-dot.on { background: var(--ch-accent); }
+.splash-dot.err { background: var(--ch-accent-2); }
+.splash-stext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.splash-stext.muted { color: var(--ch-muted); }
+.splash-sextra { margin-left: auto; font-size: 12px; color: var(--ch-muted);
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
+.splash-spin { width: 13px; height: 13px; border-radius: 50%; flex: none;
+  border: 2px solid color-mix(in srgb, var(--ch-accent) 25%, transparent);
+  border-top-color: var(--ch-accent); animation: splash-spin .9s linear infinite; }
+@keyframes splash-spin { to { transform: rotate(360deg); } }
+/* Three ways on (#539): the CTA with its icon and label back, then the two
+   external surfaces side by side — the same button pair as the landing
+   page's .lp-cta. */
+.splash-ctas { display: flex; flex-direction: column; gap: 9px; padding-top: 11px; margin-top: 0;
+  border-top: 1px solid var(--ch-border); }
+.splash-ctas[hidden] { display: none; }
+.splash-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px;
+  border: none; border-radius: 13px; cursor: pointer;
+  background: var(--ch-accent); color: var(--ch-bg); font-size: 14.5px; font-weight: 600;
+  font-family: system-ui, sans-serif; }
+.splash-cta[hidden] { display: none; }
+.splash-cta:disabled { opacity: .55; cursor: default; }
+.splash-noble { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ch-text); }
+.splash-secrow { display: flex; gap: 9px; }
+.splash-sec { flex: 1; display: inline-flex; align-items: center; justify-content: center; height: 44px;
+  border: 1px solid var(--ch-border); border-radius: 13px; color: var(--ch-text);
+  font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; }
+.splash-callout-list { margin: 10px 0 0; padding: 0; list-style: none; text-align: left;
   font-size: 11.5px; line-height: 1.45; color: var(--ch-muted); }
 .splash-callout-list[hidden] { display: none; }
 .splash-callout-list li { margin: 7px 0; padding-left: 9px; border-left: 2px solid var(--ch-accent); }
-.splash-basics { list-style: none; margin: 0; padding: 13px 0; text-align: left;
-  display: flex; flex-direction: column; gap: 9px;
-  border-top: 1px solid var(--ch-border); border-bottom: 1px solid var(--ch-border); }
-.splash-basics li { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 1.4; color: var(--ch-text); }
-.splash-basics li::before { content: ""; flex: 0 0 6px; height: 6px; margin-top: 5px; border-radius: 50%; background: var(--ch-accent); }
-.splash-disclaimer { margin: 12px 0 0; font-size: 11px; line-height: 1.5; color: var(--ch-muted); }
+.splash-disclaimer { margin: 12px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ch-muted); }
 .splash-status { margin: 10px 0 0; font-size: 13px; color: var(--ch-text); }
 .splash-status:empty { margin: 0; }
-.splash-retry { margin-top: 10px; border: 1px solid var(--ch-accent-2); border-radius: 11px; padding: 9px 18px;
-  background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
+.splash-retry { margin-top: 10px; width: 100%; height: 44px; border: 1px solid var(--ch-accent-2);
+  border-radius: 11px; background: transparent; color: var(--ch-accent-2); font-weight: 600; font-size: 14px;
   font-family: system-ui, sans-serif; cursor: pointer; }
+.splash-retry[hidden] { display: none; }
 
-.splash-connect { position: fixed; left: 24px; right: 24px; bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
-  z-index: 561; height: 48px; border: none; border-radius: 13px; cursor: pointer;
-  background: var(--ch-accent); color: var(--ch-bg); font-size: 14.5px; font-weight: 600;
-  font-family: system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.splash-connect[hidden] { display: none; }
+/* Coach marks (#539/#384): small, muted, each with a thin leader line to a
+   ring on its own target. The target is pointed at, not touched. */
+.splash-cm { position: fixed; z-index: 561; max-width: 154px; padding: 10px 12px;
+  background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 11px;
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: var(--ch-muted); font-size: 11px; line-height: 1.4; text-align: left; }
+.splash-cm b { color: var(--ch-text); font-weight: 600; }
+.splash-lead { position: fixed; z-index: 561; width: 1px;
+  background: color-mix(in srgb, var(--ch-accent) 55%, transparent); }
+.splash-ring { position: fixed; z-index: 561; width: 9px; height: 9px; border-radius: 50%;
+  border: 1px solid var(--ch-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ch-accent) 14%, transparent); }
+
+/* The reminder for whoever dismissed the gate before the first fix (#539). */
+.nc-banner { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;
+  background: var(--ch-surface); border: 1px solid var(--ch-border);
+  border-left: 3px solid var(--ch-accent-2); border-radius: 8px;
+  font-size: 12px; line-height: 1.4; color: var(--ch-text);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.nc-banner[hidden] { display: none; }
+.nc-banner button { border: none; background: none; font: inherit; cursor: pointer; padding: 0; }
+#nc-connect { color: var(--ch-accent-2); font-weight: 600; white-space: nowrap; }
+#nc-close { color: var(--ch-muted); flex: none; }
+
 .splash-close { position: fixed; left: 50%; transform: translateX(-50%); z-index: 562;
   bottom: calc(env(safe-area-inset-bottom, 16px) + 16px); width: 44px; height: 44px; border-radius: 50%;
   border: 1px solid var(--ch-border); background: var(--ch-surface); color: var(--ch-text); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; }
 
 /* ---- Receptions log (#130) ----
-   Frameless, log-style tail over the map. Newest at the bottom; a fixed
-   playhead lane (scroll-padding-top / LANE) that lines snap to like a
-   combination-lock dial. No background panel — text-shadow carries legibility.
+   Log-style tail over the map. Newest at the bottom; a fixed playhead lane
+   (scroll-padding-top / LANE) that lines snap to like a combination-lock dial.
 
-   Sizing and layout are #322. The block runs the full width of the viewport
-   and centres its rows, rather than sitting in a 214px column on the right:
-   at 12px in that column a sender name got ~14 characters including its meta
-   text, so names ellipsed away and rows could not be told apart. Rows stay
-   left-aligned inside the centred block — centring each row would ragged both
-   edges and break the column grid that makes the log scannable at a glance.
+   #539 gave it a card: a fixed backing plate (--ch-surface-thin, more
+   transparent than --ch-surface so the map reads through) with the header as
+   its title row and a ✕ that puts the whole thing away. The topbar list
+   button brings it back. No drag frame — the card's position is fixed, which
+   is what makes a close control sufficient. The card swallows the gestures
+   inside its own footprint; the map is reachable everywhere else, or by
+   closing it.
 
-   The centred block has a fixed measure rather than hugging its longest row:
-   a max-content block re-centres every time a name resolves, sliding the whole
-   ticker ~50px sideways in the corner of the driver's eye.
+   Sizing and layout are #322: a centred fixed measure rather than a 214px
+   right column (names got ~14 characters there) or a max-content hug (the
+   block would re-centre every time a name resolves).
 
    --ch-rx-line-h is the one row-height number, declared on :root in tokens.css
    because the module reads it through getComputedStyle(documentElement). The
    list height, the playhead offset and the bottom padding are derived from it
-   here. web/style.css carries the same block; web/parity.test.js pins them. */
-#rx-log { position: fixed; top: 52px; left: 0; right: 0; z-index: 480;
-  padding: 0 24px; pointer-events: none;
+   here. web/style.css carries the same line geometry; web/parity.test.js pins
+   the shared declarations. */
+#rx-log { position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+  width: min(680px, calc(100vw - 20px)); z-index: 480;
+  background: var(--ch-surface-thin); backdrop-filter: blur(10px);
+  border: 1px solid var(--ch-border); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  width: min(680px, 100%); margin: 0 auto;
+  height: 36px; padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
-  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
+  text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
+.rx-close { width: 36px; height: 36px; margin-left: auto; border: none; background: none;
+  color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.rx-close:hover { color: var(--ch-text); }
 /* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
    6-above/3-below geometry rxFade's divisors encode. */
-.rx-list { width: min(680px, 100%); margin: 0 auto;
+.rx-list { width: 100%;
   height: calc(10 * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
   scroll-snap-type: y mandatory; scroll-padding-top: calc(6 * var(--ch-rx-line-h));
-  padding: calc(6 * var(--ch-rx-line-h)) 0 calc(3 * var(--ch-rx-line-h));
-  pointer-events: none; /* the padding is dead space over the map; rows re-enable below */ }
+  padding: calc(6 * var(--ch-rx-line-h)) 12px calc(3 * var(--ch-rx-line-h));
+  pointer-events: none; /* the padding is inert; rows re-enable below, the card catches the rest */ }
 .rx-list::-webkit-scrollbar { display: none; }
+/* No receptions -> just the header strip, not ten empty lanes of plate. */
+#rx-log.rx-empty .rx-list { display: none; }
+#rx-log.rx-empty .rx-hd { border-bottom: none; }
 /* width: max-content keeps the click target on the text. Across a full-width
    band a stretched row would swallow every drag and wheel the map needs.
    content-visibility cannot come back with it: paired with
@@ -503,6 +625,10 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
 /* MapLibre popup themed to the app surface (#147) — default is white. */
+/* Above the ticker card (480), below the topbar (500): a popup opened from a
+   point under the card must be readable, and the ticker has its own ✕ if the
+   card is in the way for longer (#539). */
+.maplibregl-popup { z-index: 490; }
 .maplibregl-popup-content { background: var(--ch-surface); color: var(--ch-text);
   border: 1px solid var(--ch-border); border-radius: 8px; padding: 10px 12px;
   backdrop-filter: blur(8px); font-size: 12px; line-height: 1.45; }

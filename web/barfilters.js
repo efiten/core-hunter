@@ -1,50 +1,40 @@
-// The mobile filter sheet (#423).
+// The filter panel (#423 built it for phones; #539 made it the only
+// presentation).
 //
-// web/style.css had no @media rule at all, so #bar -- position:fixed with
-// flex-wrap:wrap -- wrapped its controls into six rows on a phone and took
-// roughly 45% of the viewport. setMapTop() faithfully pushed #map down by that
-// height, so the map got the bottom half of the screen and the ticker and the
-// position disclaimer overlaid part of what was left.
+// Fourteen type chips, the id-class chips, two checkboxes, the layer
+// controls and Clear used to lay out inline in #bar above 640px — a full
+// bar row that read as one long strip without groups. The bar now keeps
+// five controls (hunters, sender, time, the Filters pill, the right-side
+// meta) and everything else lives in this panel at every width, in named
+// groups. The pill carries the count ("Filters (3)") the way the hunter
+// picker does, so the bar shows THAT and HOW MUCH is narrowed; the panel
+// shows what.
 //
-// Parity with the app, which is phone-first and already solved this: one
-// "Filters" pill in the bar (app/index.html #filter-pill) carrying an active
-// state, opening a sheet with the secondary controls in it. The app marks the
-// pill with a class rather than a count, so this does too -- a number would be
-// a second thing to keep true, and "something is filtered" is the question a
-// glance is asking.
-//
-// The controls are NOT re-parented into the sheet. #423 warns why: the bar's
-// pickers are positioned by placePopover against their toggle's box (#372,
-// #385), and moving a toggle lands its panel off-screen. Instead the group is
-// one container that is `display: contents` above the breakpoint -- so the bar
-// lays out exactly as it did -- and a fixed sheet below it. Nothing moves in
-// the DOM, so nothing measures differently.
+// The controls are still NOT re-parented at open time (#372, #385): the
+// container is simply the panel now, shown and hidden as one element, so
+// nothing measures differently between states.
 
-// Which of the sheet's controls are away from their default. Pure, so the rule
-// is testable without a DOM; the caller reads the checkboxes.
+// How many filter dimensions are narrowed (#539). Dimensions, not chips:
+// four active type chips are one narrowed dimension, and clearing it is one
+// act — the pill says "Filters (N)" and the clear button "Clear N filters",
+// and both must promise the same thing. The layer mode is deliberately NOT
+// counted: it is a view choice, and Clear has never reset it.
 //
-// Deliberately NOT the hunter, sender and time-range filters: those stay in the
-// bar at every width, so they speak for themselves. The pill answers "is
-// anything I cannot see switched on", which is only about what the sheet hides.
-// DEFAULT_MODE is web's cold layer mode (map.js: 'hex'), not the app's. Getting
-// this wrong lights the dot on a map nobody has touched, which is the one
-// failure that makes the indicator worthless -- it then says "filtered" always,
-// so it says nothing.
-//
-// This list is the sheet's inventory, and it does not maintain itself: a
-// control added to #bar-filters later is hidden behind the pill from its first
-// day, but stays dark here until it is added below. #497 landed "Sender
-// unknown" in the bar while this branch was open, and the rebase put it in the
-// sheet without lighting the dot -- filtered map, pill says nothing.
-export const DEFAULT_MODE = 'hex'
-
-export function hiddenFiltersActive({ directOnly = false, senderUnknown = false, types = null, idClasses = null, csAdverts = false, csRelays = false, nodePos = false, mode = DEFAULT_MODE } = {}) {
-  if (directOnly || senderUnknown) return true
+// This list is the panel's inventory, and it does not maintain itself: a
+// control added to the panel later stays dark here until it is added below.
+// #497 landed "Sender unknown" while a branch was open and the old boolean
+// version missed it — filtered map, pill said nothing.
+export function activeFilterCount({ directOnly = false, senderUnknown = false, types = null, idClasses = null, csAdverts = false, csRelays = false, nodePos = false } = {}) {
+  let n = 0
+  if (directOnly) n++
+  if (senderUnknown) n++
   // An empty/absent set means "no type filter" -- same convention as the app's
   // isFilterActive, where `types` present and non-empty is the active state.
-  if (types && [...types].length > 0) return true
-  // Same convention for the sender-id class row (#475).
-  if (idClasses && [...idClasses].length > 0) return true
-  if (csAdverts || csRelays || nodePos) return true
-  return mode !== DEFAULT_MODE
+  if (types && [...types].length > 0) n++
+  // Same convention for the sender-id class dimension (#475).
+  if (idClasses && [...idClasses].length > 0) n++
+  if (csAdverts) n++
+  if (csRelays) n++
+  if (nodePos) n++
+  return n
 }

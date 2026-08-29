@@ -1,4 +1,4 @@
-import { test, expect, clickUntil } from './fixtures.js'
+import { test, expect, toggleLocate, clickPanelChip } from './fixtures.js'
 
 // A small spread of synthetic receptions around (51, 4): one strong, several weak,
 // all > 10 m apart (so dedupe keeps them) and < 20 km (so none are rejected).
@@ -92,7 +92,7 @@ test('Locate button fetches /api/points and renders the overlay', async ({ page 
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
   await page.fill('#f-sender', '4a')
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  await toggleLocate(page) // Locate lives in the filter panel (#539)
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
   await expect(page.locator('.lc-strongest')).toHaveCount(1)
@@ -106,7 +106,7 @@ test('Locate with no sender still fetches, using the current filters', async ({ 
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && !r.url().includes('sender='))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/')
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  await toggleLocate(page) // Locate lives in the filter panel (#539)
   await req
   await expect(page.locator('#locate-info')).toContainText('too few to estimate')
 })
@@ -115,8 +115,8 @@ test('Locate with no sender but a type filter locates over that filtered set (#1
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('types=Advert') && !r.url().includes('sender='))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
-  await page.click('button.f-chip[data-type="Advert"]')
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  await clickPanelChip(page, 'button.f-chip[data-type="Advert"]')
+  await toggleLocate(page) // Locate lives in the filter panel (#539)
   await req
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
@@ -128,7 +128,7 @@ test('Locate surfaces a fetch error instead of crashing the poll loop', async ({
   await page.route('**/api/points*', (r) => r.fulfill({ status: 500, body: 'boom' }))
   await page.goto('/')
   await page.fill('#f-sender', '4a')
-  await clickUntil(page, '#locate-toggle', () => page.locator('#locate-toggle.on').isVisible())
+  await toggleLocate(page) // Locate lives in the filter panel (#539)
   await expect(page.locator('#locate-info')).toContainText('Could not load points')
 })
 

@@ -241,7 +241,10 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     for (let i = 0; i < view.length; i++) {
       const r = view[i]
       const color = cssVar(tierColorVar(rssiTier(r.rssi)))
-      const nm = mode === 'all' && !filteredIds.has(key(r)) ? ' <span class="rx-nm">no marker</span>' : ''
+      // "outside filter", not "no marker" (#539): the tag means the reception
+      // is outside the current filter so the map draws nothing for it — it
+      // says nothing about whether the sender is identified.
+      const nm = mode === 'all' && !filteredIds.has(key(r)) ? ' <span class="rx-nm" title="Outside your current filter, so it has no marker on the map.">outside filter</span>' : ''
       h += '<div class="rx-ln" data-idx="' + i + '" data-key="' + esc(key(r)) + '">'
         + '<span class="rx-gt"></span>'
         + '<span class="rx-tm">' + esc(relTime(r.rx_at, nowMs)) + '</span>'

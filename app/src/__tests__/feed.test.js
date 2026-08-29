@@ -201,11 +201,16 @@ describe('dedupeSenders prefix-aware merging (#267)', () => {
   })
   it('merges the same physical node in the recency/RSSI ranking too', () => {
     const now = Date.parse('2026-06-29T10:05:00Z')
+    // Two extra distinct senders keep the deduped pool above `count`, so the
+    // section renders at all (#539) and the merge itself stays observable.
     const out = topSenders([
       rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'Repeater-Zuid', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2', sender_label: 'Repeater-Zuid', rssi: -80, rx_at: '2026-06-29T10:00:00Z' }),
-    ], { count: 3, nowMs: now })
-    expect(out).toHaveLength(1)
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('bbbbbbbb'), sender_label: 'B', rssi: -70, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('cccccccc'), sender_label: 'C', rssi: -90, rx_at: '2026-06-29T10:05:00Z' }),
+    ], { count: 2, nowMs: now })
+    expect(out).toHaveLength(2)
+    expect(out.filter((r) => r.sender_label === 'Repeater-Zuid')).toHaveLength(1)
   })
 })
 
@@ -226,9 +231,31 @@ describe('topSenders', () => {
       rec({ sender_id: 'A', rssi: -90, rx_at: '2026-06-29T10:00:00Z' }),
       rec({ sender_id: 'A', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
       rec({ sender_id: 'B', rssi: -50, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_id: 'C', rssi: -95, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_id: 'D', rssi: -97, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_id: 'E', rssi: -99, rx_at: '2026-06-29T10:05:00Z' }),
     ], { ignore: new Set(['b']), count: 3, nowMs: now })
-    expect(out).toHaveLength(1)
+    expect(out).toHaveLength(3)
     expect(out[0]).toMatchObject({ sender_id: 'A', rssi: -60 })
+    expect(out.map((r) => r.sender_id)).not.toContain('B')
+  })
+
+  // #539: with count or fewer senders heard, the Top section is the whole
+  // list re-sorted — a duplicate, not a shortlist. It then earns nothing.
+  it('returns nothing when every sender would be pinned', () => {
+    const three = [
+      rec({ sender_id: 'A', rssi: -60, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_id: 'B', rssi: -70, rx_at: '2026-06-29T10:05:00Z' }),
+      rec({ sender_id: 'C', rssi: -80, rx_at: '2026-06-29T10:05:00Z' }),
+    ]
+    expect(topSenders(three, { count: 3, nowMs: now })).toEqual([])
+    expect(topSenders(three.slice(0, 2), { count: 3, nowMs: now })).toEqual([])
+    // One more sender than fits and the shortlist is real again.
+    const four = [...three, rec({ sender_id: 'D', rssi: -90, rx_at: '2026-06-29T10:05:00Z' })]
+    expect(topSenders(four, { count: 3, nowMs: now })).toHaveLength(3)
+    // The ignore-list narrows the field BEFORE the rule: three heard senders
+    // with one ignored is two listed, so Top would again repeat the list.
+    expect(topSenders(three, { ignore: new Set(['a']), count: 3, nowMs: now })).toEqual([])
   })
 })
 

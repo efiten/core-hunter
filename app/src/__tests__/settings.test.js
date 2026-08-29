@@ -43,12 +43,14 @@ describe('initialSettingsTab', () => {
   it('opens on the release notes while they are unread', () => {
     expect(initialSettingsTab({ unseenChangelog: true })).toBe('whatsnew')
   })
-  it('opens on Settings once they have been read', () => {
-    expect(initialSettingsTab({ unseenChangelog: false })).toBe('settings')
+  // #539 gave the sheet a Status tab as its first tab; the read fallback
+  // lands there, not on Settings.
+  it('opens on Status once they have been read', () => {
+    expect(initialSettingsTab({ unseenChangelog: false })).toBe('status')
   })
-  it('opens on Settings for missing/undefined input', () => {
-    expect(initialSettingsTab({})).toBe('settings')
-    expect(initialSettingsTab(undefined)).toBe('settings')
+  it('opens on Status for missing/undefined input', () => {
+    expect(initialSettingsTab({})).toBe('status')
+    expect(initialSettingsTab(undefined)).toBe('status')
   })
 })
 

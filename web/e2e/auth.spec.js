@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, openFilters } from './fixtures.js'
 
 async function mockRole(page, me) {
   await page.route('**/api/auth/me', r => r.fulfill({ json: me }))
@@ -60,10 +60,12 @@ test('guest sees the degraded-view notice; member does not', async ({ page }) =>
 test('Locate is hidden for guests, shown for members', async ({ page }) => {
   await mockRole(page, { role: 'guest' })
   await page.goto('/')
+  await openFilters(page) // Locate lives in the filter panel (#539)
   await expect(page.locator('#locate-toggle')).toBeHidden()
 
   await mockRole(page, { role: 'member', username: 'm' })
   await page.reload()
+  await openFilters(page)
   await expect(page.locator('#locate-toggle')).toBeVisible()
 })
 
@@ -86,6 +88,7 @@ test('Locate is not live during the boot window, before the role is known (#270)
   })
 
   await page.goto('/')
+  await openFilters(page) // Locate lives in the filter panel (#539)
   // Role still unresolved: the button must not be on screen at all.
   await expect(page.locator('#locate-toggle')).toBeHidden()
 
@@ -125,6 +128,7 @@ test('observer-point layers are hidden for guests and a 403 does not break the m
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e))
   await page.goto('/')
+  await openFilters(page) // asserted with the panel open, or hidden is vacuous
   // the CS-layer toggle must not be shown for guests
   await expect(page.locator('.cs-layer-toggle')).toBeHidden()
   // map still renders (no unhandled rejection breaking the app)
@@ -138,6 +142,7 @@ test('observer-point (CS) layers are available for members', async ({ page }) =>
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e))
   await page.goto('/')
+  await openFilters(page) // the CS toggles live in the filter panel (#539)
   await expect(page.locator('.cs-layer-toggle')).toBeVisible()
   const req = page.waitForRequest((r) => r.url().includes('/observer-points'))
   await page.check('#cs-adverts')

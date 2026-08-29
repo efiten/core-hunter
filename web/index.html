@@ -92,6 +92,11 @@
     <!-- End Matomo Code -->
 </head>
 <body>
+  <!-- Scrim under the open filter panel (#539). A body child on purpose:
+       #bar's backdrop-filter makes the bar the containing block for its own
+       fixed descendants, so a scrim inside it could never cover the viewport.
+       z 600 keeps it under the bar (630) and the panel in it. -->
+  <div id="bf-scrim" hidden></div>
   <header id="bar">
     <span class="ms-wrap">
       <button id="hp-toggle" type="button" class="ms-toggle" title="All hunters if none selected" aria-expanded="false">Hunters ▾</button>
@@ -113,7 +118,7 @@
       </div>
     </span>
     <span class="ms-wrap">
-      <input id="f-sender" type="text" placeholder="sender id (prefix)" />
+      <input id="f-sender" type="text" placeholder="sender id (prefix)" aria-label="Sender id prefix" />
       <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">Select target ▾</button>
       <div id="sender-picker" class="tl-panel" hidden>
         <div class="tl-pinned-label">Top</div>
@@ -130,7 +135,7 @@
     <input id="f-to" type="hidden" />
     <span class="tr-wrap">
       <button id="tr-toggle" type="button" aria-expanded="false" title="Change the time range">
-        <span aria-hidden="true">&#128339;</span> <span id="tr-label">Today</span>
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg> <span id="tr-label">Today</span>
       </button>
       <div id="time-picker" class="tr-panel" hidden>
         <div class="tr-cols">
@@ -145,54 +150,77 @@
         </div>
       </div>
     </span>
-    <!-- Filters pill (#423), parity with the app's #filter-pill. Shown only
-         below the breakpoint; above it the group below lays out inline exactly
-         as before and this stays hidden. -->
+    <!-- Filters pill (#423/#539): the one way into the filter panel at every
+         width. Carries the count the way the hunter picker does — the bar
+         shows THAT and HOW MUCH is narrowed, the panel shows what. -->
     <button id="filter-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="bar-filters">
-      Filters<span id="filter-pill-dot" class="fp-dot" hidden aria-hidden="true"></span>
+      Filters<span id="filter-pill-count" class="fp-count" hidden></span>
     </button>
-    <!-- One container, never re-parented: `display: contents` above the
-         breakpoint keeps every child a direct flex item of #bar, so the desktop
-         layout and placePopover's measurements are untouched (#372, #385). -->
+    <!-- The filter panel (#539): everything that narrows the view, in named
+         groups, at every width. The container is the panel itself — nothing
+         is re-parented at open time, so nothing measures differently between
+         states (#372, #385). -->
     <div id="bar-filters">
       <div class="bf-head">
         <h2>Filters</h2>
+        <span id="bf-count" class="bf-count" hidden></span>
         <button class="bf-close" id="bf-close" type="button" aria-label="Close">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
             <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
           </svg>
         </button>
       </div>
-    <span id="f-types"></span>
-    <!-- Sender-id classes (#475): how far the sender can be identified. The
-         "1 byte" chip is what isolates a flood, since those receptions started
-         carrying a byte (#521) and stopped answering to Sender unknown.
-         Behind a toggle rather than inline: #bar wraps by content width, and a
-         sixth chip row costs ~350px, which is enough to push the walkthrough's
-         floating callouts into their inline fallback at 1280px. -->
-    <span id="f-idclass-wrap" class="ic-wrap">
-      <button id="f-idclass-toggle" type="button" aria-expanded="false" aria-haspopup="true" aria-controls="f-idclass"
-              title="Filter by how far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">Sender id</button>
-      <div id="f-idclass" class="tl-panel ic-panel" hidden></div>
-    </span>
-    <label class="cs-cb" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet CLAIMS, not a measurement of distance."><input type="checkbox" id="f-direct" /> No path</label>
-      <label class="cs-cb" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has."><input type="checkbox" id="f-unnamed" /> Sender unknown</label>
-    <button id="layer-toggle">points</button>
-    <!-- hidden until the role is known (#270): applyLocateGate() is then the
-         single owner of this button's visibility, setting it on every role
-         change. Shipping it visible made it live during the boot window, where
-         activateLocate() silently returns on the role gate ('guest' default)
-         with no retry, and a guest saw a working-looking control until the
-         gate caught up. -->
-    <button id="locate-toggle" hidden>Locate</button>
-    <span class="cs-layer-toggle">
-      <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
-      <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
-    </span>
-    <span class="np-layer-toggle">
-      <label class="cs-cb"><input type="checkbox" id="f-nodepos" /> Node positions</label>
-    </span>
-    <button id="clear-filters" title="Clear all filters">Clear</button>
+      <div class="bf-group">
+        <div class="bf-group-head">Traffic types <span id="bf-types-count" class="bf-group-count" hidden></span></div>
+        <span id="f-types"></span>
+        <!-- Below 640px only the first chips and every active one show; this
+             reveals the rest. Fourteen 44px chips are four rows on a phone,
+             and then the rest of the panel is under the fold. -->
+        <button id="bf-types-more" class="bf-types-more" type="button" hidden></button>
+      </div>
+      <!-- Sender-id classes (#475): how far the sender can be identified. The
+           "1 byte" chip is what isolates a flood, since those receptions
+           started carrying a byte (#521) and stopped answering to Sender
+           unknown. Inline since #539: the panel has the room the bar did not,
+           so the popover toggle is gone. -->
+      <div class="bf-group">
+        <div class="bf-group-head" title="Filter by how far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">Sender id</div>
+        <div id="f-idclass" class="bf-chips"></div>
+      </div>
+      <div class="bf-group">
+        <div class="bf-group-head">Only show</div>
+        <label class="cs-cb" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet CLAIMS, not a measurement of distance."><input type="checkbox" id="f-direct" /> No path</label>
+        <label class="cs-cb" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has."><input type="checkbox" id="f-unnamed" /> Sender unknown</label>
+      </div>
+      <div class="bf-group" id="bf-overlays">
+        <div class="bf-group-head">Overlays</div>
+        <span class="cs-layer-toggle">
+          <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
+          <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
+        </span>
+        <span class="np-layer-toggle">
+          <label class="cs-cb"><input type="checkbox" id="f-nodepos" /> Node positions</label>
+        </span>
+      </div>
+      <div class="bf-group">
+        <div class="bf-group-head">View</div>
+        <span id="layer-seg" class="bf-seg" role="group" aria-label="Layer mode">
+          <button id="lm-points" type="button" data-mode="points" aria-pressed="false">Points</button>
+          <button id="lm-hex" type="button" data-mode="hex" aria-pressed="false">Hex</button>
+          <button id="lm-both" type="button" data-mode="both" aria-pressed="false">Both</button>
+        </span>
+        <!-- hidden until the role is known (#270): applyLocateGate() is then
+             the single owner of this button's visibility, setting it on every
+             role change. Shipping it visible made it live during the boot
+             window, where activateLocate() silently returns on the role gate
+             ('guest' default) with no retry, and a guest saw a working-looking
+             control until the gate caught up. -->
+        <button id="locate-toggle" hidden>Locate</button>
+      </div>
+      <div class="bf-foot">
+        <span class="bf-live">Changes apply immediately</span>
+        <button id="clear-filters" title="Clear all filters">Clear filters</button>
+      </div>
     </div>
     <!-- The map is downstream of the RX webapp (#490): mapping is what produces
          everything drawn here, and it needs a paired companion, which only that
@@ -236,8 +264,8 @@
   <div id="login-modal" class="lc-modal" hidden>
     <form id="login-form" class="lc-card" role="dialog" aria-modal="true" aria-labelledby="login-title">
       <h4 id="login-title">Log in</h4>
-      <input id="login-user" type="text" placeholder="Username" autocomplete="username" />
-      <input id="login-pass" type="password" placeholder="Password" autocomplete="current-password" />
+      <input id="login-user" type="text" placeholder="Username" aria-label="Username" autocomplete="username" />
+      <input id="login-pass" type="password" placeholder="Password" aria-label="Password" autocomplete="current-password" />
       <label class="lc-remember"><input id="login-remember" type="checkbox" /> Remember me</label>
       <p id="login-error" class="lc-warn" hidden>Login failed.</p>
       <div class="lc-actions">
@@ -282,7 +310,10 @@
       <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
         <label class="ss-row">
           <span class="ss-row-label">Light theme</span>
-          <button id="theme-toggle" type="button" title="Toggle light/dark">🌙</button>
+          <button id="theme-toggle" type="button" title="Toggle light/dark">
+            <svg class="th-moon" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 12.5A7 7 0 0 1 7.5 4 7 7 0 1 0 16 12.5z"/></svg>
+            <svg class="th-sun" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
+          </button>
         </label>
         <!-- Ignored senders (#494): the same section the app carries, and the
              only place an ignored node can be found again — it is gone from the
@@ -332,7 +363,6 @@
        whatsnew.js (#363). -->
   <aside id="wb-onboarding" role="dialog" aria-labelledby="wb-title" hidden>
     <div class="wb-callout" id="wb-co-filters"></div>
-    <div class="wb-callout" id="wb-co-layers"></div>
     <div class="wb-callout" id="wb-co-mapping"></div>
     <div class="wb-callout" id="wb-co-account"></div>
     <div class="wb-panel">

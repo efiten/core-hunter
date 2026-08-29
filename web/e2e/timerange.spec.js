@@ -1,4 +1,4 @@
-import { test, expect, openPicker } from './fixtures.js'
+import { test, expect, openPicker, clickClearFilters, setLayerMode } from './fixtures.js'
 
 // Time-range picker (#285).
 
@@ -86,7 +86,7 @@ test('copy absolute link freezes the range to timestamps', async ({ page, contex
 test('Clear resets the range back to today and relabels', async ({ page }) => {
   await page.goto('/?mode=points&from=now-6h&to=now')
   await expect(page.locator('#tr-label')).toHaveText('Last 6 hours')
-  await page.click('#clear-filters')
+  await clickClearFilters(page) // Clear lives in the filter panel (#539)
   await expect(page.locator('#tr-label')).toHaveText('00:00 → 23:59')
 })
 
@@ -110,7 +110,7 @@ test('the clamp note follows the layer it is about (#492)', async ({ page }) => 
   await page.goto('/?mode=hex&from=now-7d&to=now')
   // Nothing is clamped on the hex layer, so the note has nothing to say.
   await expect(page.locator('#tr-label')).toHaveText('Last 7 days')
-  await page.locator('#layer-toggle').click() // hex -> both, which draws points
+  await setLayerMode(page, 'both') // draws points
   await expect(page.locator('#tr-label')).toHaveText('Last 7 days (points: 24 h)')
 })
 
@@ -185,7 +185,7 @@ test('a member can go back to all time and stays there', async ({ page }) => {
   })
   await expect(page.locator('#tr-label')).toHaveText('All time')
   // Nothing rewrites it underneath them on the next redraw.
-  await page.locator('#layer-toggle').click()
+  await setLayerMode(page, 'hex')
   await expect(page.locator('#tr-label')).toHaveText('All time')
 })
 

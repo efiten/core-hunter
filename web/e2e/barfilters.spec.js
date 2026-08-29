@@ -28,7 +28,7 @@ test('on a phone the map keeps most of the viewport', async ({ page }) => {
   expect(g.mapShare, `map got ${g.mapShare * 100}% of ${g.vh}px, bar is ${g.barH}px`).toBeGreaterThan(0.75)
 })
 
-test('the secondary controls are behind the pill, and come back on desktop', async ({ page }) => {
+test('the controls are behind the pill at every width (#539)', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
   const chips = page.locator('#f-types')
@@ -45,47 +45,62 @@ test('the secondary controls are behind the pill, and come back on desktop', asy
   await page.keyboard.press('Escape')
   await expect(chips).toBeHidden()
 
-  // Above the breakpoint nothing changes: the pill goes away and every control
-  // is inline in the bar again, without the sheet class being cleared first.
+  // Desktop is no longer different (#539): the pill stays, the panel stays.
   await page.setViewportSize({ width: 1280, height: 800 })
-  await expect(page.locator('#filter-pill')).toBeHidden()
+  await expect(page.locator('#filter-pill')).toBeVisible()
+  await expect(chips).toBeHidden()
+  await page.click('#filter-pill')
   await expect(chips).toBeVisible()
   await expect(clear).toBeVisible()
 })
 
 // The controls are restyled, never moved. If a future change re-parents them
-// into the sheet, the bar's pickers position against a toggle that is no longer
-// where placePopover thinks it is (#372, #385) -- so pin the parent, which is
+// at open time, the panel's contents position against boxes that are no
+// longer where they were measured (#372, #385) -- so pin the parent, which is
 // the thing that must not change.
-test('the sheet does not re-parent anything out of the bar', async ({ page }) => {
+test('the panel does not re-parent anything out of the bar', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
   await page.click('#filter-pill')
   const inBar = await page.evaluate(() =>
-    ['f-types', 'f-direct', 'layer-toggle', 'cs-adverts', 'cs-relays', 'f-nodepos', 'clear-filters']
+    ['f-types', 'f-direct', 'layer-seg', 'cs-adverts', 'cs-relays', 'f-nodepos', 'clear-filters']
       .every((id) => !!document.getElementById(id)?.closest('#bar')))
   expect(inBar, 'a control left #bar').toBe(true)
 })
 
-test('the pill says when something behind it is filtered', async ({ page }) => {
+test('the pill counts what is narrowed behind it (#539)', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  const dot = page.locator('#filter-pill-dot')
-  await expect(dot).toBeHidden()
+  const count = page.locator('#filter-pill-count')
+  await expect(count).toBeHidden()
 
   await page.click('#filter-pill')
   await page.check('#f-direct')
-  await expect(dot).toBeVisible()
+  await expect(count).toHaveText(' (1)')
+  await expect(page.locator('#filter-pill')).toHaveClass(/has-selection/)
+
+  // Dimensions, not chips: two active type chips are one narrowed dimension.
+  // The first two chips, not named ones: below 640px the inactive tail is
+  // capped away, and the front of the list is what is always on screen.
+  await page.click('#f-types .f-chip >> nth=0')
+  await page.click('#f-types .f-chip >> nth=1')
+  await expect(count).toHaveText(' (2)')
+  await expect(page.locator('#bf-types-count')).toContainText('2 of')
+
+  // The clear button promises the same number the pill shows.
+  await expect(page.locator('#clear-filters')).toHaveText('Clear 2 filters')
 
   await page.uncheck('#f-direct')
-  await expect(dot).toBeHidden()
+  await page.click('#f-types .f-chip >> nth=0')
+  await page.click('#f-types .f-chip >> nth=1')
+  await expect(count).toBeHidden()
+  await expect(page.locator('#filter-pill')).not.toHaveClass(/has-selection/)
 
-  // Every control the sheet swallows, not just the one this branch was written
-  // against. Sender unknown arrived in the bar from #497 while this was open,
-  // so on a phone it is filtered behind the pill from the day it lands.
+  // Every control the panel swallows, not just the one this branch was written
+  // against (#497 landed Sender unknown while the sheet branch was open).
   await page.check('#f-unnamed')
-  await expect(dot).toBeVisible()
+  await expect(count).toHaveText(' (1)')
 
   await page.uncheck('#f-unnamed')
-  await expect(dot).toBeHidden()
+  await expect(count).toBeHidden()
 })

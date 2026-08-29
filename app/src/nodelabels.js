@@ -5,9 +5,9 @@
 // be plotted, which receptions may attribute to them, how far the estimate sits
 // from the advertised point. This works in screen space, where the only inputs
 // are pixels and the answer changes with the zoom without a single node
-// changing. The app's layer took this file as a verbatim copy (#539,
-// app/src/nodelabels.js) — neither deploy path can ship a file outside its
-// own directory (#238), so the copies stay and web/parity.test.js pins them.
+// changing. This IS the app's verbatim copy of web/nodelabels.js (#539) —
+// neither deploy path can ship a file outside its own directory (#238), so
+// the copies stay and web/parity.test.js pins them.
 //
 // Every advertised node was drawn as a divIcon with its name baked in, at full
 // length, whatever the zoom and whatever else was nearby. Leaflet was told the

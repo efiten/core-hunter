@@ -72,7 +72,7 @@ test('each callout is anchored to the controls it describes, and they are ringed
   // horizontally. An unpositioned fixed box falls to its static spot at the top
   // of the page, which is above the toolbar and fails the first check — that is
   // the failure this asserts, since "is on screen" is true either way.
-  for (const [id, anchor] of [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']]) {
+  for (const [id, anchor] of [['wb-co-filters', 'hp-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']]) {
     const box = page.locator(`#${id}`)
     await expect(box).toBeVisible()
     await expect(box).not.toHaveText('')
@@ -87,7 +87,7 @@ test('each callout is anchored to the controls it describes, and they are ringed
   }
 
   // The spotlight ring is applied from the callouts' own target lists.
-  for (const id of ['hp-toggle', 'tr-toggle', 'layer-toggle', 'locate-toggle', 'rx-cta', 'auth-btn']) {
+  for (const id of ['hp-toggle', 'tr-toggle', 'filter-pill', 'rx-cta', 'auth-btn']) {
     await expect(page.locator(`#${id}`)).toHaveClass(/wb-spot/)
   }
   // The toolbar is above the scrim, so the tour highlights live controls.
@@ -148,7 +148,7 @@ for (const [w, h] of [[760, 800], [800, 800], [900, 700], [1024, 700]]) {
     await expect(page.locator('#wb-onboarding')).toBeVisible()
     const bad = await page.evaluate(() => {
       const panel = document.querySelector('.wb-panel').getBoundingClientRect()
-      return ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account'].filter((id) => {
+      return ['wb-co-filters', 'wb-co-mapping', 'wb-co-account'].filter((id) => {
         const el = document.getElementById(id)
         if (el.hidden) return false
         const r = el.getBoundingClientRect()
@@ -171,8 +171,8 @@ test('a phone-width window drops the floating callouts into the panel', async ({
   await bootstrap(page, false)
   await page.goto('/')
   await expect(page.locator('#wb-onboarding')).toBeVisible()
-  await expect(page.locator('#wb-inline li')).toHaveCount(4)
-  for (const id of ['wb-co-filters', 'wb-co-layers', 'wb-co-mapping', 'wb-co-account']) {
+  await expect(page.locator('#wb-inline li')).toHaveCount(3)
+  for (const id of ['wb-co-filters', 'wb-co-mapping', 'wb-co-account']) {
     await expect(page.locator(`#${id}`)).toBeHidden()
   }
   // The controls are still ringed — the tour still points at live controls,
@@ -311,7 +311,7 @@ for (const w of [1100, 1280, 1440]) {
         out.push({ id, anchor, below: r.y >= t.y + t.height, overlaps: r.x <= t.x + t.width + 8 && r.x + r.width >= t.x - 8 })
       }
       return out
-    }, [['wb-co-filters', 'hp-toggle'], ['wb-co-layers', 'layer-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']])
+    }, [['wb-co-filters', 'hp-toggle'], ['wb-co-mapping', 'rx-cta'], ['wb-co-account', 'auth-btn']])
     for (const p of placed) {
       expect(p.below, `${p.id} sits below #${p.anchor}`).toBe(true)
       expect(p.overlaps, `${p.id} overlaps #${p.anchor} horizontally`).toBe(true)
