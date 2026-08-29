@@ -158,32 +158,17 @@ body {
   padding: 24px 20px 40px; border-top: 1px solid var(--ch-border);
 }
 
-/* --- blog --- */
+/* --- secondary pages (faq) --- */
 .lp-nav a.active, .lp-nav a.active:visited { color: var(--ch-accent-2); }
 
-.blog-back, .blog-back:visited { display: inline-block; color: var(--ch-sig-cool); text-decoration: none; margin: 8px 0 4px; }
-.blog-back:hover { text-decoration: underline; }
-.blog-head { padding: 8px 0 4px; }
-.blog-head h1 { font-size: 1.9rem; line-height: 1.25; margin: 8px 0 8px; }
-.blog-meta { color: var(--ch-muted); font-size: 0.95rem; margin: 0; }
+.faq-head { padding: 8px 0 4px; }
+.faq-head h1 { font-size: 2rem; margin: 8px 0; }
+.faq-head p { color: var(--ch-muted); font-size: 1.1rem; max-width: 700px; margin: 0; }
 
-.blog-article h2 { font-size: 1.35rem; margin: 30px 0 10px; }
-.blog-article p { margin: 0 0 16px; }
-.blog-article ul { margin: 0 0 16px; padding-left: 22px; }
-.blog-article li { margin: 6px 0; }
-/* Links are accent-2 on every surface (#539): the app's About links and the
-   map's already are, so the landing joins them. */
-.blog-article a, .blog-article a:visited { color: var(--ch-accent-2); }
-.blog-article strong { color: var(--ch-text); }
-
-/* blog index: cards that are whole-block links */
-.blog-list { list-style: none; margin: 0; padding: 0; }
-.blog-list .lp-card { display: block; text-decoration: none; color: inherit; }
-.blog-list .lp-card:hover { border-color: var(--ch-sig-cool); }
-.blog-list h2 { margin: 0 0 6px; }
-.blog-teaser { color: var(--ch-muted); margin: 8px 0 0; }
-
-/* "from the blog" card on the landing */
-.lp-blogcard .blog-meta { margin: 0 0 8px; }
-.lp-blogcard h2 a, .lp-blogcard h2 a:visited { color: var(--ch-text); text-decoration: none; }
-.lp-blogcard h2 a:hover { color: var(--ch-sig-cool); }
+.faq-list { margin: 24px 0 0; }
+.faq-list details { border-top: 1px solid var(--ch-border); }
+.faq-list details:last-child { border-bottom: 1px solid var(--ch-border); }
+.faq-list summary { cursor: pointer; font-weight: 600; font-size: 1.08rem; padding: 14px 0; }
+.faq-list summary:hover { color: var(--ch-accent-2); }
+.faq-list details p { color: var(--ch-muted); margin: 0 0 16px; max-width: 700px; }
+.faq-list details a, .faq-list details a:visited { color: var(--ch-accent-2); }

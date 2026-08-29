@@ -9,12 +9,18 @@ import { XMLParser } from 'fast-xml-parser'
 
 const pages = readdirSync(new URL('.', import.meta.url))
   .filter((f) => f.endsWith('.html'))
-  .concat(readdirSync(new URL('./blog', import.meta.url)).filter((f) => f.endsWith('.html')).map((f) => `blog/${f}`))
 const read = (f) => readFileSync(new URL(`./${f}`, import.meta.url), 'utf8')
 
 describe('landing pages', () => {
   it('has pages to check', () => {
-    expect(pages.length).toBeGreaterThan(2)
+    expect(pages.length).toBeGreaterThan(1)
+  })
+
+  // AGENTS.md §7: output that displays or implies a target's location carries
+  // the position disclaimer. The FAQ answers "does the map show where my node
+  // is", so it is such an output.
+  it('faq.html carries the position disclaimer', () => {
+    expect(read('faq.html')).toMatch(/inferred from radio measurements/)
   })
 
   // The house rule (#441). The em dash used as a "no value" placeholder is a
@@ -95,7 +101,7 @@ describe('link colours', () => {
     .filter((r) => /(^|[\s,>])a(\.[\w-]+)?(\s|,|:|$)/.test(r.sel) && /(^|;)\s*color\s*:/.test(r.body))
 
   it('finds the link rules to check', () => {
-    expect(rules.length).toBeGreaterThan(4)
+    expect(rules.length).toBeGreaterThan(3)
   })
 
   it.each(rules.map((r) => r.sel))('%s covers :visited', (sel) => {
@@ -135,7 +141,7 @@ describe('getting an account', () => {
     const at = html.indexOf('id="get-an-account"')
     expect(at).toBeGreaterThan(-1)
     expect(at).toBeLessThan(html.indexOf('lp-sub'))
-    expect(at).toBeLessThan(html.indexOf('lp-blogcard'))
+    expect(at).toBeLessThan(html.indexOf('Read the FAQ'))
   })
 })
 
