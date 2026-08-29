@@ -126,6 +126,13 @@
     "body": "The map is what mapping produces, but nothing here said so: the login box offered logging in and nothing else, so anyone without an account was left with nowhere to click. Start mapping now stands in the toolbar and opens the RX webapp, where you pair a companion radio and your own receptions start landing here. That is also where the account is made, from the companion you paired, which is why this page has no sign-up form. The walkthrough and mesh-hunter.eu spell out the rest, including the admin verification that opens the full history."
   },
   {
+    "id": "2026-08-25-every-reception-audible",
+    "date": "2026-08-25",
+    "where": "app",
+    "title": "You hear everything the radio hears, and what kind it is",
+    "body": "Sound used to be reserved for receptions heard straight from the transmitter, which is about a third of what the radio picks up, and it went quiet whenever you filtered the map to one node. Everything is audible now, and the packet type picks the instrument: adverts ring, chat is softer, the constant network chatter stays the driest sound in the mix. A relayed reception barely gives you the strike at all: what you hear is mostly what came back off the repeater, a darker echo a beat behind, so you can tell without looking whether something reached you directly. Pitch and loudness still tell you the signal strength."
+  },
+  {
     "id": "2026-08-24-keep-what-cannot-be-named",
     "date": "2026-08-24",
     "where": "both",
@@ -152,13 +159,6 @@
     "where": "app",
     "title": "A repeater's answer to your ping counts for the node you picked",
     "body": "When you have a target selected, the app pings it and the repeater answers. That answer was drawn on the map as an unnamed reception, so it never counted towards where the app thinks your target is. It is now tied to the node you asked, because the app recognises the marker it put in its own ping. Traffic you merely overhear is unchanged: it stays unnamed."
-  },
-  {
-    "id": "2026-08-25-every-reception-audible",
-    "date": "2026-08-25",
-    "where": "app",
-    "title": "You hear everything the radio hears, and what kind it is",
-    "body": "Sound used to be reserved for receptions heard straight from the transmitter, which is about a third of what the radio picks up, and it went quiet whenever you filtered the map to one node. Everything is audible now, and the packet type picks the instrument: adverts ring, chat is softer, the constant network chatter stays the driest sound in the mix. A relayed reception barely gives you the strike at all: what you hear is mostly what came back off the repeater, a darker echo a beat behind, so you can tell without looking whether something reached you directly. Pitch and loudness still tell you the signal strength."
   },
   {
     "id": "2026-08-24-render-tick-cost",
