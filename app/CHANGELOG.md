@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.24.0](https://github.com/efiten/core-hunter/compare/app-v1.23.0...app-v1.24.0) (2026-08-30)
+
+
+### Features
+
+* **app:** give the theme three states and a memory, and end the Settings tab ([#566](https://github.com/efiten/core-hunter/issues/566)) ([e67c319](https://github.com/efiten/core-hunter/commit/e67c3193dca73ac5dd7732dc0050ef5c8774ef94))
+* **app:** keep the SNR the repeater heard us at ([#489](https://github.com/efiten/core-hunter/issues/489)) ([0cd0a7c](https://github.com/efiten/core-hunter/commit/0cd0a7c4a74f1b79465c7a3f488341c75a3bd52e))
+* **app:** make every recorded reception audible, one instrument per type (+ sound tweaks) ([#470](https://github.com/efiten/core-hunter/issues/470)) ([6244c0f](https://github.com/efiten/core-hunter/commit/6244c0fa335ebf4d6101db063c2c67d4cf348f8c))
+* **web:** gate the point layer, and say what an account opens ([#513](https://github.com/efiten/core-hunter/issues/513)) ([71856f1](https://github.com/efiten/core-hunter/commit/71856f1c42027b2eeeb5a21f53537976fb5925a3))
+
+
+### Bug Fixes
+
+* **app:** take the gate's coach marks out of #splash's stacking context ([#565](https://github.com/efiten/core-hunter/issues/565)) ([6fba59e](https://github.com/efiten/core-hunter/commit/6fba59e890971d85c6d9f269649b14183c8c23d3))
+
 ## [1.23.0](https://github.com/efiten/core-hunter/compare/app-v1.22.0...app-v1.23.0) (2026-08-29)
 
 
