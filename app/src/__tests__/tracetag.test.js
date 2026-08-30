@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { TRACE_TTL_MS, normalizeTag, rememberPing, prunePings, matchTraceTarget } from '../tracetag.js'
-import { traceTagOf, classifyReception, hexToBytes } from '../meshpacket.js'
+import { traceTagOf, classifyReception, hexToBytes, heardUsSnr } from '../meshpacket.js'
 import { decodePacket } from '../decode.js'
 import { buildRecord } from '../capture.js'
 
@@ -133,5 +133,36 @@ describe('a trace reply through the capture path (#481)', () => {
     const decoded = decodePacket(traceHex(0xdeadbeef))
     const pending = rememberPing([], 0x44332211, pk('ab12'), T0)
     expect(matchTraceTarget(pending, traceTagOf(decoded), T0 + 500)).toBeNull()
+  })
+})
+
+// #482 rides on #481's match: the reciprocal reading is only meaningful for a
+// reply we provoked, so it is attached where the tag is recognised and nowhere
+// else. This is the same sequence app.js runs, with that step included.
+describe('the reciprocal SNR travels with the attribution (#482)', () => {
+  const gps = { lat: 51.5, lon: 4.5, acc_m: 8 }
+  const hex = ['26', '01', 'f0', '11223344', '00000000', '00', 'ab'].join('')
+
+  it('records what the target heard us at, next to what we heard it at', () => {
+    const decoded = decodePacket(hex)
+    const pending = rememberPing([], 0x44332211, pk('ab12'), T0)
+    const target = matchTraceTarget(pending, traceTagOf(decoded), T0 + 500)
+    expect(target).toBe(pk('ab12'))
+
+    const cls = { ...classifyReception(decoded), heardUsSnr: heardUsSnr(decoded),
+      sender: { kind: 'trace_reply', id: target, label: null, role: null } }
+    const rec = buildRecord({ snr: -4.25, rssi: -97, raw: hexToBytes(hex) }, cls, gps, '2026-08-24T12:00:00Z')
+    expect(rec.heard_us_snr).toBe(-4)     // theirs, from the path byte
+    expect(rec.snr).toBe(-4.25)           // ours, from the 0x88 header
+    expect(rec.sender_id).toBe(pk('ab12'))
+  })
+
+  it('leaves the field null on a trace nobody asked for', () => {
+    const decoded = decodePacket(hex)
+    expect(matchTraceTarget([], traceTagOf(decoded), T0)).toBeNull()
+    const rec = buildRecord({ snr: -4.25, rssi: -97, raw: hexToBytes(hex) },
+      classifyReception(decoded), gps, '2026-08-24T12:00:00Z')
+    expect(rec.heard_us_snr).toBeNull()
+    expect(rec.sender_id).toBeNull()
   })
 })

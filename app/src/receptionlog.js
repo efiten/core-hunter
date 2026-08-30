@@ -65,9 +65,16 @@ const CAP = 200     // recent-window cap
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
-function lineMeta(r) {
+// The meta cell is where a reception explains itself: a decrypted text first,
+// then a channel name, then the packet-type label. A trace reply we provoked
+// also carries the SNR the node we pinged heard US at (#482) — the reciprocal
+// of every other number in the log, and the reason the ping was sent — so on
+// that one row the reading takes the type label's slot. One decimal, the same
+// format as #hud-snr. `!= null` keeps a real 0 dB reading visible.
+export function lineMeta(r) {
   if (r._text) return '“' + r._text + '”'
   if (r.channel_name) return r.channel_name
+  if (r.heard_us_snr != null) return 'heard us at ' + r.heard_us_snr.toFixed(1) + ' dB'
   return packetTypeLabel(r.packet_type) || ''
 }
 
