@@ -7,6 +7,27 @@
     "body": "Dark, light, or whatever your phone is set to. The choice used to be a checkbox that reset to dark on every reload."
   },
   {
+    "id": "2026-08-29-start-screen-hints",
+    "date": "2026-08-29",
+    "where": "app",
+    "title": "The start screen's hints point at something again",
+    "body": "Two of the three hint lines ran up to the top bar and stopped at nothing. Their markers now sit on the button they mean."
+  },
+  {
+    "id": "2026-08-29-point-layer-needs-an-account",
+    "date": "2026-08-29",
+    "where": "map",
+    "title": "The point layer says what an account opens",
+    "body": "Points and Both are off for visitors, with the reason underneath: individual receptions need a member account. The coverage layer stays open to everyone."
+  },
+  {
+    "id": "2026-08-29-heard-us-snr",
+    "date": "2026-08-29",
+    "where": "app",
+    "title": "How well a node heard you",
+    "body": "Ping a node and the reply's row in the ticker shows the SNR it heard you at."
+  },
+  {
     "id": "2026-08-26-app-design-pass",
     "date": "2026-08-26",
     "where": "app",
@@ -124,6 +145,20 @@
     "where": "map",
     "title": "Mapping has a way in from the map",
     "body": "The map is what mapping produces, but nothing here said so: the login box offered logging in and nothing else, so anyone without an account was left with nowhere to click. Start mapping now stands in the toolbar and opens the RX webapp, where you pair a companion radio and your own receptions start landing here. That is also where the account is made, from the companion you paired, which is why this page has no sign-up form. The walkthrough and mesh-hunter.eu spell out the rest, including the admin verification that opens the full history."
+  },
+  {
+    "id": "2026-08-25-ambient-layer-has-room",
+    "date": "2026-08-25",
+    "where": "app",
+    "title": "Sound mode with the music gets some room",
+    "body": "The ambient layer under the reception sounds was two thin bands of noise and seven fixed notes, so after a few minutes you had heard everything it had. There are three noise layers now, each drifting slowly across the stereo field in a reverb of its own, and the music has ten voices over three octaves that quietly change note every couple of minutes, so the harmony is somewhere else by the end of a drive. The tone the app holds while it sits in your pocket is a chord with a slow breath instead of one flat sine."
+  },
+  {
+    "id": "2026-08-25-every-reception-audible",
+    "date": "2026-08-25",
+    "where": "app",
+    "title": "You hear everything the radio hears, and what kind it is",
+    "body": "Sound used to be reserved for receptions heard straight from the transmitter, which is about a third of what the radio picks up, and it went quiet whenever you filtered the map to one node. Everything is audible now, and the packet type picks the instrument: adverts ring, chat is softer, the constant network chatter stays the driest sound in the mix. A relayed reception barely gives you the strike at all: what you hear is mostly what came back off the repeater, a darker echo a beat behind, so you can tell without looking whether something reached you directly. Pitch and loudness still tell you the signal strength."
   },
   {
     "id": "2026-08-24-keep-what-cannot-be-named",

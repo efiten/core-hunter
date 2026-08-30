@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { SOUND_MODES, nextSoundMode, harmFreq, pingGain, shouldPing, createSoundEngine } from '../sound.js'
+import { SOUND_MODES, nextSoundMode, harmFreq, pingGain, receptionCue, cueFamily, coalesceCue, CUE_GAP_MS, createSoundEngine } from '../sound.js'
+import { FILTER_PACKET_TYPES } from '../filters.js'
 import { RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../signal.js'
 
 describe('nextSoundMode', () => {
@@ -104,24 +105,123 @@ describe('pingGain', () => {
   })
 })
 
-describe('shouldPing', () => {
-  const pass = () => true
-  const reject = () => false
-  const rec = { hops: 0, rssi: -90 }
-  it('pings a zero-hop reception that passes the filter in rxtx mode', () => {
-    expect(shouldPing(rec, 'rxtx', pass, 0)).toBe(true)
+// #468: every reception the app records must be able to be heard. What used to
+// be a yes/no gate now answers WHICH cue, because the distinction is the only
+// thing that keeps the majority class from drowning the one you steer by.
+describe('receptionCue', () => {
+  const direct = { hops: 0, rssi: -90, packet_type: 'Advert' }
+
+  it('names a cue for a zero-hop reception in both sounding modes', () => {
+    expect(receptionCue(direct, 'rxtx')).toEqual({ family: 'advert', damped: false })
+    expect(receptionCue(direct, 'full')).toEqual({ family: 'advert', damped: false })
   })
-  it('pings in full mode too', () => {
-    expect(shouldPing(rec, 'full', pass, 0)).toBe(true)
+
+  it('says nothing when sound is off, or when there is no reception', () => {
+    expect(receptionCue(direct, 'off')).toBeNull()
+    expect(receptionCue(null, 'rxtx')).toBeNull()
   })
-  it('never pings when sound is off', () => {
-    expect(shouldPing(rec, 'off', pass, 0)).toBe(false)
+
+  // The gate this replaces refused these outright. A relayed packet is a real
+  // reception of a real transmitter (the repeater that forwarded it), so it is
+  // audible -- damped, because it reached us through something.
+  it('damps a relayed reception instead of silencing it', () => {
+    expect(receptionCue({ ...direct, hops: 2 }, 'rxtx')).toEqual({ family: 'advert', damped: true })
   })
-  it('ignores relayed receptions — only what the hunter heard directly', () => {
-    expect(shouldPing({ ...rec, hops: 2 }, 'rxtx', pass, 0)).toBe(false)
+
+  // No filter argument at all: narrowing the map must not narrow what the
+  // radio is heard to have heard.
+  it('takes no filter, so a target selection cannot mute anything', () => {
+    expect(receptionCue.length).toBe(2)
   })
-  it('follows the active filter set (you hear what the map shows)', () => {
-    expect(shouldPing(rec, 'rxtx', reject, 0)).toBe(false)
+
+  it('gives a reception with no identifiable sender the voice of its type', () => {
+    expect(receptionCue({ hops: 0, rssi: -110, packet_type: 'Trace', sender_id: null }, 'rxtx'))
+      .toEqual({ family: 'trace', damped: false })
+  })
+})
+
+describe('cueFamily', () => {
+  it('groups the types a hunter reads differently', () => {
+    expect(cueFamily('Advert')).toBe('advert')
+    expect(cueFamily('GroupText')).toBe('channel')
+    expect(cueFamily('GroupData')).toBe('channel')
+    expect(cueFamily('TextMessage')).toBe('message')
+    expect(cueFamily('Trace')).toBe('trace')
+  })
+
+  // The measured majority (RESPONSE 71k, REQ 46k, PATH 17k of the newly
+  // captured traffic, #455) shares the driest voice, or it becomes a drone.
+  it('puts the network chatter in one dry family', () => {
+    for (const t of ['Response', 'Request', 'AnonRequest', 'Ack', 'Control', 'Path', 'Multipart', 'RawCustom']) {
+      expect(cueFamily(t)).toBe('network')
+    }
+  })
+
+  // An unrecognised type must not fall into a prominent voice by accident --
+  // same reasoning as #341's chip coverage, in the other direction.
+  it('defaults an unknown or absent type to the dry family', () => {
+    expect(cueFamily('SomethingNew')).toBe('network')
+    expect(cueFamily(null)).toBe('network')
+    expect(cueFamily(undefined)).toBe('network')
+  })
+
+  it('has a family for every type the filter chips can name', () => {
+    const known = new Set(['advert', 'channel', 'message', 'network', 'trace'])
+    for (const t of FILTER_PACKET_TYPES) expect(known.has(cueFamily(t.value))).toBe(true)
+  })
+})
+
+// The coalescer decides what survives a burst. It is pure so the rule can be
+// pinned: the least important sound must never eat the most important one.
+describe('coalesceCue', () => {
+  const direct = { family: 'network', damped: false }
+  const relayed = { family: 'network', damped: true }
+
+  it('lets a direct cue through even in a burst of relayed ones', () => {
+    let st = {}
+    ;({ state: st } = coalesceCue(st, relayed, 1000))
+    const r = coalesceCue(st, direct, 1010)
+    expect(r.play).toBe(true)
+  })
+
+  it('holds a relayed cue that follows another of its family too closely', () => {
+    const { state } = coalesceCue({}, relayed, 1000)
+    expect(coalesceCue(state, relayed, 1000 + CUE_GAP_MS - 1).play).toBe(false)
+    expect(coalesceCue(state, relayed, 1000 + CUE_GAP_MS).play).toBe(true)
+  })
+
+  it('holds a relayed cue in the shadow of a direct one', () => {
+    const { state } = coalesceCue({}, direct, 1000)
+    expect(coalesceCue(state, { family: 'advert', damped: true }, 1010).play).toBe(false)
+  })
+
+  it('lets different families sound close together', () => {
+    const { state } = coalesceCue({}, { family: 'network', damped: true }, 1000)
+    expect(coalesceCue(state, { family: 'advert', damped: true }, 1010).play).toBe(true)
+  })
+
+  // Review of #470, measured on the ingestor DB: 39.2% of consecutive receptions
+  // share a timestamp to the millisecond, in groups of up to 40. Batched BLE
+  // frames land in one turn and carry one rx_at, so without a gap of their own
+  // 40 direct cues start at the same ac.currentTime and sum into one transient
+  // instead of sounding like 40 dits. Direct cues yield to each other; what they
+  // must not yield to is a relayed one, which is the test above.
+  it('holds a direct cue that follows another direct one inside the gap', () => {
+    const { state } = coalesceCue({}, direct, 1000)
+    expect(coalesceCue(state, direct, 1000).play).toBe(false)
+    expect(coalesceCue(state, direct, 1000 + CUE_GAP_MS - 1).play).toBe(false)
+    expect(coalesceCue(state, direct, 1000 + CUE_GAP_MS).play).toBe(true)
+  })
+
+  it('holds a direct cue behind a direct one of another family, since they sum in the same instant', () => {
+    const { state } = coalesceCue({}, direct, 1000)
+    expect(coalesceCue(state, { family: 'advert', damped: false }, 1000).play).toBe(false)
+  })
+
+  it('does not mutate the state it is given', () => {
+    const st = {}
+    coalesceCue(st, direct, 1000)
+    expect(st).toEqual({})
   })
 })
 
@@ -130,7 +230,7 @@ describe('createSoundEngine without Web Audio (node / unsupported browser)', () 
     const s = createSoundEngine()
     expect(() => {
       s.setMode('full')
-      s.ping(-90, 0)
+      s.cue({ family: 'network', damped: false }, -90, 0)
       s.txBlip('discover')
       s.txBlip('trace')
       s.setMode('off')

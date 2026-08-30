@@ -14,7 +14,7 @@
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'
-import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, traceTagOf } from './meshpacket.js'
+import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, traceTagOf, heardUsSnr } from './meshpacket.js'
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
@@ -51,7 +51,7 @@ import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, M
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
-import { SOUND_MODES, nextSoundMode, shouldPing, createSoundEngine } from './sound.js'
+import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
 
@@ -726,7 +726,13 @@ async function processFrame(dv) {
   // tag off, and its fields are placeholders rather than readings (#454).
   if (decodedOk && cls.sender.id == null) {
     const target = matchTraceTarget(state.tracePings, traceTagOf(decoded), Date.now())
-    if (target) cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null } }
+    // The same packet also carries how well that node heard us (#482) — its own
+    // radio's reading of our ping, appended to the path before it forwarded.
+    // Only kept for a reply we provoked: on an overheard trace those bytes
+    // describe other nodes hearing each other.
+    if (target) {
+      cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null }, heardUsSnr: heardUsSnr(decoded) }
+    }
   }
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
@@ -766,6 +772,13 @@ async function processFrame(dv) {
 
   const rec = buildRecord(frame, cls, fix, new Date().toISOString(), state.rxPubkey)
   rec._text = cls.text // local-only, for the popup; stripped before publish
+  // Sound every capture, regardless of the active filter (#468): you heard the
+  // transmission, and narrowing the map to one target must not narrow what the
+  // radio is heard to have heard. Sitting after the identity gate costs nothing
+  // since #478: the gate strips the identity and keeps the reception, and
+  // identity is deliberately not an audio dimension.
+  sound.cue(receptionCue(rec, state.soundMode), rec.rssi,
+    effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb))
   // Hearing a node is the sweep's in-range signal (#479) — its own reply counts,
   // and so does any other traffic from it, which is the cheaper of the two.
   if (rec.sender_id != null) state.sweep.heardAt.set(String(rec.sender_id).toLowerCase(), Date.now())
@@ -773,11 +786,6 @@ async function processFrame(dv) {
   state.lastPacketAt = Date.now()
   updateHud(rec)
   noteTickerTraffic()
-  // Sound (#145): a morse dit per DIRECT reception inside the active filter
-  // set — you hear exactly what the map plots, minus relayed traffic.
-  if (shouldPing(rec, state.soundMode, makeFilter({ ...state.filter, ignore: state.ignore }), Date.now())) {
-    sound.ping(rec.rssi, effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb))
-  }
 }
 
 // ---------------------------------------------------------------------------

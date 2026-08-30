@@ -144,17 +144,6 @@
     <div class="splash-callout co-controls" id="co-controls"></div>
     <div class="splash-callout co-menu" id="co-menu"></div>
     <div class="splash-callout co-fabs" id="co-fabs"></div>
-    <!-- Gate-only coach marks (#539/#384): ring on the target, thin leader
-         line, small box beside its own control. Positioned at runtime. -->
-    <div class="splash-ring" id="cm-controls-ring" hidden></div>
-    <div class="splash-lead" id="cm-controls-lead" hidden></div>
-    <div class="splash-cm" id="cm-controls" hidden></div>
-    <div class="splash-ring" id="cm-menu-ring" hidden></div>
-    <div class="splash-lead" id="cm-menu-lead" hidden></div>
-    <div class="splash-cm" id="cm-menu" hidden></div>
-    <div class="splash-ring" id="cm-fabs-ring" hidden></div>
-    <div class="splash-lead" id="cm-fabs-lead" hidden></div>
-    <div class="splash-cm" id="cm-fabs" hidden></div>
     <div class="splash-panel">
       <button type="button" id="splash-x" class="splash-x" aria-label="Close">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
@@ -210,6 +199,23 @@
       </svg>
     </button>
   </aside>
+  <!-- Gate-only coach marks (#539/#384): ring on the target, thin leader line,
+       small box beside its own control. Positioned at runtime, and siblings of
+       #splash rather than children of it (#562): #splash is a stacking context
+       (position: fixed + z-index), so a ring nested inside it is capped at
+       #splash's own layer and paints under the bar the gate lifts above the
+       scrim, which is where two of the three targets live. refreshSplash()
+       sets `hidden` on all nine on every state change, so they still come and
+       go with the gate. -->
+  <div class="splash-ring" id="cm-controls-ring" hidden></div>
+  <div class="splash-lead" id="cm-controls-lead" hidden></div>
+  <div class="splash-cm" id="cm-controls" hidden></div>
+  <div class="splash-ring" id="cm-menu-ring" hidden></div>
+  <div class="splash-lead" id="cm-menu-lead" hidden></div>
+  <div class="splash-cm" id="cm-menu" hidden></div>
+  <div class="splash-ring" id="cm-fabs-ring" hidden></div>
+  <div class="splash-lead" id="cm-fabs-lead" hidden></div>
+  <div class="splash-cm" id="cm-fabs" hidden></div>
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script type="module" src="/src/app.js"></script>
 </body>

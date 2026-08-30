@@ -90,13 +90,14 @@ test('Clear resets the range back to today and relabels', async ({ page }) => {
   await expect(page.locator('#tr-label')).toHaveText('00:00 → 23:59')
 })
 
-test('a guest is told which layer the clamp applies to (#300, #492)', async ({ page }) => {
+test('a guest is told what the clamp applies to (#300, #492, #493)', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
-  await page.goto('/?mode=points&from=now-7d&to=now')
-  // The clamp is real, and it is the point layer's: /api/points windows a
-  // sub-member caller to 24 h. The note says so rather than claiming the whole
-  // range is capped, because the hex layer covers all 7 days (#466).
-  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (points: 24 h)')
+  await page.goto('/?from=now-7d&to=now')
+  // The clamp is real and it is the ticker's: /api/points windows a sub-member
+  // caller to 24 h, and since #493 the ticker is the only place they meet
+  // individual receptions. The hex heat covers all 7 days (#466), so the note
+  // names the strip it is true of rather than the whole range.
+  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (ticker: 24 h)')
 
   // The row is no longer hidden: a guest can pick 7 days, and on the layer the
   // map opens on that is exactly what they get.
@@ -105,13 +106,10 @@ test('a guest is told which layer the clamp applies to (#300, #492)', async ({ p
   await expect(page.locator('.tr-item', { hasText: 'Last 30 days' })).toBeVisible()
 })
 
-test('the clamp note follows the layer it is about (#492)', async ({ page }) => {
+test('a range inside the window carries no note (#492)', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
-  await page.goto('/?mode=hex&from=now-7d&to=now')
-  // Nothing is clamped on the hex layer, so the note has nothing to say.
-  await expect(page.locator('#tr-label')).toHaveText('Last 7 days')
-  await setLayerMode(page, 'both') // draws points
-  await expect(page.locator('#tr-label')).toHaveText('Last 7 days (points: 24 h)')
+  await page.goto('/?from=now-6h&to=now')
+  await expect(page.locator('#tr-label')).toHaveText('Last 6 hours')
 })
 
 test('a member sees no clamp note for the same range (#300)', async ({ page }) => {
@@ -152,7 +150,8 @@ test('a first visit asks for 30 days, and says so', async ({ page }) => {
 test('a guest link with no range lands on 30 days', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
   await page.goto('/?mode=hex&from=&to=')
-  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
+  // With the ticker note, since 30 days reaches past the 24 h it holds (#493).
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days (ticker: 24 h)')
 })
 
 // A member keeps every range, the empty one included, but only as a range they
@@ -172,7 +171,7 @@ test('a guest clearing both date fields lands back on 30 days', async ({ page })
   await page.locator('#tr-from').fill('')
   await page.locator('#tr-to').fill('')
   await page.locator('#tr-apply').click()
-  await expect(page.locator('#tr-label')).toHaveText('Last 30 days')
+  await expect(page.locator('#tr-label')).toHaveText('Last 30 days (ticker: 24 h)')
 })
 
 test('a member can go back to all time and stays there', async ({ page }) => {

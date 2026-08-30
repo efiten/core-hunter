@@ -168,12 +168,27 @@ test('member deep-link ?adv=1 draws the CS advert layer on load', async ({ page 
   await expect(page.locator('path.leaflet-interactive')).toHaveCount(1)
 })
 
-test('guest popup has no Locate button', async ({ page }) => {
+// Was "guest popup has no Locate button": a guest cannot reach a point popup at
+// all since #493, because the layer that carries the markers is a member layer.
+// The Locate gate itself is unchanged and still asserted for a member below.
+test('a guest has no point popup to put a Locate button in', async ({ page }) => {
   await mockRole(page, { role: 'guest' })
   await page.route('**/api/points*', r => r.fulfill({ json: { points: [
     { lat: 51, lon: 4, rssi: -60, snr: 8, sender_id: 'aa', hunter_name: 'Hunter 1', rx_at: '2026-07-03T10:00:00Z' }
   ], truncated: false } }))
-  await page.goto('/?mode=points') // point markers — the cold default is hex (#141)
+  await page.goto('/?mode=points')
+  const box = await page.locator('#map').boundingBox()
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await expect(page.locator('.leaflet-popup')).toHaveCount(0)
+  await expect(page.locator('.lc-locate')).toHaveCount(0)
+})
+
+test('a member point popup still offers Locate', async ({ page }) => {
+  await mockRole(page, { role: 'member' })
+  await page.route('**/api/points*', r => r.fulfill({ json: { points: [
+    { lat: 51, lon: 4, rssi: -60, snr: 8, sender_id: 'aa', hunter_name: 'Hunter 1', rx_at: '2026-07-03T10:00:00Z' }
+  ], truncated: false } }))
+  await page.goto('/?mode=points')
   // Points render on a canvas (no per-marker DOM); the fixture point [51,4] is
   // the initial map center, so clicking the middle of the map hits it.
   await expect(async () => {
@@ -181,5 +196,78 @@ test('guest popup has no Locate button', async ({ page }) => {
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
     await expect(page.locator('.leaflet-popup')).toBeVisible({ timeout: 1000 })
   }).toPass()
-  await expect(page.locator('.lc-locate')).toHaveCount(0)
+  await expect(page.locator('.lc-locate')).toHaveCount(1)
+})
+
+// #493: the point layer is a member layer. A guest pressing Points used to
+// land on a layer the server clamps to 24 h and 500 rows, with nothing saying
+// so, and the layer's thinness read as a property of the data.
+test('a guest cannot switch to the point layer, and the panel says why', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
+  await page.goto('/')
+  await openFilters(page)
+
+  // Visible and disabled rather than hidden, so the layer is discoverable:
+  // what it takes to open it is also what the map has to sell.
+  await expect(page.locator('#lm-points')).toBeVisible()
+  await expect(page.locator('#lm-points')).toBeDisabled()
+  await expect(page.locator('#lm-both')).toBeDisabled()
+  await expect(page.locator('#lm-hex')).toBeEnabled()
+  await expect(page.locator('#lm-hex')).toHaveAttribute('aria-pressed', 'true')
+
+  // The reason is a visible line under the group, not a title: on a phone a
+  // tooltip is nothing at all. The disabled segments point a reader at it.
+  const note = page.locator('#layer-gate-note')
+  await expect(note).toBeVisible()
+  await expect(note).toHaveText(/individual receptions/i)
+  await expect(note).toHaveText(/log in/i)
+  await expect(page.locator('#lm-points')).toHaveAttribute('aria-describedby', 'layer-gate-note')
+  await expect(page.locator('#lm-both')).toHaveAttribute('aria-describedby', 'layer-gate-note')
+
+  // The disabled attribute is not the whole job: nothing in the sheet styled
+  // :disabled, so the segment rendered identical to a live one. Measure what
+  // it actually renders, not the attribute.
+  const style = await page.locator('#lm-points').evaluate((el) => {
+    const c = getComputedStyle(el)
+    return { color: c.color, opacity: Number(c.opacity), cursor: c.cursor }
+  })
+  const live = await page.locator('#clear-filters').evaluate((el) => getComputedStyle(el).color)
+  expect(style.color).not.toBe(live)
+  expect(style.opacity).toBeLessThan(1)
+  expect(style.cursor).toBe('not-allowed')
+})
+
+test('a ?mode=points deep link holds a guest on hex', async ({ page }) => {
+  const urls = []
+  await mockRole(page, { role: 'guest' })
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
+  await page.route('**/api/heatmap*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { features: [] } }) })
+  await page.goto('/?mode=points')
+
+  // The mode is restored before /api/auth/me resolves, so the gate has to be
+  // applied again once the role is known. aria-pressed carries the assertion
+  // because the panel is shut, so nothing here is visible.
+  await expect(page.locator('#lm-hex')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#lm-points')).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => urls.some((u) => u.includes('/api/heatmap'))).toBe(true)
+  // The ticker keeps its own /api/points feed, so points requests still happen;
+  // what must not happen is the point LAYER drawing. Its bbox query is the one
+  // carrying a z parameter.
+  expect(urls.filter((u) => u.includes('/api/points') && new URL(u).searchParams.has('z'))).toEqual([])
+})
+
+test('a member still gets all three layers', async ({ page }) => {
+  await mockRole(page, { role: 'member' })
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
+  await page.goto('/?mode=points')
+  await openFilters(page)
+  await expect(page.locator('#lm-points')).toBeEnabled()
+  await expect(page.locator('#lm-both')).toBeEnabled()
+  await expect(page.locator('#lm-points')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#layer-gate-note')).toBeHidden()
+  await page.click('#lm-hex')
+  await expect(page.locator('#lm-hex')).toHaveAttribute('aria-pressed', 'true')
 })
