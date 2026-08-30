@@ -4,14 +4,16 @@
 // actual event (a zero-hop reception or an outgoing ping), never synthesized
 // ticking. Three states, cycled by the sound FAB (#255):
 //   off  — silent (default)
-//   rxtx — a morse dit per real zero-hop reception + the transmit pops, no
-//          bed/music; pitch (F harmonic series) and length scale with RSSI
-//          (hotter = higher/longer), same fixed dBm band as the HUD bar
+//   rxtx — a cue per recorded reception + the transmit pops, no bed/music;
+//          pitch, length and gain scale with RSSI (hotter = higher/longer/
+//          louder), on the same fixed dBm band as the HUD bar
 //          (RSSI_WEAK_DBM..RSSI_STRONG_DBM, calibration/attenuator offset
-//          applied)
-//   full — the surf/air soundbed + generative ambient music (Eno-style, never
-//          repeats), with the rx/tx sounds on top. The bed/music carry no
-//          information (atmosphere only), so the always-real rule holds.
+//          applied). The packet-type family picks the instrument and a relayed
+//          reception is damped rather than silent (#468).
+//   full — a three-layer soundbed in its own reverb + generative ambient music
+//          (Eno-style, never repeats, and since #496 the harmony drifts too),
+//          with the rx/tx sounds on top. The bed/music carry no information
+//          (atmosphere only), so the always-real rule holds.
 // Everything is synthesized with Web Audio — no audio assets, works offline.
 // The engine degrades to a no-op when Web Audio is unavailable (node tests,
 // old WebViews), mirroring the huntmap stub pattern.
@@ -33,8 +35,8 @@ export function nextSoundMode(mode) {
 }
 
 // RSSI → cue pitch on the HARMONIC SERIES of F2 (87.31 Hz). The generative
-// music plays in F-pentatonic, and overtones of F physically cannot beat
-// against it — that was the fix for the first attempt, a kalimba tuned to G,
+// music plays in F (lydian since #496), and overtones of F physically cannot
+// beat against it — that was the fix for the first attempt, a kalimba tuned to G,
 // which fought the music. Hotter signal = higher harmonic.
 //
 // The rule is "overtone of F2", NOT "pentatonic" (#471). Pentatonic was a
@@ -64,13 +66,80 @@ export function pingGain(rssi, offset = 0) {
   return 0.25 + rssiFrac(rssi, offset) * 0.4
 }
 
-// The gate for reception pings: sound on, heard DIRECTLY (hops === 0 — a
-// relayed packet's RSSI describes the last repeater, not the target), and
-// inside the active filter set — you hear exactly what the map plots.
-export function shouldPing(rec, mode, filterFn, nowMs) {
-  if (mode === 'off') return false
-  if (!rec || rec.hops !== 0) return false
-  return !!filterFn(rec, nowMs)
+// Which cue a reception gets (#468). Everything the app records is audible:
+// nothing in the pipeline may make a reception permanently unhearable as a
+// side effect of something unrelated to the reception itself.
+//
+// Two conditions this deliberately no longer has:
+//
+// - The FILTER. It is a lens on the map, not on what the radio heard, and
+//   narrowing to one target used to silence everything else. There is no
+//   filter argument any more, so no future caller can reintroduce that.
+// - hops === 0. A relayed packet is a real reception of a real transmitter --
+//   the repeater that forwarded it, which this app will happily let you select
+//   as a target. Only the ORIGINATOR's position needs zero hops (AGENTS.md §1).
+//   It is damped rather than dropped, because it reached us through something.
+//
+// A reception with no usable GPS fix is the one carve-out, and it is enforced
+// upstream: shouldCapture refuses it, so it never gets here (#274).
+export function receptionCue(rec, mode) {
+  if (mode === 'off' || !rec) return null
+  return { family: cueFamily(rec.packet_type), damped: rec.hops !== 0 }
+}
+
+// Packet type -> cue family. The type survives even when the sender cannot be
+// named (#454), so the instrument carries WHAT is transmitting even when
+// nothing can say WHO -- which is why identity is not an audio dimension.
+//
+// Families, not one voice per chip: four to six timbres is what anyone tells
+// apart in a 35-95 ms event in a moving car. The grouping follows the measured
+// distribution (#455): the rarer and more informative the type, the more
+// distinctive its voice; the common majority (Response/Request/Path, 134k of
+// the newly captured 204k) shares the driest one or it becomes a drone.
+const CUE_FAMILY_BY_TYPE = {
+  Advert: 'advert',
+  GroupText: 'channel', GroupData: 'channel',
+  TextMessage: 'message',
+  Trace: 'trace',
+}
+export function cueFamily(packetType) {
+  return CUE_FAMILY_BY_TYPE[packetType] || 'network'
+}
+
+// Minimum gap between cues of one family. Bursts still have to coalesce into
+// distinct-but-sane audio; what changed is that the gap is no longer global.
+export const CUE_GAP_MS = 60
+
+// coalesceCue decides whether a cue is played, given when its family last
+// sounded. Pure so the rule can be pinned, because the failure it prevents is
+// invisible in the field: with two thirds of traffic audible, one global
+// timestamp let a relayed cue swallow a zero-hop reception 30 ms behind it --
+// the least important sound eating the most important one, in a hotspot, where
+// it matters most.
+//
+// So: a direct cue is never held by a relayed one, a damped one yields to its
+// own family AND to any direct cue inside the gap, and families do not shadow
+// each other.
+//
+// Direct cues do yield to each other, across families (#470 review). Measured
+// on the ingestor DB over 30 days, 39.2% of consecutive receptions per hunter
+// share a timestamp to the millisecond and the groups run up to 40: a batch of
+// BLE frames handled in one turn carries one rx_at. Without this branch all 40
+// start at the same ac.currentTime and sum into a single loud transient, which
+// is the failure this coalescer exists to prevent, inverted -- the burst eating
+// itself rather than one family eating another. The gap is global here and not
+// per family for the same reason: what sums is the instant, not the voice.
+export function coalesceCue(state, cue, nowMs) {
+  const st = state || {}
+  if (!cue) return { play: false, state: st }
+  if (!cue.damped) {
+    if (nowMs - (st.direct ?? -Infinity) < CUE_GAP_MS) return { play: false, state: st }
+    return { play: true, state: { ...st, [cue.family]: nowMs, direct: nowMs } }
+  }
+  const held = nowMs - (st[cue.family] ?? -Infinity) < CUE_GAP_MS ||
+               nowMs - (st.direct ?? -Infinity) < CUE_GAP_MS
+  if (held) return { play: false, state: st }
+  return { play: true, state: { ...st, [cue.family]: nowMs } }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,30 +147,93 @@ export function shouldPing(rec, mode, filterFn, nowMs) {
 // voice envelopes.
 // ---------------------------------------------------------------------------
 
-const MIN_PING_GAP_MS = 60 // coalesce reception bursts into distinct-but-sane audio
+// Per-family voice (#468). Everything is synthesised -- no assets, works
+// offline -- so an "instrument" is an oscillator shape, an envelope and an
+// optional consonant partial. `hold` and `tail` scale the RSSI-derived length;
+// `partial` is a harmonic of the same fundamental (2 = octave, 3 = twelfth),
+// so an added voice cannot clash with the note it thickens or with the music.
+//
+// These are starting points, to be dialled in by ear in the sound lab the way
+// the mix was (#145, docs/2026-07-16-sound-modes.md). The structure is what
+// this change fixes: prominence runs inverse to how common a family is, so the
+// measured majority (network: Response/Request/Path) stays the driest thing in
+// the mix and an Advert can afford a tail.
+// Dialled in by ear in the lab, 2026-08-25, from the starting points this PR
+// opened with. What the round changed is separation: every family now differs
+// in wave AND in attack, and three of them carry a short noise transient, so
+// the ear reads the type from the first few milliseconds rather than from a
+// tail it may never hear in traffic.
+//
+//   wave        oscillator shape -- the timbre
+//   attack      seconds to full level; 1 ms reads as struck, 20 ms as blown
+//   hold/tail   scale the RSSI-derived length, and the release after it
+//   partial     harmonic added under the fundamental (2 = octave, 3 = twelfth)
+//   noise       a band-passed noise burst in front of the tone, the "strike"
+//
+// Pitch is deliberately not in this table. It carries the signal strength and
+// nothing else, which is the reading the instrument exists for (#468).
+const VOICES = {
+  advert:  { wave: 'sine',     hold: 1.4,  tail: 0.45, gain: 1.1,  partial: 3, partialGain: 0.5,  attack: 0.02,  noise: 0,    noiseLen: 0.01 },
+  channel: { wave: 'triangle', hold: 0.9,  tail: 0.16, gain: 1.0,  partial: 2, partialGain: 0.25, attack: 0.004, noise: 0.25, noiseLen: 0.012 },
+  message: { wave: 'square',   hold: 0.5,  tail: 0.06, gain: 0.8,  partial: 0, partialGain: 0.35, attack: 0.002, noise: 0.15, noiseLen: 0.008 },
+  trace:   { wave: 'sawtooth', hold: 0.7,  tail: 0.2,  gain: 0.85, partial: 2, partialGain: 0.4,  attack: 0.001, noise: 0.1,  noiseLen: 0.006 },
+  network: { wave: 'sine',     hold: 0.25, tail: 0.01, gain: 0.42, partial: 0, partialGain: 0.35, attack: 0.001, noise: 0.05, noiseLen: 0.004 },
+}
+
+// A relayed reception is not a quieter direct one: it is mostly what came back
+// off the repeater. Only 15% of the strike survives; the rest of what you hear
+// is a lowpassed echo, four taps 110 ms apart. Same lab round.
+//
+// Cheaper than it looks -- one delay node with a feedback loop, faded out after
+// `taps` so the loop cannot ring on, and no pitch shift anywhere, so the RSSI
+// reading survives the treatment.
+const DAMP = { hz: 500, gain: 0.5, hold: 0.55, dry: 0.15, wet: 0.9, delayMs: 110, feedback: 0.45, taps: 4, echoHz: 900 }
 
 // Reverb + music + rx mix, dialed in by ear in the sound lab (final round,
 // 2026-07-16): morse-harmonic rx at 50%, music 86% @ 1.7×, reverb 35%/2.8 s.
 const REVERB_WET = 0.35
 const REVERB_SECONDS = 2.8
 const MUSIC_GAIN = 0.86
-const MUSIC_DENSITY = 1.7 // periods divided by this — how often notes fall
+const MUSIC_DENSITY = 1.5 // periods divided by this — how often notes fall
 const RX_GAIN = 0.5       // reception dits, independent of the music/bed level
 const FADE_S = 0.03       // music-bus fade before cutting voices, avoids a click
 
 // Generative music (Eno's Music-for-Airports technique): seven pad voices,
 // each looping ONE note of a calm F-pentatonic set on a mutually prime period.
 // The periods share no common divisor, so the combination never repeats.
-const GEN_NOTES = [174.61, 196.0, 220.0, 261.63, 293.66, 349.23, 440.0] // F3 G3 A3 C4 D4 F4 A4
-const GEN_PERIODS = [19, 23, 29, 31, 37, 41, 47] // seconds, mutually prime
+// F lydian rather than F pentatonic (#496): the pentatonic set is five notes
+// and seven voices, so two voices always doubled and the harmony had nowhere to
+// go. Lydian adds B and E, which is also what makes it drift-able -- there are
+// enough notes that moving one voice changes the colour instead of the chord.
+//
+// The cue pitches are overtones of F2 and stay untouched, so the argument in
+// harmFreq still holds for every one of them; B is the one note in this set
+// that is not in that series, and it is the lydian colour, deliberately.
+const GEN_SCALE = [174.61, 196.0, 220.0, 246.94, 261.63, 293.66, 329.63, 349.23] // F3 G3 A3 B3 C4 D4 E4 F4
+// Three octaves of it. Ten voices out of eight notes would double two of them
+// otherwise, and the low octave is what gives the bed something to sit on.
+const GEN_NOTES = [...GEN_SCALE, ...GEN_SCALE.map((f) => f / 2), ...GEN_SCALE.map((f) => f * 2)]
+const GEN_VOICES = 10
+const GEN_PERIODS = [19, 23, 29, 31, 37, 41, 47, 53, 59, 61] // seconds, mutually prime
+// Every DRIFT_SECONDS one voice moves to another note from the pool. This is
+// what stops the music being the same seven notes an hour in: the combination
+// of periods never repeated, but the material did.
+const DRIFT_SECONDS = 150
+const GEN_PAN_SPREAD = 0.9
+const GEN_PAN_DRIFT = 0.35   // how far a note wanders while it sounds
+const GEN_DUR = [6, 14]      // seconds
+const GEN_GAIN = [0.035, 0.06]
+const GEN_LOWPASS_HZ = 2400
+const GEN_DETUNE = 0.005     // ratio of the second oscillator, the beating
+const GEN_OCTAVE_LEVEL = 0.26
 
 export function createSoundEngine() {
   const AC = typeof AudioContext !== 'undefined' ? AudioContext
     : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null
   // No Web Audio (node tests, unsupported WebView) → inert engine, never throw.
-  if (!AC) return { setMode() {}, ping() {}, txBlip() {}, destroy() {} }
+  if (!AC) return { setMode() {}, cue() {}, txBlip() {}, destroy() {} }
 
-  let ctx = null, mode = 'off', bed = null, lastPingAt = 0
+  let ctx = null, mode = 'off', bed = null, cueState = {}
   let master = null, genTimers = [], genGain = null, activeOscs = []
 
   // Created lazily from the FAB tap (a user gesture, which Web Audio requires).
@@ -243,34 +375,73 @@ export function createSoundEngine() {
   // (pink noise, drifting bandpass). Two independent slow LFOs make it breathe
   // like a place, not hiss like a radio. Deliberately quiet — the real pings
   // must always stand out above it.
+  // The ambient bed (#496), dialled by ear 2026-08-25. Three layers rather than
+  // two, each with its own place in the stereo field and its own very slow pan
+  // drift, feeding a reverb of their own: 8 seconds and darker than the master
+  // one, so the bed sits in a bigger room than the cues do without smearing
+  // them -- nothing but the bed is sent to it.
+  //
+  // The pan periods (0.009-0.021 Hz, i.e. 48-111 s) are deliberately slower
+  // than anyone notices while driving. Nothing here should ever be catchable in
+  // the act of moving; it should only be wider than it was a minute ago.
+  const BED_LAYERS = [
+    { pink: false, type: 'lowpass',  freq: 190,  q: 0.7, gain: 0.055, lfoHz: 0.07, lfoDepth: 0.03,  pan: -0.5, panDepth: 0.8, panHz: 0.013 },
+    { pink: true,  type: 'bandpass', freq: 1100, q: 1.4, gain: 0.020, lfoHz: 0.11, lfoDepth: 0.012, pan: 0.6,  panDepth: 0.9, panHz: 0.021 },
+    { pink: true,  type: 'bandpass', freq: 420,  q: 2.0, gain: 0.014, lfoHz: 0.05, lfoDepth: 0.008, pan: 0,    panDepth: 1.0, panHz: 0.009 },
+  ]
+  const BED_VERB = { wet: 0.35, seconds: 8, decay: 1.8, hz: 1600 }
+
   function startBed() {
     if (bed) return
     const c = ensureCtx()
     const nodes = []
-    const layer = (pink, filterType, freq, gainTarget, lfoHz, lfoDepth) => {
+    const len = Math.floor(c.sampleRate * BED_VERB.seconds)
+    const ir = c.createBuffer(2, len, c.sampleRate)
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch)
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, BED_VERB.decay)
+    }
+    const conv = c.createConvolver()
+    conv.buffer = ir
+    const verbLp = c.createBiquadFilter()
+    verbLp.type = 'lowpass'
+    verbLp.frequency.value = BED_VERB.hz
+    const verbGain = c.createGain()
+    verbGain.gain.value = BED_VERB.wet
+    conv.connect(verbLp).connect(verbGain).connect(c.destination)
+
+    for (const L of BED_LAYERS) {
       const src = c.createBufferSource()
-      src.buffer = noiseBuffer(c, 3, pink)
+      src.buffer = noiseBuffer(c, 3, L.pink)
       src.loop = true
       const filter = c.createBiquadFilter()
-      filter.type = filterType
-      filter.frequency.value = freq
-      if (filterType === 'bandpass') filter.Q.value = 0.7
+      filter.type = L.type
+      filter.frequency.value = L.freq
+      filter.Q.value = L.q
       const gain = c.createGain()
       gain.gain.value = 0
       const lfo = c.createOscillator()
       const lfoGain = c.createGain()
-      lfo.frequency.value = lfoHz
-      lfoGain.gain.value = lfoDepth
+      lfo.frequency.value = L.lfoHz
+      lfoGain.gain.value = L.lfoDepth
       lfo.connect(lfoGain).connect(gain.gain)
-      src.connect(filter).connect(gain).connect(master)
+      const pan = c.createStereoPanner()
+      pan.pan.value = L.pan
+      const panLfo = c.createOscillator()
+      const panGain = c.createGain()
+      panLfo.frequency.value = L.panHz
+      panGain.gain.value = L.panDepth
+      panLfo.connect(panGain).connect(pan.pan)
+      src.connect(filter).connect(gain).connect(pan)
+      pan.connect(master)
+      pan.connect(conv)
       src.start()
       lfo.start()
+      panLfo.start()
       // Fade in over a couple of seconds — no hard audio edge on mode flip.
-      gain.gain.linearRampToValueAtTime(gainTarget, c.currentTime + 2)
-      nodes.push({ src, gain, lfo })
+      gain.gain.linearRampToValueAtTime(L.gain, c.currentTime + 2)
+      nodes.push({ src, gain, lfo, panLfo })
     }
-    layer(false, 'lowpass', 190, 0.05, 0.07, 0.02)   // distant surf swell
-    layer(true, 'bandpass', 1100, 0.016, 0.11, 0.007) // soft moving air
     bed = nodes
   }
 
@@ -280,8 +451,14 @@ export function createSoundEngine() {
   // pocket alongside BLE/GPS/MQTT — real cost for something that carries no
   // information by design. A single held tone (one oscillator, one LFO) reads
   // as "parked, not dead" for a fraction of the resource cost.
-  const BG_TONE_HZ = 130.81 // C3 — sits below the music's own F-pentatonic register
-  const BG_TONE_GAIN = 0.025
+  // Dialled 2026-08-25 (#496). A single sine read as a test tone next to a bed
+  // with space in it; this is a B3 with two partials and a slow breath, which
+  // reads as the same place with the lights off. Still cheap next to the bed and
+  // ten pad voices it replaces: three oscillators and two LFOs against three
+  // noise loops, six LFOs and up to thirty pad oscillators.
+  const BG = { hz: 246, gain: 0.045, wave: 'square', lowpassHz: 5300,
+    partials: [[1, 1], [2, 0.3], [3, 0.15]], swellHz: 0.01, swellDepth: 0.3,
+    pulseHz: 1.2, pulseDepth: 0.55 }
   let bgAmbience = null
   function startBgAmbience() {
     if (bgAmbience) return
@@ -294,25 +471,48 @@ export function createSoundEngine() {
     // the page is hidden. stopBgAmbience()'s ctx.currentTime + 0.4 is exposed
     // to the same frozen clock.
     if (!isRunning()) return
-    const osc = c.createOscillator()
     const gain = c.createGain()
+    gain.gain.value = 0
+    const lp = c.createBiquadFilter()
+    lp.type = 'lowpass'
+    lp.frequency.value = BG.lowpassHz
+    gain.connect(lp).connect(master)
+    const oscs = []
+    for (const [mult, level] of BG.partials) {
+      const o = c.createOscillator()
+      const og = c.createGain()
+      o.type = BG.wave
+      o.frequency.value = BG.hz * mult
+      og.gain.value = level
+      o.connect(og).connect(gain)
+      o.start()
+      oscs.push(o)
+    }
+    // Two modulators on the same gain: a very slow swell (100 s) and a breath
+    // near 1 Hz. The swell is the room, the breath is what says the app is
+    // still awake in your pocket.
     const lfo = c.createOscillator()
     const lfoGain = c.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = BG_TONE_HZ
-    gain.gain.value = 0
-    lfo.frequency.value = 0.08
-    lfoGain.gain.value = BG_TONE_GAIN * 0.6
+    lfo.frequency.value = BG.swellHz
+    lfoGain.gain.value = BG.gain * BG.swellDepth
     lfo.connect(lfoGain).connect(gain.gain)
-    osc.connect(gain).connect(master)
-    osc.start()
+    const pulse = c.createOscillator()
+    const pulseGain = c.createGain()
+    pulse.frequency.value = BG.pulseHz
+    pulseGain.gain.value = BG.gain * BG.pulseDepth
+    pulse.connect(pulseGain).connect(gain.gain)
     lfo.start()
-    gain.gain.linearRampToValueAtTime(BG_TONE_GAIN, c.currentTime + 1.5)
-    bgAmbience = { osc, gain, lfo }
+    pulse.start()
+    gain.gain.linearRampToValueAtTime(BG.gain, c.currentTime + 1.5)
+    bgAmbience = { oscs, gain, lfo, pulse }
   }
   function stopBgAmbience() {
     if (!bgAmbience) return
-    const { osc, gain, lfo } = bgAmbience
+    const { oscs, gain, lfo, pulse } = bgAmbience
+    // Every partial and both modulators, or the tone survives foregrounding.
+    const stopAll = () => {
+      try { for (const o of oscs) o.stop(); lfo.stop(); pulse.stop() } catch (_) {}
+    }
     bgAmbience = null
     try {
       const now = ctx.currentTime
@@ -325,19 +525,22 @@ export function createSoundEngine() {
       gain.gain.cancelScheduledValues(now)
       gain.gain.setValueAtTime(gain.gain.value, now)
       gain.gain.linearRampToValueAtTime(0, now + 0.4)
-      setTimeout(() => { try { osc.stop(); lfo.stop() } catch (_) {} }, 500)
-    } catch (_) { try { osc.stop(); lfo.stop() } catch (_) {} }
+      setTimeout(stopAll, 500)
+    } catch (_) { stopAll() }
   }
 
   function stopBed() {
     if (!bed) return
     const nodes = bed
     bed = null
-    for (const { src, gain, lfo } of nodes) {
+    // panLfo as well as lfo (#496): an LFO nobody stops keeps a node graph alive
+    // for the rest of the session, and there are now two per layer.
+    for (const { src, gain, lfo, panLfo } of nodes) {
+      const stopAll = () => { try { src.stop(); lfo.stop(); if (panLfo) panLfo.stop() } catch (_) {} }
       try {
         gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6)
-        setTimeout(() => { try { src.stop(); lfo.stop() } catch (_) {} }, 700)
-      } catch (_) { try { src.stop(); lfo.stop() } catch (_) {} }
+        setTimeout(stopAll, 700)
+      } catch (_) { stopAll() }
     }
   }
 
@@ -346,19 +549,30 @@ export function createSoundEngine() {
   function genNote(f, pan) {
     if (!isRunning()) return
     const c = ctx
-    const t = c.currentTime, dur = 7 + Math.random() * 3, g = 0.05 + Math.random() * 0.02
+    const t = c.currentTime
+    const dur = GEN_DUR[0] + Math.random() * (GEN_DUR[1] - GEN_DUR[0])
+    const g = GEN_GAIN[0] + Math.random() * (GEN_GAIN[1] - GEN_GAIN[0])
     const out = c.createGain()
     out.gain.setValueAtTime(0, t)
     out.gain.linearRampToValueAtTime(g, t + dur * 0.35)
     out.gain.linearRampToValueAtTime(0, t + dur)
     const lp = c.createBiquadFilter()
     lp.type = 'lowpass'
-    lp.frequency.value = 1800
+    lp.frequency.value = GEN_LOWPASS_HZ
     let tail = out
-    if (c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = pan; out.connect(p); tail = p }
+    if (c.createStereoPanner) {
+      const p = c.createStereoPanner()
+      p.pan.value = pan
+      // The note wanders while it sounds, over its whole 6-14 s: slow enough
+      // that it reads as space rather than as movement.
+      p.pan.linearRampToValueAtTime(
+        Math.max(-1, Math.min(1, pan + (Math.random() * 2 - 1) * GEN_PAN_DRIFT)), t + dur)
+      out.connect(p)
+      tail = p
+    }
     tail.connect(lp)
     lp.connect(genGain)
-    for (const [mult, level] of [[1, 1], [1.003, 0.7], [2, 0.12]]) {
+    for (const [mult, level] of [[1, 1], [1 + GEN_DETUNE, 0.7], [2, GEN_OCTAVE_LEVEL]]) {
       const osc = c.createOscillator()
       const og = c.createGain()
       osc.type = 'sine'
@@ -388,17 +602,30 @@ export function createSoundEngine() {
     // avoid a click, so a later re-entry has to bring it back up.
     genGain.gain.cancelScheduledValues(c.currentTime)
     genGain.gain.setValueAtTime(MUSIC_GAIN, c.currentTime)
-    GEN_NOTES.forEach((f, i) => {
-      const pan = -0.6 + (i / (GEN_NOTES.length - 1)) * 1.2
-      const period = (GEN_PERIODS[i] / MUSIC_DENSITY) * 1000
+    // The voices hold their own note, so the drift timer below can move one
+    // without disturbing the others' phase.
+    const voices = []
+    for (let i = 0; i < GEN_VOICES; i++) {
+      voices.push({
+        f: GEN_NOTES[i % GEN_NOTES.length],
+        pan: -GEN_PAN_SPREAD + (i / (GEN_VOICES - 1)) * GEN_PAN_SPREAD * 2,
+      })
+    }
+    voices.forEach((v, i) => {
+      const period = (GEN_PERIODS[i % GEN_PERIODS.length] / MUSIC_DENSITY) * 1000
       const fire = () => {
         // Only fire if context is running (not suspended/interrupted)
-        if (ctx && !['suspended', 'interrupted'].includes(ctx.state)) genNote(f, pan)
+        if (ctx && !['suspended', 'interrupted'].includes(ctx.state)) genNote(v.f, v.pan)
       }
       // random phase start so every session begins differently
       const t0 = setTimeout(() => { fire(); genTimers.push(setInterval(fire, period)) }, Math.random() * period)
       genTimers.push(t0)
     })
+    // Harmony drift. Kept in genTimers so stopMusic() clears it with the rest.
+    genTimers.push(setInterval(() => {
+      const v = voices[Math.floor(Math.random() * voices.length)]
+      v.f = GEN_NOTES[Math.floor(Math.random() * GEN_NOTES.length)]
+    }, DRIFT_SECONDS * 1000))
   }
 
   function stopMusic() {
@@ -434,32 +661,108 @@ export function createSoundEngine() {
     if (mode === 'full' && !document.hidden) { startBed(); startMusic() }
   }
 
-  // Morse dit per real zero-hop reception (#145 sound lab winner, round 6):
-  // a tight CW dit — 4 ms attack, 35..95 ms hold, 12 ms release — pitched on
-  // the F harmonic series (harmFreq), so it locks into the generative music
-  // instead of clashing with it. Hotter = higher harmonic, longer dit, louder.
-  function ping(rssi, offset = 0) {
-    if (mode === 'off') return
-    const now = Date.now()
-    if (now - lastPingAt < MIN_PING_GAP_MS) return
-    lastPingAt = now
-    const c = ensureCtx()
+  // One cue per recorded reception (#468). The dit from #145's sound lab is
+  // still the shape -- a tight CW attack, RSSI on the F harmonic series, hotter
+  // = higher/longer/louder -- but the family chooses the instrument and a
+  // relayed reception is damped rather than dropped.
+  //
+  // The caller decides WHETHER (receptionCue) and the coalescer decides whether
+  // this one survives its burst; this function only plays what it is handed.
+  function cue(c, rssi, offset = 0) {
+    if (mode === 'off' || !c) return
+    const { play, state } = coalesceCue(cueState, c, Date.now())
+    cueState = state
+    if (!play) return
+    const ac = ensureCtx()
     if (!isRunning()) return
+    const v = VOICES[c.family] || VOICES.network
     const f = harmFreq(rssi, offset)
-    const g = pingGain(rssi, offset) * RX_GAIN
-    const len = 0.035 + rssiFrac(rssi, offset) * 0.06
-    const t = c.currentTime
-    const osc = c.createOscillator()
-    const og = c.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = f
+    const frac = rssiFrac(rssi, offset)
+    const g = pingGain(rssi, offset) * RX_GAIN * v.gain * (c.damped ? DAMP.gain : 1)
+    const len = (0.035 + frac * 0.06) * v.hold * (c.damped ? DAMP.hold : 1)
+    const t = ac.currentTime
+
+    // One gain stage for the whole cue, so a partial cannot double the level.
+    const og = ac.createGain()
     og.gain.setValueAtTime(0, t)
-    og.gain.linearRampToValueAtTime(g, t + 0.004)
+    og.gain.linearRampToValueAtTime(g, t + v.attack)
     og.gain.setValueAtTime(g, t + len)
-    og.gain.linearRampToValueAtTime(0.0001, t + len + 0.012)
-    osc.connect(og).connect(master)
-    osc.start(t)
-    osc.stop(t + len + 0.04)
+    og.gain.linearRampToValueAtTime(0.0001, t + len + v.tail)
+
+    // Where anything else this cue adds has to land. On a relayed reception that
+    // is the damped chain, not the master: a bright strike in front of an echo
+    // reads as a direct reception with something odd after it.
+    let sink = master
+    if (c.damped) {
+      const lp = ac.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.value = DAMP.hz
+      og.connect(lp)
+      // What is left of the strike itself.
+      const dry = ac.createGain()
+      dry.gain.value = DAMP.dry
+      lp.connect(dry).connect(master)
+      // And what came back off the repeater. The feedback loop is faded rather
+      // than left to decay on its own: at 0.45 it is still audible after a
+      // second, which would smear into the next reception in a hotspot.
+      const delay = ac.createDelay(2)
+      delay.delayTime.value = DAMP.delayMs / 1000
+      const fb = ac.createGain()
+      fb.gain.value = DAMP.feedback
+      const eq = ac.createBiquadFilter()
+      eq.type = 'lowpass'
+      eq.frequency.value = DAMP.echoHz
+      const wet = ac.createGain()
+      wet.gain.value = DAMP.wet
+      lp.connect(delay)
+      delay.connect(eq).connect(fb).connect(delay)
+      delay.connect(wet).connect(master)
+      const life = (DAMP.delayMs / 1000) * DAMP.taps
+      fb.gain.setValueAtTime(DAMP.feedback, t + life)
+      fb.gain.linearRampToValueAtTime(0, t + life + 0.15)
+      sink = lp
+    } else {
+      og.connect(master)
+    }
+
+    // The strike: a few milliseconds of band-passed noise in front of the tone.
+    // It is what separates a struck voice from a blown one at the moment the
+    // cue starts, which is the only part of a cue a busy minute leaves room for.
+    if (v.noise > 0) {
+      const n = Math.floor(ac.sampleRate * v.noiseLen)
+      const buf = ac.createBuffer(1, n, ac.sampleRate)
+      const ch = buf.getChannelData(0)
+      for (let k = 0; k < n; k++) ch[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / n, 3)
+      const sn = ac.createBufferSource()
+      sn.buffer = buf
+      const ng = ac.createGain()
+      ng.gain.value = g * v.noise
+      const nf = ac.createBiquadFilter()
+      nf.type = 'bandpass'
+      nf.frequency.value = f * 2
+      nf.Q.value = 0.7
+      sn.connect(nf).connect(ng).connect(sink)
+      sn.start(t)
+    }
+
+    const stop = t + len + v.tail + 0.04
+    const voices = [f]
+    if (v.partial) voices.push(f * v.partial)
+    for (let i = 0; i < voices.length; i++) {
+      const osc = ac.createOscillator()
+      osc.type = v.wave
+      osc.frequency.value = voices[i]
+      // The partial rides under the fundamental, or the bell reads as a
+      // different (higher) note instead of a colour on this one.
+      if (i === 0) osc.connect(og)
+      else {
+        const pg = ac.createGain()
+        pg.gain.value = v.partialGain
+        osc.connect(pg).connect(og)
+      }
+      osc.start(t)
+      osc.stop(stop)
+    }
   }
 
   // Transmit-side cue (#145 addendum): the audio twin of the Discover FAB's
@@ -530,5 +833,5 @@ export function createSoundEngine() {
     if (ctx) { try { ctx.close() } catch (_) {} ctx = null; master = null; genGain = null }
   }
 
-  return { setMode, ping, txBlip, destroy }
+  return { setMode, cue, txBlip, destroy }
 }

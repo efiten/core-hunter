@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createSoundEngine } from '../sound.js'
 
+// A plain zero-hop cue: these tests are about the engine's clock and
+// lifecycle, not about which instrument plays (#468).
+const DIRECT = { family: 'network', damped: false }
+
 // The engine was entirely untested: vitest runs in node, so `AudioContext` is
 // undefined and createSoundEngine() returns its no-op stub — every real branch
 // executed zero times. That is why three lifecycle defects shipped. A minimal
@@ -19,13 +23,21 @@ function fakeParam(value = 0) {
 
 function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
   const oscillators = []
-  const node = (extra = {}) => ({ connect(t) { return t }, ...extra })
+  // `outs` makes the routing observable: some rules in sound.js are about where
+  // a voice is sent, not whether it sounds, and a fake that forgets its wiring
+  // cannot tell those apart.
+  const node = (extra = {}) => ({ outs: [], connect(t) { this.outs.push(t); return t }, ...extra })
   const ctx = {
     state,
     currentTime: 0,
     sampleRate,
     destination: node(),
     resumeCalls: 0,
+    delays: 0,
+    bufferSources: 0,
+    sources: [],
+    panners: 0,
+    convolvers: 0,
     oscillators,
     // Autoplay policy: before a user gesture, resume() does not actually start
     // the clock. Modelling that is the point -- a fake that always succeeds
@@ -44,10 +56,11 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     close() {},
     createGain: () => node({ gain: fakeParam(1) }),
     createBiquadFilter: () => node({ type: '', frequency: fakeParam(0), Q: fakeParam(0) }),
-    createConvolver: () => node({ buffer: null }),
-    createStereoPanner: () => node({ pan: fakeParam(0) }),
+    createConvolver: () => { ctx.convolvers++; return node({ buffer: null }) },
+    createStereoPanner: () => { ctx.panners++; return node({ pan: fakeParam(0) }) },
     createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
-    createBufferSource: () => node({ buffer: null, loop: false, start() {}, stop() {} }),
+    createBufferSource: () => { ctx.bufferSources++; const n = node({ buffer: null, loop: false, start() {}, stop() {} }); ctx.sources.push(n); return n },
+    createDelay: () => { ctx.delays++; return node({ delayTime: fakeParam(0) }) },
     createOscillator() {
       const o = node({
         type: 'sine', frequency: fakeParam(0),
@@ -92,7 +105,7 @@ describe('the engine is reachable at all', () => {
   it('builds a real engine once AudioContext exists, not the no-op stub', () => {
     const e = createSoundEngine()
     e.setMode('rxtx')
-    e.ping(-80)
+    e.cue(DIRECT, -80)
     expect(ctx.oscillators.length).toBeGreaterThan(0)
   })
 })
@@ -137,7 +150,7 @@ describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
     const e = createSoundEngine()
     e.setMode('rxtx')
     ctx.oscillators.length = 0
-    for (let i = 0; i < 50; i++) { vi.advanceTimersByTime(100); e.ping(-80) }
+    for (let i = 0; i < 50; i++) { vi.advanceTimersByTime(100); e.cue(DIRECT, -80) }
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
   })
 
@@ -155,7 +168,7 @@ describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
     const e = createSoundEngine()
     e.setMode('rxtx')
     ctx.oscillators.length = 0
-    e.ping(-80)
+    e.cue(DIRECT, -80)
     expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
   })
 
@@ -163,7 +176,7 @@ describe('rx/tx cues never schedule against a suspended clock (#145)', () => {
     ctx.state = 'suspended'; ctx.gestureGiven = false
     const e = createSoundEngine()
     e.setMode('rxtx')
-    for (let i = 0; i < 40; i++) { vi.advanceTimersByTime(100); e.ping(-80) }
+    for (let i = 0; i < 40; i++) { vi.advanceTimersByTime(100); e.cue(DIRECT, -80) }
     const pointer = listeners.filter((l) => l.type === 'pointerdown')
     expect(pointer).toHaveLength(1)
   })
@@ -290,10 +303,11 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     e.setMode('full')
     ctx.oscillators.length = 0
     await fireVisibility(true)
-    // The ambience is one held tone + its own LFO (2 oscillators) plus the
-    // backgroundCue's own two notes (2 more) -- not the bed's two noise
-    // sources and two LFOs (4), which would make this 6+.
-    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(4)
+    // The ambience is three partials + its swell LFO + its breath LFO (5),
+    // plus the backgroundCue's own two notes (2) -- not the bed, whose three
+    // noise layers bring six LFOs of their own (#496). The point of the count
+    // is still that the bed is NOT what is playing while hidden.
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(7)
   })
 
   it('stops the ambience tone and restarts the normal bed on return', async () => {
@@ -301,12 +315,12 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     const e = createSoundEngine()
     e.setMode('full')
     await fireVisibility(true)
-    // Identify the ambience by its own pitch (C3). Slicing every oscillator
-    // and asserting `some(stopped)` passed with the fix deleted: the slice
-    // includes the two cue tones, and the fake marks an oscillator stopped as
-    // soon as osc.stop(when) is called at creation -- so it was already true
-    // before stopBgAmbience() ran at all.
-    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 130.81) < 0.01)
+    // Identify the ambience by its own fundamental (B3, 246 Hz since #496).
+    // Slicing every oscillator and asserting `some(stopped)` passed with the
+    // fix deleted: the slice includes the two cue tones, and the fake marks an
+    // oscillator stopped as soon as osc.stop(when) is called at creation -- so
+    // it was already true before stopBgAmbience() ran at all.
+    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 246) < 0.01)
     expect(tone).toBeDefined()
     expect(tone.stopped).toBe(false)
 
@@ -377,7 +391,7 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     ctx.state = 'running'; ctx.gestureGiven = true
     ctx.oscillators.length = 0
     await fireVisibility(true)   // now it genuinely should play
-    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 130.81) < 0.01)
+    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 246) < 0.01)
     expect(tone).toBeDefined()
     expect(tone.started).toBe(true)
   })
@@ -391,7 +405,7 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     e.setMode('rxtx')
     await fireVisibility(true)
     ctx.oscillators.length = 0
-    e.ping(-80)
+    e.cue(DIRECT, -80)
     expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
   })
 
@@ -408,5 +422,156 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     await fireVisibility(true)
     await fireVisibility(false)
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
+  })
+})
+
+// Dialled in by ear in the sound lab, 2026-08-25. The point of the profile is
+// that the families read apart at a glance-equivalent -- one strike and you
+// know what kind of packet it was -- and that a relayed reception is not a
+// quieter version of a direct one but a different event: mostly what came back
+// off the repeater rather than the strike itself.
+//
+// Pitch is not part of any of it. It carries the signal strength, and that is
+// the reading the whole instrument exists for (#468).
+describe('the voice profile is audible in what the engine builds', () => {
+  const DAMPED = { family: 'network', damped: true }
+
+  it('routes a relayed cue through a delay line and a direct one straight out', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    e.cue(DIRECT, -80)
+    expect(ctx.delays, 'a direct cue has no echo').toBe(0)
+    vi.advanceTimersByTime(100)
+    e.cue(DAMPED, -80)
+    expect(ctx.delays, 'a relayed cue is heard through its echo').toBe(1)
+  })
+
+  it('gives a family with a transient its noise burst, and one without none', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const before = ctx.bufferSources
+    e.cue({ family: 'message', damped: false }, -80)   // noise > 0 in the profile
+    const withClick = ctx.bufferSources - before
+    vi.advanceTimersByTime(100)
+    e.cue({ family: 'advert', damped: false }, -80)    // noise === 0
+    expect(withClick, 'the message voice is struck').toBe(1)
+    expect(ctx.bufferSources - before - withClick, 'the advert voice is not').toBe(0)
+  })
+
+  it('keeps every family distinguishable by wave and envelope, not by pitch', () => {
+    // A profile where two families share a wave AND an envelope is one where
+    // the ear cannot tell them apart, which is the whole point of #468. Pitch
+    // is excluded on purpose: it is the RSSI reading.
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const shapes = new Set()
+    for (const family of ['advert', 'channel', 'message', 'trace', 'network']) {
+      const before = ctx.oscillators.length
+      e.cue({ family, damped: false }, -80)
+      const osc = ctx.oscillators.slice(before)
+      expect(osc.length, `${family} sounds at all`).toBeGreaterThan(0)
+      shapes.add(`${osc[0].type}/${osc.length}`)
+      vi.advanceTimersByTime(100)
+    }
+    expect(shapes.size, 'families that sound identical').toBeGreaterThanOrEqual(4)
+  })
+})
+
+// The strike is part of "heard through something" too. Routed straight to the
+// master it stayed bright on a relayed reception, which put a crisp transient
+// in front of an echo that is meant to sound like it came off a repeater --
+// the one moment of the cue a busy minute actually leaves room for.
+describe('a relayed strike is damped with the rest of the cue', () => {
+  // Walks the graph from `start` and reports whether anything on the way is the
+  // relayed lowpass. Depth-limited: the master bus feeds a reverb loop.
+  const reaches = (start, hz, depth = 6) => {
+    if (depth === 0) return false
+    for (const out of start.outs || []) {
+      if (out.frequency && out.frequency.value === hz) return true
+      if (reaches(out, hz, depth - 1)) return true
+    }
+    return false
+  }
+
+  it('sends a relayed noise burst through the same lowpass as its tone', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const before = ctx.sources.length
+    e.cue({ family: 'message', damped: true }, -80)
+    const burst = ctx.sources[before]
+    expect(burst, 'the message voice is struck').toBeTruthy()
+    expect(reaches(burst, 500), 'the strike goes through the relayed lowpass').toBe(true)
+  })
+
+  it('leaves a direct strike alone', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const before = ctx.sources.length
+    e.cue({ family: 'message', damped: false }, -80)
+    expect(reaches(ctx.sources[before], 500), 'a direct strike is not damped').toBe(false)
+  })
+})
+
+// The ambient layer of `full` (#496), dialled by ear 2026-08-25. Three things
+// changed and each one is a resource the engine has to clean up again, which is
+// the half of it that is not a matter of taste.
+describe('the ambient layer has depth, and gives it all back', () => {
+  it('builds three bed layers, each with a pan LFO, into a reverb of their own', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    const convolvers = ctx.convolvers
+    e.setMode('full')
+    // 3 noise loops, and 2 oscillators per layer (swell + pan).
+    expect(ctx.bufferSources, 'one noise loop per bed layer').toBe(3)
+    expect(ctx.panners, 'one panner per bed layer').toBe(3)
+    expect(ctx.oscillators.filter((o) => o.started).length,
+      'a swell and a pan LFO per layer').toBeGreaterThanOrEqual(6)
+    // The master bus builds one convolver in ensureCtx; the bed adds its own.
+    expect(ctx.convolvers - convolvers, 'the bed has a reverb the cues do not share').toBe(2)
+  })
+
+  it('stops every bed oscillator when the bed stops, pan LFOs included', () => {
+    // An LFO nobody stops runs for the rest of the session. There are two per
+    // layer now, and the second one was added by this change, so "the bed is
+    // stopped" is no longer the same statement as "its swell LFO is stopped".
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    const bedOscs = ctx.oscillators.filter((o) => o.started)
+    e.setMode('off')
+    vi.advanceTimersByTime(1000)
+    expect(bedOscs.every((o) => o.stopped), 'an LFO outlived the bed').toBe(true)
+  })
+
+  it('gives the music more voices than it has notes in one octave, and drifts them', () => {
+    // Ten voices out of an eight-note scale is why the pool spans octaves: with
+    // one octave two voices would sound the same note for the whole session.
+    // The drift timer is what stops the set being fixed at all.
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    vi.advanceTimersByTime(120_000)   // every voice has fired by now
+    const pitches = new Set(ctx.oscillators.filter((o) => o.started).map((o) => Math.round(o.frequency.value)))
+    expect(pitches.size, 'the music repeats one handful of notes').toBeGreaterThan(8)
+    const before = new Set(pitches)
+    vi.advanceTimersByTime(600_000)   // four drift intervals
+    const after = new Set(ctx.oscillators.filter((o) => o.started).map((o) => Math.round(o.frequency.value)))
+    expect([...after].some((f) => !before.has(f)), 'the harmony never moved').toBe(true)
+  })
+
+  it('parks on a chord with a breath, not on one held sine', async () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    ctx.oscillators.length = 0
+    await fireVisibility(true)
+    const started = ctx.oscillators.filter((o) => o.started)
+    const fundamental = started.filter((o) => Math.abs(o.frequency.value - 246) < 0.01)
+    const partials = started.filter((o) => [492, 738].some((f) => Math.abs(o.frequency.value - f) < 0.01))
+    expect(fundamental, 'the parked tone itself').toHaveLength(1)
+    expect(partials, 'the two partials that make it a chord').toHaveLength(2)
+    // The breath is a sub-audio oscillator; the swell is slower still.
+    const mods = started.filter((o) => o.frequency.value > 0 && o.frequency.value < 5)
+    expect(mods.length, 'swell and breath').toBe(2)
   })
 })
