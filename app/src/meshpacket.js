@@ -82,6 +82,24 @@ export function undecodableReception() {
   return { packetType: 'Unknown', hops: 0, isDirect: false, sender: NO_SENDER(), channel: null, text: null }
 }
 
+// heardUsSnr reads, off a decoded TRACE packet, the SNR at which the first hop
+// heard the transmission it forwarded. For a trace WE sent, that first hop is
+// the node we addressed and the transmission is ours — so this is the reciprocal
+// of every other measurement the app makes: how well that node hears us, from
+// the position we were standing in, at the same moment (#482).
+//
+// The firmware writes it as a signed byte of SNR x 4 before retransmitting
+// (src/Mesh.cpp); the decoder converts it back to dB.
+//
+// It is only meaningful on a trace we provoked. On an overheard one the value
+// describes how some other node heard some other transmitter, which is why the
+// caller attaches it alongside the tag match and not from classifyReception.
+export function heardUsSnr(decoded) {
+  const d = decoded && decoded.payload && decoded.payload.decoded
+  const v = d && Array.isArray(d.snrValues) ? d.snrValues[0] : undefined
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
 export function classifyReception(decoded, channelNameFor = () => null) {
   const pt = decoded.payloadType
   const hops = decoded.pathLength || 0
