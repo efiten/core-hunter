@@ -30,7 +30,8 @@ import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
+import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
@@ -86,6 +87,39 @@ function saveSoundMode(mode) {
   try { localStorage.setItem('core-hunter-sound', mode) } catch (_) {}
 }
 
+// Theme preference (#563): system / dark / light. Persisted like the two above;
+// loader and validation live in settings.js, the resolution rule in theme.js.
+function saveThemePref(pref) {
+  try { localStorage.setItem('core-hunter-theme', pref) } catch (_) {}
+}
+
+// The device's own setting, as one query reused by both readers below. Absent
+// where matchMedia is (jsdom, an old WebView); resolveTheme reads the
+// undefined that leaves as "unknown" and paints dark, which is what
+// index.html already shows.
+const darkQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-color-scheme: dark)') : null
+
+// applyTheme paints the resolved theme and lets the basemap follow. Called on
+// boot, on a choice, and when the device flips while the preference is system.
+function applyTheme() {
+  document.documentElement.dataset.theme = resolveTheme(state.themePref, darkQuery ? darkQuery.matches : undefined)
+  if (state.map) state.map.applyBasemap()
+}
+
+// Marks the chosen segment. The sheet is rebuilt on open, so this runs both
+// there and after a click.
+function syncThemeSeg() {
+  const seg = el('ss-theme')
+  if (!seg) return
+  for (const b of seg.querySelectorAll('[data-theme-pref]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.themePref === state.themePref))
+  }
+}
+
+// Labels are UI copy, not the stored values, so they live here rather than in
+// theme.js, which the storage layer imports.
+const THEME_LABELS = { system: 'System', dark: 'Dark', light: 'Light' }
+
 // "What's new" (#284, #422). The entry id acknowledged *before* this session,
 // read once at boot: opening the panel acknowledges the newest entry, and this
 // has to keep pointing at where the reader was so the panel can still mark
@@ -132,6 +166,7 @@ const state = {
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
   soundMode: loadSoundMode(),
+  themePref: loadThemePref(),
   // Unread release notes (#421). Lives on state so the settings button's dot
   // stays a question about state, not about storage: refreshWhatsNewBadge is
   // the one place that re-reads the acknowledgement and writes it here.
@@ -1589,14 +1624,6 @@ function buildSettingsSheet() {
           <p id="ss-acc-msg" class="ss-acc-msg" hidden></p>
         </div>
       </div>
-      <div class="ss-version-section">
-        <h3>Version</h3>
-        <div class="ss-grp ss-version-row">
-          <span class="ss-version">v${__APP_VERSION__}</span>
-          <span id="ss-update-status" class="ss-update-status" hidden></span>
-          <button id="ss-reload-btn" class="ss-reload" type="button">Reload app</button>
-        </div>
-      </div>
       </div>
       <div class="ss-panel" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings" hidden>
       <div class="ss-radio-section">
@@ -1611,10 +1638,20 @@ function buildSettingsSheet() {
           </select>
         </label>
       </div>
-      <label class="ss-theme-row">
-        <input type="checkbox" id="ss-theme" />
-        Light theme
-      </label>
+      <div class="ss-theme-row">
+        <span>Theme</span>
+        <div id="ss-theme" class="ss-seg" role="group" aria-label="Theme">
+          ${THEME_PREFS.map((p) => `<button type="button" data-theme-pref="${p}" aria-pressed="false">${THEME_LABELS[p]}</button>`).join('')}
+        </div>
+      </div>
+      <div class="ss-version-section">
+        <h3>Version</h3>
+        <div class="ss-grp ss-version-row">
+          <span class="ss-version">v${__APP_VERSION__}</span>
+          <span id="ss-update-status" class="ss-update-status" hidden></span>
+          <button id="ss-reload-btn" class="ss-reload" type="button">Reload app</button>
+        </div>
+      </div>
       </div>
       <div class="ss-panel" id="ss-panel-whatsnew" role="tabpanel" aria-labelledby="ss-tab-whatsnew" hidden>
         <div id="ss-whatsnew" class="ss-whatsnew-panel"></div>
@@ -1713,12 +1750,15 @@ function buildSettingsSheet() {
     refreshSettingsIndicator()
   })
 
-  const chk = el('ss-theme')
-  chk.checked = document.documentElement.dataset.theme === 'light'
-  chk.addEventListener('change', () => {
-    const theme = chk.checked ? 'light' : 'dark'
-    document.documentElement.dataset.theme = theme
-    if (state.map) state.map.applyBasemap()
+  const seg = el('ss-theme')
+  syncThemeSeg()
+  seg.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-theme-pref]')
+    if (!btn) return
+    state.themePref = btn.dataset.themePref
+    saveThemePref(state.themePref)
+    applyTheme()
+    syncThemeSeg()
   })
 
 
@@ -2455,6 +2495,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
   initDecoder((getConfig() || {}).channelKeys, (getConfig() || {}).channels)
   state.wakeLock = createWakeLock()
+
+  // Theme before the map (#563): createHuntMap reads --ch-basemap off the
+  // resolved theme, so painting it afterwards would build the basemap from
+  // index.html's hardcoded dark and then need a restyle. The inline script in
+  // index.html has already set data-theme to avoid a flash; this agrees with
+  // it and takes over the live updates.
+  applyTheme()
+  // A device that flips while the preference is system has to reach the app:
+  // 'system' means follow, not "copy once at boot".
+  if (darkQuery) darkQuery.addEventListener('change', () => { if (state.themePref === 'system') applyTheme() })
 
   // Initialise map
   state.map = createHuntMap('map')

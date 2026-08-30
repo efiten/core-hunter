@@ -1,5 +1,6 @@
 import { SOUND_MODES } from './sound.js'
 import { VIEW_STATES, viewKey } from './maplayers.js'
+import { THEME_PREFS } from './theme.js'
 
 // readStored returns the raw stored value for key, or null when it is absent
 // or storage is unavailable. Reading localStorage throws SecurityError where
@@ -32,6 +33,16 @@ export function loadSoundMode() {
   // its prototype's keys, so a stored 'toString' would be returned as a mode.
   if (Object.hasOwn(SOUND_MODE_MIGRATION, v)) return SOUND_MODE_MIGRATION[v]
   return SOUND_MODES.includes(v) ? v : 'off'
+}
+
+// Theme preference (#563): 'system' / 'dark' / 'light'. Before this the theme
+// was not stored at all, so a chosen light theme lasted until the next reload
+// and index.html's hardcoded dark won again. An unknown or absent value is
+// 'system', which is what resolveTheme() treats it as anyway; validating here
+// as well is what lets the control show which of the three is selected.
+export function loadThemePref() {
+  const v = readStored('core-hunter-theme')
+  return THEME_PREFS.includes(v) ? v : 'system'
 }
 
 // Index into VIEW_STATES for the persisted view (#258). No/corrupt stored
