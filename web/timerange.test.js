@@ -292,22 +292,19 @@ describe('rangeForRole — an empty range is not a state below member (#492)', (
   })
 })
 
-describe('rangeLabelFor — the clamp note names the layer it applies to (#492)', () => {
+describe('rangeLabelFor — the clamp note names what it applies to (#492, #493)', () => {
   const NOW = Date.parse('2026-07-22T12:00:00Z')
-  // Since #466 the hex layer is NOT windowed for a guest, only /api/points is
-  // (applyGuestWindowCap). A flat "(24 h max)" described the layer the visitor
-  // is usually not looking at: the map opens on hex.
-  it('says nothing extra on the hex layer, whatever the range', () => {
-    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: true, showsPoints: false })).toBe('Last 30 days')
-  })
-  it('names the points layer when that layer is on and the range exceeds 24 h', () => {
-    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: true, showsPoints: true })).toBe('Last 30 days (points: 24 h)')
+  // The hex heat is not windowed for a guest (#466), and since #493 it is the
+  // only layer they have. What stays clamped to 24 h is the ticker, so that is
+  // what the note names, rather than the whole range as #300 had it.
+  it('names the ticker when the range reaches past 24 h', () => {
+    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: true })).toBe('Last 30 days (ticker: 24 h)')
   })
   it('says nothing for a range inside the window', () => {
-    expect(rangeLabelFor('now-6h', 'now', NOW, { degraded: true, showsPoints: true })).toBe('Last 6 hours')
+    expect(rangeLabelFor('now-6h', 'now', NOW, { degraded: true })).toBe('Last 6 hours')
   })
   it('says nothing to a member', () => {
-    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: false, showsPoints: true })).toBe('Last 30 days')
+    expect(rangeLabelFor('now-30d', 'now', NOW, { degraded: false })).toBe('Last 30 days')
   })
   it('falls back to the plain label with no options', () => {
     expect(rangeLabelFor('now-30d', 'now', NOW)).toBe('Last 30 days')

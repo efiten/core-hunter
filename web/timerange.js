@@ -179,15 +179,21 @@ export function rangeForRole(from, to, { degraded } = {}) {
   return { ...COLD_START_RANGE }
 }
 
-// rangeLabelFor is rangeLabel plus the note that says a layer will not cover
-// the range asked for. Since #466 that is only true of the point layer:
-// /api/points still clamps a sub-member caller to 24 h (applyGuestWindowCap),
-// while the hex the map opens on is not windowed at all. A flat "(24 h max)"
-// therefore described the layer the visitor is usually not looking at.
-export function rangeLabelFor(from, to, nowMs, { degraded, showsPoints } = {}) {
+// rangeLabelFor is rangeLabel plus the note that says what will not cover the
+// range asked for. Below member that is the receptions ticker: /api/points
+// clamps those roles to 24 h (applyGuestWindowCap), while the hex heat is not
+// windowed at all (#466), so the flat "(24 h max)" #300 wrote described the
+// whole view when it was true of one strip of it.
+//
+// It names the ticker rather than the point layer because since #493 the
+// ticker is where a degraded role meets individual receptions at all. Worth
+// saying on the button and not only in the guest notice: the button is where
+// the range is chosen, and "Last 30 days" beside a ticker holding one day is
+// exactly the mismatch that reads as a bug.
+export function rangeLabelFor(from, to, nowMs, { degraded } = {}) {
   const base = rangeLabel(from, to, nowMs)
-  if (!degraded || !showsPoints) return base
-  return exceedsGuestWindow(from, to, nowMs) ? `${base} (points: 24 h)` : base
+  if (!degraded) return base
+  return exceedsGuestWindow(from, to, nowMs) ? `${base} (ticker: 24 h)` : base
 }
 
 export function rangeLabel(from, to, nowMs) {

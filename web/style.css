@@ -64,6 +64,12 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    37px row, and "Start mapping" is 109px. The phone is the surface the RX
    webapp actually runs on, so the button stays; the wording is what gives. */
 .rx-cta-short { display:none; }
+/* A gated control has to look gated (#493). Nothing in the sheet styled
+   :disabled, so a gated segment rendered identical to a live button. `#bar
+   button:disabled` (1,1,1) rather than a bare `button:disabled`, because
+   `#bar select, #bar input, #bar button` above sets colour at (1,0,1), and
+   it also outranks `.bf-seg button.active` (0,2,1) should both ever apply. */
+#bar button:disabled { color:var(--ch-muted); opacity:.65; cursor:not-allowed; }
 .cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
 /* Checked state highlights the label, mirroring app's .fs-row.active pattern
    for its own direct-only row (#225) -- .active is toggled by filters.js. */
@@ -594,6 +600,9 @@ body.wb-onboarding-on #bar { z-index:710; }
 .bf-seg button + button { border-left: none; }
 .bf-seg button.active { background: var(--ch-accent); border-color: var(--ch-accent);
   color: var(--ch-bg); font-weight: 600; }
+/* Why Points and Both are off below member (#493) — filled and shown by
+   applyPointLayerGate, in the View group right under the segments. */
+.bf-gate-note { font-size: 12px; color: var(--ch-muted); }
 .bf-types-more { align-self: flex-start; }
 .bf-foot { display: flex; align-items: center; gap: 10px;
   border-top: 1px solid var(--ch-border); padding-top: 10px; }
