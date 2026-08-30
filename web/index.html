@@ -209,6 +209,10 @@
           <button id="lm-hex" type="button" data-mode="hex" aria-pressed="false">Hex</button>
           <button id="lm-both" type="button" data-mode="both" aria-pressed="false">Both</button>
         </span>
+        <!-- Why Points and Both are off below member (#493). Filled and shown
+             by applyPointLayerGate; a line under the group rather than a
+             title, because on a phone a tooltip is nothing at all. -->
+        <span id="layer-gate-note" class="bf-gate-note" hidden></span>
         <!-- hidden until the role is known (#270): applyLocateGate() is then
              the single owner of this button's visibility, setting it on every
              role change. Shipping it visible made it live during the boot

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { roleRank, atLeast, canSeeLocate, canSeeObserverPoints, isDegradedFor, guestNotice } from './auth.js'
+import { roleRank, atLeast, canSeeLocate, canSeeObserverPoints, isDegradedFor, guestNotice, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
 
 describe('role helpers', () => {
   it('ranks roles', () => {
@@ -29,16 +29,16 @@ describe('role helpers', () => {
     expect(guestNotice('guest')).toMatch(/24 h|coarse|approximate/i)
     expect(guestNotice('member')).toBeNull()
   })
-  // #440: the map opens on the hex layer, which is all-time for a degraded
-  // caller, while the 24 h window survives only on individual receptions. A
-  // notice that says "last 24 h" flat describes the layer the reader is not
-  // looking at -- and undersells the one they are, which is the whole point of
-  // the change.
-  it('separates all-time coverage from the 24 h reception window', () => {
+  // #440: the hex layer is not windowed for a degraded caller, while the 24 h
+  // window survives on individual receptions. A notice that says "last 24 h"
+  // flat describes the layer the reader is not looking at, and undersells the
+  // one they are. Since #493 the 24 h belongs to the ticker, which is the only
+  // place a degraded role meets individual receptions, so the copy names it.
+  it('separates unwindowed coverage from the 24 h reception window', () => {
     for (const role of ['guest', 'hunter']) {
       const n = guestNotice(role)
-      expect(n, role).toMatch(/all-time coverage/i)
-      expect(n, role).toMatch(/receptions show the last 24 h/i)
+      expect(n, role).toMatch(/no time limit/i)
+      expect(n, role).toMatch(/ticker shows the last 24 h/i)
       // The old copy opened by claiming the whole view was 24h-bounded.
       expect(n, role).not.toMatch(/^(Guest|Hunter) view: last 24 h/)
     }
@@ -75,5 +75,48 @@ describe('role helpers', () => {
   it('stays short enough to share its bar row, and leaves registering to the controls beside it', () => {
     expect(guestNotice('guest').length).toBeLessThan(140)
     expect(guestNotice('guest')).not.toMatch(/register/i)
+  })
+})
+
+// #493: the point layer is gated the way Locate and the observer layers are.
+// A sub-member caller gets 24 h and 500 rows from /api/points
+// (server/internal/httpapi/degrade.go), and the toggle said nothing about it,
+// so the layer looked thin or empty for reasons of its own.
+describe('canSeePointLayer', () => {
+  it('is a member gate, same shape as canSeeLocate', () => {
+    expect(canSeePointLayer('member')).toBe(true)
+    expect(canSeePointLayer('admin')).toBe(true)
+    expect(canSeePointLayer('hunter')).toBe(false)
+    expect(canSeePointLayer('guest')).toBe(false)
+    expect(canSeePointLayer(undefined)).toBe(false)
+  })
+})
+
+describe('modeForRole — a deep link cannot open a gated layer', () => {
+  it('holds a degraded role on hex, whatever was asked for', () => {
+    for (const m of ['points', 'both', 'hex']) {
+      expect(modeForRole(m, 'guest'), m).toBe('hex')
+      expect(modeForRole(m, 'hunter'), m).toBe('hex')
+    }
+  })
+  it('leaves a member on the mode they picked', () => {
+    for (const m of ['points', 'both', 'hex']) expect(modeForRole(m, 'member'), m).toBe(m)
+  })
+})
+
+describe('pointLayerReason', () => {
+  it('says what the account gets you, not just that it is off', () => {
+    const msg = pointLayerReason('guest')
+    expect(msg).toMatch(/individual receptions/i)
+    expect(msg).toMatch(/log in|account/i)
+  })
+  // A hunter is logged in already: telling them to log in is a dead end, they
+  // need an admin to verify them (#174).
+  it('tells a hunter what they actually need', () => {
+    expect(pointLayerReason('hunter')).toMatch(/member/i)
+    expect(pointLayerReason('hunter')).not.toMatch(/log in/i)
+  })
+  it('has nothing to say to a member', () => {
+    expect(pointLayerReason('member')).toBe(null)
   })
 })

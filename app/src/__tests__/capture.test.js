@@ -11,7 +11,7 @@ describe('buildRecord', () => {
     expect(rec).toEqual({
       rx_at: '2026-06-29T10:00:00Z', rx_pubkey: 'aabbcc', raw: 'dead', snr: -3.5, rssi: -92, lat: 51, lon: 4, acc_m: 8,
       sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer', sender_role: null, channel_name: 'public',
-      is_direct: true, hops: 0, packet_type: 'GroupText',
+      is_direct: true, hops: 0, packet_type: 'GroupText', heard_us_snr: null,
     })
     expect('text' in rec).toBe(false)
   })
@@ -106,5 +106,27 @@ describe('unattributable receptions end to end (#454)', () => {
     expect(rec.sender_id).toBe('ab')
     expect(rec.sender_label).toBe('ab')
     expect(rec.is_direct).toBe(true)
+  })
+})
+
+// #482: a trace reply we provoked carries the SNR the target heard US at. It is
+// not our radio's reading, so it gets its own field rather than being folded
+// into `snr`, which means the opposite on every other row.
+describe('buildRecord — the reciprocal SNR (#482)', () => {
+  const frame = { snr: -4.25, rssi: -97, raw: new Uint8Array([0x01]) }
+  const gps = { lat: 51, lon: 4, acc_m: 8 }
+
+  it('keeps it apart from our own SNR', () => {
+    const cls = { packetType: 'Trace', hops: 1, isDirect: false, heardUsSnr: -11.5,
+      sender: { kind: 'trace_reply', id: 'ab12', label: null, role: null }, channel: null, text: null }
+    const rec = buildRecord(frame, cls, gps, '2026-08-24T12:00:00Z')
+    expect(rec.heard_us_snr).toBe(-11.5)
+    expect(rec.snr).toBe(-4.25)
+  })
+
+  it('is null on every row that has no such reading', () => {
+    const cls = { packetType: 'Advert', hops: 0, isDirect: true,
+      sender: { kind: 'advert_pubkey', id: 'ab', label: null, role: null }, channel: null, text: null }
+    expect(buildRecord(frame, cls, gps, '2026-08-24T12:00:00Z').heard_us_snr).toBeNull()
   })
 })

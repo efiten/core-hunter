@@ -44,5 +44,10 @@ export function buildRecord(frame, cls, gps, nowIso, rxPubkey = '') {
     is_direct: cls.isDirect,
     hops: cls.hops,
     packet_type: cls.packetType,
+    // How well the node we pinged heard US (#482) — read off the trace reply's
+    // path bytes and attached by the caller, which is the only place that knows
+    // the reply is one we provoked. Null everywhere else, including on an
+    // overheard trace, whose path SNRs describe other nodes hearing each other.
+    heard_us_snr: cls.heardUsSnr ?? null,
   }
 }

@@ -17,6 +17,34 @@ export function canSeeObserverPoints(role) {
 export function isDegradedFor(role) {
   return !atLeast(role, 'member')
 }
+// The point layer is gated like Locate and the observer layers (#493). Below
+// member /api/points returns the last 24 h and at most 500 rows
+// (server/internal/httpapi/degrade.go, applyGuestWindowCap), so the layer came
+// up thin or empty with nothing on the control to say why. The hex the map
+// opens on is not windowed at all since #466, so the gate costs a visitor
+// nothing they could otherwise see.
+export function canSeePointLayer(role) {
+  return atLeast(role, 'member')
+}
+
+// modeForRole holds a degraded role on hex whatever the URL asked for: ?mode=
+// is restored before the role is known, so the gate has to be applied again
+// once it is, the same way applyLocateGate re-runs for ?locate=1.
+export function modeForRole(mode, role) {
+  return canSeePointLayer(role) ? mode : 'hex'
+}
+
+// pointLayerReason is the line under the layer segments while Points and Both
+// are disabled. Two audiences, the same split guestNotice makes: a guest has
+// no account yet, a hunter has one and needs an admin to verify it, so "log
+// in" is a dead end for them (#174).
+export function pointLayerReason(role) {
+  if (canSeePointLayer(role)) return null
+  if (role === 'hunter') {
+    return 'Individual receptions need a verified member account. An admin verifies you.'
+  }
+  return 'Individual receptions need an account. Log in to switch layers.'
+}
 // Server-side gating (degradeFilter/applyGuestWindowCap, httpapi/api.go +
 // degrade.go) windows, caps, coarsens and pseudonymises everything a
 // sub-member caller sees. A caller's own linked companions are exempt, but
@@ -38,12 +66,15 @@ export function isDegradedFor(role) {
 // The call to action differs too: a guest isn't logged in yet, but a hunter
 // already is and needs member verification instead (#174).
 //
-// The two layers now say different things about time (#440), so the copy has
-// to as well. Coverage — the hex heat, and the layer the map opens on — is
-// all-time for everyone; the 24 h window is only on the individual receptions
-// (/api/points, applyGuestWindowCap). Saying "last 24 h" flat, as this did
-// before #440, described the layer a visitor is NOT looking at and undersold
-// the one they are.
+// The two layers said different things about time (#440), so the copy had to
+// as well: coverage (the hex heat, and the layer the map opens on) is not
+// windowed for anyone, while the 24 h window is only on individual receptions
+// (/api/points, applyGuestWindowCap).
+//
+// Since #493 there is only one layer down here, so the sentence about
+// individual receptions is about the ticker, which keeps its own /api/points
+// feed. Naming the ticker rather than "individual receptions" in the abstract
+// is what makes it findable: it is the thing on screen the 24 h applies to.
 //
 // "not named" rather than "anonymised" for the heat, because they are absent
 // from it rather than pseudonymised: the per-cell hunter list is withheld
@@ -58,9 +89,9 @@ export function isDegradedFor(role) {
 export function guestNotice(role) {
   if (atLeast(role, 'member')) return null
   if (role === 'hunter') {
-    return 'Hunter view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h — filter to your own companion to see those in full. An admin verifies you as a member to see everyone in full.'
+    return 'Hunter view: ~1 km cells, hunters not named, no time limit. Ticker shows the last 24 h; filter to your own companion to see those in full. An admin verifies you as a member for the point layer and the rest.'
   }
-  return 'Guest view: all-time coverage, coarse ~1 km, hunters not named; individual receptions show the last 24 h. Log in to see more.'
+  return 'Guest view: ~1 km cells, hunters not named, no time limit. Ticker shows the last 24 h. Log in for individual receptions.'
 }
 export async function fetchMe() {
   try {

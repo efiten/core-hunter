@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -23,6 +23,32 @@ describe('senderText — an id is never dressed as a name', () => {
   it('falls back to the id, then to a dash', () => {
     expect(senderText({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: '' })).toBe('a1b2f3')
     expect(senderText({ sender_kind: 'relay', sender_id: null, sender_label: null })).toBe('—')
+  })
+})
+
+// #482: a trace reply we provoked carries the SNR the node we pinged heard US
+// at. The meta cell is where a reception explains itself (text > channel >
+// type label), and for the one row that has it, the reciprocal reading says
+// more than the bare word "Trace" — so it takes the type label's slot, and
+// only that slot.
+describe('lineMeta — the reciprocal SNR on a trace reply (#482)', () => {
+  it('shows what the node heard us at, in the HUD\'s SNR format', () => {
+    expect(lineMeta({ packet_type: 'Trace', heard_us_snr: -11.5 })).toBe('heard us at -11.5 dB')
+    // The firmware unit is a quarter dB; one decimal matches #hud-snr.
+    expect(lineMeta({ packet_type: 'Trace', heard_us_snr: -4.25 })).toBe('heard us at -4.3 dB')
+  })
+  it('shows a 0 dB reading rather than dropping it', () => {
+    expect(lineMeta({ packet_type: 'Trace', heard_us_snr: 0 })).toBe('heard us at 0.0 dB')
+  })
+  it('leaves a trace nobody asked for as its type label', () => {
+    expect(lineMeta({ packet_type: 'Trace', heard_us_snr: null })).toBe('Trace')
+    expect(lineMeta({ packet_type: 'Trace' })).toBe('Trace')
+  })
+  it('never outranks a decrypted text or a channel name', () => {
+    // No packet carries both today (a trace has no text); pinned so a field
+    // shuffle cannot silently demote the message text below a number.
+    expect(lineMeta({ packet_type: 'Trace', heard_us_snr: -4, _text: 'hoi' })).toBe('“hoi”')
+    expect(lineMeta({ packet_type: 'Trace', heard_us_snr: -4, channel_name: 'public' })).toBe('public')
   })
 })
 
