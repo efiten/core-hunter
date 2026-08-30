@@ -525,7 +525,12 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .splash-retry[hidden] { display: none; }
 
 /* Coach marks (#539/#384): small, muted, each with a thin leader line to a
-   ring on its own target. The target is pointed at, not touched. */
+   ring on its own target. The target is pointed at, not touched.
+   These three z-indexes only hold because index.html keeps the nine elements
+   OUTSIDE #splash (#562). #splash is a stacking context, so nesting them there
+   caps them at its 550 whatever they declare, and the gate lifts #topbar to
+   560, which is where the filter-pill and settings-btn rings land. Raising
+   the numbers below cannot fix that on its own; keep them siblings. */
 .splash-cm { position: fixed; z-index: 561; max-width: 154px; padding: 10px 12px;
   background: var(--ch-surface); border: 1px solid var(--ch-border); border-radius: 11px;
   -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);

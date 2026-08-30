@@ -173,6 +173,50 @@ describe('SPLASH_FAB_IDS', () => {
   })
 })
 
+describe('COACH_MARKS paint above the bar they point into (#562)', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
+  const css = readFileSync(new URL('../styles/app.css', import.meta.url), 'utf8')
+
+  // Reads the z-index off the first rule whose selector matches.
+  const zIndexOf = (selector) => {
+    const block = css.split('}')
+      .map((b) => b.split('{'))
+      .find(([sel, decls]) => sel?.includes(selector) && decls?.includes('z-index'))
+    expect(block, `${selector} declares a z-index`).toBeTruthy()
+    return Number(/z-index:\s*(\d+)/.exec(block[1])[1])
+  }
+
+  // The premise the rest of this block rests on: the gate lifts the bar over
+  // the scrim so Settings stays reachable, and #splash is itself a stacking
+  // context. Anything nested in #splash is therefore capped at #splash's own
+  // z-index, whatever it declares for itself.
+  it('lifts the gate top bar above #splash', () => {
+    expect(zIndexOf('#splash ')).toBeLessThan(zIndexOf('body.splash-gate #topbar'))
+  })
+
+  // Two of the three marks anchor on a control inside that bar, so a ring
+  // nested in #splash is painted underneath it: measured on ae9ba97 at
+  // 412x915, elementFromPoint at the cm-controls and cm-menu ring centres
+  // both returned #topbar, and only the rail's ring came back as itself.
+  it('keeps every coach-mark element out of #splash', () => {
+    const splash = /<aside id="splash">([\s\S]*?)<\/aside>/.exec(html)
+    expect(splash, 'index.html has an #splash aside').toBeTruthy()
+    for (const m of COACH_MARKS) {
+      for (const id of [m.id, `${m.id}-ring`, `${m.id}-lead`]) {
+        expect(html, `${id} exists`).toContain(`id="${id}"`)
+        expect(splash[1], `${id} is outside #splash's stacking context`).not.toContain(`id="${id}"`)
+      }
+    }
+  })
+
+  it('paints the ring, its leader line and its box above the gate top bar', () => {
+    const bar = zIndexOf('body.splash-gate #topbar')
+    for (const sel of ['.splash-ring', '.splash-lead', '.splash-cm']) {
+      expect(zIndexOf(sel), `${sel} sits above the gate top bar`).toBeGreaterThan(bar)
+    }
+  })
+})
+
 describe('APP_NAME', () => {
   it('is the Mesh-Hunter display name', () => {
     expect(APP_NAME).toBe('Mesh-Hunter')

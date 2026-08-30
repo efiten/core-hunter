@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-29-start-screen-hints",
+    "date": "2026-08-29",
+    "where": "app",
+    "title": "The start screen's hints point at something again",
+    "body": "Two of the three hint lines ran up to the top bar and stopped at nothing. Their markers now sit on the button they mean."
+  },
+  {
     "id": "2026-08-29-point-layer-needs-an-account",
     "date": "2026-08-29",
     "where": "map",
