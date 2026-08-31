@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-31-quiet-in-your-pocket",
+    "date": "2026-08-31",
+    "where": "app",
+    "title": "Nothing hums while the app is in your pocket",
+    "body": "The held background tone is gone. Receptions and transmissions still sound while the app is away."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",
