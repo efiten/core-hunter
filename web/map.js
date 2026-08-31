@@ -1530,7 +1530,7 @@ let syncTickerCollapse = () => {}
 const rxLog = document.getElementById('rx-log')
 if (rxLog) {
   const NARROW = window.matchMedia('(max-width: 640px)')
-  let place = { x: 0, y: 0, collapse: 0 }
+  let place = { x: 0, y: 0, collapse: 0, hidden: false }
 
   // The bar's lower edge, which is the ticker's ceiling: the bar is opaque, so
   // anything above it is simply hidden. --ch-bar-h is republished on every bar
@@ -1542,16 +1542,19 @@ if (rxLog) {
   function apply() {
     rxLog.style.setProperty('--rx-x', `${place.x}px`)
     rxLog.style.setProperty('--rx-y', `${place.y}px`)
-    // The ticker owns its own height now (#424): four stops rather than two,
-    // full, three lanes, one, then the header alone. rx-folded is set by the
-    // component on the last of those, so it is not toggled from here.
+    // The ticker owns its own height now (#424): full, three lanes, one. Away
+    // is the cross, and the bar button is how it comes back, exactly as in the
+    // app.
+    rxLog.hidden = place.hidden
+    const tickerBtn = document.getElementById('ticker-btn')
+    if (tickerBtn) tickerBtn.hidden = !place.hidden
     if (rxTicker) rxTicker.setCollapse(place.collapse)
     syncTickerCollapse = () => { if (rxTicker) rxTicker.setCollapse(place.collapse) }
     const fold = rxLog.querySelector('.rx-fold')
     if (fold) {
       const last = atLastCollapse(place.collapse, rxTicker ? rxTicker.records().length : 0)
       fold.setAttribute('aria-expanded', String(place.collapse === 0))
-      fold.setAttribute('aria-label', last ? 'Show the receptions ticker' : 'Shrink the receptions ticker')
+      fold.setAttribute('aria-label', last ? 'Expand the receptions ticker' : 'Shrink the receptions ticker')
       fold.dataset.dir = last ? 'up' : 'down'
     }
     // The left grab strip spans the visible height, which changes when the
@@ -1587,10 +1590,24 @@ if (rxLog) {
   // markup later than this module runs, so querySelectorAll here finds nothing
   // and the controls end up inert. #rx-log itself is static in index.html.
   rxLog.addEventListener('click', (e) => {
+    if (e.target.closest('.rx-close')) {
+      place = { ...place, hidden: true }
+      apply()
+      urlstate.save()
+      return
+    }
     if (!e.target.closest('.rx-fold')) return
     place = { ...place, collapse: nextCollapse(place.collapse, rxTicker ? rxTicker.records().length : 0) }
     apply()
-    reflow()          // folding changes the height, which can free or need space
+    reflow()          // shrinking changes the height, which can free or need space
+    urlstate.save()
+  })
+
+  const tickerBtn = document.getElementById('ticker-btn')
+  if (tickerBtn) tickerBtn.addEventListener('click', () => {
+    place = { ...place, hidden: false }
+    apply()
+    reflow()          // it may have been left where this viewport cannot show it
     urlstate.save()
   })
 

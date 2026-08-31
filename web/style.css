@@ -265,11 +265,18 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    a rule by the first selector text that mentions the class, so a descendant
    rule written above the canonical `.rx-list` block would silently become the
    one under test. #407 tracks hardening that matcher; this sidesteps it. */
-#rx-log.rx-folded #rx-list { display: none; }
-.rx-fold { width: 36px; height: 36px; margin-left: auto; border: none; background: none;
+/* Targets the list by id, not by .rx-list: parity.test.js's older ticker
+   matcher finds a rule by the first selector text that mentions the class, so a
+   descendant rule written above the canonical `.rx-list` block would silently
+   become the one under test. #407 tracks hardening that matcher; this sidesteps
+   it. The app has no placement layer and can use the class. */
+#rx-log.rx-empty #rx-list { display: none; }
+#rx-log.rx-empty .rx-hd { border-bottom: none; }
+.rx-close, .rx-fold { width: 36px; height: 36px; border: none; background: none;
   color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center;
   justify-content: center; pointer-events: auto; }
-.rx-fold:hover { color: var(--ch-text); }
+.rx-fold { margin-left: auto; }
+.rx-close:hover, .rx-fold:hover { color: var(--ch-text); }
 /* One chevron for four stops (#424): full, three lanes, one, then the header
    alone. It points down while there is further to shrink and up on the last
    stop, where the next click is the way back to full. The old minus/plus said

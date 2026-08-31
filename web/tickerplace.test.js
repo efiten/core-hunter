@@ -49,7 +49,7 @@ describe('initialPlacement', () => {
 
   it('restores a remembered position, clamped to this screen', () => {
     // Saved on a wide monitor, reopened on a phone.
-    const p = initialPlacement({ saved: { x: 1100, y: 700, collapse: 0 }, size: SIZE, viewport: PHONE })
+    const p = initialPlacement({ saved: { x: 1100, y: 700, collapse: 0, hidden: false }, size: SIZE, viewport: PHONE })
     expect(p.x).toBe(0)
     expect(p.y).toBe(580)
     expect(p.collapse).toBe(0)
@@ -58,7 +58,12 @@ describe('initialPlacement', () => {
   it('collapses by default on a phone and not on a desktop', () => {
     // A phone starts at the last stop, the header alone, which is what the
     // pre-#424 "collapsed" meant. A desktop starts full.
-    expect(initialPlacement({ size: SIZE, viewport: PHONE, narrow: true }).collapse).toBe(COLLAPSE_LEVELS - 1)
+    // A phone starts at the smallest stop rather than away: the reason the
+    // default is per-surface is that the card should not cover the map there,
+    // and a ticker nobody can see is a different thing from a small one.
+    const phone = initialPlacement({ size: SIZE, viewport: PHONE, narrow: true })
+    expect(phone.collapse).toBe(COLLAPSE_LEVELS - 1)
+    expect(phone.hidden).toBe(false)
     expect(initialPlacement({ size: SIZE, viewport: DESKTOP, narrow: false }).collapse).toBe(0)
   })
 
@@ -67,6 +72,7 @@ describe('initialPlacement', () => {
     // a phone meant that too.
     expect(initialPlacement({ saved: { x: 10, y: 100, collapse: 2 }, size: SIZE, viewport: DESKTOP }).collapse).toBe(2)
     expect(initialPlacement({ saved: { x: 10, y: 100, collapse: 0 }, size: SIZE, viewport: PHONE, narrow: true }).collapse).toBe(0)
+    expect(initialPlacement({ saved: { x: 10, y: 100, collapse: 0, hidden: true }, size: SIZE, viewport: PHONE, narrow: true }).hidden).toBe(true)
   })
 
   it('ignores a saved value that is not a position', () => {
@@ -79,27 +85,31 @@ describe('initialPlacement', () => {
 describe('serialise / parse', () => {
   it('round-trips a placement', () => {
     for (let level = 0; level < COLLAPSE_LEVELS; level++) {
-      expect(parse(serialise({ x: 12.4, y: 300.6, collapse: level })), `level ${level}`)
-        .toEqual({ x: 12, y: 301, collapse: level })
+      expect(parse(serialise({ x: 12.4, y: 300.6, collapse: level, hidden: false })), `level ${level}`)
+        .toEqual({ x: 12, y: 301, collapse: level, hidden: false })
     }
+    expect(parse(serialise({ x: 12.4, y: 300.6, collapse: 2, hidden: true })), 'away')
+      .toEqual({ x: 12, y: 301, collapse: 0, hidden: true })
   })
 
   // Links written before #424 carry 0 or 1 for expanded or folded. Folded meant
   // the header alone, which is now the last stop, so an old link has to land
   // there rather than on the three-lane stop the bare number would hit.
+  // '1' was how the ticker was put away before it had a cross, so it has to
+  // read as away rather than as a shrink stop.
   it('reads a pre-#424 link, and never writes one back', () => {
-    expect(parse('10,20,0').collapse).toBe(0)
-    expect(parse('10,20,1').collapse).toBe(COLLAPSE_LEVELS - 1)
-    // Nothing it writes can be mistaken for the legacy "1".
+    expect(parse('10,20,0')).toEqual({ x: 10, y: 20, collapse: 0, hidden: false })
+    expect(parse('10,20,1')).toEqual({ x: 10, y: 20, collapse: 0, hidden: true })
     for (let level = 0; level < COLLAPSE_LEVELS; level++) {
       expect(serialise({ x: 0, y: 0, collapse: level }).split(',')[2], `level ${level}`).not.toBe('1')
     }
+    expect(serialise({ x: 0, y: 0, hidden: true }).split(',')[2]).not.toBe('1')
   })
 
   it('falls back to full for a truncated or hand-edited field', () => {
-    expect(parse('10,20').collapse).toBe(0)
-    expect(parse('10,20,zz').collapse).toBe(0)
-    expect(parse('10,20,9').collapse).toBe(0)
+    for (const v of ['10,20', '10,20,zz', '10,20,9']) {
+      expect(parse(v), v).toEqual({ x: 10, y: 20, collapse: 0, hidden: false })
+    }
   })
   it('refuses anything it did not write', () => {
     for (const v of ['', 'x,y,1', 'nonsense', null, undefined, 5]) expect(parse(v)).toBe(null)
