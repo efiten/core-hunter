@@ -121,7 +121,7 @@ test('a shorter window pulls the ticker back into view', async ({ page }) => {
 // (it would swallow a click). So the test walks the cycle rather than assuming
 // its length: every click shrinks the card or hides the list, and one more
 // after that is back to where it started.
-test('shrinks a step at a time from one control, and the stop persists', async ({ page }) => {
+test('shrinks a step at a time, and the cross puts it away', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   const list = page.locator('#rx-list')
@@ -129,44 +129,63 @@ test('shrinks a step at a time from one control, and the stop persists', async (
   await expect(list).toBeVisible()
   await expect(fold).toHaveAttribute('aria-expanded', 'true')
 
-  const height = () => page.evaluate(() => {
-    const el = document.getElementById('rx-list')
-    return el.offsetParent === null || getComputedStyle(el).display === 'none' ? 0 : el.getBoundingClientRect().height
-  })
-
+  const height = () => page.evaluate(() => document.getElementById('rx-list').getBoundingClientRect().height)
   const full = await height()
   expect(full).toBeGreaterThan(0)
 
+  // How many stops exist depends on how much the ticker holds, because one
+  // that would not make the card smaller is skipped rather than swallowing a
+  // click. So walk it rather than assuming a length.
   let previous = full
   let clicks = 0
-  while (previous > 0) {
+  while (clicks < 2) {
     await fold.click()
     clicks++
-    expect(clicks, 'the cycle is bounded').toBeLessThanOrEqual(3)
     const now = await height()
     expect(now, `click ${clicks} made the card smaller`).toBeLessThan(previous)
     previous = now
   }
-
-  // The last stop is the header alone, which is how the list is put away here.
-  await expect(list).toBeHidden()
-  await expect(page.locator('.rx-hd')).toBeVisible()
+  // Never to nothing: putting it away is the cross, not a further stop.
+  expect(previous).toBeGreaterThan(0)
   await expect(fold).toHaveAttribute('aria-expanded', 'false')
 
-  await page.reload()
-  await expect(page.locator('#rx-list')).toBeHidden()
-
-  // And one more click is the way back to full.
-  await page.locator('.rx-fold').click()
-  await expect(page.locator('#rx-list')).toBeVisible()
+  // One more is back to full.
+  await fold.click()
   expect(await height()).toBe(full)
 })
 
-test('starts folded on a phone, where the band is what covers the map', async ({ page }) => {
+test('the cross puts the ticker away, and the bar brings it back', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const card = page.locator('#rx-log')
+  const barBtn = page.locator('#ticker-btn')
+  await expect(card).toBeVisible()
+  await expect(barBtn).toBeHidden()
+
+  await page.locator('.rx-close').click()
+  await expect(card).toBeHidden()
+  await expect(barBtn).toBeVisible()
+
+  // And it stays away across a reload, like every other view setting.
+  await page.reload()
+  await expect(page.locator('#rx-log')).toBeHidden()
+  await expect(page.locator('#ticker-btn')).toBeVisible()
+
+  await page.locator('#ticker-btn').click()
+  await expect(page.locator('#rx-log')).toBeVisible()
+  await expect(page.locator('#ticker-btn')).toBeHidden()
+})
+
+test('starts at its smallest on a phone, where the card is what covers the map', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await expect(page.locator('#rx-list')).toBeHidden()
-  await expect(page.locator('.rx-hd')).toBeVisible()
+  // Small, not away: a ticker nobody can see is a different thing from a
+  // one-line one, and the point of the per-surface default is only that it
+  // should not cover the map.
+  await expect(page.locator('#rx-log')).toBeVisible()
+  const h = await page.evaluate(() => document.getElementById('rx-list').getBoundingClientRect().height)
+  const line = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-rx-line-h')))
+  expect(Math.round(h / line)).toBe(1)
 })
 
 // #322 made the band frameless on purpose and #287/#322 keep pointer-events off

@@ -249,23 +249,20 @@ describe('rxLineHeight — row height parsed from the CSS variable', () => {
   })
 })
 
-// The map has a fourth stop the app does not: zero lanes, the header alone,
-// which is how the ticker is put away here. Zero is falsy, and a truthiness
-// check on the cap silently ignored it, so the last click did nothing at all
-// (found by driving it, not by reading it).
-describe('the map\'s header-alone stop', () => {
-  it('is a real stop, and shrinks the card to nothing', () => {
-    const last = RX_COLLAPSE_STOPS.length
-    expect(RX_COLLAPSE_STOPS[last - 1], 'the last stop is zero lanes').toBe(0)
-    for (const count of [1, 3, 10, 50]) {
-      expect(rxLanes(count, last), `${count} receptions`).toBe(0)
+// Putting the ticker away is the cross now, not a further shrink stop, so the
+// map's stops are the app's exactly (#424). parity.test.js pins that equality;
+// this pins that nothing here still expects a zero-lane stop.
+describe('the map\'s collapse stops', () => {
+  it('shrink the card without ever emptying it', () => {
+    for (let level = 1; level <= RX_COLLAPSE_STOPS.length; level++) {
+      expect(rxLanes(50, level), `stop ${level}`).toBeGreaterThan(0)
     }
+    expect(RX_COLLAPSE_STOPS).toEqual([3, 1])
   })
 
-  it('is always reachable, however little has arrived', () => {
-    for (const count of [1, 2, 3, 10, 50]) {
-      const levels = collapseLevels(count)
-      expect(levels[levels.length - 1], `${count} receptions`).toBe(RX_COLLAPSE_STOPS.length)
-    }
+  it('are offered only while one of them would change the card', () => {
+    expect(collapseLevels(1)).toEqual([0])
+    expect(collapseLevels(3)).toEqual([0, 2])
+    expect(collapseLevels(50)).toEqual([0, 1, 2])
   })
 })

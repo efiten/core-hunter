@@ -85,11 +85,12 @@ const RX_STEPS = [
   { from: 1, lanes: 1 },
 ]
 
-// The ceilings the chevron cycles through, after full. The app's are three
-// lanes then one; the map adds a fourth, zero, because its way of putting the
-// ticker away is folding to the header rather than the app's cross plus a
-// button in the bar. parity.test.js pins that the shared stops match.
-export const RX_COLLAPSE_STOPS = [3, 1, 0]
+// The ceilings the chevron cycles through, after full: three lanes, then one,
+// then back to full. Identical to the app's, and pinned equal by
+// parity.test.js. Putting the ticker away is the cross, not a further stop
+// (#424): folding to the header was the map's own way of doing it before it
+// had a button in the bar to come back from.
+export const RX_COLLAPSE_STOPS = [3, 1]
 
 // collapseLevels is the cycle the chevron actually walks for a given number of
 // receptions: full, then only those stops that would make the card smaller
@@ -323,8 +324,15 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     + '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span>'
     + '<button type="button" class="rx-fold" aria-expanded="true" aria-controls="rx-list">'
     + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg>'
+    + '</button>'
+    + '<button type="button" class="rx-close" aria-label="Hide receptions">'
+    + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>'
     + '</button></div>'
     + '<div class="rx-list" id="rx-list"></div>'
+  // The header's two controls are handled by map.js, delegated on #rx-log: the
+  // markup below is written after that module runs, so binding there directly
+  // would find nothing. The app's component owns its own instead, because there
+  // is no placement layer above it.
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')
   const list = root.querySelector('.rx-list')
@@ -354,11 +362,12 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
 
   // The card's height and the lane the playhead sits on, published as lane
   // counts the stylesheet multiplies by --ch-rx-line-h (#424, mirroring #560).
-  // rx-folded is the last stop rather than a separate control: on the map,
-  // folding to the header IS how the ticker is put away.
+  // rx-empty is the card with nothing to show: the header alone, the same
+  // state the app renders. Putting the ticker away is the cross, which the app
+  // owns, not a collapse stop.
   function applyGeometry() {
     const lanes = rxLanes(view.length, collapse)
-    root.classList.toggle('rx-folded', lanes === 0)
+    root.classList.toggle('rx-empty', lanes === 0)
     list.style.setProperty('--rx-lanes', lanes)
     list.style.setProperty('--rx-playhead', rxPlayhead(lanes))
     list.style.setProperty('--rx-pad-bottom', rxPadBottom())

@@ -82,14 +82,18 @@ A toggle button opening a panel of clickable rows with checkbox state, lazy pagi
 and Escape to close (`web/targetpicker.js`, #223). Never a native `<select multiple>`, never a
 one-off widget.
 
-### Hit areas are at least 44px
+### Hit areas are at least 44px, except where the target lies over the map
 
-*Standard pattern: the platform touch-target minimum (Apple HIG 44pt, Material 48dp).*
+*Standard pattern: the platform touch-target minimum (Apple HIG 44pt, Material 48dp), with the
+map-marker carve-out every map product makes.*
 
-The glyph keeps its size; an `::after` extension carries the touch box. The one deliberate
-exception is the app's node markers at 30px: a marker swallows the pan gesture that starts on
-it, so 33 markers at 44px would turn a dense cluster into a patch of map that cannot be dragged
-(#539).
+The glyph keeps its size; an `::after` extension carries the touch box.
+
+A marker drawn **on** the map is the exception, and it is a rule rather than a one-off: the
+target swallows the pan gesture that starts on it, so a dense cluster at 44px becomes a patch of
+map that cannot be dragged. Those get 30px, which doubles the target without making the dead
+zone dominant (#539). Anything in a bar, a panel or a sheet is 44px, because nothing is being
+dragged underneath it.
 
 ### Native form controls take the accent
 
@@ -98,10 +102,25 @@ boolean; it just is not browser-blue (#563).
 
 ---
 
-## Panels over the map
+## Panels
+
+### Surface rule: the app uses sheets, the map uses floating panels
+
+*Standard patterns: the bottom/edge sheet (mobile), and the floating panel or inspector (desktop
+map and design tools).*
+
+The app is used one-handed while driving, so its panels come from an edge, sit in fixed
+positions and are dismissed the way a sheet is. The map is looked at on a desktop with the
+content in the middle, so its panels float, move and stack. Both are ordinary patterns for their
+surface; neither is converted to the other.
+
+What does **not** differ is what is inside them: the card, the tokens, the controls and the copy
+are the same on both.
+
+### The card
 
 *Standard pattern: a floating panel, the palette or inspector every map and design tool has,
-with the window-chrome affordances that come with it.*
+with the window chrome that comes with it.*
 
 Both surfaces float panels over a map, and they share the card: `--ch-surface-thin` with a
 `blur(10px)` backdrop, `1px solid var(--ch-border)`, `10px` radius, and a soft drop shadow.
@@ -109,12 +128,15 @@ Text over a map without a plate is unreadable, which was F3 of the 26 August rev
 
 ### Surface rule: on the map, a floating panel is draggable, closable and collapsible
 
-The map is a desktop-first surface where the content is in the middle, so anything floating over
-it must be movable out of the way, shrinkable and dismissible. This is a property of the
-**surface**, not of the ticker: the next interaction popup added to `web/` gets the same three.
+Anything floating over the map must be movable out of the way, shrinkable and dismissible. This
+is a property of the **surface**, not of the ticker: the next interaction popup added to `web/`
+gets the same three.
 
-Dragging is a desktop affordance and does not come to the app, which is used one-handed while
-driving and keeps its panels in fixed positions.
+Dragging is the one of those three that does not come to the app.
+
+**Closing works the same on both:** a cross on the panel, and a button in the bar that brings it
+back, in the same place on both surfaces. A panel that can be dismissed without a visible way
+back is not dismissible, it is lost.
 
 ### Surface rule: on the map, a floating panel passes pointer events through
 
@@ -149,8 +171,9 @@ rules declaration by declaration.
 |---|---|---|---|
 | position | fixed, centred | placed, draggable | surface rule above |
 | pointer events | caught | passed through | surface rule above |
-| put away | ✕, reopened from a top-bar button | last collapse stop, the header alone | the map has no top-bar button to travel to; #561 is a design round over that bar |
-| collapse stops | 3 lanes, 1 lane | 3 lanes, 1 lane, header | the extra stop is the map's "away" |
+
+Everything else is the same, including the collapse stops and the cross with its bar button.
+The map's bar carries a `#ticker-btn` for that, which the #561 round over that bar has to keep.
 
 ---
 
@@ -165,10 +188,21 @@ rules declaration by declaration.
 
 ---
 
+## Still to write down
+
+Decided as the next sections to add, and deliberately not written from memory: each needs the
+code read first, and where the surfaces already disagree that has to be recorded as a finding
+rather than smoothed over.
+
+- **Notices and empty states.** Toasts, banners, the no-capture notice, and what a screen shows
+  when it has nothing.
+- **Forms and fields.** Inputs, labels, validation, the login and registration flow.
+- **Onboarding and explanation.** Coach marks, the tour, tooltips: which pattern when.
+
 ## Open, not yet decided
 
 - The fade floor is one number for both themes. Measured on the map at 1180px: the faintest row
   reads at contrast 1.90 on dark and 1.56 on light, so light falls further back. Equalising would
   need roughly 0.31 there.
 - The map's top bar has no product name and its second row is four unrelated readouts (#561).
-  A design round is pending; until it lands, nothing new should be added to that bar.
+  A design round is pending. It now also has to place `#ticker-btn`, added here deliberately.

@@ -480,7 +480,7 @@ function tickerBlock(rawCss) {
 
 // Every declaration of the rule whose selector is exactly `selector`, as a map,
 // so two surfaces can be compared whole rather than property by property. Exact
-// match on purpose: `.rx-hd` must not be answered by `#rx-log.rx-folded .rx-hd`.
+// match on purpose: `.rx-hd` must not be answered by `#rx-log.rx-empty .rx-hd`.
 const declBlock = (block, selector) => {
   for (const chunk of block.split('}')) {
     const i = chunk.indexOf('{')
@@ -640,15 +640,14 @@ describe('receptions ticker CSS parity (#322)', () => {
     }
   })
 
-  // The one deliberate difference left, and why: the app's cross plus its
-  // top-bar button are how its card is put away, so its stops end at one lane.
-  // The map has no such button, and folding to the header is how it has always
-  // been put away, so that is its last stop. The shared prefix must match.
-  it('shares every collapse stop the app has, and adds the map\'s own', () => {
-    const shared = webTicker.RX_COLLAPSE_STOPS.slice(0, appTicker.RX_COLLAPSE_STOPS.length)
-    expect(shared).toEqual(appTicker.RX_COLLAPSE_STOPS)
-    expect(webTicker.RX_COLLAPSE_STOPS.length).toBe(appTicker.RX_COLLAPSE_STOPS.length + 1)
-    expect(webTicker.RX_COLLAPSE_STOPS[webTicker.RX_COLLAPSE_STOPS.length - 1], 'the header alone').toBe(0)
+  // The stops are the same set on both surfaces, and putting the ticker away is
+  // the cross on both. The map used to fold to its header instead, because it
+  // had no button in the bar to come back from; it has one now (#424).
+  it('offers the same collapse stops on both surfaces', () => {
+    expect(webTicker.RX_COLLAPSE_STOPS).toEqual(appTicker.RX_COLLAPSE_STOPS)
+    for (let count = 0; count <= 60; count++) {
+      expect(webTicker.collapseLevels(count), `${count} receptions`).toEqual(appTicker.collapseLevels(count))
+    }
   })
 
   it('scales the fixed columns with the type instead of pinning them to pixels', () => {
