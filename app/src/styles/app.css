@@ -614,15 +614,31 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
-.rx-close { width: 36px; height: 36px; margin-left: auto; border: none; background: none;
+.rx-close, .rx-fold { width: 36px; height: 36px; border: none; background: none;
   color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
-.rx-close:hover { color: var(--ch-text); }
-/* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
-   6-above/3-below geometry rxFade's divisors encode. */
+.rx-fold { margin-left: auto; }
+/* One chevron for three stops (#560): full, three lanes, one. It points down
+   while there is further to collapse and up on the last stop, where the next
+   tap is the way back to full. aria-expanded carries whether the card is at
+   full size for a screen reader; aria-label says what the tap will do. */
+.rx-fold[data-dir="up"] svg { transform: rotate(180deg); }
+.rx-fold[hidden] { display: none; }
+.rx-fold[hidden] + .rx-close { margin-left: auto; }
+.rx-close:hover, .rx-fold:hover { color: var(--ch-text); }
+/* The full card is 10 lanes: 6 above the playhead + the playhead + 3 below,
+   the same 6-above/3-below geometry rxFade's divisors encode. Below that the
+   card is one or three lanes with the newest reception on the bottom one;
+   receptionlog.js derives all three numbers (#560). */
+/* Height and both paddings come from receptionlog.js as lane counts (#560),
+   which is what lets it be one card at three sizes: one lane, three, or full.
+   The fallbacks describe a full card, so one rendered before its first rebuild
+   still looks right rather than collapsing to nothing. Zero below the last row,
+   which is what rxPadBottom returns at every size: three there would put back
+   the blank lanes this change is about. */
 .rx-list { width: 100%;
-  height: calc(10 * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-  scroll-snap-type: y mandatory; scroll-padding-top: calc(6 * var(--ch-rx-line-h));
-  padding: calc(6 * var(--ch-rx-line-h)) 12px calc(3 * var(--ch-rx-line-h));
+  height: calc(var(--rx-lanes, 10) * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+  scroll-snap-type: y mandatory; scroll-padding-top: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h));
+  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 12px calc(var(--rx-pad-bottom, 0) * var(--ch-rx-line-h));
   pointer-events: none; /* the padding is inert; rows re-enable below, the card catches the rest */ }
 .rx-list::-webkit-scrollbar { display: none; }
 /* No receptions -> just the header strip, not ten empty lanes of plate. */
@@ -649,6 +665,19 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
 .rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
+/* Closing travels towards #ticker-btn (#560). Before this the card simply
+   vanished and the control now holding it sits in the top bar with nothing
+   connecting the two, so the first close read as "the ticker is gone". The
+   app sets the two custom properties from the button's measured position. */
+#rx-log.rx-leaving { transition: transform .22s ease-in, opacity .22s ease-in;
+  /* The -50% is the card's own centring (#rx-log sets left:50%), so it has to
+     be carried here: a bare translate() would drop it and jump the card half
+     its width right before the travel even starts. */
+  transform: translate(calc(-50% + var(--rx-exit-x, 0px)), var(--rx-exit-y, 0px)) scale(.35);
+  opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  #rx-log.rx-leaving { transition: opacity .12s linear; transform: translateX(-50%); }
+}
 .rx-ln.act .rx-gt:before { content: '→'; }
 .rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
