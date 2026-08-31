@@ -631,13 +631,14 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
    receptionlog.js derives all three numbers (#560). */
 /* Height and both paddings come from receptionlog.js as lane counts (#560),
    which is what lets it be one card at three sizes: one lane, three, or full.
-   The fallbacks are the pre-#560 full-card numbers, so a card that is somehow
-   rendered before its first rebuild still looks like the old one rather than
-   collapsing to nothing. */
+   The fallbacks describe a full card, so one rendered before its first rebuild
+   still looks right rather than collapsing to nothing. Zero below the last row,
+   which is what rxPadBottom returns at every size: three there would put back
+   the blank lanes this change is about. */
 .rx-list { width: 100%;
   height: calc(var(--rx-lanes, 10) * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
   scroll-snap-type: y mandatory; scroll-padding-top: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h));
-  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 12px calc(var(--rx-pad-bottom, 3) * var(--ch-rx-line-h));
+  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 12px calc(var(--rx-pad-bottom, 0) * var(--ch-rx-line-h));
   pointer-events: none; /* the padding is inert; rows re-enable below, the card catches the rest */ }
 .rx-list::-webkit-scrollbar { display: none; }
 /* No receptions -> just the header strip, not ten empty lanes of plate. */
