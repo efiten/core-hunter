@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-08-31-map-ticker-card",
+    "date": "2026-08-31",
+    "where": "map",
+    "title": "The receptions ticker is a card, and only as tall as it needs",
+    "body": "It sits on its own plate instead of on the tiles, and grows with what it holds. The control beside it shrinks it a step at a time."
+  },
+  {
     "id": "2026-08-31-ticker-sizes-itself",
     "date": "2026-08-31",
     "where": "app",

@@ -4,8 +4,15 @@ import { test, expect } from './fixtures.js'
 // the content, colliding with Leaflet's zoom control, with no way to put it
 // away. It is now a placed box the user drags, and it folds.
 
-const RX = [{ lat: 51, lon: 4, rssi: -70, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
-  sender_label: 'NODE-1', hunter_name: 'H', packet_type: 'Advert', rx_at: '2026-08-24T10:00:00Z' }]
+// Twelve, not one: since #424 the card's height follows how much it holds, so
+// a single reception is a one-lane card with only the header-alone stop left
+// to reach. Twelve is past the last step, which is what makes every stop
+// reachable and the placement measurements stable.
+const RX = Array.from({ length: 12 }, (_, i) => ({
+  lat: 51, lon: 4, rssi: -70 - i, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
+  sender_label: 'NODE-' + i, hunter_name: 'H', packet_type: 'Advert',
+  rx_at: new Date(Date.parse('2026-08-24T10:00:00Z') + i * 1000).toISOString(),
+}))
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -108,7 +115,13 @@ test('a shorter window pulls the ticker back into view', async ({ page }) => {
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
 })
 
-test('folds away and back from one control, and the fold persists', async ({ page }) => {
+// One control, several stops since #424: full, three lanes, one, then the
+// header alone. How many of those exist depends on how much traffic the ticker
+// is holding, because a stop that would not make the card smaller is skipped
+// (it would swallow a click). So the test walks the cycle rather than assuming
+// its length: every click shrinks the card or hides the list, and one more
+// after that is back to where it started.
+test('shrinks a step at a time from one control, and the stop persists', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   const list = page.locator('#rx-list')
@@ -116,14 +129,37 @@ test('folds away and back from one control, and the fold persists', async ({ pag
   await expect(list).toBeVisible()
   await expect(fold).toHaveAttribute('aria-expanded', 'true')
 
-  await fold.click()
+  const height = () => page.evaluate(() => {
+    const el = document.getElementById('rx-list')
+    return el.offsetParent === null || getComputedStyle(el).display === 'none' ? 0 : el.getBoundingClientRect().height
+  })
+
+  const full = await height()
+  expect(full).toBeGreaterThan(0)
+
+  let previous = full
+  let clicks = 0
+  while (previous > 0) {
+    await fold.click()
+    clicks++
+    expect(clicks, 'the cycle is bounded').toBeLessThanOrEqual(3)
+    const now = await height()
+    expect(now, `click ${clicks} made the card smaller`).toBeLessThan(previous)
+    previous = now
+  }
+
+  // The last stop is the header alone, which is how the list is put away here.
   await expect(list).toBeHidden()
-  await expect(fold).toHaveAttribute('aria-expanded', 'false')
-  // The header stays: it is how you get the list back.
   await expect(page.locator('.rx-hd')).toBeVisible()
+  await expect(fold).toHaveAttribute('aria-expanded', 'false')
 
   await page.reload()
   await expect(page.locator('#rx-list')).toBeHidden()
+
+  // And one more click is the way back to full.
+  await page.locator('.rx-fold').click()
+  await expect(page.locator('#rx-list')).toBeVisible()
+  expect(await height()).toBe(full)
 })
 
 test('starts folded on a phone, where the band is what covers the map', async ({ page }) => {

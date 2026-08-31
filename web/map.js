@@ -19,7 +19,7 @@ import { createMultiSelectPicker, wirePopover, placePopover } from './multiselec
 import { activeFilterCount } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
-import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
+import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 
 let currentRole = 'guest'
@@ -1523,10 +1523,14 @@ urlstate.bindControl('unnamed', 'f-unnamed', { checkbox: true })
 // it back" button and the clamp is the safety net: on load and on every resize
 // the box is pulled inside the viewport, or a ticker left at the edge of a wide
 // monitor would be unreachable on a laptop.
+// The placement block runs before createReceptionTicker does, so the stored
+// level cannot reach the component on load from inside it. This is how it gets
+// there once the ticker exists (#424).
+let syncTickerCollapse = () => {}
 const rxLog = document.getElementById('rx-log')
 if (rxLog) {
   const NARROW = window.matchMedia('(max-width: 640px)')
-  let place = { x: 0, y: 0, collapsed: false }
+  let place = { x: 0, y: 0, collapse: 0 }
 
   // The bar's lower edge, which is the ticker's ceiling: the bar is opaque, so
   // anything above it is simply hidden. --ch-bar-h is republished on every bar
@@ -1538,11 +1542,17 @@ if (rxLog) {
   function apply() {
     rxLog.style.setProperty('--rx-x', `${place.x}px`)
     rxLog.style.setProperty('--rx-y', `${place.y}px`)
-    rxLog.classList.toggle('rx-folded', place.collapsed)
+    // The ticker owns its own height now (#424): four stops rather than two,
+    // full, three lanes, one, then the header alone. rx-folded is set by the
+    // component on the last of those, so it is not toggled from here.
+    if (rxTicker) rxTicker.setCollapse(place.collapse)
+    syncTickerCollapse = () => { if (rxTicker) rxTicker.setCollapse(place.collapse) }
     const fold = rxLog.querySelector('.rx-fold')
     if (fold) {
-      fold.setAttribute('aria-expanded', String(!place.collapsed))
-      fold.setAttribute('aria-label', place.collapsed ? 'Show the receptions ticker' : 'Hide the receptions ticker')
+      const last = atLastCollapse(place.collapse, rxTicker ? rxTicker.records().length : 0)
+      fold.setAttribute('aria-expanded', String(place.collapse === 0))
+      fold.setAttribute('aria-label', last ? 'Show the receptions ticker' : 'Shrink the receptions ticker')
+      fold.dataset.dir = last ? 'up' : 'down'
     }
     // The left grab strip spans the visible height, which changes when the
     // list folds away.
@@ -1578,7 +1588,7 @@ if (rxLog) {
   // and the controls end up inert. #rx-log itself is static in index.html.
   rxLog.addEventListener('click', (e) => {
     if (!e.target.closest('.rx-fold')) return
-    place = { ...place, collapsed: !place.collapsed }
+    place = { ...place, collapse: nextCollapse(place.collapse, rxTicker ? rxTicker.records().length : 0) }
     apply()
     reflow()          // folding changes the height, which can free or need space
     urlstate.save()
@@ -2061,6 +2071,8 @@ rxTicker = createReceptionTicker('rx-log', {
   onActiveChange: setRxHighlight,
 })
 window.__rxTicker = rxTicker // test hook
+// The ticker exists now, so the level restored from the URL can reach it.
+syncTickerCollapse()
 window.__rxHighlightCount = () => rxHighlightLayer.getLayers().length // test hook
 window.__rxHighlightLatLng = () => { // test hook
   const layers = rxHighlightLayer.getLayers()
