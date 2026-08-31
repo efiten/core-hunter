@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing } from './receptionticker.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels } from './receptionticker.js'
 
 // rxView/rxActiveIndex/rxFade are ported verbatim from app/src/receptionlog.js
 // (#238 explicitly excludes this file from the shared-core extraction, since
@@ -41,15 +41,31 @@ describe('rxActiveIndex — playhead index from scroll, clamped', () => {
   })
 })
 
-describe('rxFade — playhead-relative opacity (6 above, 3 below, faster below)', () => {
+describe('rxFade, playhead-relative opacity', () => {
   it('is 1 on the lane', () => { expect(rxFade(0)).toBe(1) })
-  it('fades over ~6 lines above (negative d)', () => {
-    expect(rxFade(-3)).toBeCloseTo(0.5)
-    expect(rxFade(-6)).toBe(0)
+
+  // Each side fades across the lanes there actually are on it, and stops at a
+  // floor rather than at nothing (#424, mirroring #560). The old fixed divisors
+  // reached zero on the outermost lane of each side, which was harmless while
+  // those lanes were blank padding and is not now that they hold receptions:
+  // the newest one lives on the last lane below the playhead.
+  it('fades older rows across the span it is given, down to the floor', () => {
+    expect(rxFade(-6, 6, 3)).toBe(RX_FADE_FLOOR)
+    expect(rxFade(-1, 6, 3)).toBeGreaterThan(rxFade(-5, 6, 3))
   })
-  it('fades faster over ~3 lines below (positive d)', () => {
-    expect(rxFade(1)).toBeCloseTo(2 / 3)
-    expect(rxFade(3)).toBe(0)
+
+  it('fades newer rows faster than older ones, and stops at the floor', () => {
+    expect(rxFade(1, 6, 3)).toBeLessThan(rxFade(-1, 6, 3))
+    expect(rxFade(3, 6, 3), 'the newest row on a full card').toBe(RX_FADE_FLOOR)
+    expect(rxFade(9, 6, 3), 'past the card, clamped').toBe(RX_FADE_FLOOR)
+  })
+
+  it('never hides a row the card has made room for', () => {
+    for (const [above, below] of [[6, 3], [3, 1], [1, 1], [0, 0]]) {
+      for (let d = -above; d <= below; d++) {
+        expect(rxFade(d, above, below), `d=${d} of ${above}/${below}`).toBeGreaterThanOrEqual(RX_FADE_FLOOR)
+      }
+    }
   })
 })
 
@@ -230,5 +246,26 @@ describe('rxLineHeight — row height parsed from the CSS variable', () => {
     expect(rxLineHeight('inherit')).toBe(26)
     expect(rxLineHeight('0px')).toBe(26)
     expect(rxLineHeight('-4px')).toBe(26)
+  })
+})
+
+// The map has a fourth stop the app does not: zero lanes, the header alone,
+// which is how the ticker is put away here. Zero is falsy, and a truthiness
+// check on the cap silently ignored it, so the last click did nothing at all
+// (found by driving it, not by reading it).
+describe('the map\'s header-alone stop', () => {
+  it('is a real stop, and shrinks the card to nothing', () => {
+    const last = RX_COLLAPSE_STOPS.length
+    expect(RX_COLLAPSE_STOPS[last - 1], 'the last stop is zero lanes').toBe(0)
+    for (const count of [1, 3, 10, 50]) {
+      expect(rxLanes(count, last), `${count} receptions`).toBe(0)
+    }
+  })
+
+  it('is always reachable, however little has arrived', () => {
+    for (const count of [1, 2, 3, 10, 50]) {
+      const levels = collapseLevels(count)
+      expect(levels[levels.length - 1], `${count} receptions`).toBe(RX_COLLAPSE_STOPS.length)
+    }
   })
 })

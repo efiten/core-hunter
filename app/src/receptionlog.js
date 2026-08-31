@@ -112,8 +112,10 @@ export function rxLanes(count, collapse) {
   for (const step of RX_STEPS) {
     if (n >= step.from) { lanes = step.lanes; break }
   }
+  // `undefined`, not falsy: a stop of zero lanes is a real stop (the map's
+  // header-alone one), and a truthiness check silently ignored it.
   const cap = RX_COLLAPSE_STOPS[(collapse | 0) - 1]
-  return cap ? Math.min(lanes, cap) : lanes
+  return cap === undefined ? lanes : Math.min(lanes, cap)
 }
 
 // Whether the chevron has anywhere to go at all. Below the smallest stop it

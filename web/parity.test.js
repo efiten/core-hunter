@@ -510,6 +510,18 @@ describe('receptions ticker CSS parity (#322)', () => {
     return null
   }
 
+  // The plate the ticker floats on (#424). It was declared in the app's tokens
+  // by #539 and nowhere on the map, so the map's card resolved to
+  // rgba(0,0,0,0): a border and a blur with nothing behind them. Measured in
+  // the browser, not spotted by reading.
+  it('declares the ticker plate on both surfaces, with the same values', () => {
+    const thin = (css) => [...css.matchAll(/--ch-surface-thin\s*:\s*([^;]+);/g)].map((m) => m[1].replace(/\s+/g, ''))
+    const appThin = thin(APP_TOKENS)
+    const webThin = thin(WEB_CSS)
+    expect(appThin.length, 'app declares it for both themes').toBe(2)
+    expect(webThin, 'map matches the app, dark and light').toEqual(appThin)
+  })
+
   it('declares the row height where the modules actually read it', () => {
     const appVar = rootDecl(APP_TOKENS)
     const webVar = rootDecl(WEB_CSS)
@@ -547,26 +559,48 @@ describe('receptions ticker CSS parity (#322)', () => {
       // encode; the padding is the same geometry expressed in CSS.
       expect(decl(block, '.rx-ln', 'height')).toBe('var(--ch-rx-line-h)')
     }
-    // The map's multipliers, still literal.
-    expect(decl(web, '.rx-list', 'height')).toMatch(/calc\(\s*10\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
-    expect(decl(web, '.rx-list', 'scroll-padding-top')).toMatch(/calc\(\s*6\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
-    // The app's, in both the places that carry them: the CSS fallback used
-    // before the first render, and the module that publishes them after. A
-    // full app card is still the map's ten lanes.
-    expect(decl(app, '.rx-list', 'height')).toMatch(/var\(--rx-lanes,\s*10\)/)
-    expect(decl(app, '.rx-list', 'scroll-padding-top')).toMatch(/var\(--rx-playhead,\s*6\)/)
-    expect(appTicker.RX_FULL_LANES, 'app full card matches the map').toBe(10)
-    // Both surfaces keep #130's playhead six lanes down with three below it, so
-    // lines still roll through it. Where they part company since #560 is the
-    // padding under the last row: the map still reserves three lanes there, so
-    // a ten-lane card ends in three blank ones, and the app reserves none, so
-    // the browser clamps the follow-scroll and parks the newest reception on
-    // the bottom lane instead. #424 is where the map follows; until it does,
-    // this pins the difference rather than letting it drift unnoticed.
-    expect(appTicker.rxPlayhead(appTicker.RX_FULL_LANES), 'app keeps the roll-through lane').toBe(6)
-    expect(appTicker.rxBelow(appTicker.RX_FULL_LANES), 'app keeps lanes for newer receptions').toBe(3)
-    expect(appTicker.rxPadBottom(appTicker.RX_FULL_LANES), 'app pads nothing under the last row').toBe(0)
-    expect(decl(web, '.rx-list', 'padding')).toMatch(/calc\(\s*3\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+    // Both surfaces publish the same lane counts from their own module now
+    // (#560, #424), with the same fallbacks in the CSS for the render before
+    // the first rebuild.
+    for (const [name, block] of [['app', app], ['web', web]]) {
+      expect(decl(block, '.rx-list', 'height'), name).toMatch(/var\(--rx-lanes,\s*10\)/)
+      expect(decl(block, '.rx-list', 'scroll-padding-top'), name).toMatch(/var\(--rx-playhead,\s*6\)/)
+      expect(decl(block, '.rx-list', 'padding'), name + ': nothing under the last row')
+        .toMatch(/var\(--rx-pad-bottom,\s*0\)/)
+    }
+  })
+
+  // #424 brought the map onto #560's model, so the geometry is no longer a
+  // difference to pin but an agreement to hold. Compared by running both
+  // copies rather than by reading their constants: two modules that happen to
+  // declare the same numbers can still disagree on what they do with them.
+  it('sizes the card identically on both surfaces', () => {
+    for (let count = 0; count <= 60; count++) {
+      expect(webTicker.rxLanes(count, 0), `${count} receptions`).toBe(appTicker.rxLanes(count, 0))
+    }
+    for (const lanes of [0, 1, 3, 5, 10]) {
+      expect(webTicker.rxPlayhead(lanes), `${lanes} lanes`).toBe(appTicker.rxPlayhead(lanes))
+      expect(webTicker.rxBelow(lanes), `${lanes} lanes`).toBe(appTicker.rxBelow(lanes))
+      expect(webTicker.rxPadBottom(lanes), `${lanes} lanes`).toBe(appTicker.rxPadBottom(lanes))
+    }
+    expect(webTicker.RX_FULL_LANES).toBe(appTicker.RX_FULL_LANES)
+    expect(webTicker.RX_FADE_FLOOR).toBe(appTicker.RX_FADE_FLOOR)
+    for (const [above, below] of [[6, 3], [3, 1], [1, 1]]) {
+      for (let d = -above; d <= below; d++) {
+        expect(webTicker.rxFade(d, above, below), `d=${d}`).toBeCloseTo(appTicker.rxFade(d, above, below), 10)
+      }
+    }
+  })
+
+  // The one deliberate difference left, and why: the app's cross plus its
+  // top-bar button are how its card is put away, so its stops end at one lane.
+  // The map has no such button, and folding to the header is how it has always
+  // been put away, so that is its last stop. The shared prefix must match.
+  it('shares every collapse stop the app has, and adds the map\'s own', () => {
+    const shared = webTicker.RX_COLLAPSE_STOPS.slice(0, appTicker.RX_COLLAPSE_STOPS.length)
+    expect(shared).toEqual(appTicker.RX_COLLAPSE_STOPS)
+    expect(webTicker.RX_COLLAPSE_STOPS.length).toBe(appTicker.RX_COLLAPSE_STOPS.length + 1)
+    expect(webTicker.RX_COLLAPSE_STOPS[webTicker.RX_COLLAPSE_STOPS.length - 1], 'the header alone').toBe(0)
   })
 
   it('scales the fixed columns with the type instead of pinning them to pixels', () => {
