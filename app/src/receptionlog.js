@@ -122,21 +122,37 @@ export function rxCanCollapse(count) {
   return collapseLevels(count).length > 1
 }
 
-// rxPlayhead is the lane the active reception sits on, counted from the top:
-// always the bottom one, at every size. The old six-lanes-down offset is why a
-// ten-lane card showed seven receptions over three blank lanes, and why a
-// one-lane card would have shown none at all.
+// rxPlayhead is the lane the active reception sits on, counted from the top.
+// It keeps the roll-through position of #130 at every card size: the original
+// full card put it 6 of 9 lanes down, two thirds, with three lanes below for
+// newer receptions to roll through, and that proportion is held here rather
+// than restated per size.
+//
+// The blank lanes under a full card were never the playhead's fault. They came
+// from padding the list below the last row, which is what rxPadBottom is now
+// zero for. With no padding under it, the browser clamps the follow-scroll
+// short of the lane, and that clamp is exactly what parks the newest reception
+// on the bottom lane while the playhead stays where it is. Both things at once,
+// which is what "laatste onderaan" and "rol-door" each needed.
 export function rxPlayhead(lanes) {
-  return Math.max(0, lanes - 1)
+  if (lanes <= 1) return 0
+  return Math.round((lanes - 1) * 2 / 3)
 }
 
-// rxPadBottom is the padding under the last row, in lanes. Nothing sits under
-// the newest reception any more, so this is zero; it stays a function because
-// the scroll code depends on playhead + padBottom being lanes - 1, which is
-// exactly the condition under which the browser can still scroll the newest
-// reception onto the playhead. That relationship is asserted, not assumed.
-export function rxPadBottom(lanes) {
-  return Math.max(0, lanes - 1) - rxPlayhead(lanes)
+// rxBelow is how many lanes sit under the playhead, so newer receptions have
+// somewhere to roll through. Zero on the small cards, where there is no room
+// and the newest reception is the active one.
+export function rxBelow(lanes) {
+  return Math.max(0, lanes - 1 - rxPlayhead(lanes))
+}
+
+// rxPadBottom is the padding under the last row, in lanes: none. It used to be
+// three, which is what reserved the blank lanes a full card ended in. It stays
+// a function because the geometry reads better as four derived numbers than as
+// three plus a literal zero, and because the reachability assertion below is
+// written against it.
+export function rxPadBottom() {
+  return 0
 }
 
 // How much of the ticker is on screen, as one stored value. A boolean plus a
@@ -161,16 +177,17 @@ export function tickerStored({ visible, collapse }) {
 // and four invisible ones: the height promised more than the opacity delivered.
 export const RX_FADE_FLOOR = 0.22
 
-// rxFade is the opacity of a line `d` rows from the playhead. Older rows (above)
-// fade across the lanes there actually are above the playhead, which is what
-// `above` carries, down to RX_FADE_FLOOR rather than to nothing. Newer rows
-// (below) keep the faster falloff; since #560 the playhead is the bottom lane,
-// so they are only reachable by scrolling back.
-export function rxFade(d, above = 6) {
+// rxFade is the opacity of a line `d` rows from the playhead. Each side fades
+// across the lanes there actually are on that side, down to RX_FADE_FLOOR
+// rather than to nothing: a row the card has made room for must be legible,
+// and the old fixed divisors reached zero on the outermost lane of each side.
+// Newer rows still fall off faster than older ones, because there are fewer
+// lanes below the playhead than above it.
+export function rxFade(d, above = 6, below = 3) {
   if (d === 0) return 1
-  if (d > 0) return Math.max(0, 1 - d / 3)
-  const span = Math.max(1, above)
-  return Math.max(RX_FADE_FLOOR, 1 + (d / span) * (1 - RX_FADE_FLOOR))
+  const span = Math.max(1, d < 0 ? above : below)
+  const t = Math.min(1, Math.abs(d) / span)
+  return RX_FADE_FLOOR + (1 - t) * (1 - RX_FADE_FLOOR)
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +276,12 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
   // from DOM-ready code.
   const LINE_H = rxLineHeight(cssVar('--ch-rx-line-h'))
 
-  const maxScroll = () => Math.max(0, (view.length - 1) * LINE_H)
+  // The browser's own maximum, not (rows - 1) * lineH. Since #560 there is no
+  // padding under the last row, so the list cannot scroll far enough to put the
+  // last row on the playhead, and it clamps with that row on the bottom lane
+  // instead. Comparing against the JS lane count would make atBottom() never
+  // true, which latches `follow` off and stops the card following live traffic.
+  const maxScroll = () => Math.max(0, list.scrollHeight - list.clientHeight)
   const atBottom = () => list.scrollTop >= maxScroll() - 2
 
   function rebuild() {
@@ -275,7 +297,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     const lanes = rxLanes(view.length, collapse)
     list.style.setProperty('--rx-lanes', lanes)
     list.style.setProperty('--rx-playhead', rxPlayhead(lanes))
-    list.style.setProperty('--rx-pad-bottom', rxPadBottom(lanes))
+    list.style.setProperty('--rx-pad-bottom', rxPadBottom())
     foldEl.hidden = !rxCanCollapse(view.length)
     // The chevron points down while there is further to collapse and up on the
     // last stop, where the next tap is the way back to full. One control that
@@ -322,7 +344,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     for (let i = 0; i < els.length; i++) {
       const d = i - ai
       if (d === 0) { els[i].classList.add('act'); els[i].style.opacity = '' }
-      else { els[i].classList.remove('act'); els[i].style.opacity = String(rxFade(d, rxPlayhead(rxLanes(n, collapse)))) }
+      else { els[i].classList.remove('act'); els[i].style.opacity = String(rxFade(d, rxPlayhead(rxLanes(n, collapse)), rxBelow(rxLanes(n, collapse)))) }
     }
     const rec = view[ai]
     if (rec && rec.id !== activeId) { activeId = rec.id; onActiveChange && onActiveChange(rec) }

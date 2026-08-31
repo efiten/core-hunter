@@ -556,14 +556,17 @@ describe('receptions ticker CSS parity (#322)', () => {
     expect(decl(app, '.rx-list', 'height')).toMatch(/var\(--rx-lanes,\s*10\)/)
     expect(decl(app, '.rx-list', 'scroll-padding-top')).toMatch(/var\(--rx-playhead,\s*6\)/)
     expect(appTicker.RX_FULL_LANES, 'app full card matches the map').toBe(10)
-    // Where they deliberately part company since #560: the map keeps the
-    // playhead six lanes down with three below it, so a ten-lane card shows
-    // seven receptions over three blank lanes. The app puts the newest on the
-    // bottom lane at every size, so ten lanes means ten receptions. #424 is
-    // where the map follows; until it does, this pins the difference rather
-    // than letting it drift unnoticed.
-    expect(appTicker.rxPlayhead(appTicker.RX_FULL_LANES), 'app playhead is the bottom lane').toBe(9)
-    expect(appTicker.rxPadBottom(appTicker.RX_FULL_LANES), 'app leaves nothing under the newest').toBe(0)
+    // Both surfaces keep #130's playhead six lanes down with three below it, so
+    // lines still roll through it. Where they part company since #560 is the
+    // padding under the last row: the map still reserves three lanes there, so
+    // a ten-lane card ends in three blank ones, and the app reserves none, so
+    // the browser clamps the follow-scroll and parks the newest reception on
+    // the bottom lane instead. #424 is where the map follows; until it does,
+    // this pins the difference rather than letting it drift unnoticed.
+    expect(appTicker.rxPlayhead(appTicker.RX_FULL_LANES), 'app keeps the roll-through lane').toBe(6)
+    expect(appTicker.rxBelow(appTicker.RX_FULL_LANES), 'app keeps lanes for newer receptions').toBe(3)
+    expect(appTicker.rxPadBottom(appTicker.RX_FULL_LANES), 'app pads nothing under the last row').toBe(0)
+    expect(decl(web, '.rx-list', 'padding')).toMatch(/calc\(\s*3\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
   })
 
   it('scales the fixed columns with the type instead of pinning them to pixels', () => {
