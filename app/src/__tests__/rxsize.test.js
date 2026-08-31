@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { RX_FULL_LANES, RX_COLLAPSE_STOPS, rxLanes, rxPlayhead, rxPadBottom, rxCanCollapse, nextCollapse, collapseLevels, atLastCollapse, tickerState, tickerStored } from '../receptionlog.js'
+import { RX_FULL_LANES, RX_COLLAPSE_STOPS, rxLanes, rxPlayhead, rxPadBottom, rxBelow, rxCanCollapse, nextCollapse, collapseLevels, atLastCollapse, tickerState, tickerStored } from '../receptionlog.js'
 
 // The card was ten lanes or nothing: 298px, a third of a 915px phone, whether
 // it held one reception or two hundred (#560). A full one did not even show
@@ -65,33 +65,59 @@ describe('rxLanes', () => {
   })
 })
 
-// "Laatste onderaan", at every size. The old offset is what left blank lanes
-// under the newest reception, which is the half of #560 that is not about
-// height.
-describe('rxPlayhead and rxPadBottom', () => {
-  it('puts the newest reception on the bottom lane at every size', () => {
-    for (const lanes of [1, 3, 5, RX_FULL_LANES]) {
-      expect(rxPlayhead(lanes), `${lanes} lanes`).toBe(lanes - 1)
-      expect(rxPadBottom(lanes), `${lanes} lanes, nothing below the newest`).toBe(0)
+// The playhead keeps the roll-through position of #130 at every size, and the
+// newest reception still ends up on the bottom lane. Those two were never in
+// conflict: the blank lanes a full card used to end in came from padding under
+// the last row, not from where the playhead sits.
+describe('rxPlayhead, rxBelow and rxPadBottom', () => {
+  it('holds the full card at the lane #130 chose', () => {
+    expect(rxPlayhead(RX_FULL_LANES)).toBe(6)
+    expect(rxBelow(RX_FULL_LANES)).toBe(3)
+  })
+
+  // A smaller card cannot land on the exact two-thirds, and should not pretend
+  // to: at three lanes the nearest lane is the middle one. What has to hold at
+  // every size is that the playhead is never above the middle, so the older
+  // context stays the larger half and lines still roll upward through it.
+  it('never puts the playhead above the middle of the card', () => {
+    for (let lanes = 1; lanes <= 20; lanes++) {
+      expect(rxPlayhead(lanes), `${lanes} lanes`).toBeGreaterThanOrEqual(rxBelow(lanes))
     }
   })
 
-  // The scroll code drives scrollTop to (count - 1) * lineH and expects the
-  // browser to reach it, which holds exactly while the padding either side
-  // covers the lanes the box cannot show. This is the invariant tying the
-  // three numbers together, and the reason padBottom is derived.
-  it('leaves the newest reception reachable at every size', () => {
+  it('leaves nothing padding the list below the last row', () => {
+    for (const lanes of [1, 3, 5, RX_FULL_LANES]) expect(rxPadBottom(lanes), `${lanes} lanes`).toBe(0)
+  })
+
+  // With no padding under the last row the browser clamps the follow-scroll
+  // short of the playhead, and that clamp is what parks the newest reception on
+  // the bottom lane. It only works while the playhead has at least one lane
+  // under it to be clamped by, which is what this asserts.
+  it('never puts the playhead past the card it belongs to', () => {
     for (const lanes of [1, 3, 5, RX_FULL_LANES]) {
-      expect(rxPlayhead(lanes) + rxPadBottom(lanes), `${lanes} lanes`).toBe(lanes - 1)
+      expect(rxPlayhead(lanes), `${lanes} lanes`).toBeLessThanOrEqual(Math.max(0, lanes - 1))
+      expect(rxPlayhead(lanes) + rxBelow(lanes), `${lanes} lanes account for the card`).toBe(Math.max(0, lanes - 1))
     }
   })
 
-  it('never pads a card past its own height, or below zero', () => {
-    for (const lanes of [0, 1, 3, 5, RX_FULL_LANES]) {
-      expect(rxPlayhead(lanes)).toBeGreaterThanOrEqual(0)
-      expect(rxPlayhead(lanes)).toBeLessThanOrEqual(Math.max(0, lanes - 1))
-      expect(rxPadBottom(lanes)).toBeGreaterThanOrEqual(0)
+  // Where the newest reception lands, worked out the way the browser does it:
+  // content is padTop + rows, the box is `lanes`, and scrollTop clamps to the
+  // difference. Asserted rather than trusted, because it is the whole reason
+  // rxPadBottom is zero.
+  it('parks the newest reception on the bottom lane, at every size', () => {
+    for (const lanes of [1, 3, 5, RX_FULL_LANES]) {
+      for (const rows of [lanes, lanes + 1, lanes + 40]) {
+        const padTop = rxPlayhead(lanes)
+        const scrollTop = Math.max(0, padTop + rows - lanes)
+        const newestLane = padTop + (rows - 1) - scrollTop
+        expect(newestLane, `${rows} rows in ${lanes} lanes`).toBe(lanes - 1)
+      }
     }
+  })
+
+  it('has as many lanes under the playhead as it has receptions to roll through', () => {
+    expect(rxBelow(1)).toBe(0)
+    expect(rxBelow(RX_FULL_LANES)).toBeGreaterThan(0)
   })
 })
 

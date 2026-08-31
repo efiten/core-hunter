@@ -107,14 +107,28 @@ describe('rxFade, playhead-relative opacity', () => {
     }
   })
 
-  it('keeps the faster falloff for newer rows, reachable only by scrolling back', () => {
-    expect(rxFade(1)).toBeCloseTo(2 / 3)
-    expect(rxFade(3)).toBe(0)
-    expect(rxFade(5)).toBe(0)
+  // Newer rows still fall off faster than older ones, because the playhead has
+  // fewer lanes under it than above it. They land on the floor rather than on
+  // nothing, which is the change: since #560 those lanes hold receptions
+  // instead of being blank padding, and the newest one lives on the last of
+  // them.
+  it('fades newer rows faster than older ones, and stops at the floor', () => {
+    expect(rxFade(1, 6, 3)).toBeLessThan(rxFade(-1, 6, 3))
+    expect(rxFade(3, 6, 3), 'the newest row on a full card').toBe(RX_FADE_FLOOR)
+    expect(rxFade(5, 6, 3), 'past the card, clamped').toBe(RX_FADE_FLOOR)
   })
 
-  it('is monotonic away from the lane', () => {
-    for (let d = -8; d < -1; d++) expect(rxFade(d, 9)).toBeGreaterThan(rxFade(d - 1, 9))
+  it('never hides a row the card has made room for', () => {
+    for (const [above, below] of [[6, 3], [3, 1], [1, 1], [0, 0]]) {
+      for (let d = -above; d <= below; d++) {
+        expect(rxFade(d, above, below), `d=${d} of ${above}/${below}`).toBeGreaterThanOrEqual(RX_FADE_FLOOR)
+      }
+    }
+  })
+
+  it('is monotonic away from the lane on both sides', () => {
+    for (let d = -8; d < -1; d++) expect(rxFade(d, 9, 3)).toBeGreaterThanOrEqual(rxFade(d - 1, 9, 3))
+    for (let d = 1; d < 3; d++) expect(rxFade(d, 6, 3)).toBeGreaterThanOrEqual(rxFade(d + 1, 6, 3))
   })
 })
 
