@@ -35,7 +35,7 @@ import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
-import { createReceptionLog } from './receptionlog.js'
+import { createReceptionLog, tickerState, tickerStored } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
@@ -155,6 +155,8 @@ const state = {
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
   map: null,
   rxLog: null,
+  tickerVisible: true,
+  tickerCollapse: 0,
   targetList: null,
   connected: false,
   wakeLock: null,
@@ -377,18 +379,71 @@ function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
-// Ticker visibility (#539). The ticker is a fixed card that can be put away
-// with its ✕; the topbar list button brings it back and lights accent while
-// traffic arrives unseen. Persisted like the view and sound FABs — Discover
-// is the deliberate exception (see state.autoPing).
-function loadTickerVisible() {
-  try { return localStorage.getItem('core-hunter-ticker') !== 'closed' } catch (_) { return true }
+// Ticker state (#539, resized in #560). The card can be put away with its ✕,
+// collapsed to three lanes with its chevron, or left full; the topbar list
+// button brings a hidden one back and lights accent while traffic arrives
+// unseen. All three live in one stored value, because they are one question:
+// how much of the ticker is on screen. Persisted like the view and sound FABs;
+// Discover is the deliberate exception (see state.autoPing).
+function loadTickerState() {
+  try { return tickerState(localStorage.getItem('core-hunter-ticker')) } catch (_) { return tickerState(null) }
 }
-function setTickerVisible(v) {
-  el('rx-log').hidden = !v
-  el('ticker-btn').hidden = v
-  if (v) el('ticker-btn').classList.remove('active')
-  try { localStorage.setItem('core-hunter-ticker', v ? 'open' : 'closed') } catch (_) {}
+
+// Closing travels towards the button that brings it back (#560): the card
+// vanishing on the spot left nothing connecting it to a control in the top
+// bar. Measured per close rather than assumed, because #ticker-btn is only
+// laid out once it is un-hidden, and the card's own position depends on the
+// viewport.
+function playTickerExit(done) {
+  const card = el('rx-log')
+  const btn = el('ticker-btn')
+  const from = card.getBoundingClientRect()
+  btn.hidden = false
+  const to = btn.getBoundingClientRect()
+  if (!from.width || !to.width) { done(); return }
+  card.style.setProperty('--rx-exit-x', Math.round((to.left + to.width / 2) - (from.left + from.width / 2)) + 'px')
+  card.style.setProperty('--rx-exit-y', Math.round((to.top + to.height / 2) - (from.top + from.height / 2)) + 'px')
+  let settled = false
+  const finish = () => {
+    if (settled) return
+    settled = true
+    card.classList.remove('rx-leaving')
+    card.style.removeProperty('--rx-exit-x')
+    card.style.removeProperty('--rx-exit-y')
+    done()
+  }
+  // transitionend can be missed (a background tab never runs the transition,
+  // and prefers-reduced-motion swaps which property animates), so the timer is
+  // the one that guarantees the card is actually hidden.
+  card.addEventListener('transitionend', finish, { once: true })
+  setTimeout(finish, 400)
+  // Added straight away rather than inside requestAnimationFrame: the card has
+  // been on screen, so its from-state is already committed, and a hidden tab
+  // never runs rAF at all (the trap behind #539's walkthrough measurements).
+  card.classList.add('rx-leaving')
+}
+
+function setTickerVisible(v, { animate = false } = {}) {
+  state.tickerVisible = v
+  const apply = () => {
+    el('rx-log').hidden = !v
+    el('ticker-btn').hidden = v
+    if (v) el('ticker-btn').classList.remove('active')
+  }
+  if (!v && animate) playTickerExit(apply)
+  else apply()
+  saveTickerState()
+}
+
+function setTickerCollapse(level) {
+  state.tickerCollapse = level
+  if (state.rxLog) state.rxLog.setCollapse(level)
+  saveTickerState()
+}
+
+function saveTickerState() {
+  const stored = tickerStored({ visible: state.tickerVisible, collapse: state.tickerCollapse })
+  try { localStorage.setItem('core-hunter-ticker', stored) } catch (_) {}
 }
 function noteTickerTraffic() {
   if (el('rx-log').hidden) el('ticker-btn').classList.add('active')
@@ -2520,11 +2575,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.
     onRowActivate: (rec) => { if (state.map) state.map.focusReception(rec) },
-    onClose: () => setTickerVisible(false),
+    onClose: () => setTickerVisible(false, { animate: true }),
+    onCollapse: (level) => setTickerCollapse(level),
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
   el('ticker-btn').addEventListener('click', () => setTickerVisible(true))
-  setTickerVisible(loadTickerVisible())
+  const ticker = loadTickerState()
+  state.tickerCollapse = ticker.collapse
+  state.rxLog.setCollapse(ticker.collapse)
+  setTickerVisible(ticker.visible)
 
   // Build sheets (static HTML injected once)
   buildFilterSheet()

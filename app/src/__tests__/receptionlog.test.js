@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -87,17 +87,34 @@ describe('rxActiveIndex — playhead index from scroll, clamped', () => {
   })
 })
 
-describe('rxFade — playhead-relative opacity (6 above, 3 below, faster below)', () => {
+describe('rxFade, playhead-relative opacity', () => {
   it('is 1 on the lane', () => { expect(rxFade(0)).toBe(1) })
-  it('fades over ~6 lines above (negative d)', () => {
-    expect(rxFade(-3)).toBeCloseTo(0.5)
-    expect(rxFade(-6)).toBe(0)
-    expect(rxFade(-9)).toBe(0)
+
+  // Older rows fade across the lanes there are above the playhead, and stop at
+  // a floor rather than at nothing (#560): fading to zero on the card's own top
+  // lane is what made a ten-lane card show six rows and four invisible ones.
+  it('fades older rows across the span it is given, down to the floor', () => {
+    expect(rxFade(-9, 9)).toBe(RX_FADE_FLOOR)
+    expect(rxFade(-1, 9)).toBeGreaterThan(rxFade(-8, 9))
+    expect(rxFade(-8, 9)).toBeGreaterThan(RX_FADE_FLOOR)
   })
-  it('fades faster over ~3 lines below (positive d)', () => {
+
+  it('never drops a visible row to nothing, at any card size', () => {
+    for (const above of [1, 2, 4, 9]) {
+      for (let d = -above; d <= -1; d++) {
+        expect(rxFade(d, above), `d=${d} of ${above}`).toBeGreaterThanOrEqual(RX_FADE_FLOOR)
+      }
+    }
+  })
+
+  it('keeps the faster falloff for newer rows, reachable only by scrolling back', () => {
     expect(rxFade(1)).toBeCloseTo(2 / 3)
     expect(rxFade(3)).toBe(0)
     expect(rxFade(5)).toBe(0)
+  })
+
+  it('is monotonic away from the lane', () => {
+    for (let d = -8; d < -1; d++) expect(rxFade(d, 9)).toBeGreaterThan(rxFade(d - 1, 9))
   })
 })
 
