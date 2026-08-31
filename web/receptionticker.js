@@ -321,7 +321,9 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   // from a ticker the user has moved, and it is the ticker it collapses.
   root.innerHTML = '<div class="rx-grab" aria-hidden="true"><span class="rx-grab-t"></span><span class="rx-grab-l"></span></div>'
     + '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span>'
-    + '<button type="button" class="rx-fold" aria-expanded="true" aria-controls="rx-list"></button></div>'
+    + '<button type="button" class="rx-fold" aria-expanded="true" aria-controls="rx-list">'
+    + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg>'
+    + '</button></div>'
     + '<div class="rx-list" id="rx-list"></div>'
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')

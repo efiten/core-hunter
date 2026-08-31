@@ -478,6 +478,28 @@ function tickerBlock(rawCss) {
   return css.slice(start, end)
 }
 
+// Every declaration of the rule whose selector is exactly `selector`, as a map,
+// so two surfaces can be compared whole rather than property by property. Exact
+// match on purpose: `.rx-hd` must not be answered by `#rx-log.rx-folded .rx-hd`.
+const declBlock = (block, selector) => {
+  for (const chunk of block.split('}')) {
+    const i = chunk.indexOf('{')
+    if (i < 0) continue
+    const sel = chunk.slice(0, i).replace(/\/\*[\s\S]*?\*\//g, '').trim().split('\n').pop().trim()
+    if (sel !== selector) continue
+    const out = {}
+    for (const d of chunk.slice(i + 1).split(';')) {
+      const c = d.indexOf(':')
+      if (c < 0) continue
+      const k = d.slice(0, c).replace(/\/\*[\s\S]*?\*\//g, '').trim()
+      if (!k || k.startsWith('/*')) continue
+      out[k] = d.slice(c + 1).replace(/\/\*[\s\S]*?\*\//g, '').trim()
+    }
+    return out
+  }
+  return null
+}
+
 const decl = (block, selector, prop) => {
   const rule = new RegExp('(^|\\})[^{}]*\\' + selector + '\\b[^{}]*\\{([^}]*)\\}', 'm').exec(block)
   if (!rule) return null
@@ -514,6 +536,32 @@ describe('receptions ticker CSS parity (#322)', () => {
   // by #539 and nowhere on the map, so the map's card resolved to
   // rgba(0,0,0,0): a border and a blur with nothing behind them. Measured in
   // the browser, not spotted by reading.
+  // The two tickers are meant to be one design (#424), and up to now only the
+  // behaviour was guarded: the map kept a header with no height and no rule
+  // under it, rows flush to the plate's edge, and a text glyph where the app
+  // has a drawn button. None of that is visible to a test that only checks
+  // lane counts, so it drifted until someone looked at the two side by side.
+  // This pins the chrome itself. What is deliberately per-surface is #rx-log's
+  // own box, which is placed and draggable on the map and centred in the app.
+  it('draws the same card on both surfaces', () => {
+    const decls = (block, selector) => {
+      const found = declBlock(block, selector)
+      expect(found, `${selector} exists`).toBeTruthy()
+      return found
+    }
+    for (const selector of ['.rx-hd', '.rx-list', '.rx-ln', '.rx-tm', '.rx-rs', '.rx-gt']) {
+      expect(decls(web, selector), selector).toEqual(decls(app, selector))
+    }
+    // The fold button's box, which the app declares alongside its close button.
+    for (const prop of ['width', 'height', 'display', 'align-items', 'justify-content']) {
+      expect(decl(web, '.rx-fold', prop), `.rx-fold ${prop}`).toBe(decl(app, '.rx-close, .rx-fold', prop))
+    }
+    // And it is a drawn chevron on both, not a glyph on one of them.
+    expect(WEB_CSS).not.toMatch(/\.rx-fold(\[[^\]]*\])?::before\s*\{\s*content/)
+    expect(declBlock(WEB_CSS, '.rx-fold[data-dir="up"] svg'), 'the map rotates the drawn chevron')
+      .toEqual(declBlock(APP_CSS, '.rx-fold[data-dir="up"] svg'))
+  })
+
   it('declares the ticker plate on both surfaces, with the same values', () => {
     const thin = (css) => [...css.matchAll(/--ch-surface-thin\s*:\s*([^;]+);/g)].map((m) => m[1].replace(/\s+/g, ''))
     const appThin = thin(APP_TOKENS)

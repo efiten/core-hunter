@@ -266,14 +266,17 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    rule written above the canonical `.rx-list` block would silently become the
    one under test. #407 tracks hardening that matcher; this sidesteps it. */
 #rx-log.rx-folded #rx-list { display: none; }
-.rx-fold { margin-left: auto; background: none; border: none; padding: 0 2px; cursor: pointer;
-  color: var(--ch-muted); font: inherit; pointer-events: auto; }
+.rx-fold { width: 36px; height: 36px; margin-left: auto; border: none; background: none;
+  color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center;
+  justify-content: center; pointer-events: auto; }
+.rx-fold:hover { color: var(--ch-text); }
 /* One chevron for four stops (#424): full, three lanes, one, then the header
    alone. It points down while there is further to shrink and up on the last
    stop, where the next click is the way back to full. The old minus/plus said
-   only "open or shut", which is two states out of four. */
-.rx-fold::before { content: '\25BE'; }                    /* pointing down */
-.rx-fold[data-dir="up"]::before { content: '\25B4'; }     /* back to full */
+   only "open or shut", which is two states out of four.
+   Same button as the app's: same box, same drawn chevron, rather than a text
+   glyph that sat on a different baseline and at a different weight. */
+.rx-fold[data-dir="up"] svg { transform: rotate(180deg); }
 /* 44px hit areas (#539). The four smallest controls measured 11x14 to 40x29;
    the glyph keeps its size and an ::after extension carries the touch box to
    44px. No layout change, so the bar's measured geometry stays as it is.
@@ -284,10 +287,14 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   content: ''; position: absolute; left: 50%; top: 50%;
   width: 44px; height: 44px; transform: translate(-50%, -50%); }
 #auth-btn, .ms-toggle, .rx-fold { position: relative; }
+/* Identical to the app's (#424). The width/margin pair here was from when the
+   ticker was a full-width band and the header had to centre itself inside it;
+   the card has its own width now, so it only made the header narrower than the
+   plate it sits on. */
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  width: min(680px, 100%); margin: 0 auto;
+  height: 36px; padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
-  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
+  text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
 /* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
@@ -299,10 +306,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    Nothing pads below the last row any more: that reserved three blank lanes at
    the bottom of a full card, and with it gone the browser clamps the
    follow-scroll and parks the newest reception on the bottom lane instead. */
-.rx-list { width: min(680px, 100%); margin: 0 auto;
+.rx-list { width: 100%;
   height: calc(var(--rx-lanes, 10) * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
   scroll-snap-type: y mandatory; scroll-padding-top: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h));
-  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 0 calc(var(--rx-pad-bottom, 0) * var(--ch-rx-line-h));
+  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 12px calc(var(--rx-pad-bottom, 0) * var(--ch-rx-line-h));
   pointer-events: none; /* the padding is dead space over the map; rows re-enable below */ }
 .rx-list::-webkit-scrollbar { display: none; }
 /* width: max-content keeps the click target on the text. Across a full-width
