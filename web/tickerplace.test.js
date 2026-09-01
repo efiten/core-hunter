@@ -4,6 +4,11 @@ import { clampToViewport, topRight, initialPlacement, serialise, parse, EDGE_GAP
 const SIZE = { w: 680, h: 200 }
 const DESKTOP = { vw: 1280, vh: 800, top: 48 }
 const PHONE = { vw: 390, vh: 780, top: 96 }
+// The card at its full height: ten lanes of 26px plus the 36px header.
+const FULL = { w: 680, h: 296 }
+// A phone held sideways. Wider than the 640px breakpoint, so nothing about the
+// width says "phone", and only 309px of map under the bar.
+const LANDSCAPE = { vw: 844, vh: 390, top: 81 }
 
 describe('clampToViewport', () => {
   it('leaves a box that is already on screen alone', () => {
@@ -65,6 +70,27 @@ describe('initialPlacement', () => {
     expect(phone.collapse).toBe(COLLAPSE_LEVELS - 1)
     expect(phone.hidden).toBe(false)
     expect(initialPlacement({ size: SIZE, viewport: DESKTOP, narrow: false }).collapse).toBe(0)
+  })
+
+  it('collapses on a short screen too, where the width says nothing', () => {
+    // A phone in landscape is 844px wide, so every width test calls it a
+    // desktop, and it has 309px of map under the bar. The full card is 296 of
+    // those: measured at 844x390, it covered 110% of the visible map, because
+    // it also hangs past the bottom edge.
+    expect(initialPlacement({ size: FULL, viewport: LANDSCAPE, narrow: false }).collapse)
+      .toBe(COLLAPSE_LEVELS - 1)
+    // Half the space is the line, so a desktop is untouched: 296 of 752.
+    expect(initialPlacement({ size: FULL, viewport: DESKTOP, narrow: false }).collapse).toBe(0)
+  })
+
+  it('pulls a remembered position up by the whole card, not by what is rendered', () => {
+    // The other half of the same measurement. #rx-log is an empty div when this
+    // runs, so a caller passing its measured height clamps against ~2px: a
+    // position remembered from a taller window stands, and the card hangs below
+    // the fold. Seen in the browser at 844x390 with y=386 -- four pixels of card
+    // on screen and 294 under it.
+    const p = initialPlacement({ saved: { x: 0, y: 386, collapse: 0 }, size: FULL, viewport: LANDSCAPE })
+    expect(p.y).toBe(LANDSCAPE.vh - FULL.h)
   })
 
   it('lets a remembered choice beat the per-surface default', () => {

@@ -19,7 +19,7 @@ import { createMultiSelectPicker, wirePopover, placePopover } from './multiselec
 import { activeFilterCount } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
-import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse } from './receptionticker.js'
+import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 
 let currentRole = 'guest'
@@ -1538,6 +1538,16 @@ if (rxLog) {
   const barBottom = () => (document.getElementById('bar')?.getBoundingClientRect().bottom ?? 0) + 4
   const size = () => ({ w: rxLog.offsetWidth, h: rxLog.offsetHeight })
   const viewport = () => ({ vw: window.innerWidth, vh: window.innerHeight, top: barBottom() })
+  // The card at ten lanes, computed from the geometry tokens rather than read
+  // off the element. #rx-log is an empty div while this module runs -- the card
+  // is written into it by createReceptionTicker later -- so size() here is two
+  // pixels of border. That answered both load-time questions wrong: the clamp
+  // let a remembered bottom-edge position stand and stranded the card below the
+  // fold, and "is there room for it" always said yes.
+  const loadSize = () => ({
+    w: rxLog.offsetWidth,
+    h: parseFloat(cssVar('--ch-rx-head-h')) + RX_FULL_LANES * parseFloat(cssVar('--ch-rx-line-h')),
+  })
 
   function apply() {
     rxLog.style.setProperty('--rx-x', `${place.x}px`)
@@ -1572,13 +1582,13 @@ if (rxLog) {
     get: () => serialise(place),
     set: (v) => {
       const saved = parsePlacement(v)
-      place = initialPlacement({ saved, size: size(), viewport: viewport(), narrow: NARROW.matches })
+      place = initialPlacement({ saved, size: loadSize(), viewport: viewport(), narrow: NARROW.matches })
       apply()
     },
   })
   // urlstate only calls set() when it has a value, so a first visit needs the
   // same decision made explicitly rather than leaving the ticker at 0,0.
-  place = initialPlacement({ saved: null, size: size(), viewport: viewport(), narrow: NARROW.matches })
+  place = initialPlacement({ saved: null, size: loadSize(), viewport: viewport(), narrow: NARROW.matches })
   apply()
 
   window.addEventListener('resize', reflow)
