@@ -241,3 +241,44 @@ test('the frame is invisible at rest and never covers the map', async ({ page })
     expect(s.outsideRight, 'a drag strip reaches right of the band, over the map').toBe(false)
   }
 })
+
+// The frame above is revealed by hover, and a phone has none: measured on a
+// mobile emulation, matchMedia('(hover: hover)') is false, so the strips never
+// appear. They stay hit-testable, but 6px of invisible strip is not a handle,
+// and docs/design-system.md promises that anything floating over the map can be
+// moved out of the way. On touch the header is the handle, with a visible pill.
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })
+
+  test('the ticker drags by its header, which says so', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#rx-log')).toBeVisible()
+    // The grabber is drawn, and it is drawn only where there is no hover.
+    const pill = await page.locator('#rx-log .rx-hd').evaluate((el) => {
+      const s = getComputedStyle(el, '::before')
+      return { content: s.content, w: s.width, h: s.height }
+    })
+    expect(pill.content, 'the header draws a grabber').not.toBe('none')
+    expect(parseFloat(pill.w), 'wide enough to read as a handle').toBeGreaterThanOrEqual(24)
+
+    const before = await page.locator('#rx-log').boundingBox()
+    const hd = await page.locator('#rx-log .rx-hd').boundingBox()
+    // Start left of the buttons, which keep taking their own taps.
+    await page.mouse.move(hd.x + 40, hd.y + hd.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(hd.x + 40, hd.y + hd.height / 2 + 160, { steps: 8 })
+    await page.mouse.up()
+    const after = await page.locator('#rx-log').boundingBox()
+    expect(after.y, 'the card followed the drag').toBeGreaterThan(before.y + 100)
+    // And it is remembered, like every other drag.
+    await expect.poll(() => new URL(page.url()).searchParams.get('rx')).toContain(String(Math.round(after.y)))
+  })
+
+  test('the header buttons still take their taps', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#rx-log')).toBeVisible()
+    await page.locator('#rx-log .rx-close').click()
+    await expect(page.locator('#rx-log')).toBeHidden()
+    await expect(page.locator('#ticker-btn')).toBeVisible()
+  })
+})

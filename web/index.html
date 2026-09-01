@@ -98,64 +98,80 @@
        z 600 keeps it under the bar (630) and the panel in it. -->
   <div id="bf-scrim" hidden></div>
   <header id="bar">
-    <span class="ms-wrap">
-      <button id="hp-toggle" type="button" class="ms-toggle" title="All hunters if none selected" aria-expanded="false">Hunters ▾</button>
-      <div id="hunter-picker" class="tl-panel" hidden>
-        <div class="tl-pinned-label">Top</div>
-        <div id="hp-pinned" class="tl-list tl-pinned"></div>
-        <ul id="hp-list" class="tl-list tl-scroll"></ul>
-      </div>
+    <!-- The map says its own name (#561). Nothing under #bar carried it before:
+         it lived in document.title and in the walkthrough panel, so the surface
+         a newcomer is most likely to be sent a link to had no wordmark at all.
+         The mark is app/public/icon.svg, drawn inline so it can take theme
+         colours; below 640px the mark stands alone and the name is in the menu,
+         which is the standard mobile app-bar pattern. -->
+    <span id="brand">
+      <svg id="brand-mark" width="22" height="22" viewBox="0 0 512 512" fill="none" aria-hidden="true">
+        <polygon points="424,256 340,111 172,111 88,256 172,401 340,401" stroke="var(--ch-accent)" stroke-width="26" stroke-linejoin="round"/>
+        <g fill="none" stroke-width="30" stroke-linecap="round">
+          <path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/>
+          <path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/>
+          <path d="M300 200 A68 68 0 0 1 300 312" stroke="var(--ch-sig-warm)"/>
+          <path d="M212 200 A68 68 0 0 0 212 312" stroke="var(--ch-sig-warm)"/>
+        </g>
+        <circle cx="256" cy="256" r="52" fill="var(--ch-sig-hot)"/>
+      </svg>
+      <span id="brand-name">Mesh-Hunter</span>
     </span>
-    <!-- Ignore picker (#494). Third instance of the one multi-select pattern,
-         and the reason it has its own candidate query: a node the list already
-         holds is gone from every other request, so it could not be unchecked
-         from a list built the ordinary way. No Top section — ranking what you
-         are about to silence by signal strength says nothing useful. -->
-    <span class="ms-wrap">
-      <button id="ig-toggle" type="button" class="ms-toggle" title="Ignore senders: checked senders are dropped from your view" aria-expanded="false">Ignored ▾</button>
-      <div id="ignore-picker" class="tl-panel" hidden>
-        <ul id="ig-list" class="tl-list tl-scroll"></ul>
-      </div>
-    </span>
-    <span class="ms-wrap">
-      <input id="f-sender" type="text" placeholder="sender id (prefix)" aria-label="Sender id prefix" />
-      <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">Select target ▾</button>
-      <div id="sender-picker" class="tl-panel" hidden>
-        <div class="tl-pinned-label">Top</div>
-        <div id="tp-pinned" class="tl-list tl-pinned"></div>
-        <ul id="tp-list" class="tl-list tl-scroll"></ul>
-      </div>
-    </span>
-    <!-- #285: f-from/f-to stay the state carriers (urlstate binds them, and
-         they now hold either an absolute datetime-local string or a relative
-         token like "now-6h"), but are no longer the UI -- the picker below
-         writes them. Hidden rather than removed so every existing binding,
-         listener and deep link keeps working unchanged. -->
-    <input id="f-from" type="hidden" />
-    <input id="f-to" type="hidden" />
-    <span class="tr-wrap">
-      <button id="tr-toggle" type="button" aria-expanded="false" title="Change the time range">
-        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg> <span id="tr-label">Today</span>
-      </button>
-      <div id="time-picker" class="tr-panel" hidden>
-        <div class="tr-cols">
-          <div class="tr-abs">
-            <div class="tr-head">Absolute time range</div>
-            <label class="tr-field">From <input id="tr-from" type="datetime-local" /></label>
-            <label class="tr-field">To <input id="tr-to" type="datetime-local" /></label>
-            <div class="tr-actions"><button id="tr-apply" type="button" class="tr-primary">Apply time range</button></div>
-            <button id="tr-copy" type="button" class="tr-copy" title="Copy a link with this range frozen to fixed timestamps">Copy absolute link</button>
-          </div>
-          <ul id="tr-quick" class="tr-quick"></ul>
+    <!-- The connected group (#561), the same control the app's #topbar-controls
+         is: one border, one radius, borderless children with dividers between
+         them. What narrows the view reads as one unit instead of four loose
+         buttons, and below 640px the group shrinks to the two the app carries.
+         The pickers stay DOM children of their toggles: placePopover measures
+         against the toggle's box (#372, #385), so re-parenting them at open
+         time is what breaks their placement. -->
+    <div id="bar-controls" role="group" aria-label="Target and filters">
+      <span class="ms-wrap">
+        <button id="hp-toggle" type="button" class="ms-toggle" title="All hunters if none selected" aria-expanded="false">Hunters ▾</button>
+        <div id="hunter-picker" class="tl-panel" hidden>
+          <div class="tl-pinned-label">Top</div>
+          <div id="hp-pinned" class="tl-list tl-pinned"></div>
+          <ul id="hp-list" class="tl-list tl-scroll"></ul>
         </div>
-      </div>
-    </span>
-    <!-- Filters pill (#423/#539): the one way into the filter panel at every
-         width. Carries the count the way the hunter picker does — the bar
-         shows THAT and HOW MUCH is narrowed, the panel shows what. -->
-    <button id="filter-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="bar-filters">
-      Filters<span id="filter-pill-count" class="fp-count" hidden></span>
-    </button>
+      </span>
+      <span class="ms-wrap">
+        <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">Select target ▾</button>
+        <div id="sender-picker" class="tl-panel" hidden>
+          <div class="tl-pinned-label">Top</div>
+          <div id="tp-pinned" class="tl-list tl-pinned"></div>
+          <ul id="tp-list" class="tl-list tl-scroll"></ul>
+        </div>
+      </span>
+      <!-- #285: f-from/f-to stay the state carriers (urlstate binds them, and
+           they now hold either an absolute datetime-local string or a relative
+           token like "now-6h"), but are no longer the UI -- the picker below
+           writes them. Hidden rather than removed so every existing binding,
+           listener and deep link keeps working unchanged. -->
+      <input id="f-from" type="hidden" />
+      <input id="f-to" type="hidden" />
+      <span class="tr-wrap">
+        <button id="tr-toggle" type="button" aria-expanded="false" title="Change the time range">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg> <span id="tr-label">Today</span>
+        </button>
+        <div id="time-picker" class="tr-panel" hidden>
+          <div class="tr-cols">
+            <div class="tr-abs">
+              <div class="tr-head">Absolute time range</div>
+              <label class="tr-field">From <input id="tr-from" type="datetime-local" /></label>
+              <label class="tr-field">To <input id="tr-to" type="datetime-local" /></label>
+              <div class="tr-actions"><button id="tr-apply" type="button" class="tr-primary">Apply time range</button></div>
+              <button id="tr-copy" type="button" class="tr-copy" title="Copy a link with this range frozen to fixed timestamps">Copy absolute link</button>
+            </div>
+            <ul id="tr-quick" class="tr-quick"></ul>
+          </div>
+        </div>
+      </span>
+      <!-- Filters pill (#423/#539): the one way into the filter panel at every
+           width. Carries the count the way the hunter picker does — the bar
+           shows THAT and HOW MUCH is narrowed, the panel shows what. -->
+      <button id="filter-pill" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="bar-filters">
+        Filters<span id="filter-pill-count" class="fp-count" hidden></span>
+      </button>
+    </div>
     <!-- The filter panel (#539): everything that narrows the view, in named
          groups, at every width. The container is the panel itself — nothing
          is re-parented at open time, so nothing measures differently between
@@ -169,6 +185,18 @@
             <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
           </svg>
         </button>
+      </div>
+      <!-- Where the bar's group puts its two widest controls below 640px
+           (#561). Empty and hidden above it: the controls are MOVED, not
+           copied, because two instances of one filter is exactly what the
+           register calls bespoke. barnarrow.js owns the move. -->
+      <div class="bf-group" id="bf-group-time" hidden>
+        <div class="bf-group-head">Time</div>
+        <span id="bf-slot-time" class="bf-slot"></span>
+      </div>
+      <div class="bf-group" id="bf-group-hunters" hidden>
+        <div class="bf-group-head">Hunters</div>
+        <span id="bf-slot-hunters" class="bf-slot"></span>
       </div>
       <div class="bf-group">
         <div class="bf-group-head">Traffic types <span id="bf-types-count" class="bf-group-count" hidden></span></div>
@@ -185,6 +213,13 @@
            so the popover toggle is gone. -->
       <div class="bf-group">
         <div class="bf-group-head" title="Filter by how far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">Sender id</div>
+        <!-- The typed prefix search moved off the bar (#561): the bar carries
+             Select target, which is how you PICK a sender, and this is how you
+             narrow to part of one. Same group, because both are the same
+             question -- which sender, and how far it can be identified. Keeps
+             its id, so urlstate's binding, filters.js and the target picker are
+             untouched. #498 still owns merging it with Select target. -->
+        <input id="f-sender" type="text" placeholder="sender id (prefix)" aria-label="Sender id prefix" />
         <div id="f-idclass" class="bf-chips"></div>
       </div>
       <div class="bf-group">
@@ -221,6 +256,33 @@
              control until the gate caught up. -->
         <button id="locate-toggle" hidden>Locate</button>
       </div>
+      <!-- Ignore picker (#494), moved out of the bar into the panel (#561/#564).
+           It filters what you see, so it belongs with everything else that
+           does; the bar could not keep four separate controls at 375px.
+           Third instance of the one multi-select pattern, and the reason it has
+           its own candidate query: a node the list already holds is gone from
+           every other request, so it could not be unchecked from a list built
+           the ordinary way. No Top section — ranking what you are about to
+           silence by signal strength says nothing useful. -->
+      <div class="bf-group">
+        <div class="bf-group-head">Ignored senders</div>
+        <span class="ms-wrap">
+          <button id="ig-toggle" type="button" class="ms-toggle" title="Ignore senders: checked senders are dropped from your view" aria-expanded="false">Ignored ▾</button>
+          <div id="ignore-picker" class="tl-panel" hidden>
+            <ul id="ig-list" class="tl-list tl-scroll"></ul>
+          </div>
+        </span>
+        <!-- The list itself came from the settings sheet (#494 put it there;
+             #561/#564 move it here). It filters what you see, so it belongs
+             with everything else that does, and it is the only place an ignored
+             node can be found again — it is gone from the map and from the
+             target picker by then. Picker and list together, because adding and
+             removing are the same job. -->
+        <div class="ss-ignore-section">
+          <div id="ss-ignore-list"></div>
+          <button id="ss-ignore-clear" type="button">Clear ignore-list</button>
+        </div>
+      </div>
       <div class="bf-foot">
         <span class="bf-live">Changes apply immediately</span>
         <button id="clear-filters" title="Clear all filters">Clear filters</button>
@@ -232,20 +294,10 @@
          login card, since most readers never open that card. Outside the
          filters sheet (#467) on purpose: it is not a filter, and it is the one
          control a first-time reader is meant to find. -->
+    <span class="bar-spacer"></span>
     <a id="rx-cta" class="bar-btn" href="https://rx.mesh-hunter.eu" target="_blank" rel="noopener"
        title="Pair a companion and map the mesh yourself"><span class="rx-cta-long">Start mapping</span><span class="rx-cta-short">Map it</span></a>
     <button id="auth-btn" class="bar-btn">Log in</button>
-    <span id="guest-notice" class="guest-notice" hidden></span>
-    <!-- Said once, when the role rises (#530). Separate from #guest-notice,
-         which is a standing description of what you can see: this is news, and
-         it is dismissible because news stops being news. aria-live so a reader
-         who is not looking at the bar still gets it. -->
-    <span id="role-notice" class="role-notice" role="status" aria-live="polite" hidden>
-      <span id="role-notice-text"></span>
-      <button id="role-notice-close" type="button" aria-label="Dismiss">&times;</button>
-    </span>
-    <span id="status"></span>
-    <span id="sf-counts"></span>
     <!-- Brings the receptions ticker back after its cross (#424). Same control
          in the same place as the app's, which is what makes the cross mean the
          same thing on both surfaces. Hidden while the ticker is on screen. -->
@@ -261,6 +313,27 @@
       <span id="wn-dot" class="wn-dot" hidden aria-hidden="true"></span>
     </button>
   </header>
+  <!-- Notices and readouts left the bar (#561). They were laid out in the same
+       flex flow as the filters, so "you now have admin access" pushed the
+       controls around, and four unrelated readouts landed on three different
+       baselines in a second row. They describe the map, so they sit on it:
+       notices under the bar, readouts in the corner. Both pass pointer events
+       through, the same bargain #rx-log makes (#287/#322). -->
+  <div id="map-notices">
+    <span id="guest-notice" class="guest-notice" hidden></span>
+    <!-- Said once, when the role rises (#530). Separate from #guest-notice,
+         which is a standing description of what you can see: this is news, and
+         it is dismissible because news stops being news. aria-live so a reader
+         who is not looking at it still gets it. -->
+    <span id="role-notice" class="role-notice" role="status" aria-live="polite" hidden>
+      <span id="role-notice-text"></span>
+      <button id="role-notice-close" type="button" aria-label="Dismiss">&times;</button>
+    </span>
+  </div>
+  <div id="map-readout">
+    <span id="status"></span>
+    <span id="sf-counts"></span>
+  </div>
   <div id="locate-info" hidden></div>
   <!-- Two surfaces for one layer (#376). The key names the glyphs while markers
        are drawn, and otherwise says which way the layer came up empty; the note
@@ -320,6 +393,11 @@
         </button>
       </div>
       <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
+        <!-- Where Start mapping and Log in live below 640px (#561), moved here
+             by barnarrow.js rather than duplicated: the phone row cannot carry
+             them, and the menu is where an overflowing app bar puts what acts.
+             Empty and hidden above that width. -->
+        <div class="ss-actions" id="ss-slot-actions" hidden></div>
         <label class="ss-row">
           <span class="ss-row-label">Light theme</span>
           <button id="theme-toggle" type="button" title="Toggle light/dark">
@@ -327,14 +405,6 @@
             <svg class="th-sun" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
           </button>
         </label>
-        <!-- Ignored senders (#494): the same section the app carries, and the
-             only place an ignored node can be found again — it is gone from the
-             map and from the target picker by then. -->
-        <div class="ss-ignore-section">
-          <h3>Ignored senders</h3>
-          <div id="ss-ignore-list"></div>
-          <button id="ss-ignore-clear" type="button">Clear ignore-list</button>
-        </div>
       </div>
       <div class="ss-panel" id="ss-panel-whatsnew" role="tabpanel" aria-labelledby="ss-tab-whatsnew" hidden>
         <div id="wn-body" class="wn-body"></div>
