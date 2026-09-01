@@ -242,43 +242,69 @@ test('the frame is invisible at rest and never covers the map', async ({ page })
   }
 })
 
-// The frame above is revealed by hover, and a phone has none: measured on a
-// mobile emulation, matchMedia('(hover: hover)') is false, so the strips never
-// appear. They stay hit-testable, but 6px of invisible strip is not a handle,
-// and docs/design-system.md promises that anything floating over the map can be
-// moved out of the way. On touch the header is the handle, with a visible pill.
-test.describe('on a touch screen', () => {
+// Dragging is a wide-screen affordance (#561). The card is full-bleed below
+// 640px, so every position is the same band at a different height -- there is
+// no "out of the way" to drag it to. Shrinking and dismissing are what move it
+// aside there, which is what the app does at every width.
+test.describe('in mobile view', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })
 
-  test('the ticker drags by its header, which says so', async ({ page }) => {
+  test('the ticker does not drag', async ({ page }) => {
     await page.goto('/')
     await expect(page.locator('#rx-log')).toBeVisible()
-    // The grabber is drawn, and it is drawn only where there is no hover.
-    const pill = await page.locator('#rx-log .rx-hd').evaluate((el) => {
-      const s = getComputedStyle(el, '::before')
-      return { content: s.content, w: s.width, h: s.height }
-    })
-    expect(pill.content, 'the header draws a grabber').not.toBe('none')
-    expect(parseFloat(pill.w), 'wide enough to read as a handle').toBeGreaterThanOrEqual(24)
+    // No frame to grab, and nothing invisible left behind that would take a
+    // press and do nothing. Measured as a box rather than as a computed
+    // `display`: the strips are children of `.rx-grab`, and a descendant of a
+    // display:none element still reports its own value.
+    const boxes = await page.locator('#rx-log .rx-grab-t, #rx-log .rx-grab-l')
+      .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width * e.getBoundingClientRect().height))
+    expect(boxes.length, 'the strips are in the markup').toBeGreaterThan(0)
+    expect(boxes.every((a) => a === 0), `strip areas: ${boxes}`).toBe(true)
 
     const before = await page.locator('#rx-log').boundingBox()
     const hd = await page.locator('#rx-log .rx-hd').boundingBox()
-    // Start left of the buttons, which keep taking their own taps.
     await page.mouse.move(hd.x + 40, hd.y + hd.height / 2)
     await page.mouse.down()
-    await page.mouse.move(hd.x + 40, hd.y + hd.height / 2 + 160, { steps: 8 })
+    await page.mouse.move(hd.x + 40, hd.y + hd.height / 2 + 200, { steps: 8 })
     await page.mouse.up()
     const after = await page.locator('#rx-log').boundingBox()
-    expect(after.y, 'the card followed the drag').toBeGreaterThan(before.y + 100)
-    // And it is remembered, like every other drag.
-    await expect.poll(() => new URL(page.url()).searchParams.get('rx')).toContain(String(Math.round(after.y)))
+    expect(after.y, 'the card stayed put').toBe(before.y)
   })
 
-  test('the header buttons still take their taps', async ({ page }) => {
+  // The strips being hidden is the mechanism; map.js refusing the drag at this
+  // width is the belt to that pair of braces. Tested by forcing the frame back
+  // on, because a guard nothing exercises is a guard that quietly stops working
+  // -- this one survived its first mutation for exactly that reason.
+  test('and would not drag even if the frame were reachable', async ({ page }) => {
     await page.goto('/')
     await expect(page.locator('#rx-log')).toBeVisible()
+    await page.addStyleTag({ content: '.rx-grab { display: block !important }' })
+    const strip = page.locator('#rx-log .rx-grab-t')
+    await expect(strip).toBeVisible()
+
+    const before = await page.locator('#rx-log').boundingBox()
+    const box = await strip.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + 200, { steps: 8 })
+    await page.mouse.up()
+    expect((await page.locator('#rx-log').boundingBox()).y, 'the card stayed put').toBe(before.y)
+  })
+
+  test('it still gets out of the way, by its stops and by closing', async ({ page }) => {
+    await page.goto('/')
+    const card = page.locator('#rx-log')
+    await expect(card).toBeVisible()
+    // A phone opens at the smallest stop already (#424), so the chevron's first
+    // press grows it. What matters is that the control moves the card at all --
+    // that is the affordance dragging no longer has to provide here.
+    const before = (await card.boundingBox()).height
+    await page.locator('#rx-log .rx-fold').click()
+    await expect.poll(async () => (await card.boundingBox()).height, { timeout: 5000 })
+      .not.toBe(before)
+
     await page.locator('#rx-log .rx-close').click()
-    await expect(page.locator('#rx-log')).toBeHidden()
+    await expect(card).toBeHidden()
     await expect(page.locator('#ticker-btn')).toBeVisible()
   })
 })

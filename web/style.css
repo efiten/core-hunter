@@ -313,29 +313,6 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    crossing the text. Opacity carries the reveal; the hit area is always there. */
 .rx-grab-t, .rx-grab-l { position: absolute; background: var(--ch-border); pointer-events: auto; cursor: move; }
 
-/* The handle on a touch screen (#561). The strips above are revealed by hover,
-   which a phone does not have, and 6px is not a thumb target: measured on a
-   mobile emulation, matchMedia('(hover: hover)') is false, so the frame never
-   appeared at all and the one thing the surface rule promises -- that a panel
-   over the map can be moved out of the way -- was not true there.
-   The header becomes the handle instead, which is the ordinary sheet grabber,
-   and the pill says so. Drawn as ::before rather than as a flex child so it
-   does not push the count and the toggle along, and drawn on #rx-log .rx-hd
-   rather than .rx-hd so parity.test.js still compares one canonical rule per
-   surface -- dragging is a property of the map, not of the ticker. */
-@media (hover: none) {
-  #rx-log .rx-hd { position: relative; touch-action: none; cursor: grab; }
-  #rx-log.rx-dragging .rx-hd { cursor: grabbing; }
-  #rx-log .rx-hd::before { content: ''; position: absolute; left: 50%; top: 5px;
-    width: 36px; height: 4px; margin-left: -18px; border-radius: 2px;
-    background: var(--ch-muted); opacity: .5; }
-  /* The header keeps its 36px. It is one of the rules parity.test.js pins
-     identical on both surfaces, and map.js computes the full card from
-     --ch-rx-head-h before the card exists, so a taller header here would put
-     both out by the difference. The pill sits in the space the 12px text leaves
-     above it, and the drag area is the header's whole width minus its buttons,
-     which is well past 44px. */
-}
 .rx-grab-t { left: 0; right: 0; top: 0; height: 6px; border-radius: 3px; }
 .rx-grab-l { left: 0; top: 0; height: var(--rx-grab-h, 120px); width: 6px; border-radius: 3px; }
 /* Collapsed keeps the header -- the count and the fold control are how you get
@@ -871,6 +848,14 @@ body.wb-onboarding-on #bar { z-index:710; }
      Leaflet's attribution rather than on it. */
   #map-notices { left: 52px; right: 8px; }
   #map-readout { right: 8px; bottom: 24px; font-size: 11px; }
+  /* The ticker does not drag at this width (#561). It is full-bleed here
+     (`min(680px, 100vw)`), so every position is the same band at a different
+     height and there is no "out of the way" to reach. The chevron's stops and
+     the cross are what move it aside, which is what the app does at every
+     width. Removing the strips rather than making them inert: they are 6px of
+     invisible hit area, and an invisible target that does nothing is worse
+     than no target. */
+  .rx-grab { display: none; }
   /* Zoom moves to the bottom left. At this width the ticker is full-bleed
      (`min(680px, 100vw)`) and starts under the bar, so the top-left corner is
      the one place a map control cannot be: measured at 375x812 with the control
