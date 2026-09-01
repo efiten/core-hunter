@@ -609,7 +609,7 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   box-shadow: 0 6px 20px rgba(0,0,0,.18);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  height: 36px; padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
+  height: var(--ch-rx-head-h); padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
   text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }

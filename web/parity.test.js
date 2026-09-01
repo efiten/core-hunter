@@ -521,12 +521,12 @@ describe('receptions ticker CSS parity (#322)', () => {
   // a pattern anchored on the *previous* rule's '}' consumes that brace, so two
   // adjacent :root rules (which is exactly how style.css declares --ch-bar-h and
   // this one) only ever yield the first.
-  const rootDecl = (rawCss) => {
+  const rootDecl = (rawCss, name = '--ch-rx-line-h') => {
     for (const chunk of stripComments(rawCss).split('}')) {
       const i = chunk.indexOf('{')
       if (i < 0) continue
       const head = chunk.slice(0, i)
-      const m = /--ch-rx-line-h:\s*([^;]+);/.exec(chunk.slice(i + 1))
+      const m = new RegExp(`${name}:\\s*([^;]+);`).exec(chunk.slice(i + 1))
       if (m && /(^|,)\s*(:root|html)\b/.test(head)) return m[1].trim()
     }
     return null
@@ -587,6 +587,27 @@ describe('receptions ticker CSS parity (#322)', () => {
     expect(appTicker.rxLineHeight('')).toBe(appTicker.rxLineHeight(appVar))
     expect(webTicker.rxLineHeight('')).toBe(webTicker.rxLineHeight(webVar))
     expect(appTicker.rxLineHeight(appVar)).toBe(webTicker.rxLineHeight(webVar))
+  })
+
+  // The other half of the card's geometry. map.js adds the two to work out
+  // whether there is room for a full card, at a moment when the card does not
+  // exist yet, so a surface that fails to declare this does not lay out wrong:
+  // it computes NaN and decides nothing. --ch-surface-thin was the same shape
+  // of miss and took a browser to find.
+  it('declares the header height on both surfaces, with the same value', () => {
+    const appVar = rootDecl(APP_TOKENS, '--ch-rx-head-h')
+    const webVar = rootDecl(WEB_CSS, '--ch-rx-head-h')
+    expect(appVar, 'tokens.css must declare --ch-rx-head-h on :root').not.toBeNull()
+    expect(webVar, 'style.css must declare --ch-rx-head-h on :root').not.toBeNull()
+    expect(appVar).toBe(webVar)
+    // And the header must take its height from it rather than restating 36px,
+    // or the token is decorative and the computed card is wrong.
+    // declBlock, not decl: `#rx-log.rx-empty .rx-hd` comes first in the map's
+    // block and has no height, and decl() answers with the first rule that
+    // mentions the class.
+    for (const [css, name] of [[web, 'map'], [app, 'app']]) {
+      expect(declBlock(css, '.rx-hd').height, `${name} .rx-hd height`).toBe('var(--ch-rx-head-h)')
+    }
   })
 
   it('derives the list geometry from the variable rather than restating it', () => {

@@ -47,12 +47,34 @@ export function topRight({ w }, { vw, top = 0 }) {
 export const COLLAPSE_LEVELS = 3   // full, then two shrink stops
 export const HIDDEN = 'hidden'
 
+// Would the card at its full height take more than half the map that is left
+// under the bar? That, not the width, is what "it covers the map" means.
+//
+// `narrow` is the other half of the same question and stays a width test,
+// because below 640px the card is full-bleed (`min(680px, 100vw)`) and covers
+// the map from edge to edge whatever its height.
+//
+// The width alone was the whole rule until a phone was held sideways: 844x390
+// is wider than every phone breakpoint, so the card opened at ten lanes over
+// 309px of map. Measured there, it covered 110% of it -- taller than the map,
+// hanging past the bottom edge.
+export function coversTheMap(cardHeight, { vh, top = 0 }) {
+  return cardHeight > Math.max(0, vh - top) / 2
+}
+
 // initialPlacement decides both halves on load.
 //
 // `saved` is what persisted from the last visit; a first visit has none. The
-// default is per-surface rather than remembered-or-guessed: full on a desktop,
-// shrunk to the header on a phone, where the band is what covers the map. A
-// remembered choice always wins -- someone who shrank it on a desktop meant it.
+// default is per-surface rather than remembered-or-guessed: full where there is
+// room, shrunk to the header where the card would take the map. A remembered
+// choice always wins -- someone who shrank it on a desktop meant it.
+//
+// `size` here is the card at ten lanes, which on load is NOT what the element
+// measures: #rx-log is an empty div until the ticker writes into it, so its own
+// box is two pixels of border. Both answers depend on the real size -- the
+// clamp strands a bottom-anchored card off screen, the default opens a card
+// that covers the map -- so the caller computes it from the geometry tokens
+// instead of measuring it.
 export function initialPlacement({ saved = null, size, viewport, narrow = false }) {
   const at = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
     ? { x: saved.x, y: saved.y }
@@ -62,10 +84,11 @@ export function initialPlacement({ saved = null, size, viewport, narrow = false 
   // that the card should not cover the map there, and a ticker nobody can see
   // is a different thing from a small one.
   const remembered = saved && (saved.hidden === true || Number.isInteger(saved.collapse))
+  const cramped = narrow || coversTheMap(size.h, viewport)
   return {
     ...clampToViewport(at, size, viewport),
     hidden: remembered ? !!saved.hidden : false,
-    collapse: remembered ? (saved.collapse || 0) : (narrow ? COLLAPSE_LEVELS - 1 : 0),
+    collapse: remembered ? (saved.collapse || 0) : (cramped ? COLLAPSE_LEVELS - 1 : 0),
   }
 }
 

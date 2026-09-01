@@ -188,6 +188,22 @@ test('starts at its smallest on a phone, where the card is what covers the map',
   expect(Math.round(h / line)).toBe(1)
 })
 
+// The same phone, held sideways. 844px is wider than every phone breakpoint, so
+// a width test calls this a desktop and opens the card at ten lanes -- measured
+// at 844x390 before this: 298px of card over 309px of map, 110% of it, hanging
+// past the bottom edge. The rule is the space left under the bar, not the width.
+test('starts at its smallest on a phone held sideways, which no width test catches', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.goto('/')
+  await expect(page.locator('#rx-log')).toBeVisible()
+  const m = await page.evaluate(() => {
+    const bar = document.getElementById('bar').getBoundingClientRect()
+    const rx = document.getElementById('rx-log').getBoundingClientRect()
+    return { space: innerHeight - bar.bottom, card: rx.height }
+  })
+  expect(m.card, 'the card leaves most of the map').toBeLessThan(m.space / 2)
+})
+
 // #322 made the band frameless on purpose and #287/#322 keep pointer-events off
 // it so drags and wheels reach Leaflet. The frame must not undo either.
 test('the frame is invisible at rest and never covers the map', async ({ page }) => {

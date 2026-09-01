@@ -31,6 +31,11 @@
    getComputedStyle(document.documentElement); scoped to #rx-log it is invisible
    to that read. Mirrors app/src/styles/tokens.css; parity.test.js pins both. */
 :root { --ch-rx-line-h: 26px; }
+/* The header's height, on :root for the same reason and next to the row pitch
+   because the two together are the card's geometry: map.js computes the full
+   card from them to decide whether there is room for it, at a point where the
+   card itself does not exist yet. */
+:root { --ch-rx-head-h: 36px; }
 * { box-sizing: border-box; }
 html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
 /* z-index 630, above #rx-log's 620. The bar's own popovers -- the sender and
@@ -299,7 +304,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    the card has its own width now, so it only made the header narrower than the
    plate it sits on. */
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  height: 36px; padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
+  height: var(--ch-rx-head-h); padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
   text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
