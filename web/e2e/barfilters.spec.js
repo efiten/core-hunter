@@ -87,6 +87,11 @@ test('the pill counts what is narrowed behind it (#539)', async ({ page }) => {
   await page.click('#f-types .f-chip >> nth=2')
   await expect(count).toHaveText(' (2)')
   await expect(page.locator('#bf-types-count')).toContainText('2 of')
+  // Of the packet types, not of the chips: the All chip is a child of the row
+  // but is not a type (#564), and the app's row says the same number.
+  await expect(page.locator('#bf-types-count')).toHaveText('2 of 14')
+  // One vocabulary with the app and with the Clear button below it.
+  await expect(page.locator('#bf-count')).toHaveText('2 filters')
 
   // The clear button promises the same number the pill shows.
   await expect(page.locator('#clear-filters')).toHaveText('Clear 2 filters')
