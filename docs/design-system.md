@@ -32,15 +32,17 @@ with the same values. Nothing hardcodes a colour that a token already names.
 | type | `--ch-text`, `--ch-muted` |
 | accent | `--ch-accent` (primary), `--ch-accent-2` (alerts) |
 | signal tiers | `--ch-sig-hot` / `-warm` / `-mid` / `-cool` / `-cold` / `-faint` / `-none` |
-| layout | `--ch-rx-line-h` (ticker row pitch), `--ch-bar-h` (map bar height) |
+| layout | `--ch-rx-line-h` (ticker row pitch), `--ch-rx-head-h` (its header), `--ch-bar-h` (map bar height) |
 
 Both themes are declared for every token. `--ch-basemap` is a hint, not a colour.
 
 **Signal tiers are for readings, never for UI state.** A selected chip is `--ch-accent`, not
 `--ch-sig-cool`. That confusion is what #225 fixed on the map.
 
-**Guard:** `web/parity.test.js` pins that `--ch-rx-line-h` and `--ch-surface-thin` are declared
-on `:root` on both surfaces with the same values.
+**Guard:** `web/parity.test.js` pins that `--ch-rx-line-h`, `--ch-rx-head-h` and `--ch-surface-thin`
+are declared on `:root` on both surfaces with the same values. The two ticker ones together are
+the card's geometry, which the map computes before the card exists, so a surface that misses one
+does not lay out wrong -- it computes `NaN` and decides nothing.
 
 ---
 
@@ -105,6 +107,21 @@ hamburgers. The receptions button is a pulse now, because what it opens is a liv
 
 The check is the bar, not the icon: an icon that reads fine on its own can still be wrong beside
 the one that follows it.
+
+### Surface rule: on touch, a handle is visible and thumb-sized
+
+*Standard pattern: the sheet grabber — the short pill iOS, Android and every
+mobile web sheet draws on the edge you drag.*
+
+A control revealed by `:hover` does not exist on a phone: `matchMedia('(hover:
+hover)')` is false there, so the reveal never fires. Anything whose affordance
+is a hover has to have a second, always-visible form under `@media (hover:
+none)`, and that form has to be big enough for a thumb.
+
+The ticker's drag frame is two 6px strips shown on hover (#424). On touch the
+header is the handle instead, with a grabber pill drawn on it, and its own
+buttons keep taking their taps (#561). The rule is not about the ticker: it
+reaches any handle, resizer or hover-revealed affordance added later.
 
 ### Native form controls take the accent
 
@@ -188,9 +205,67 @@ The map's bar carries a `#ticker-btn` for that, which the #561 round over that b
 
 ---
 
+## Bars
+
+### One row, at every width
+
+*Standard pattern: the application bar — brand left, controls in the middle,
+account and overflow right.*
+
+Both the app's `#topbar` and the map's `#bar` are one row that never wraps. A
+wrapping bar is not a layout, it is whatever the flex flow produced: the map's
+reached two rows at 1440 and **seven at 375**, 28% of the viewport, with four of
+those rows carrying no control at all (#561).
+
+`flex-wrap: nowrap` is load-bearing rather than cosmetic on the map. `#map`'s
+top is measured once (#405), so a bar that grows after that measurement hides
+the map underneath it: 111px of it as a guest at 375, with both of Leaflet's
+zoom buttons inside the dead strip. A bar that cannot wrap cannot grow.
+
+### What does not fit MOVES; it is never hidden or copied
+
+*Standard pattern: the overflow menu.*
+
+Below 640px the map's bar keeps the mark, two segments of the connected group
+(`Select target`, `Filters`) and the icon buttons — the same two the app's group
+has carried at that width since #305. Everything else moves: what narrows the
+view into the filter panel, what acts into the menu (`web/barnarrow.js`).
+
+Moved, for two reasons that are the same reason. One filter is one control: a
+second copy is two things to keep in step and two places to read the state from.
+And a hidden control has no box, so `placePopover` — which measures the toggle
+(#372, #385) — has nothing to anchor to.
+
+A control that moves closes its popover on the way. Leaving it open anchors it
+to where the control used to be, and its toggle goes on claiming
+`aria-expanded="true"` from inside a shut panel.
+
+**Guard:** `e2e/barlayout.spec.js` asserts one centre line at 375, 768 and 1280
+as a guest, that `--ch-bar-h` agrees with the bar's real height, where each
+moved control ends up, that each exists exactly once, and that the order comes
+back when the window grows.
+
+### Notices and readouts are not controls
+
+They describe the map, so they sit on the map, not in the bar's flow. In the bar
+they took part in the same layout as the filters: "you now have admin access"
+pushed the controls around, and four unrelated readouts landed on three
+different baselines (#561).
+
+They also may not take the corner a map control is in. The notice moved out of
+the bar and straight over Leaflet's zoom control, which is the same defect in a
+new place — `elementFromPoint` on the `+` returned `#guest-notice`. Overlays
+clear the controls, and on a phone the zoom control moves to the bottom left,
+where the ticker is not and a thumb is.
+
 ## Copy and marks
 
-- **One brand mark**, the PWA icon (`app/public/icon.svg`), on every surface (#539).
+- **One brand mark**, the PWA icon (`app/public/icon.svg`), on every surface
+  (#539), drawn inline so its strokes take `--ch-accent` and the signal tiers
+  rather than the file's fixed palette. **Every surface names the product**:
+  mark plus wordmark on a wide screen, the mark alone below 640px with the name
+  in the menu, which is what a mobile app bar does. The map had neither until
+  #561, and the map is the surface people are sent a link to.
 - **Drawn icons, not emoji.** An emoji renders differently per platform and cannot take a token
   colour.
 - **One link colour**, `--ch-accent-2`, on all three surfaces (F17).
@@ -215,5 +290,6 @@ rather than smoothed over.
 - The fade floor is one number for both themes. Measured on the map at 1180px: the faintest row
   reads at contrast 1.90 on dark and 1.56 on light, so light falls further back. Equalising would
   need roughly 0.31 there.
-- The map's top bar has no product name and its second row is four unrelated readouts (#561).
-  A design round is pending. It now also has to place `#ticker-btn`, added here deliberately.
+- `#map`'s top is still measured once rather than on every bar change (#405).
+  One row makes that much harder to hit, since the bar no longer grows after
+  load, but the watcher that misses content growth is still the one in place.

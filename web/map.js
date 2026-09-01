@@ -21,6 +21,7 @@ import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from '
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
+import { wireNarrowBar } from './barnarrow.js'
 
 let currentRole = 'guest'
 
@@ -1063,6 +1064,11 @@ async function fetchNodeRegistry() {
 // is what makes the query worth using.
 const narrowQuery = window.matchMedia('(max-width: 640px)')
 const narrowScreen = () => narrowQuery.matches
+// The bar's group keeps two of its four controls below 640px and the filter
+// panel takes the other two (#561). Wired to the same query rather than a
+// second matchMedia, so the bar and everything else that answers "is this a
+// phone" cannot disagree about where the line is.
+wireNarrowBar(narrowQuery)
 
 // Cleared on every entry, so rapid toggling cannot have a stale timer hide the
 // prose two seconds into a later activation.
@@ -1623,8 +1629,23 @@ if (rxLog) {
 
   // Pointer events rather than mouse so a touch drag works on a tablet, where
   // there is no hover to reveal the frame but the strips are still there.
+  // Where a drag may start. The two strips are the desktop frame, revealed on
+  // hover; on a touch screen there is no hover, so they are invisible, and 6px
+  // is not a thumb target anyway. There the header itself is the handle -- the
+  // ordinary sheet grabber -- minus its own buttons, which have to keep taking
+  // their taps. #561 wrote this down as a surface rule: a floating panel on the
+  // map is draggable, and on touch its handle has to be visible and thumb-sized.
+  const COARSE = window.matchMedia('(hover: none)')
+  const dragHandle = (target) => {
+    const strip = target.closest('.rx-grab-t, .rx-grab-l')
+    if (strip) return strip
+    if (!COARSE.matches) return null
+    if (target.closest('.rx-close, .rx-fold, .rx-tg')) return null
+    return target.closest('.rx-hd')
+  }
+
   rxLog.addEventListener('pointerdown', (e) => {
-    const strip = e.target.closest('.rx-grab-t, .rx-grab-l')
+    const strip = dragHandle(e.target)
     if (!strip) return
     e.preventDefault()
     const dx = e.clientX - place.x, dy = e.clientY - place.y
@@ -1877,7 +1898,11 @@ document.getElementById('ss-ignore-clear').addEventListener('click', () => apply
 // Re-render on open, not only on change: a name can become known after the row
 // was first drawn (a picker opened, a resolver answered), and the app does the
 // same on its own sheet (app/src/app.js).
-document.getElementById('settings-btn').addEventListener('click', () => renderIgnoreList())
+// The filter pill, not the settings button: the list moved into the filter
+// panel (#561/#564). Left on the old control this keeps working in the sense
+// that nothing throws -- the rows just never pick up the names that arrived
+// after they were drawn, which is what the e2e caught.
+document.getElementById('filter-pill').addEventListener('click', () => renderIgnoreList())
 
 // The ignore picker: the third instance of the multi-select popover, with the
 // list itself as its selection. Checking a row ignores that node, unchecking
@@ -1914,6 +1939,7 @@ async function refreshIgnoreCandidates() {
   const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
   if (sig === cachedIgnoreSig) {
     ignorePicker.render(cachedIgnoreCandidates, Date.now())
+    renderIgnoreList()
     return
   }
   for (const [k, v] of Object.entries(f)) {
@@ -1925,6 +1951,12 @@ async function refreshIgnoreCandidates() {
     cachedIgnoreCandidates = points
     cachedIgnoreSig = sig
     ignorePicker.render(points, Date.now())
+    // The rows below the picker are drawn from the same names these candidates
+    // just taught the resolver, so this is the moment a bare 6-hex prefix can
+    // become "NEO7HI · cc33dd". It used to happen because reaching the list
+    // meant a second click on another control; both halves are in one panel
+    // now, so the render has to be hung off the answer instead of the click.
+    renderIgnoreList()
   } catch (_) { /* keep the last good list; retried on the next open */ }
 }
 
