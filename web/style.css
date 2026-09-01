@@ -2,6 +2,10 @@
 :root, [data-theme="dark"] {
   --ch-bg:#0b0e14; --ch-text:#e6edf3; --ch-muted:#9aa;
   --ch-surface:rgba(18,23,33,0.92); --ch-input-bg:#11161f; --ch-border:#2a3340;
+  /* Thinner than --ch-surface, for a plate that floats over the map and has to
+     let it through (#424). Same values as app/src/styles/tokens.css, which
+     added it in #539; parity.test.js pins that the two agree. */
+  --ch-surface-thin:rgba(18,23,33,0.72);
   --ch-sig-hot:#ff453a; --ch-sig-warm:#ff9f0a; --ch-sig-mid:#ffd60a; --ch-sig-cool:#40c8ff; --ch-sig-cold:#5e7bff; --ch-sig-faint:#9b6bff; --ch-sig-none:#5b6675;
   /* UI selection accent (#225) -- same values as app/src/styles/tokens.css.
      Previously undefined here, so the active-filter state borrowed a signal-tier
@@ -12,6 +16,7 @@
 [data-theme="light"] {
   --ch-bg:#f4f1ea; --ch-text:#1b2430; --ch-muted:#5a6675;
   --ch-surface:rgba(255,252,245,0.92); --ch-input-bg:#fffcf5; --ch-border:#cfc8b8;
+  --ch-surface-thin:rgba(255,252,245,0.72);
   --ch-sig-hot:#d11f1f; --ch-sig-warm:#e07000; --ch-sig-mid:#c79100; --ch-sig-cool:#1577c0; --ch-sig-cold:#3a44b8; --ch-sig-faint:#6a2fb0; --ch-sig-none:#9aa3ad;
   --ch-accent:#0e9f7e; --ch-accent-2:#b4530a;
 }
@@ -26,6 +31,11 @@
    getComputedStyle(document.documentElement); scoped to #rx-log it is invisible
    to that read. Mirrors app/src/styles/tokens.css; parity.test.js pins both. */
 :root { --ch-rx-line-h: 26px; }
+/* The header's height, on :root for the same reason and next to the row pitch
+   because the two together are the card's geometry: map.js computes the full
+   card from them to decide whether there is room for it, at a point where the
+   card itself does not exist yet. */
+:root { --ch-rx-head-h: 36px; }
 * { box-sizing: border-box; }
 html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text); font-family:system-ui,sans-serif; }
 /* z-index 630, above #rx-log's 620. The bar's own popovers -- the sender and
@@ -217,9 +227,17 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    --rx-x/--rx-y which tickerplace.js clamps into the viewport on load and on
    resize. The 680px width is what .rx-hd/.rx-list already constrained
    themselves to, so the rows are unchanged; only the box around them moved. */
+/* The backing plate (#424, F3 of the 26 August review). The app got one in
+   #539; here the rows lay straight on the tiles, which is unreadable over a
+   light basemap. pointer-events stays none on the box: the plate paints, and
+   drags and wheels still pass through to Leaflet, which is the whole bargain
+   #287/#322 set up. */
 #rx-log { position: fixed; z-index: 620;
   top: var(--rx-y, calc(var(--ch-bar-h) + 4px)); left: var(--rx-x, 0px);
   width: min(680px, 100vw); pointer-events: none;
+  background: var(--ch-surface-thin); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid var(--ch-border); border-radius: 10px; overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
 /* Frameless at rest (#322) and framed only while being reached for (#424): the
    map stays unobstructed until the pointer is over the ticker. */
@@ -252,11 +270,25 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    a rule by the first selector text that mentions the class, so a descendant
    rule written above the canonical `.rx-list` block would silently become the
    one under test. #407 tracks hardening that matcher; this sidesteps it. */
-#rx-log.rx-folded #rx-list { display: none; }
-.rx-fold { margin-left: auto; background: none; border: none; padding: 0 2px; cursor: pointer;
-  color: var(--ch-muted); font: inherit; pointer-events: auto; }
-.rx-fold::before { content: '\2212'; }            /* minus while open */
-#rx-log.rx-folded .rx-fold::before { content: '\002B'; }  /* plus while folded */
+/* Targets the list by id, not by .rx-list: parity.test.js's older ticker
+   matcher finds a rule by the first selector text that mentions the class, so a
+   descendant rule written above the canonical `.rx-list` block would silently
+   become the one under test. #407 tracks hardening that matcher; this sidesteps
+   it. The app has no placement layer and can use the class. */
+#rx-log.rx-empty #rx-list { display: none; }
+#rx-log.rx-empty .rx-hd { border-bottom: none; }
+.rx-close, .rx-fold { width: 36px; height: 36px; border: none; background: none;
+  color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center;
+  justify-content: center; pointer-events: auto; }
+.rx-fold { margin-left: auto; }
+.rx-close:hover, .rx-fold:hover { color: var(--ch-text); }
+/* One chevron for four stops (#424): full, three lanes, one, then the header
+   alone. It points down while there is further to shrink and up on the last
+   stop, where the next click is the way back to full. The old minus/plus said
+   only "open or shut", which is two states out of four.
+   Same button as the app's: same box, same drawn chevron, rather than a text
+   glyph that sat on a different baseline and at a different weight. */
+.rx-fold[data-dir="up"] svg { transform: rotate(180deg); }
 /* 44px hit areas (#539). The four smallest controls measured 11x14 to 40x29;
    the glyph keeps its size and an ::after extension carries the touch box to
    44px. No layout change, so the bar's measured geometry stays as it is.
@@ -267,18 +299,29 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   content: ''; position: absolute; left: 50%; top: 50%;
   width: 44px; height: 44px; transform: translate(-50%, -50%); }
 #auth-btn, .ms-toggle, .rx-fold { position: relative; }
+/* Identical to the app's (#424). The width/margin pair here was from when the
+   ticker was a full-width band and the header had to centre itself inside it;
+   the card has its own width now, so it only made the header narrower than the
+   plate it sits on. */
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  width: min(680px, 100%); margin: 0 auto;
+  height: var(--ch-rx-head-h); padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
-  padding-bottom: 3px; text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
+  text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
 /* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
    6-above/3-below geometry rxFade's divisors encode. */
-.rx-list { width: min(680px, 100%); margin: 0 auto;
-  height: calc(10 * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-  scroll-snap-type: y mandatory; scroll-padding-top: calc(6 * var(--ch-rx-line-h));
-  padding: calc(6 * var(--ch-rx-line-h)) 0 calc(3 * var(--ch-rx-line-h));
+/* Height and both paddings come from receptionticker.js as lane counts (#424,
+   mirroring #560), which is what lets it be one card at four sizes: ten lanes,
+   three, one, or the header alone. The fallbacks are the pre-#424 numbers, so
+   a card rendered before its first rebuild still looks like the old one.
+   Nothing pads below the last row any more: that reserved three blank lanes at
+   the bottom of a full card, and with it gone the browser clamps the
+   follow-scroll and parks the newest reception on the bottom lane instead. */
+.rx-list { width: 100%;
+  height: calc(var(--rx-lanes, 10) * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+  scroll-snap-type: y mandatory; scroll-padding-top: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h));
+  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 12px calc(var(--rx-pad-bottom, 0) * var(--ch-rx-line-h));
   pointer-events: none; /* the padding is dead space over the map; rows re-enable below */ }
 .rx-list::-webkit-scrollbar { display: none; }
 /* width: max-content keeps the click target on the text. Across a full-width
