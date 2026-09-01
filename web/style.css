@@ -746,9 +746,11 @@ body.wb-onboarding-on #bar { z-index:710; }
      of the panel is under the fold. Active chips always show — a hidden
      active filter is the thing the panel exists to prevent. */
   #bar-filters.bf-open { left: 0; width: 100vw; border-radius: 0 0 14px 14px; max-height: 70vh; }
-  /* n+8, not n+7 (#564): the All chip is the first child now, so the cap has
-     to skip it or the row would show five types and call it six. Active chips
-     always show, whatever their position. */
+  /* n+8, not n+7 (#564): the All chip is the first child now, so the cap has to
+     skip it or the row would show five types and call it six. Active chips
+     always show, whatever their position. The 6 here is CHIP_CAP in chiprow.js,
+     which is what the "+N more" button counts against -- change one and the
+     button lies about the other. */
   #bar-filters:not(.bf-types-all) #f-types .f-chip:nth-child(n+8):not(.active) { display: none; }
   #bar-filters.bf-open .cs-cb, #bar-filters.bf-open .bf-seg button,
   #bar-filters.bf-open #f-types .f-chip, #bar-filters.bf-open .bf-chips .f-chip { min-height: 44px; }

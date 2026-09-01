@@ -292,7 +292,25 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* The count in the sheet's own header, beside the title, as the map's does. */
 .fs-count { font-size: 12px; color: var(--ch-accent); margin-right: auto; }
 .fs-count[hidden] { display: none; }
+/* gap, not the head's space-between alone: with the count next to the title
+   and the close button pushed right by margin-right:auto, the two words ran
+   together as "Filters2 filters". */
+.sheet-head { gap: 10px; }
 .sheet-head h2 { margin: 0; }
+/* The ignore list, ported from web/style.css (#564). It was unstyled here --
+   a bare browser button and undecorated rows in a panel where everything else
+   had been given a box, which is exactly the drift the register is for. */
+.ss-ignore-empty { margin: 0; font-size: 13px; color: var(--ch-muted); }
+.ss-ignore-row { display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-top: 1px solid var(--ch-border); font-size: 13px; }
+.ss-ignore-row:first-child { border-top: 0; }
+.ss-ignore-key { flex: 1 1 auto; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; }
+.ss-ignore-remove, #ss-ignore-clear { flex: 0 0 auto; background: transparent;
+  border: 1px solid var(--ch-border); border-radius: 6px; color: var(--ch-muted);
+  font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer; }
+.ss-ignore-remove:hover, #ss-ignore-clear:hover { color: var(--ch-text); border-color: var(--ch-muted); }
+#ss-ignore-clear { margin-top: 10px; }
 .fs-foot { display: flex; align-items: center; gap: 10px;
   border-top: 1px solid var(--ch-border); padding-top: 10px; margin-top: 10px; }
 .fs-live { font-size: 12px; color: var(--ch-muted); }

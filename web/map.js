@@ -12,7 +12,7 @@ import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
-import { packetTypeLabel } from './packettypes.js'
+import { packetTypeLabel, FILTER_PACKET_TYPES } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
@@ -22,6 +22,7 @@ import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeFo
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
 import { wireNarrowBar } from './barnarrow.js'
+import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 
 let currentRole = 'guest'
 
@@ -1703,7 +1704,8 @@ if (barFilters && filterPill) {
   const refreshFilterPill = () => {
     const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
     const types = window.currentTypes ? window.currentTypes() : ''
-    const typeCount = String(types || '').split(',').filter(Boolean).length
+    const typeSet = new Set(String(types || '').split(',').filter(Boolean))
+    const typeCount = typeSet.size
     const count = activeFilterCount({
       directOnly: on('f-direct'),
       senderUnknown: on('f-unnamed'),
@@ -1719,10 +1721,14 @@ if (barFilters && filterPill) {
     filterPill.classList.toggle('has-selection', count > 0)
     const headCount = document.getElementById('bf-count')
     headCount.hidden = count === 0
-    headCount.textContent = count === 1 ? '1 active' : `${count} active`
+    // "N filters", not "N active" (#564): one vocabulary, and it is the word the
+    // Clear button below already uses for the same number.
+    headCount.textContent = count === 1 ? '1 filter' : `${count} filters`
     const typesCount = document.getElementById('bf-types-count')
     typesCount.hidden = typeCount === 0
-    typesCount.textContent = `${typeCount} of ${document.querySelectorAll('#f-types .f-chip').length}`
+    // Excluding the All chip, which is a drawing of the empty set rather than a
+    // type: with it counted the row said "1 of 15" where the app said 1 of 14.
+    typesCount.textContent = `${typeCount} of ${document.querySelectorAll('#f-types .f-chip:not([data-type="all"])').length}`
     // Never disabled at 0: Clear also resets the sender/hunter picks and the
     // time range, none of which the panel's count includes.
     const clearBtn = document.getElementById('clear-filters')
@@ -1733,13 +1739,15 @@ if (barFilters && filterPill) {
     const moreBtn = document.getElementById('bf-types-more')
     if (barFilters.classList.contains('bf-types-all')) {
       moreBtn.hidden = false
-      moreBtn.textContent = 'Fewer types'
+      moreBtn.textContent = 'Show fewer'
     } else {
-      const hiddenChips = barFilters.classList.contains('bf-open')
-        ? [...document.querySelectorAll('#f-types .f-chip')].filter((c) => c.offsetWidth === 0).length
-        : 0
-      moreBtn.hidden = hiddenChips === 0
-      moreBtn.textContent = hiddenChips ? `+${hiddenChips} more` : ''
+      // Computed from the list and the selection (#564), not measured off the
+      // layout: offsetWidth answers zero for every chip before the first paint
+      // and while the panel is shut, so the button used to be silent exactly
+      // when it had something to say.
+      const hidden = hiddenChipCount(FILTER_PACKET_TYPES.map((t) => t.value), typeSet, CHIP_CAP)
+      moreBtn.hidden = hidden === 0
+      moreBtn.textContent = hidden ? `+${hidden} more` : ''
     }
   }
   window.__refreshFilterPill = refreshFilterPill
