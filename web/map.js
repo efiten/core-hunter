@@ -1627,22 +1627,16 @@ if (rxLog) {
     urlstate.save()
   })
 
-  // Pointer events rather than mouse so a touch drag works on a tablet, where
-  // there is no hover to reveal the frame but the strips are still there.
-  // Where a drag may start. The two strips are the desktop frame, revealed on
-  // hover; on a touch screen there is no hover, so they are invisible, and 6px
-  // is not a thumb target anyway. There the header itself is the handle -- the
-  // ordinary sheet grabber -- minus its own buttons, which have to keep taking
-  // their taps. #561 wrote this down as a surface rule: a floating panel on the
-  // map is draggable, and on touch its handle has to be visible and thumb-sized.
-  const COARSE = window.matchMedia('(hover: none)')
-  const dragHandle = (target) => {
-    const strip = target.closest('.rx-grab-t, .rx-grab-l')
-    if (strip) return strip
-    if (!COARSE.matches) return null
-    if (target.closest('.rx-close, .rx-fold, .rx-tg')) return null
-    return target.closest('.rx-hd')
-  }
+  // Pointer events rather than mouse so a drag works from a pen or a touch
+  // screen on a wide display, where the frame is reached the same way.
+  //
+  // Dragging stops below 640px (#561). The card is full-bleed there
+  // (`min(680px, 100vw)`), so there is no "out of the way" to drag it to: every
+  // position is the same full-width band at a different height. Shrinking and
+  // dismissing are what move it aside on a phone, which is exactly what the app
+  // does at every width. The strips are `display: none` at that width too, so
+  // this is belt and braces rather than the mechanism.
+  const dragHandle = (target) => (narrowQuery.matches ? null : target.closest('.rx-grab-t, .rx-grab-l'))
 
   rxLog.addEventListener('pointerdown', (e) => {
     const strip = dragHandle(e.target)

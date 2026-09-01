@@ -108,20 +108,16 @@ hamburgers. The receptions button is a pulse now, because what it opens is a liv
 The check is the bar, not the icon: an icon that reads fine on its own can still be wrong beside
 the one that follows it.
 
-### Surface rule: on touch, a handle is visible and thumb-sized
+### An affordance revealed by hover does not exist below the breakpoint
 
-*Standard pattern: the sheet grabber — the short pill iOS, Android and every
-mobile web sheet draws on the edge you drag.*
+`matchMedia('(hover: hover)')` is false on a phone, so a control that appears on
+`:hover` never appears there at all. Either give it a second, always-visible
+form, or **drop the affordance entirely at that width** — but do not leave it
+hit-testable and invisible, which is the worst of the three: a target nobody can
+see that does something when pressed by accident.
 
-A control revealed by `:hover` does not exist on a phone: `matchMedia('(hover:
-hover)')` is false there, so the reveal never fires. Anything whose affordance
-is a hover has to have a second, always-visible form under `@media (hover:
-none)`, and that form has to be big enough for a thumb.
-
-The ticker's drag frame is two 6px strips shown on hover (#424). On touch the
-header is the handle instead, with a grabber pill drawn on it, and its own
-buttons keep taking their taps (#561). The rule is not about the ticker: it
-reaches any handle, resizer or hover-revealed affordance added later.
+The ticker's drag frame is two 6px strips shown on hover (#424), and dragging is
+dropped below 640px rather than given a touch handle. Why is under **Panels**.
 
 ### Native form controls take the accent
 
@@ -154,13 +150,19 @@ Both surfaces float panels over a map, and they share the card: `--ch-surface-th
 `blur(10px)` backdrop, `1px solid var(--ch-border)`, `10px` radius, and a soft drop shadow.
 Text over a map without a plate is unreadable, which was F3 of the 26 August review.
 
-### Surface rule: on the map, a floating panel is draggable, closable and collapsible
+### Surface rule: on the map, a floating panel gets out of the way
 
-Anything floating over the map must be movable out of the way, shrinkable and dismissible. This
-is a property of the **surface**, not of the ticker: the next interaction popup added to `web/`
-gets the same three.
+Anything floating over the map must be movable aside, shrinkable and dismissible. This is a
+property of the **surface**, not of the ticker: the next interaction popup added to `web/` owes
+the reader the same.
 
-Dragging is the one of those three that does not come to the app.
+**How it moves aside is a width question, not a touch one.** Above 640px it drags. Below,
+the card is full-bleed (`min(680px, 100vw)`), so every position is the same band at a different
+height and there is no "out of the way" to drag it to — its stops and its cross are what move it
+aside there, which is what the app does at every width (#561).
+
+So dragging is the one of the three that comes neither to the app nor to a phone. Both for the
+same reason: it only means something when there is map beside the panel as well as under it.
 
 **Closing works the same on both:** a cross on the panel, and a button in the bar that brings it
 back, in the same place on both surfaces. A panel that can be dismissed without a visible way
@@ -197,7 +199,7 @@ rules declaration by declaration.
 
 | | app | map | reason |
 |---|---|---|---|
-| position | fixed, centred | placed, draggable | surface rule above |
+| position | fixed, centred | placed; dragged above 640px | surface rule above |
 | pointer events | caught | passed through | surface rule above |
 
 Everything else is the same, including the collapse stops and the cross with its bar button.
