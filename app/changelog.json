@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-01-one-filter-panel",
+    "date": "2026-09-01",
+    "where": "both",
+    "title": "The filter panel is the same panel in the app and on the map",
+    "body": "Same groups, same order, same words. The app gains named groups, a count and a Clear button; an empty chip row now says All."
+  },
+  {
     "id": "2026-09-01-map-bar-one-row",
     "date": "2026-09-01",
     "where": "map",
