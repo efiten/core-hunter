@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-01-map-bar-one-row",
+    "date": "2026-09-01",
+    "where": "map",
+    "title": "The map's bar is one row, and says which map you are on",
+    "body": "On a phone it was seven rows over a quarter of the screen, hiding the zoom buttons. What no longer fits is behind Filters or the menu."
+  },
+  {
     "id": "2026-08-31-map-ticker-card",
     "date": "2026-08-31",
     "where": "map",
