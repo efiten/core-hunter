@@ -28,3 +28,17 @@ describe('activeFilterCount', () => {
     expect(activeFilterCount({ sender: 'abc', hunters: ['h1'], from: 'now-6h' })).toBe(0)
   })
 })
+
+// The app's own dimension, added when one function started answering for both
+// panels (#564). The map's timeframe is a bar control that travels in the URL,
+// so it is deliberately not here for either surface -- Clear has never reset it.
+describe('activeFilterCount, the app half', () => {
+  it('counts the plot window as one dimension', () => {
+    expect(activeFilterCount({ window: true })).toBe(1)
+    expect(activeFilterCount({ window: false })).toBe(0)
+  })
+
+  it('adds up with the dimensions both surfaces share', () => {
+    expect(activeFilterCount({ window: true, directOnly: true, types: new Set(['advert']) })).toBe(3)
+  })
+})
