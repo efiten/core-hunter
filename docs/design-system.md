@@ -95,6 +95,17 @@ map that cannot be dragged. Those get 30px, which doubles the target without mak
 zone dominant (#539). Anything in a bar, a panel or a sheet is 44px, because nothing is being
 dragged underneath it.
 
+### Two controls side by side cannot share a glyph family
+
+*Standard pattern: an icon carries meaning only by being unlike the icons next to it.*
+
+The receptions button and the menu sat next to each other in both bars drawing three horizontal
+lines each, one set staggered and one set equal. At 20px, next to each other, that is two
+hamburgers. The receptions button is a pulse now, because what it opens is a live feed.
+
+The check is the bar, not the icon: an icon that reads fine on its own can still be wrong beside
+the one that follows it.
+
 ### Native form controls take the accent
 
 `accent-color: var(--ch-accent)` on `:root`. A checkbox is still a checkbox where the value is a
