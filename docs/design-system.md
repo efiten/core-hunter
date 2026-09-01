@@ -207,6 +207,63 @@ The map's bar carries a `#ticker-btn` for that, which the #561 round over that b
 
 ---
 
+## The filter panel
+
+*Standard pattern: the filter drawer — named groups, an active count on the trigger, and a
+clear-all.*
+
+**One panel on both surfaces** (`web/index.html`'s `#bar-filters`, `app/src/filtersheet.js`).
+Same groups, same order, same words:
+
+`Time` · `Traffic types` · `Sender id` · `Only show` · `Ignored senders`
+
+The map adds `Overlays` and `View` **after** those, and only there: they are analysis, and the
+map is the superset. Nothing else may differ, including the order — the app opened with two
+checkboxes and reached the chips third while the map did the opposite, and one said `Types`
+where the other said `Traffic types` (#564).
+
+### The panel is the complete set
+
+Everything that narrows the view is in it, at every width. A filter reachable only from
+somewhere else is a filter the panel lies about: the map's ignore list lived in the settings
+sheet, which is where you go to change how the app behaves, not what it shows.
+
+The bar may carry a **shortcut** to a control the panel owns. Below 640px it carries none:
+what does not fit moves into the panel (see **Bars**).
+
+### "Everything" is one state, drawn as an All chip
+
+*Standard pattern: the All/None chip every faceted filter has.*
+
+A chip row's selection is a Set, and the empty Set means no filter on that dimension. That
+state is drawn as an explicit `All` chip, lit, with nothing else lit. Picking a chip turns All
+off; unpicking the last one turns it back on; pressing All clears the rest and is a no-op when
+it is already on (a control offers only what would change something).
+
+The map used to write the same state as *no chip lit* — right in the query it built, and
+silent on screen. The rule is `nextChipSelection` in `chiprow.js`, and the All chip never
+reaches a query string: it is a drawing of the empty set, not a value.
+
+### The count says how much, the panel says what
+
+The trigger carries the number of **dimensions** narrowed, not of chips: four active type
+chips are one narrowed dimension, and clearing it is one act. `activeFilterCount` is the one
+answer, and `Clear N filters` promises the same number the trigger shows.
+
+That list is the panel's inventory and it does not maintain itself — a control added to the
+panel stays uncounted until it is added there too (#497 shipped exactly that).
+
+### Long chip rows collapse to six plus "+N more"
+
+Fifteen 44px chips are four rows on a phone, and then the rest of the panel is under the fold.
+**An active chip always shows, whatever its position:** a filter that is on and off screen is
+the thing the panel exists to prevent. The count is computed from the list and the selection
+(`hiddenChipCount`), not measured off the layout, so it is right before the first paint too.
+
+**Guard:** `web/parity.test.js` pins `chiprow.js` and `barfilters.js` byte-identical between
+`web/` and `app/src/`, and pins the two panels' group order against the markup each surface
+actually renders.
+
 ## Bars
 
 ### One row, at every width
@@ -283,7 +340,7 @@ code read first, and where the surfaces already disagree that has to be recorded
 rather than smoothed over.
 
 - **Notices and empty states.** Toasts, banners, the no-capture notice, and what a screen shows
-  when it has nothing.
+  when it has nothing. The map half is now in **Bars** above; the app's toasts are not.
 - **Forms and fields.** Inputs, labels, validation, the login and registration flow.
 - **Onboarding and explanation.** Coach marks, the tour, tooltips: which pattern when.
 

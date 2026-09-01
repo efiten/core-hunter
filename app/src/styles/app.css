@@ -55,6 +55,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* Active filter: the whole segment reads accent (no floating badge — it would
    clip against the segmented container's divider). */
 #filter-pill.active { color: var(--ch-accent); }
+/* The pill's count (#564), the map's .fp-count. */
+.fp-count { white-space: pre; color: var(--ch-accent); font-weight: 700; }
+.fp-count[hidden] { display: none; }
+.fp-count::before { content: ' ('; }
+.fp-count::after { content: ')'; }
 
 /* BLE + MQTT status: two small dots stacked inside the menu button, so the
    whole control is one tap target that opens the connection pane (#281). */
@@ -274,8 +279,37 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   padding: 4px; display: flex; align-items: center; }
 .sheet-close:hover { color: var(--ch-text); }
 
-.fs-type-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.fs-type-label { font-size: 14px; color: var(--ch-muted); white-space: nowrap; }
+/* Named groups, one vocabulary, one heading style (#564). The sheet used to be
+   a flat list: two checkboxes, a select, then two chip rows with an inline
+   label each, in an order the map did not share and with "Types" where the map
+   said "Traffic types". These rules are web/style.css's .bf-group family with
+   the app's own type sizes; the two panels are one panel now. */
+.fs-group { display: flex; flex-direction: column; gap: 8px; }
+.fs-group + .fs-group { border-top: 1px solid var(--ch-border); padding-top: 10px; margin-top: 10px; }
+.fs-group-head { font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ch-muted); display: flex; align-items: baseline; gap: 8px; }
+.fs-group-count { text-transform: none; letter-spacing: 0; color: var(--ch-accent); }
+/* The count in the sheet's own header, beside the title, as the map's does. */
+.fs-count { font-size: 12px; color: var(--ch-accent); margin-right: auto; }
+.fs-count[hidden] { display: none; }
+.sheet-head h2 { margin: 0; }
+.fs-foot { display: flex; align-items: center; gap: 10px;
+  border-top: 1px solid var(--ch-border); padding-top: 10px; margin-top: 10px; }
+.fs-live { font-size: 12px; color: var(--ch-muted); }
+#fs-clear { margin-left: auto; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  background: transparent; color: var(--ch-accent-2); border: 1px solid var(--ch-accent-2);
+  font: inherit; cursor: pointer; white-space: nowrap; flex: none; }
+.fs-types-more { align-self: flex-start; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  background: transparent; color: var(--ch-text); border: 1px solid var(--ch-border);
+  font: inherit; cursor: pointer; }
+.fs-types-more[hidden] { display: none; }
+/* Fifteen chips are four rows on a phone, and then the rest of the sheet is
+   under the fold -- the same rule the map applies below 640px (#423), which is
+   every screen here. An ACTIVE chip always shows, whatever its position: a
+   filter that is on and off screen is what the panel exists to prevent.
+   data-overflow rather than :nth-child, because the All chip is a child too and
+   would shift the count by one. */
+#filter-sheet:not(.fs-types-all) #fs-type-chips .fs-chip[data-overflow="1"]:not(.active) { display: none; }
 .fs-type-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .fs-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 13px; cursor: pointer; }

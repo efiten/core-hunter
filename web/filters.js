@@ -2,6 +2,7 @@ import { save } from './urlstate.js'
 import { FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './packettypes.js'
 import { senderParams } from './targetpicker.js'
 import { resolveTimeValue } from './timerange.js'
+import { nextChipSelection, ALL } from './chiprow.js'
 
 // from/to hold either an absolute datetime-local string or a relative token
 // ("now-6h") since #285 -- resolveTimeValue handles both, and is the one place
@@ -58,51 +59,71 @@ function resetFilters() {
 // (no document/window) to unit-test the pure helpers above; in a browser
 // `document` always exists, so behaviour is unchanged.
 if (typeof document !== 'undefined') {
-  // Packet-type toggle chips: none active = all types (no filter).
-  const typesHost = document.getElementById('f-types')
-  for (const t of FILTER_PACKET_TYPES) {
-    const b = document.createElement('button')
-    b.type = 'button'; b.className = 'f-chip'; b.dataset.type = t.value; b.textContent = t.label
-    b.addEventListener('click', () => {
-      b.classList.toggle('active')
-      save()
-      if (window.__refresh) window.__refresh()
-    })
-    typesHost.appendChild(b)
+  // Chip rows. "Everything" is the empty selection, and since #564 it is also
+  // an explicit All chip: the row used to write that state as no chip lit,
+  // which is correct in the query and says nothing on screen. The app has said
+  // it with a chip since #475, and `nextChipSelection` is now the one rule both
+  // rows on both surfaces press.
+  const buildChipRow = (host, attr, items) => {
+    const paint = () => {
+      const selected = new Set([...host.querySelectorAll('.f-chip.active')]
+        .map((b) => b.dataset[attr]).filter((v) => v !== ALL))
+      for (const b of host.querySelectorAll('.f-chip')) {
+        const v = b.dataset[attr]
+        b.classList.toggle('active', v === ALL ? selected.size === 0 : selected.has(v))
+      }
+    }
+    const chip = (value, label) => {
+      const b = document.createElement('button')
+      b.type = 'button'; b.className = 'f-chip'; b.dataset[attr] = value; b.textContent = label
+      b.addEventListener('click', () => {
+        const before = new Set([...host.querySelectorAll('.f-chip.active')]
+          .map((x) => x.dataset[attr]).filter((v) => v !== ALL))
+        const after = nextChipSelection(before, value)
+        for (const x of host.querySelectorAll('.f-chip')) {
+          const v = x.dataset[attr]
+          x.classList.toggle('active', v === ALL ? after.size === 0 : after.has(v))
+        }
+        save()
+        if (window.__refresh) window.__refresh()
+      })
+      host.appendChild(b)
+    }
+    chip(ALL, 'All')
+    for (const it of items) chip(it.value, it.label)
+    paint()
+    return paint
   }
 
-  // Sender-id class chips, wired exactly like the type row above: none active
-  // means no filter, and the values travel verbatim as ?idclass= for the server
-  // to bucket in SQL.
+  const typesHost = document.getElementById('f-types')
+  const paintTypes = buildChipRow(typesHost, 'type', FILTER_PACKET_TYPES)
+
+  // The values travel verbatim as ?idclass= for the server to bucket in SQL, so
+  // the All chip must never reach a query -- it is a drawing of the empty set.
   const classHost = document.getElementById('f-idclass')
-  for (const c of SENDER_ID_CLASSES) {
-    const b = document.createElement('button')
-    b.type = 'button'; b.className = 'f-chip'; b.dataset.idclass = c.value; b.textContent = c.label
-    b.addEventListener('click', () => {
-      b.classList.toggle('active')
-      save()
-      if (window.__refresh) window.__refresh()
-    })
-    classHost.appendChild(b)
-  }
+  const paintClasses = buildChipRow(classHost, 'idclass', SENDER_ID_CLASSES)
   // Inline in the panel since #539: the chips say it themselves, and the
   // pill's count carries the closed-state signal the old popover toggle did.
   const syncClassToggle = () => {}
   window.__syncIdClassToggle = syncClassToggle
+  // The All chip is a drawing of the empty set, never a value: it is filtered
+  // out here so it cannot reach a query string or a saved link.
   window.currentIdClasses = () =>
-    [...classHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.idclass).join(',')
+    [...classHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.idclass).filter((v) => v !== ALL).join(',')
   window.setIdClasses = (v) => {
     const want = new Set(String(v || '').split(',').filter(Boolean))
     for (const b of classHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.idclass))
+    paintClasses()
     syncClassToggle()
   }
 
   // getters/setter used by currentFilters and the urlstate registration (map.js).
   window.currentTypes = () =>
-    [...typesHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.type).join(',')
+    [...typesHost.querySelectorAll('.f-chip.active')].map((b) => b.dataset.type).filter((v) => v !== ALL).join(',')
   window.setTypes = (v) => {
     const want = new Set(String(v || '').split(',').filter(Boolean))
     for (const b of typesHost.querySelectorAll('.f-chip')) b.classList.toggle('active', want.has(b.dataset.type))
+    paintTypes()
   }
 
   // Direct-only checkbox: highlight its label when checked, mirroring app's
