@@ -1,5 +1,33 @@
 [
   {
+    "id": "2026-09-01-one-filter-panel",
+    "date": "2026-09-01",
+    "where": "both",
+    "title": "The filter panel is the same panel in the app and on the map",
+    "body": "Same groups, same order, same words. The app gains named groups, a count and a Clear button; an empty chip row now says All."
+  },
+  {
+    "id": "2026-09-01-map-bar-one-row",
+    "date": "2026-09-01",
+    "where": "map",
+    "title": "The map's bar is one row, and says which map you are on",
+    "body": "On a phone it was seven rows over a quarter of the screen, hiding the zoom buttons. What no longer fits is behind Filters or the menu."
+  },
+  {
+    "id": "2026-08-31-map-ticker-card",
+    "date": "2026-08-31",
+    "where": "map",
+    "title": "The receptions ticker is a card, and only as tall as it needs",
+    "body": "It sits on its own plate instead of on the tiles, and grows with what it holds. Its button in the bar is a pulse now, not a second hamburger."
+  },
+  {
+    "id": "2026-08-31-ticker-sizes-itself",
+    "date": "2026-08-31",
+    "where": "app",
+    "title": "The receptions card is only as tall as it has to be",
+    "body": "It grows with what it holds: one line, three, five, then ten. The chevron steps a full card back to three, then one, then out again."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

@@ -55,6 +55,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* Active filter: the whole segment reads accent (no floating badge — it would
    clip against the segmented container's divider). */
 #filter-pill.active { color: var(--ch-accent); }
+/* The pill's count (#564), the map's .fp-count. */
+.fp-count { white-space: pre; color: var(--ch-accent); font-weight: 700; }
+.fp-count[hidden] { display: none; }
+.fp-count::before { content: ' ('; }
+.fp-count::after { content: ')'; }
 
 /* BLE + MQTT status: two small dots stacked inside the menu button, so the
    whole control is one tap target that opens the connection pane (#281). */
@@ -274,8 +279,55 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   padding: 4px; display: flex; align-items: center; }
 .sheet-close:hover { color: var(--ch-text); }
 
-.fs-type-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.fs-type-label { font-size: 14px; color: var(--ch-muted); white-space: nowrap; }
+/* Named groups, one vocabulary, one heading style (#564). The sheet used to be
+   a flat list: two checkboxes, a select, then two chip rows with an inline
+   label each, in an order the map did not share and with "Types" where the map
+   said "Traffic types". These rules are web/style.css's .bf-group family with
+   the app's own type sizes; the two panels are one panel now. */
+.fs-group { display: flex; flex-direction: column; gap: 8px; }
+.fs-group + .fs-group { border-top: 1px solid var(--ch-border); padding-top: 10px; margin-top: 10px; }
+.fs-group-head { font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ch-muted); display: flex; align-items: baseline; gap: 8px; }
+.fs-group-count { text-transform: none; letter-spacing: 0; color: var(--ch-accent); }
+/* The count in the sheet's own header, beside the title, as the map's does. */
+.fs-count { font-size: 12px; color: var(--ch-accent); margin-right: auto; }
+.fs-count[hidden] { display: none; }
+/* gap, not the head's space-between alone: with the count next to the title
+   and the close button pushed right by margin-right:auto, the two words ran
+   together as "Filters2 filters". */
+.sheet-head { gap: 10px; }
+.sheet-head h2 { margin: 0; }
+/* The ignore list, ported from web/style.css (#564). It was unstyled here --
+   a bare browser button and undecorated rows in a panel where everything else
+   had been given a box, which is exactly the drift the register is for. */
+.ss-ignore-empty { margin: 0; font-size: 13px; color: var(--ch-muted); }
+.ss-ignore-row { display: flex; align-items: center; gap: 8px; padding: 5px 0;
+  border-top: 1px solid var(--ch-border); font-size: 13px; }
+.ss-ignore-row:first-child { border-top: 0; }
+.ss-ignore-key { flex: 1 1 auto; min-width: 0; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; }
+.ss-ignore-remove, #ss-ignore-clear { flex: 0 0 auto; background: transparent;
+  border: 1px solid var(--ch-border); border-radius: 6px; color: var(--ch-muted);
+  font: inherit; font-size: 12px; padding: 3px 8px; cursor: pointer; }
+.ss-ignore-remove:hover, #ss-ignore-clear:hover { color: var(--ch-text); border-color: var(--ch-muted); }
+#ss-ignore-clear { margin-top: 10px; }
+.fs-foot { display: flex; align-items: center; gap: 10px;
+  border-top: 1px solid var(--ch-border); padding-top: 10px; margin-top: 10px; }
+.fs-live { font-size: 12px; color: var(--ch-muted); }
+#fs-clear { margin-left: auto; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  background: transparent; color: var(--ch-accent-2); border: 1px solid var(--ch-accent-2);
+  font: inherit; cursor: pointer; white-space: nowrap; flex: none; }
+.fs-types-more { align-self: flex-start; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  background: transparent; color: var(--ch-text); border: 1px solid var(--ch-border);
+  font: inherit; cursor: pointer; }
+.fs-types-more[hidden] { display: none; }
+/* Fifteen chips are four rows on a phone, and then the rest of the sheet is
+   under the fold -- the same rule the map applies below 640px (#423), which is
+   every screen here. An ACTIVE chip always shows, whatever its position: a
+   filter that is on and off screen is what the panel exists to prevent.
+   data-overflow rather than :nth-child, because the All chip is a child too and
+   would shift the count by one. */
+#filter-sheet:not(.fs-types-all) #fs-type-chips .fs-chip[data-overflow="1"]:not(.active) { display: none; }
 .fs-type-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .fs-chip { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 13px; cursor: pointer; }
@@ -609,20 +661,36 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   box-shadow: 0 6px 20px rgba(0,0,0,.18);
   font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; }
 .rx-hd { display: flex; align-items: center; justify-content: flex-start; gap: 14px;
-  height: 36px; padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
+  height: var(--ch-rx-head-h); padding: 0 2px 0 12px; border-bottom: 1px solid var(--ch-border);
   font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ch-muted);
   text-shadow: 0 1px 2px var(--ch-bg); pointer-events: auto; }
 .rx-tg { cursor: pointer; user-select: none; -webkit-user-select: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tg .rx-off { color: var(--ch-muted); font-weight: 400; }
-.rx-close { width: 36px; height: 36px; margin-left: auto; border: none; background: none;
+.rx-close, .rx-fold { width: 36px; height: 36px; border: none; background: none;
   color: var(--ch-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
-.rx-close:hover { color: var(--ch-text); }
-/* 10 lanes: LANE(6) above the playhead + the playhead + 3 below. The same
-   6-above/3-below geometry rxFade's divisors encode. */
+.rx-fold { margin-left: auto; }
+/* One chevron for three stops (#560): full, three lanes, one. It points down
+   while there is further to collapse and up on the last stop, where the next
+   tap is the way back to full. aria-expanded carries whether the card is at
+   full size for a screen reader; aria-label says what the tap will do. */
+.rx-fold[data-dir="up"] svg { transform: rotate(180deg); }
+.rx-fold[hidden] { display: none; }
+.rx-fold[hidden] + .rx-close { margin-left: auto; }
+.rx-close:hover, .rx-fold:hover { color: var(--ch-text); }
+/* The full card is 10 lanes: 6 above the playhead + the playhead + 3 below,
+   the same 6-above/3-below geometry rxFade's divisors encode. Below that the
+   card is one or three lanes with the newest reception on the bottom one;
+   receptionlog.js derives all three numbers (#560). */
+/* Height and both paddings come from receptionlog.js as lane counts (#560),
+   which is what lets it be one card at three sizes: one lane, three, or full.
+   The fallbacks describe a full card, so one rendered before its first rebuild
+   still looks right rather than collapsing to nothing. Zero below the last row,
+   which is what rxPadBottom returns at every size: three there would put back
+   the blank lanes this change is about. */
 .rx-list { width: 100%;
-  height: calc(10 * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
-  scroll-snap-type: y mandatory; scroll-padding-top: calc(6 * var(--ch-rx-line-h));
-  padding: calc(6 * var(--ch-rx-line-h)) 12px calc(3 * var(--ch-rx-line-h));
+  height: calc(var(--rx-lanes, 10) * var(--ch-rx-line-h)); overflow-y: auto; overflow-x: hidden; scrollbar-width: none;
+  scroll-snap-type: y mandatory; scroll-padding-top: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h));
+  padding: calc(var(--rx-playhead, 6) * var(--ch-rx-line-h)) 12px calc(var(--rx-pad-bottom, 0) * var(--ch-rx-line-h));
   pointer-events: none; /* the padding is inert; rows re-enable below, the card catches the rest */ }
 .rx-list::-webkit-scrollbar { display: none; }
 /* No receptions -> just the header strip, not ten empty lanes of plate. */
@@ -649,6 +717,19 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
 .rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
+/* Closing travels towards #ticker-btn (#560). Before this the card simply
+   vanished and the control now holding it sits in the top bar with nothing
+   connecting the two, so the first close read as "the ticker is gone". The
+   app sets the two custom properties from the button's measured position. */
+#rx-log.rx-leaving { transition: transform .22s ease-in, opacity .22s ease-in;
+  /* The -50% is the card's own centring (#rx-log sets left:50%), so it has to
+     be carried here: a bare translate() would drop it and jump the card half
+     its width right before the travel even starts. */
+  transform: translate(calc(-50% + var(--rx-exit-x, 0px)), var(--rx-exit-y, 0px)) scale(.35);
+  opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  #rx-log.rx-leaving { transition: opacity .12s linear; transform: translateX(-50%); }
+}
 .rx-ln.act .rx-gt:before { content: '→'; }
 .rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 

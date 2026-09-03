@@ -12,15 +12,17 @@ import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
-import { packetTypeLabel } from './packettypes.js'
+import { packetTypeLabel, FILTER_PACKET_TYPES } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { activeFilterCount } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
-import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
+import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
+import { wireNarrowBar } from './barnarrow.js'
+import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 
 let currentRole = 'guest'
 
@@ -1063,6 +1065,11 @@ async function fetchNodeRegistry() {
 // is what makes the query worth using.
 const narrowQuery = window.matchMedia('(max-width: 640px)')
 const narrowScreen = () => narrowQuery.matches
+// The bar's group keeps two of its four controls below 640px and the filter
+// panel takes the other two (#561). Wired to the same query rather than a
+// second matchMedia, so the bar and everything else that answers "is this a
+// phone" cannot disagree about where the line is.
+wireNarrowBar(narrowQuery)
 
 // Cleared on every entry, so rapid toggling cannot have a stale timer hide the
 // prose two seconds into a later activation.
@@ -1523,10 +1530,14 @@ urlstate.bindControl('unnamed', 'f-unnamed', { checkbox: true })
 // it back" button and the clamp is the safety net: on load and on every resize
 // the box is pulled inside the viewport, or a ticker left at the edge of a wide
 // monitor would be unreachable on a laptop.
+// The placement block runs before createReceptionTicker does, so the stored
+// level cannot reach the component on load from inside it. This is how it gets
+// there once the ticker exists (#424).
+let syncTickerCollapse = () => {}
 const rxLog = document.getElementById('rx-log')
 if (rxLog) {
   const NARROW = window.matchMedia('(max-width: 640px)')
-  let place = { x: 0, y: 0, collapsed: false }
+  let place = { x: 0, y: 0, collapse: 0, hidden: false }
 
   // The bar's lower edge, which is the ticker's ceiling: the bar is opaque, so
   // anything above it is simply hidden. --ch-bar-h is republished on every bar
@@ -1534,15 +1545,34 @@ if (rxLog) {
   const barBottom = () => (document.getElementById('bar')?.getBoundingClientRect().bottom ?? 0) + 4
   const size = () => ({ w: rxLog.offsetWidth, h: rxLog.offsetHeight })
   const viewport = () => ({ vw: window.innerWidth, vh: window.innerHeight, top: barBottom() })
+  // The card at ten lanes, computed from the geometry tokens rather than read
+  // off the element. #rx-log is an empty div while this module runs -- the card
+  // is written into it by createReceptionTicker later -- so size() here is two
+  // pixels of border. That answered both load-time questions wrong: the clamp
+  // let a remembered bottom-edge position stand and stranded the card below the
+  // fold, and "is there room for it" always said yes.
+  const loadSize = () => ({
+    w: rxLog.offsetWidth,
+    h: parseFloat(cssVar('--ch-rx-head-h')) + RX_FULL_LANES * parseFloat(cssVar('--ch-rx-line-h')),
+  })
 
   function apply() {
     rxLog.style.setProperty('--rx-x', `${place.x}px`)
     rxLog.style.setProperty('--rx-y', `${place.y}px`)
-    rxLog.classList.toggle('rx-folded', place.collapsed)
+    // The ticker owns its own height now (#424): full, three lanes, one. Away
+    // is the cross, and the bar button is how it comes back, exactly as in the
+    // app.
+    rxLog.hidden = place.hidden
+    const tickerBtn = document.getElementById('ticker-btn')
+    if (tickerBtn) tickerBtn.hidden = !place.hidden
+    if (rxTicker) rxTicker.setCollapse(place.collapse)
+    syncTickerCollapse = () => { if (rxTicker) rxTicker.setCollapse(place.collapse) }
     const fold = rxLog.querySelector('.rx-fold')
     if (fold) {
-      fold.setAttribute('aria-expanded', String(!place.collapsed))
-      fold.setAttribute('aria-label', place.collapsed ? 'Show the receptions ticker' : 'Hide the receptions ticker')
+      const last = atLastCollapse(place.collapse, rxTicker ? rxTicker.records().length : 0)
+      fold.setAttribute('aria-expanded', String(place.collapse === 0))
+      fold.setAttribute('aria-label', last ? 'Expand the receptions ticker' : 'Shrink the receptions ticker')
+      fold.dataset.dir = last ? 'up' : 'down'
     }
     // The left grab strip spans the visible height, which changes when the
     // list folds away.
@@ -1559,13 +1589,13 @@ if (rxLog) {
     get: () => serialise(place),
     set: (v) => {
       const saved = parsePlacement(v)
-      place = initialPlacement({ saved, size: size(), viewport: viewport(), narrow: NARROW.matches })
+      place = initialPlacement({ saved, size: loadSize(), viewport: viewport(), narrow: NARROW.matches })
       apply()
     },
   })
   // urlstate only calls set() when it has a value, so a first visit needs the
   // same decision made explicitly rather than leaving the ticker at 0,0.
-  place = initialPlacement({ saved: null, size: size(), viewport: viewport(), narrow: NARROW.matches })
+  place = initialPlacement({ saved: null, size: loadSize(), viewport: viewport(), narrow: NARROW.matches })
   apply()
 
   window.addEventListener('resize', reflow)
@@ -1577,17 +1607,40 @@ if (rxLog) {
   // markup later than this module runs, so querySelectorAll here finds nothing
   // and the controls end up inert. #rx-log itself is static in index.html.
   rxLog.addEventListener('click', (e) => {
+    if (e.target.closest('.rx-close')) {
+      place = { ...place, hidden: true }
+      apply()
+      urlstate.save()
+      return
+    }
     if (!e.target.closest('.rx-fold')) return
-    place = { ...place, collapsed: !place.collapsed }
+    place = { ...place, collapse: nextCollapse(place.collapse, rxTicker ? rxTicker.records().length : 0) }
     apply()
-    reflow()          // folding changes the height, which can free or need space
+    reflow()          // shrinking changes the height, which can free or need space
     urlstate.save()
   })
 
-  // Pointer events rather than mouse so a touch drag works on a tablet, where
-  // there is no hover to reveal the frame but the strips are still there.
+  const tickerBtn = document.getElementById('ticker-btn')
+  if (tickerBtn) tickerBtn.addEventListener('click', () => {
+    place = { ...place, hidden: false }
+    apply()
+    reflow()          // it may have been left where this viewport cannot show it
+    urlstate.save()
+  })
+
+  // Pointer events rather than mouse so a drag works from a pen or a touch
+  // screen on a wide display, where the frame is reached the same way.
+  //
+  // Dragging stops below 640px (#561). The card is full-bleed there
+  // (`min(680px, 100vw)`), so there is no "out of the way" to drag it to: every
+  // position is the same full-width band at a different height. Shrinking and
+  // dismissing are what move it aside on a phone, which is exactly what the app
+  // does at every width. The strips are `display: none` at that width too, so
+  // this is belt and braces rather than the mechanism.
+  const dragHandle = (target) => (narrowQuery.matches ? null : target.closest('.rx-grab-t, .rx-grab-l'))
+
   rxLog.addEventListener('pointerdown', (e) => {
-    const strip = e.target.closest('.rx-grab-t, .rx-grab-l')
+    const strip = dragHandle(e.target)
     if (!strip) return
     e.preventDefault()
     const dx = e.clientX - place.x, dy = e.clientY - place.y
@@ -1651,7 +1704,8 @@ if (barFilters && filterPill) {
   const refreshFilterPill = () => {
     const on = (id) => { const el = document.getElementById(id); return !!(el && el.checked) }
     const types = window.currentTypes ? window.currentTypes() : ''
-    const typeCount = String(types || '').split(',').filter(Boolean).length
+    const typeSet = new Set(String(types || '').split(',').filter(Boolean))
+    const typeCount = typeSet.size
     const count = activeFilterCount({
       directOnly: on('f-direct'),
       senderUnknown: on('f-unnamed'),
@@ -1667,10 +1721,14 @@ if (barFilters && filterPill) {
     filterPill.classList.toggle('has-selection', count > 0)
     const headCount = document.getElementById('bf-count')
     headCount.hidden = count === 0
-    headCount.textContent = count === 1 ? '1 active' : `${count} active`
+    // "N filters", not "N active" (#564): one vocabulary, and it is the word the
+    // Clear button below already uses for the same number.
+    headCount.textContent = count === 1 ? '1 filter' : `${count} filters`
     const typesCount = document.getElementById('bf-types-count')
     typesCount.hidden = typeCount === 0
-    typesCount.textContent = `${typeCount} of ${document.querySelectorAll('#f-types .f-chip').length}`
+    // Excluding the All chip, which is a drawing of the empty set rather than a
+    // type: with it counted the row said "1 of 15" where the app said 1 of 14.
+    typesCount.textContent = `${typeCount} of ${document.querySelectorAll('#f-types .f-chip:not([data-type="all"])').length}`
     // Never disabled at 0: Clear also resets the sender/hunter picks and the
     // time range, none of which the panel's count includes.
     const clearBtn = document.getElementById('clear-filters')
@@ -1681,13 +1739,15 @@ if (barFilters && filterPill) {
     const moreBtn = document.getElementById('bf-types-more')
     if (barFilters.classList.contains('bf-types-all')) {
       moreBtn.hidden = false
-      moreBtn.textContent = 'Fewer types'
+      moreBtn.textContent = 'Show fewer'
     } else {
-      const hiddenChips = barFilters.classList.contains('bf-open')
-        ? [...document.querySelectorAll('#f-types .f-chip')].filter((c) => c.offsetWidth === 0).length
-        : 0
-      moreBtn.hidden = hiddenChips === 0
-      moreBtn.textContent = hiddenChips ? `+${hiddenChips} more` : ''
+      // Computed from the list and the selection (#564), not measured off the
+      // layout: offsetWidth answers zero for every chip before the first paint
+      // and while the panel is shut, so the button used to be silent exactly
+      // when it had something to say.
+      const hidden = hiddenChipCount(FILTER_PACKET_TYPES.map((t) => t.value), typeSet, CHIP_CAP)
+      moreBtn.hidden = hidden === 0
+      moreBtn.textContent = hidden ? `+${hidden} more` : ''
     }
   }
   window.__refreshFilterPill = refreshFilterPill
@@ -1840,7 +1900,11 @@ document.getElementById('ss-ignore-clear').addEventListener('click', () => apply
 // Re-render on open, not only on change: a name can become known after the row
 // was first drawn (a picker opened, a resolver answered), and the app does the
 // same on its own sheet (app/src/app.js).
-document.getElementById('settings-btn').addEventListener('click', () => renderIgnoreList())
+// The filter pill, not the settings button: the list moved into the filter
+// panel (#561/#564). Left on the old control this keeps working in the sense
+// that nothing throws -- the rows just never pick up the names that arrived
+// after they were drawn, which is what the e2e caught.
+document.getElementById('filter-pill').addEventListener('click', () => renderIgnoreList())
 
 // The ignore picker: the third instance of the multi-select popover, with the
 // list itself as its selection. Checking a row ignores that node, unchecking
@@ -1877,6 +1941,7 @@ async function refreshIgnoreCandidates() {
   const sig = [...Object.entries(f).map(([k, v]) => `${k}=${v}`), `bbox=${p.get('bbox')}`, `z=${p.get('z')}`].sort().join('&')
   if (sig === cachedIgnoreSig) {
     ignorePicker.render(cachedIgnoreCandidates, Date.now())
+    renderIgnoreList()
     return
   }
   for (const [k, v] of Object.entries(f)) {
@@ -1888,6 +1953,12 @@ async function refreshIgnoreCandidates() {
     cachedIgnoreCandidates = points
     cachedIgnoreSig = sig
     ignorePicker.render(points, Date.now())
+    // The rows below the picker are drawn from the same names these candidates
+    // just taught the resolver, so this is the moment a bare 6-hex prefix can
+    // become "NEO7HI · cc33dd". It used to happen because reaching the list
+    // meant a second click on another control; both halves are in one panel
+    // now, so the render has to be hung off the answer instead of the click.
+    renderIgnoreList()
   } catch (_) { /* keep the last good list; retried on the next open */ }
 }
 
@@ -2061,6 +2132,8 @@ rxTicker = createReceptionTicker('rx-log', {
   onActiveChange: setRxHighlight,
 })
 window.__rxTicker = rxTicker // test hook
+// The ticker exists now, so the level restored from the URL can reach it.
+syncTickerCollapse()
 window.__rxHighlightCount = () => rxHighlightLayer.getLayers().length // test hook
 window.__rxHighlightLatLng = () => { // test hook
   const layers = rxHighlightLayer.getLayers()
