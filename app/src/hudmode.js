@@ -41,7 +41,8 @@ export function hudToggleText(mode, hidden) {
 // Target and Add follow the target list's own rule (isTargetKind): a 1-byte
 // hash names 256 nodes and cannot be a target. Ignore only needs an id, which
 // is what the map popup offers for the same reception. `selected` and
-// `ignored` are sets of lowercased ids.
+// `ignored` are sets of lowercased ids. Add is one word because the row has
+// to hold five controls at 360 px (#555).
 export function hudActions(rec, { selected, ignored } = {}) {
   const id = rec && rec.sender_id != null ? String(rec.sender_id).toLowerCase() : ''
   const targetable = !!id && isTargetKind(rec.sender_kind)
@@ -49,7 +50,9 @@ export function hudActions(rec, { selected, ignored } = {}) {
   const isIgnored = !!id && !!ignored && ignored.has(id)
   return {
     target: { enabled: targetable, active: isSelected, label: 'Target' },
-    add: { enabled: targetable, active: isSelected, label: '+ Target' },
-    ignore: { enabled: !!id, active: isIgnored, label: isIgnored ? 'Ignored' : 'Ignore' },
+    add: { enabled: targetable, active: isSelected, label: 'Add' },
+    // The label does not change with the state: the active colour is the
+    // trace, and a wider word would push the row past 360 px.
+    ignore: { enabled: !!id, active: isIgnored, label: 'Ignore' },
   }
 }

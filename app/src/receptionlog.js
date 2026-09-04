@@ -43,6 +43,20 @@ export function rxActiveIndex(scrollTop, lineH, count) {
   return i
 }
 
+// rxStepIndex moves the playhead one row back or forward (#555): the float
+// readout's previous/next buttons scrub the same list the ticker shows. Clamped
+// to the list, and a stale index (rows dropped by the cap since the last paint)
+// lands on the nearest real row. -1 on an empty list, like rxActiveIndex.
+export function rxStepIndex(active, delta, count) {
+  if (count <= 0) return -1
+  const cur = Number(active)
+  const clamp = (i) => Math.min(Math.max(i, 0), count - 1)
+  // Off the list means the position was stale: land on the nearest row
+  // first, without stepping past it.
+  if (!(cur >= 0 && cur < count)) return clamp(cur || 0)
+  return clamp(cur + (delta < 0 ? -1 : 1))
+}
+
 // rxFade is the opacity of a line `d` rows from the playhead: full on the lane,
 // fading out over ~6 rows above (older) and faster over ~3 rows below (newer).
 export function rxFade(d) {
@@ -104,7 +118,7 @@ export function senderText(r) {
 
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onModeChange } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { render() {}, focusRecord() {}, setMode() {} }
+  if (!root) return { render() {}, focusRecord() {}, setMode() {}, step() {}, active() { return null }, following() { return true } }
   // The ✕ hides the whole ticker (#539) — the card has a fixed position, so
   // putting it away is the one size control it has. The app (onClose) owns
   // the visibility and the topbar button that brings it back.
@@ -224,5 +238,23 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     if (idx >= 0) toLane(idx)
   }
 
-  return { render, focusRecord, setMode }
+  // step moves the playhead one row (#555): the float readout's previous/next
+  // buttons scrub through the ticker's own list. Stepping onto the newest row
+  // is what makes the ticker follow again, the same as scrolling to the bottom.
+  function step(delta) {
+    const idx = rxStepIndex(rxActiveIndex(list.scrollTop, LINE_H, view.length), delta, view.length)
+    if (idx >= 0) toLane(idx)
+  }
+
+  // active is the reception on the playhead, or null with nothing to show.
+  function active() {
+    const i = rxActiveIndex(list.scrollTop, LINE_H, view.length)
+    return i >= 0 ? view[i] : null
+  }
+
+  // following: the playhead sits on the newest row, so what the float readout
+  // shows is the HUD's own reception rather than a scrubbed one.
+  function following() { return follow }
+
+  return { render, focusRecord, setMode, step, active, following }
 }

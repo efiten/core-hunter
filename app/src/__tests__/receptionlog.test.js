@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta, nextRxMode } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta, nextRxMode, rxStepIndex } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -135,5 +135,27 @@ describe('nextRxMode — the shared filtered/all switch', () => {
   })
   it('lands on filtered for anything unknown', () => {
     for (const v of ['', null, undefined, 'both']) expect(nextRxMode(v), String(v)).toBe('filtered')
+  })
+})
+
+// The float readout scrubs through the same list with the PiP window's
+// previous/next buttons (#555), so the step rule is pure and shared with the
+// playhead: clamped to the list, and -1 on an empty one.
+describe('rxStepIndex — one row back or forward on the playhead', () => {
+  it('moves one row and clamps at both ends', () => {
+    expect(rxStepIndex(3, -1, 10)).toBe(2)
+    expect(rxStepIndex(3, 1, 10)).toBe(4)
+    expect(rxStepIndex(0, -1, 10)).toBe(0)
+    expect(rxStepIndex(9, 1, 10)).toBe(9)
+  })
+  it('is -1 on an empty list, whatever it is asked', () => {
+    expect(rxStepIndex(0, 1, 0)).toBe(-1)
+    expect(rxStepIndex(-1, -1, 0)).toBe(-1)
+  })
+  // A stale index (rows dropped by the cap since the last paint) lands on the
+  // nearest real row rather than off the list.
+  it('lands a stale index inside the list', () => {
+    expect(rxStepIndex(25, 1, 10)).toBe(9)
+    expect(rxStepIndex(-1, 1, 10)).toBe(0)
   })
 })

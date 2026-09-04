@@ -56,6 +56,25 @@ of defect #453 describes. So a reception either replaces everything on the HUD o
 One row of pills under the readout. Measured in the browser: 308 px of 328 px at 360 px wide
 with the widest labels (`Ignored`, `+ Target`), no wrap; 308 of 380 at 412 px.
 
-## Left out
+## The float readout
 
-Picture-in-picture (the third half of #555) gets its own design round first.
+Decided in the same round (Kasper, 2026-09-04, artboards R8 and R9): the row gets a fourth button,
+`Float`, and the stand pill moves to the right edge.
+
+- **What it is.** The HUD's reading drawn onto a canvas (`app/src/floatreadout.js`), streamed into a
+  `<video>`, and shown fullscreen. Chrome for Android moves a fullscreen video into its
+  picture-in-picture window by itself when you press Home or switch apps. That is the one automatic
+  path a web page has: Chrome's automatic PiP through the Media Session API (Chrome 120, 134, 142)
+  is desktop-only, and a true auto-enter without fullscreen exists only in the native shell (#408).
+- **What it shows.** The tier colour as tint and left bar, the RSSI in white, SNR and age, the
+  sender through `senderReadout`, the stand with the eye, the BLE and MQTT dots, and `Disconnected`
+  in amber when BLE is gone. It follows the shared stand like the HUD.
+- **The two buttons Android puts on the window.** Previous and next (Media Session `previoustrack`
+  / `nexttrack`) scrub the ticker's playhead, so the window steps through the same list the ticker
+  shows, with each reception's own age. Stepping onto the newest row makes it follow again.
+- **Where it cannot work** (no canvas capture, no fullscreen or PiP on a video) the button is not
+  shown.
+
+Not measured here, and to be measured on a phone: whether Android Chrome floats a muted
+canvas-stream video the way it floats a playing clip, and whether the page then keeps its timers.
+The capture path is unchanged either way.
