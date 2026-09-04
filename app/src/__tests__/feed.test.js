@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds, selectedCompanionIds } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -600,5 +600,32 @@ describe('heardRepeaterIds (#479)', () => {
       { sender_kind: 'relay', sender_id: 'ab12cd', rx_at: at(1) },
     ]
     expect(heardRepeaterIds(rows)).toEqual(['ab12cd'])
+  })
+})
+
+// Which selected targets get the self-advert each cycle (#576): the ones a
+// trace-ping cannot reach. A companion answers only a sender it has as a
+// contact, and it adds us when it hears our advert; a repeater needs none of
+// that, so it stays with the trace-ping. Defined as the selection minus the
+// repeater reading, so the two never disagree about one node.
+describe('selectedCompanionIds', () => {
+  const rec = (o) => ({ rx_at: '2026-06-29T10:00:00Z', sender_kind: 'advert_pubkey', ...o })
+  it('returns the selected ids whose node does not behave as a repeater', () => {
+    const rows = [rec({ sender_id: 'aa', sender_role: 'ChatNode' }), rec({ sender_id: 'bb', sender_role: 'Repeater' })]
+    expect(selectedCompanionIds(rows, new Set(['aa', 'bb']))).toEqual(['aa'])
+  })
+  it('leaves out a node only ever heard relaying, and one that answered a trace', () => {
+    const rows = [rec({ sender_id: 'cc', sender_kind: 'relay', sender_role: null }), rec({ sender_id: 'dd', sender_kind: 'trace_reply', sender_role: null })]
+    expect(selectedCompanionIds(rows, new Set(['cc', 'dd']))).toEqual([])
+  })
+  it('is empty with nothing selected, or with a selection nothing was heard from', () => {
+    const rows = [rec({ sender_id: 'aa', sender_role: 'ChatNode' })]
+    expect(selectedCompanionIds(rows, new Set())).toEqual([])
+    expect(selectedCompanionIds(rows, null)).toEqual([])
+    expect(selectedCompanionIds(rows, new Set(['zz']))).toEqual([])
+  })
+  it('lists each node once, however many receptions it has', () => {
+    const rows = [rec({ sender_id: 'AA', sender_role: 'ChatNode' }), rec({ sender_id: 'aa', sender_role: 'ChatNode', rx_at: '2026-06-29T10:01:00Z' })]
+    expect(selectedCompanionIds(rows, new Set(['aa']))).toEqual(['aa'])
   })
 })

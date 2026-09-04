@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from '../settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -171,5 +171,36 @@ describe('changelog acknowledgement (#284, #422)', () => {
   it('does not throw when storage refuses the write', () => {
     vi.stubGlobal('localStorage', throwingStorage())
     expect(() => saveChangelogSeen('2026-08-22-b')).not.toThrow()
+  })
+})
+
+// The settings dot says "something behind this button is not at its default".
+// Sharing the node name is exactly that, and it is the one setting that
+// transmits, so it must reach the dot (#576).
+describe('isSettingsActive lights for Share my node name', () => {
+  it('is true with the name shared and everything else at default', () => {
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, shareName: true })).toBe(true)
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, shareName: false })).toBe(false)
+  })
+})
+
+// Share my node name (#576): the first setting that puts the hunter's own
+// identity on air, so it is off unless the stored value says on, exactly.
+describe('loadShareName', () => {
+  it('is on only for the stored on-value', () => {
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-share-name': '1' }))
+    expect(loadShareName()).toBe(true)
+  })
+  it('is off for a missing or corrupt value', () => {
+    vi.stubGlobal('localStorage', storageWith({}))
+    expect(loadShareName()).toBe(false)
+    for (const v of ['0', 'true', 'yes', 'on']) {
+      vi.stubGlobal('localStorage', storageWith({ 'core-hunter-share-name': v }))
+      expect(loadShareName(), v).toBe(false)
+    }
+  })
+  it('is off when storage throws', () => {
+    vi.stubGlobal('localStorage', throwingStorage())
+    expect(loadShareName()).toBe(false)
   })
 })

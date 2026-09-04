@@ -21,6 +21,13 @@
     "body": "Both About tabs link the FAQ, and every question there has its own address to share."
   },
   {
+    "id": "2026-09-04-share-my-node-name",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "Share my node name, off unless you turn it on",
+    "body": "A new setting shares your companion's name and key with nodes in direct range, each auto-discover cycle while a companion is your target. Off, the app never transmits who you are."
+  },
+  {
     "id": "2026-09-04-time-window-presets",
     "date": "2026-09-04",
     "where": "app",
