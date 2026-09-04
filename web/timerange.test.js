@@ -7,6 +7,7 @@ import {
   COLD_START_RANGE, rangeForRole, rangeLabelFor,
   coverageLabel, coverageTitle, oldestRxAt,
 } from './timerange.js'
+import { TIME_WINDOWS } from './timewindows.js'
 
 // Fixed clock for every case below: 2026-07-22 15:30 local.
 const NOW = new Date(2026, 6, 22, 15, 30, 0, 0).getTime()
@@ -83,6 +84,17 @@ describe('QUICK_RANGES / matchQuickRange', () => {
   it('returns null for an absolute or unrecognised pair', () => {
     expect(matchQuickRange('2026-07-22T00:00', '2026-07-22T23:59')).toBeNull()
     expect(matchQuickRange('now-6h', 'now-1h')).toBeNull()
+  })
+  // The rolling ranges are the shared list, verbatim (#557): the app's select
+  // is built from the same file, so a label edited on one side has to reach
+  // the other. Today and Last 30 days are this surface's own, and Today sits
+  // where the rolling list crosses a day.
+  it('is the shared windows in the shared order, plus Today and 30 days', () => {
+    const rolling = QUICK_RANGES.filter((q) => !['Today', 'Last 30 days'].includes(q.label))
+    expect(rolling).toEqual(TIME_WINDOWS.map((w) => ({ label: `Last ${w.label}`, from: `now-${w.token}`, to: 'now' })))
+    const labels = QUICK_RANGES.map((q) => q.label)
+    expect(labels.indexOf('Today')).toBe(labels.indexOf('Last 24 hours') + 1)
+    expect(labels.at(-1)).toBe('Last 30 days')
   })
 })
 

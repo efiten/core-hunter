@@ -16,6 +16,8 @@
 // a plain visit still gets today, since the cold default stays the absolute
 // today 00:00-23:59 that defaultToday() has always written.
 
+import { TIME_WINDOWS, windowMs } from './timewindows.js'
+
 // Supported units. Deliberately small: these cover every quick range below,
 // and each one is a fixed duration, so no calendar arithmetic is needed.
 const UNIT_MS = {
@@ -100,18 +102,17 @@ export function boundFromField(fieldValue, rendered) {
 
 // The quick-range list, in display order. `from`/`to` are stored verbatim into
 // the from/to state, so picking one writes tokens, not resolved timestamps.
+//
+// The rolling ranges are the shared TIME_WINDOWS (#557), which the app's
+// "Plot last" select is built from too, so both surfaces name a duration the
+// same way. Today and Last 30 days are this surface's own: one is anchored to
+// midnight rather than rolling, the other reaches past the app's retention.
+// Today sits where the rolling list crosses a day.
+const rolling = (w) => ({ label: `Last ${w.label}`, from: `now-${w.token}`, to: 'now' })
 export const QUICK_RANGES = [
-  { label: 'Last 5 minutes', from: 'now-5m', to: 'now' },
-  { label: 'Last 15 minutes', from: 'now-15m', to: 'now' },
-  { label: 'Last 30 minutes', from: 'now-30m', to: 'now' },
-  { label: 'Last 1 hour', from: 'now-1h', to: 'now' },
-  { label: 'Last 3 hours', from: 'now-3h', to: 'now' },
-  { label: 'Last 6 hours', from: 'now-6h', to: 'now' },
-  { label: 'Last 12 hours', from: 'now-12h', to: 'now' },
-  { label: 'Last 24 hours', from: 'now-24h', to: 'now' },
+  ...TIME_WINDOWS.filter((w) => windowMs(w.token) <= UNIT_MS.d).map(rolling),
   { label: 'Today', from: 'now/d', to: 'now' },
-  { label: 'Last 2 days', from: 'now-2d', to: 'now' },
-  { label: 'Last 7 days', from: 'now-7d', to: 'now' },
+  ...TIME_WINDOWS.filter((w) => windowMs(w.token) > UNIT_MS.d).map(rolling),
   { label: 'Last 30 days', from: 'now-30d', to: 'now' },
 ]
 
