@@ -30,7 +30,8 @@ import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName } from './settings.js'
+import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
@@ -39,7 +40,7 @@ import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
+import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
 import { createWakeLock } from './wakelock.js'
@@ -79,6 +80,15 @@ function saveIgnore(set) {
 // Loader lives in settings.js (guarded + unit-tested, #338).
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
+}
+
+// Share my node name (#576). Stored as '1' or removed, so loadShareName's
+// exact-match read has one on-value and everything else is off.
+function saveShareName(on) {
+  try {
+    if (on) localStorage.setItem('core-hunter-share-name', '1')
+    else localStorage.removeItem('core-hunter-share-name')
+  } catch (_) {}
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
@@ -165,6 +175,8 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  // Share my node name (#576): off by default, the hunter's own decision.
+  shareName: loadShareName(),
   soundMode: loadSoundMode(),
   themePref: loadThemePref(),
   // Unread release notes (#421). Lives on state so the settings button's dot
@@ -1033,6 +1045,11 @@ function autoPingTick() {
   sendDiscover()
   pulseDiscoverBtn()
   sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
+  // With Share my node name on, a cycle that has a companion as target also
+  // carries our advert (#576): that is the node that has to hear us before it
+  // can answer, and one advert at switch-on could be sent while it is out of
+  // range. Zero-hop, so it costs the mesh nothing beyond this one airtime.
+  if (announceThisCycle({ shareName: state.shareName, connected: state.connected, companionTargets: selectedCompanionTargets().length })) sendSelfAdvert()
   // Each staggered trace-ping is also a real transmission — pulse the FAB and
   // sound the cue for it too, but only if the ping actually succeeds (#254).
   // The tx cue follows the same rule as the pulse: it must mean "a frame went
@@ -1089,6 +1106,23 @@ function toggleAutoPing() {
   if (!state.autoPing.timer) state.autoPing.timer = setInterval(autoPingTick, 1000)
   autoPingTick()
   updateDiscoverBtnVisual()
+}
+
+// The selected targets a trace-ping cannot reach (#576): companions, which
+// answer only a sender they have as a contact.
+function selectedCompanionTargets() {
+  const selected = selectedSet()
+  if (!selected) return []
+  return selectedCompanionIds(state.lastRows, selected)
+}
+
+// sendSelfAdvert asks the companion for one zero-hop advert. A real frame
+// going out, so it gets the FAB pulse and the tx cue like every other one.
+function sendSelfAdvert() {
+  if (!state.connected || !state.transport) return
+  state.transport.send(buildSelfAdvertFrame()).catch(() => {})
+  pulseDiscoverBtn()
+  sound.txBlip('discover')
 }
 
 // ---------------------------------------------------------------------------
@@ -1638,6 +1672,14 @@ function buildSettingsSheet() {
           </select>
         </label>
       </div>
+      <div class="ss-radio-section">
+        <h3>Identity</h3>
+        <label class="ss-check-row" id="ss-row-share-name">
+          <input type="checkbox" id="ss-share-name" />
+          <span>Share my node name</span>
+        </label>
+        <p class="ss-hint">Shares your companion's name and key with nodes in direct range, once per auto-discover cycle while a companion is your target. Off: the app never transmits who you are.</p>
+      </div>
       <div class="ss-theme-row">
         <span>Theme</span>
         <div id="ss-theme" class="ss-seg" role="group" aria-label="Theme">
@@ -1737,6 +1779,19 @@ function buildSettingsSheet() {
     }
   })
   refreshConnState()
+
+  // Share my node name (#576): a checkbox, saved on change, and the row and
+  // the settings dot both say when it is on.
+  const share = el('ss-share-name')
+  share.checked = state.shareName
+  const syncShareRow = () => el('ss-row-share-name').classList.toggle('active', state.shareName)
+  syncShareRow()
+  share.addEventListener('change', () => {
+    state.shareName = share.checked
+    saveShareName(state.shareName)
+    syncShareRow()
+    refreshSettingsIndicator()
+  })
 
   const atten = el('ss-atten')
   atten.value = String(state.attenuatorDb)
