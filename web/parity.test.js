@@ -811,3 +811,16 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
     }
   })
 })
+
+// timewindows.js is a byte-identical copy (#557), not an equivalent one: the
+// map's quick ranges and the app's "Plot last" select are both built from it,
+// and the issue was filed because the two lists had drifted apart in length
+// and in wording. A byte comparison also catches what a behaviour test cannot:
+// a comment on one side explaining a rule the other side no longer follows.
+describe('the time windows are one file on both surfaces (#557)', () => {
+  it('timewindows.js is identical in app/src', () => {
+    const web = readFileSync(new URL('./timewindows.js', import.meta.url), 'utf8')
+    const app = readFileSync(new URL('../app/src/timewindows.js', import.meta.url), 'utf8')
+    expect(app, 'app/src/timewindows.js has drifted from web/timewindows.js').toBe(web)
+  })
+})

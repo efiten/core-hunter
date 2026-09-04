@@ -29,6 +29,7 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
+import { TIME_WINDOWS, windowMs } from './timewindows.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
@@ -1380,9 +1381,7 @@ function buildFilterSheet() {
       <label class="fs-row" id="fs-row-window">
         <span>Plot last:</span>
         <select id="fs-window">
-          <option value="600000">10 min</option>
-          <option value="1800000">30 min</option>
-          <option value="3600000">1 h</option>
+          ${TIME_WINDOWS.map(w => `<option value="${windowMs(w.token)}">${w.label}</option>`).join('')}
           <option value="0">All time</option>
         </select>
       </label>
