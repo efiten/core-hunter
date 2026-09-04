@@ -108,6 +108,22 @@
            "is the socket open", which is a different question (#454). -->
       <div id="hud-backlog" role="status" hidden></div>
     </div>
+    <!-- The filtered/all stand shared with the ticker, and the quick actions
+         on the shown sender (#555). The closed eye appears while the filter
+         is keeping receptions off the HUD. -->
+    <div id="hud-tools">
+      <button type="button" id="hud-mode" class="hud-btn" aria-label="HUD shows filtered receptions">
+        <svg class="hud-eye" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" hidden>
+          <path d="M3 3l14 14"/>
+          <path d="M8.5 5.3A8.6 8.6 0 0 1 10 5.2c4.2 0 7.3 3.4 8.3 4.8-.5.7-1.4 1.8-2.6 2.8M6.2 6.8C4 8 2.4 9.5 1.7 10c1 1.4 4.1 4.8 8.3 4.8 1.2 0 2.3-.3 3.3-.7"/>
+          <path d="M8.2 8.2a2.5 2.5 0 0 0 3.6 3.6"/>
+        </svg>
+        <span id="hud-mode-label">Filtered</span>
+      </button>
+      <button type="button" id="hud-target" class="hud-btn" disabled aria-pressed="false">Target</button>
+      <button type="button" id="hud-add" class="hud-btn" disabled aria-pressed="false">+ Target</button>
+      <button type="button" id="hud-ignore" class="hud-btn" disabled aria-pressed="false">Ignore</button>
+    </div>
     <div id="hud-bar">
       <div id="hud-bar-fill"></div>
       <div id="hud-bar-marker"></div>

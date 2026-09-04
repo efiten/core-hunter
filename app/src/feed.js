@@ -3,6 +3,12 @@
 // attributed via path[last] of a relayed FLOOD packet (see meshpacket.js).
 const TARGET_KINDS = new Set(['channel_name', 'advert_pubkey', 'discover_pubkey', 'relay'])
 
+// isTargetKind is that rule for one reception, for surfaces that offer a
+// selection outside the list (the HUD's quick actions, #555).
+export function isTargetKind(kind) {
+  return TARGET_KINDS.has(kind)
+}
+
 // Kinds whose id is a hex prefix of the same underlying pubkey space (#267):
 // advert carries the full pubkey, discover/relay carry shorter prefixes of
 // it. channel_name's id is a decrypted display name, not part of that space,

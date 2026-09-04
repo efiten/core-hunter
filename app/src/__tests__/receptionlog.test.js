@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta, nextRxMode } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -122,5 +122,18 @@ describe('rxLineHeight — row height parsed from the CSS variable', () => {
     expect(rxLineHeight('inherit')).toBe(26)
     expect(rxLineHeight('0px')).toBe(26)
     expect(rxLineHeight('-4px')).toBe(26)
+  })
+})
+
+// The filtered/all switch is one stand shared by the ticker and the HUD
+// (#555): with a filter set you look at the filtered set on both, and either
+// toggle flips both. So the rule for the next stand is written once here.
+describe('nextRxMode — the shared filtered/all switch', () => {
+  it('swaps between the two stands', () => {
+    expect(nextRxMode('filtered')).toBe('all')
+    expect(nextRxMode('all')).toBe('filtered')
+  })
+  it('lands on filtered for anything unknown', () => {
+    for (const v of ['', null, undefined, 'both']) expect(nextRxMode(v), String(v)).toBe('filtered')
   })
 })

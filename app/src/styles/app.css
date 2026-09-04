@@ -179,6 +179,26 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums;
   white-space: nowrap; flex: none; }
 
+/* The filtered/all stand and the quick actions on the shown sender (#555).
+   One row of pills under the readout; measured 307px of 328px at 360px wide
+   with the widest labels ("Ignored", "+ Target"). The stand button reads as
+   the ticker's toggle: accent while filtered, muted on all. */
+#hud-tools { display: flex; align-items: center; gap: 6px; }
+#hud-tools[hidden] { display: none; }
+.hud-btn { display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 5px 10px; border-radius: 999px; border: 1px solid var(--ch-muted);
+  background: transparent; color: var(--ch-text); font-size: 12px; line-height: 1.2;
+  white-space: nowrap; cursor: pointer;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace; }
+.hud-btn:disabled { color: var(--ch-muted); border-color: var(--ch-border); cursor: default; }
+.hud-btn.active { background: var(--ch-accent); border-color: var(--ch-accent); color: var(--ch-bg); }
+#hud-mode { border-color: var(--ch-accent); color: var(--ch-accent); font-weight: 700; }
+#hud-mode.all { border-color: var(--ch-muted); color: var(--ch-text); font-weight: 400; }
+/* The closed eye: something went by that the filter kept off the HUD. Amber,
+   the alert colour, because it is the one thing in the row asking for a look. */
+.hud-eye { color: var(--ch-accent-2); }
+.hud-eye[hidden] { display: none; }
+
 /* Thermal bar: always-visible full gradient + marker */
 #hud-bar { position: relative; height: 9px; border-radius: 5px; overflow: visible; }
 #hud-bar-fill { position: absolute; inset: 0; border-radius: 5px;
@@ -207,20 +227,22 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 14px rgba(0,0,0,.3); }
-/* #257: shifted 80px down from the original 192/246/300/354 — the stack sat
+/* #555: every slot +34px (146/200/254/308/362) for the HUD's tools row, so the
+   clearance above the HUD stays what #264 measured.
+   #257: shifted 80px down from the original 192/246/300/354 — the stack sat
    in a stretch of dead space above the HUD (measured ~107px clear on a
    375x812 viewport at the old offsets), closer than the thumb zone wants.
    Anchored to env(safe-area-inset-bottom) so the stack tracks the HUD's
    own inset-based positioning — clearance stays consistent across device heights
    (notched, regular, landscape, portrait) without brittle pixel math. */
-#layer-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 112px); }
-#discover-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 166px); }
-#recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 220px); }
+#layer-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 146px); }
+#discover-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 200px); }
+#recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 254px); }
 /* Next slot in the 54px stack (#197), anchored like the rest so the clearance
-   above #hud stays constant across devices — see #264. 274px is #sound-toggle
-   (#145), so this layer takes 328. #258 removed #mode3d-toggle from 274 and
+   above #hud stays constant across devices — see #264. 274px (308 since #555) is #sound-toggle
+   (#145), so this layer takes 328 (362 since #555). #258 removed #mode3d-toggle from 274 and
    pulled both of these down one slot; the stack must stay contiguous. */
-#nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 328px); }
+#nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 362px); }
 #layer-toggle svg, #discover-btn svg, #recenter-btn svg, #sound-toggle svg, #nodepos-toggle svg { pointer-events: none; }
 /* On = the layer is drawing; same accent-ring idiom as the discover FAB. */
 #nodepos-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
@@ -230,7 +252,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    is off-screen in landscape on a phone in a car mount (~430px viewport).
    Moved 328 → 274 by #258, which freed the #mode3d-toggle slot; the top edge
    is now ~341px + inset, comfortably inside the same landscape viewport. */
-#sound-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 274px); }
+#sound-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 308px); }
 /* Sound FAB (#145): steady accent while a sound mode is on, same pattern as auto-discover. */
 #sound-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }

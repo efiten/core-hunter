@@ -21,6 +21,13 @@
     "body": "Both About tabs link the FAQ, and every question there has its own address to share."
   },
   {
+    "id": "2026-09-04-hud-follows-the-filter",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "The HUD follows your filter, and acts on what it shows",
+    "body": "It shows the last reception your filter let through, and a closed eye marks what it kept out. Target and Ignore act on the shown sender."
+  },
+  {
     "id": "2026-09-04-time-window-presets",
     "date": "2026-09-04",
     "where": "app",
