@@ -398,3 +398,40 @@ describe('pendingPubkey', () => {
     expect(await q.pendingPubkey()).toBe('')
   })
 })
+
+// Per-node facts (#553): what a node told us about itself when asked, kept
+// apart from the receptions because it describes the node, not one hearing.
+describe('nodes store — what a node answered about itself', () => {
+  it('stores telemetry under the pubkey and reads it back', async () => {
+    const q = new Queue()
+    await q.putNode('ab'.repeat(32), { voltage_v: 3.97, temp_c: 25, telemetry_at: iso(0) })
+    const n = await q.getNode('AB'.repeat(32))
+    expect(n.pubkey).toBe('ab'.repeat(32))
+    expect(n.voltage_v).toBe(3.97)
+    expect(n.temp_c).toBe(25)
+  })
+  it('merges a later answer into the row rather than replacing it', async () => {
+    const q = new Queue()
+    await q.putNode('ab'.repeat(32), { voltage_v: 3.97, telemetry_at: iso(60_000) })
+    await q.putNode('ab'.repeat(32), { temp_c: 21 })
+    const n = await q.getNode('ab'.repeat(32))
+    expect(n.voltage_v).toBe(3.97)
+    expect(n.temp_c).toBe(21)
+  })
+  it('is null for a node never asked, and refuses a key that is not a full pubkey', async () => {
+    const q = new Queue()
+    expect(await q.getNode('cd'.repeat(32))).toBeNull()
+    await expect(q.putNode('cd', { temp_c: 1 })).rejects.toThrow(TypeError)
+  })
+  // The store arrives with schema v3. An install already on v2 keeps every
+  // reception it holds; only the new store is added.
+  it('upgrading from v2 keeps the receptions and adds the store', async () => {
+    const q = new Queue()
+    await q.add(rec(iso(1000)))
+    await q.add(rec(iso(500)))
+    expect(await q.count()).toBe(2)
+    await q.putNode('ab'.repeat(32), { voltage_v: 4 })
+    expect(await q.count()).toBe(2)
+    expect((await q.getNode('ab'.repeat(32))).voltage_v).toBe(4)
+  })
+})
