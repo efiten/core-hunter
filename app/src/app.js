@@ -25,6 +25,8 @@ import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js
 import { requestSelfInfo } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
+import { hudShows, hiddenAfter, hudToggleText, hudActions } from './hudmode.js'
+import { createFloatReadout, floatModel, floatSupported } from './floatreadout.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
@@ -35,7 +37,7 @@ import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
-import { createReceptionLog } from './receptionlog.js'
+import { createReceptionLog, nextRxMode } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
@@ -180,6 +182,21 @@ const state = {
   // Epoch ms of the most recent captured reception, for the "since last packet"
   // HUD timer. null until the first packet is heard this session.
   lastPacketAt: null,
+  // The filtered/all stand the receptions ticker and the HUD share (#555).
+  // Session-only, like the ticker's own toggle was: the app opens on filtered.
+  rxMode: 'filtered',
+  // What the HUD shows: the last reception the stand let through, and when it
+  // was heard (its "since" runs from this, not from lastPacketAt, so every
+  // number in the readout belongs to one reception). hudHidden counts what the
+  // filter kept off the HUD since then; lastRec is the last capture of any
+  // kind, so flipping to all can show it at once.
+  hudRec: null,
+  hudAt: null,
+  hudHidden: 0,
+  lastRec: null,
+  // The float readout (#555), or null where the browser cannot stream a
+  // canvas into a fullscreen video.
+  float: null,
   filter: { ...DEFAULT_FILTER },
   // Resolved name per selected target id (lowercased) — for the chip label
   // when exactly one target is selected (#178).
@@ -269,6 +286,123 @@ function updateHud(rec) {
   el('hud-bar-marker').style.left = pct + '%'
 }
 
+// showOnHud puts one reception on the readout: the numbers, the sender and
+// the "since" all come from it, so the HUD never shows two receptions at once.
+function showOnHud(rec, at) {
+  state.hudRec = rec
+  state.hudAt = at
+  updateHud(rec)
+  // Written here as well as on the tick, so the row never shows a new
+  // reception next to the previous one's age for up to a second.
+  el('hud-since').textContent = sinceLabel(Date.now(), at)
+  renderHudTools()
+  drawFloat()
+}
+
+// drawFloat repaints the float readout when it is out. It shows the HUD's own
+// reception, unless the PiP window's previous/next buttons have scrubbed the
+// ticker's playhead off the newest row: then it shows the row on the playhead,
+// with that reception's own age, the way the ticker does.
+function drawFloat() {
+  if (!state.float || !state.float.isOpen()) return
+  const now = Date.now()
+  const scrubbed = state.rxLog && !state.rxLog.following() ? state.rxLog.active() : null
+  const rec = scrubbed || state.hudRec
+  const at = scrubbed ? Date.parse(scrubbed.rx_at) : state.hudAt
+  state.float.draw(floatModel({
+    rec,
+    sinceText: sinceLabel(now, Number.isNaN(at) ? null : at),
+    mode: state.rxMode,
+    hidden: scrubbed ? 0 : state.hudHidden,
+    ble: state.connected,
+    mqtt: Boolean(state.publisher && state.publisher.connected()),
+    offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb),
+  }))
+}
+
+// initFloatReadout builds the float readout where the browser can, and wires
+// its button and the Media Session actions Android shows on the PiP window:
+// previous/next scrub the ticker's list, which is the one control a video
+// window has (#555). A browser without the pieces never shows the button.
+function initFloatReadout() {
+  const btn = el('hud-float')
+  if (!floatSupported(window)) { btn.hidden = true; return }
+  state.float = createFloatReadout({
+    canvas: el('float-canvas'),
+    video: el('float-video'),
+    colors: (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim(),
+    onChange: (open) => {
+      btn.classList.toggle('active', open)
+      btn.setAttribute('aria-pressed', String(open))
+      if (open) drawFloat()
+    },
+  })
+  btn.hidden = !state.float.supported
+  btn.addEventListener('click', () => { if (state.float.isOpen()) state.float.close(); else state.float.open() })
+  if (!('mediaSession' in navigator)) return
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: APP_NAME, artist: 'Float readout' })
+    navigator.mediaSession.setActionHandler('previoustrack', () => { if (state.rxLog) state.rxLog.step(-1); drawFloat() })
+    navigator.mediaSession.setActionHandler('nexttrack', () => { if (state.rxLog) state.rxLog.step(1); drawFloat() })
+  } catch (_) { /* an action the browser does not know: the window just has no such button */ }
+}
+
+// setRxMode flips the filtered/all stand for the ticker and the HUD together
+// (#555). Flipping to all puts the last capture on the HUD at once if the
+// filter had kept it off; flipping back keeps what is shown until the next
+// matching reception, since that is still the last thing the filter let by.
+function setRxMode(mode) {
+  if (mode === state.rxMode) return
+  state.rxMode = mode
+  if (state.rxLog) state.rxLog.setMode(mode)
+  state.hudHidden = 0
+  if (mode === 'all' && state.lastRec && state.lastRec !== state.hudRec) showOnHud(state.lastRec, state.lastPacketAt)
+  else { renderHudTools(); drawFloat() }
+}
+
+// renderHudTools writes the toggle and the three quick actions from state.
+// Called on every HUD change, on every filter/selection/ignore change, and on
+// a stand flip; cheap enough that it never needs to know which one it was.
+function renderHudTools() {
+  const tools = el('hud-tools')
+  if (!tools) return
+  const t = hudToggleText(state.rxMode, state.hudHidden)
+  const modeBtn = el('hud-mode')
+  el('hud-mode-label').textContent = t.label
+  modeBtn.querySelector('.hud-eye').hidden = !t.eye
+  modeBtn.classList.toggle('all', state.rxMode === 'all')
+  modeBtn.setAttribute('aria-label', t.aria)
+  if (t.title) modeBtn.title = t.title; else modeBtn.removeAttribute('title')
+  const a = hudActions(state.hudRec, { selected: selectedSet(), ignored: state.ignore })
+  for (const [id, act] of [['hud-target', a.target], ['hud-add', a.add], ['hud-ignore', a.ignore]]) {
+    const b = el(id)
+    b.disabled = !act.enabled
+    b.classList.toggle('active', act.active)
+    b.textContent = act.label
+    b.setAttribute('aria-pressed', String(act.active))
+  }
+}
+
+// wireHudTools connects the four buttons. The actions dispatch the same events
+// the map popup and the target sheet use, so selection and ignore have one
+// code path; the stand toggle is the ticker's, flipped from here.
+function wireHudTools() {
+  el('hud-mode').addEventListener('click', () => setRxMode(nextRxMode(state.rxMode)))
+  const detail = (extra) => {
+    const r = state.hudRec
+    return { id: r.sender_id, label: r.sender_label, ...extra }
+  }
+  el('hud-target').addEventListener('click', () => {
+    if (state.hudRec) document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: detail({}) }))
+  })
+  el('hud-add').addEventListener('click', () => {
+    if (state.hudRec) document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: detail({ toggle: true }) }))
+  })
+  el('hud-ignore').addEventListener('click', () => {
+    if (state.hudRec) document.dispatchEvent(new CustomEvent('hunt:ignore-sender', { detail: { id: state.hudRec.sender_id } }))
+  })
+}
+
 function setDot(id, on) {
   const d = el(id)
   if (on) d.classList.add('on')
@@ -278,6 +412,8 @@ function setDot(id, on) {
   // driver glancing down. Clearing it here rather than at the call site means
   // no future caller can reintroduce it (#281).
   if (!on) d.classList.remove('low')
+  // The float readout carries the same two dots.
+  drawFloat()
 }
 
 // Companion battery (#281): the reading itself lives in Settings → Connection
@@ -360,6 +496,10 @@ function stopBatteryPoll() {
 // non-empty. Called wherever state.filter or state.ignore changes.
 function refreshFilterState() {
   el('filter-pill').classList.toggle('active', isFilterActive(activeFilter()) || state.ignore.size > 0)
+  // A new filter means "since this reception" counts against a filter that
+  // no longer exists; the buttons also reflect the selection and ignore list.
+  state.hudHidden = 0
+  renderHudTools()
 }
 
 // Reflect the topbar popovers' open state on their triggers (aria-expanded
@@ -518,6 +658,7 @@ function refreshSplash() {
   // tier colour lives on in the HUD's RSSI readout.
   el('hud-bar').hidden = !gate
   el('hud-bar-labels').hidden = !gate
+  el('hud-tools').hidden = gate
   for (const m of COACH_MARKS) {
     el(m.id).hidden = !gate
     el(m.id + '-ring').hidden = !gate
@@ -784,7 +925,14 @@ async function processFrame(dv) {
   if (rec.sender_id != null) state.sweep.heardAt.set(String(rec.sender_id).toLowerCase(), Date.now())
   await state.queue.add(rec)
   state.lastPacketAt = Date.now()
-  updateHud(rec)
+  state.lastRec = rec
+  // The HUD follows the shared filtered/all stand (#555): a reception the
+  // filter would keep off the map stays off the readout too, and is counted
+  // so the toggle can say that something went by.
+  const matches = makeFilter({ ...activeFilter(), ignore: state.ignore })(rec, state.lastPacketAt)
+  state.hudHidden = hiddenAfter(state.hudHidden, { mode: state.rxMode, matches })
+  if (hudShows(state.rxMode, matches)) showOnHud(rec, state.lastPacketAt)
+  else renderHudTools()
   noteTickerTraffic()
 }
 
@@ -829,7 +977,8 @@ async function drawOnce() {
     // covers, so this is indistinguishable in practice at any realistic size.
     const rows = await state.queue.recent(RECENT_CAP)
     state.lastRows = rows
-    el('hud-since').textContent = sinceLabel(now, state.lastPacketAt)
+    el('hud-since').textContent = sinceLabel(now, state.hudAt)
+    drawFloat()
     await renderBacklog()
     // Enrich names on both the window and the recent rows to prevent mismatches
     // in the log and target list (BLOCKER 1 fix for PR #283)
@@ -2515,12 +2664,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   // playhead reception highlights its map marker; tapping a marker rolls the
   // playhead to it (two-way sync).
   state.rxLog = createReceptionLog('rx-log', {
-    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null) },
+    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null); drawFloat() },
     // Tapping a row pans the map to that reception (#309). Without this the
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.
     onRowActivate: (rec) => { if (state.map) state.map.focusReception(rec) },
     onClose: () => setTickerVisible(false),
+    // The header toggle flips the stand the HUD shares (#555).
+    onModeChange: setRxMode,
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
   el('ticker-btn').addEventListener('click', () => setTickerVisible(true))
@@ -2530,6 +2681,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildFilterSheet()
   buildSettingsSheet()
   buildTargetSheet()
+  wireHudTools()
+  renderHudTools()
+  initFloatReadout()
 
   // Wire controls
   el('connect-btn').addEventListener('click', () => {

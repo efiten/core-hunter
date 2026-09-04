@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta, nextRxMode, rxStepIndex } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -122,5 +122,40 @@ describe('rxLineHeight — row height parsed from the CSS variable', () => {
     expect(rxLineHeight('inherit')).toBe(26)
     expect(rxLineHeight('0px')).toBe(26)
     expect(rxLineHeight('-4px')).toBe(26)
+  })
+})
+
+// The filtered/all switch is one stand shared by the ticker and the HUD
+// (#555): with a filter set you look at the filtered set on both, and either
+// toggle flips both. So the rule for the next stand is written once here.
+describe('nextRxMode — the shared filtered/all switch', () => {
+  it('swaps between the two stands', () => {
+    expect(nextRxMode('filtered')).toBe('all')
+    expect(nextRxMode('all')).toBe('filtered')
+  })
+  it('lands on filtered for anything unknown', () => {
+    for (const v of ['', null, undefined, 'both']) expect(nextRxMode(v), String(v)).toBe('filtered')
+  })
+})
+
+// The float readout scrubs through the same list with the PiP window's
+// previous/next buttons (#555), so the step rule is pure and shared with the
+// playhead: clamped to the list, and -1 on an empty one.
+describe('rxStepIndex — one row back or forward on the playhead', () => {
+  it('moves one row and clamps at both ends', () => {
+    expect(rxStepIndex(3, -1, 10)).toBe(2)
+    expect(rxStepIndex(3, 1, 10)).toBe(4)
+    expect(rxStepIndex(0, -1, 10)).toBe(0)
+    expect(rxStepIndex(9, 1, 10)).toBe(9)
+  })
+  it('is -1 on an empty list, whatever it is asked', () => {
+    expect(rxStepIndex(0, 1, 0)).toBe(-1)
+    expect(rxStepIndex(-1, -1, 0)).toBe(-1)
+  })
+  // A stale index (rows dropped by the cap since the last paint) lands on the
+  // nearest real row rather than off the list.
+  it('lands a stale index inside the list', () => {
+    expect(rxStepIndex(25, 1, 10)).toBe(9)
+    expect(rxStepIndex(-1, 1, 10)).toBe(0)
   })
 })
