@@ -786,6 +786,10 @@ async function processFrame(dv) {
   state.lastPacketAt = Date.now()
   updateHud(rec)
   noteTickerTraffic()
+  // The reception that just arrived pulses once on the map (#556), and only
+  // when the filter would draw it: a hidden reception must not ping from a
+  // place the map shows nothing at.
+  if (state.map && makeFilter({ ...activeFilter(), ignore: state.ignore })(rec, state.lastPacketAt)) state.map.pulse(rec)
 }
 
 // ---------------------------------------------------------------------------

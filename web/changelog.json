@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-04-new-versus-old-on-the-map",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "What you hear now stands apart from what you heard before",
+    "body": "Earlier rides show as coverage until you zoom in, then as outlines; this ride is drawn full and the newest reception pulses. Hex cells name the nodes heard there."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",
