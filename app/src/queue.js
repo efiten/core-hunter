@@ -16,6 +16,8 @@
 const DB_NAME = 'core-hunter';
 const STORE = 'receptions';
 const META = 'meta';
+// Per-node facts (#553): what a node answered about itself, keyed by pubkey.
+const NODES = 'nodes';
 const WATERMARK_KEY = 'published_through';
 
 // Retention (#230): receptions older than this are pruned — but only once
@@ -110,7 +112,7 @@ export function watermarkAfter(watermark, outcomes) {
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 2);
+    const req = indexedDB.open(DB_NAME, 3);
     req.onupgradeneeded = (e) => {
       const db = req.result;
       const store = e.oldVersion < 1
@@ -120,8 +122,10 @@ function openDB() {
       // upgraded install needs no explicit backfill pass.
       if (!store.indexNames.contains('rx_at')) store.createIndex('rx_at', 'rx_at');
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'k' });
+      // v3 (#553): the nodes store. Additive, so nothing in receptions moves.
+      if (!db.objectStoreNames.contains(NODES)) db.createObjectStore(NODES, { keyPath: 'pubkey' });
     };
-    // An older tab still holding a v1 connection blocks this tab's v2 upgrade.
+    // An older tab still holding an older connection blocks this tab's upgrade.
     // Without this the promise never settles and every await on it — including
     // the add() on the capture path — hangs, silently dropping receptions.
     // Rejecting routes it into the callers' existing retry-next-cycle handling.
@@ -269,6 +273,26 @@ export class Queue {
   // the map for over an hour. A dot that only says "the socket is open" is not
   // the same as "your receptions are getting through", and the difference is
   // the whole hunt.
+  // putNode merges what a node answered about itself into its row (#553):
+  // a later telemetry reply updates the fields it carries and leaves the rest.
+  async putNode(pubkey, patch) {
+    const pk = String(pubkey || '').trim().toLowerCase();
+    if (!/^[0-9a-f]{64}$/.test(pk)) throw new TypeError('putNode: pubkey must be 64 hex characters');
+    const db = await openDB();
+    const tx = db.transaction(NODES, 'readwrite');
+    const store = tx.objectStore(NODES);
+    const prev = (await result(store.get(pk))) || {};
+    store.put({ ...prev, ...patch, pubkey: pk });
+    return done(tx);
+  }
+
+  async getNode(pubkey) {
+    const pk = String(pubkey || '').trim().toLowerCase();
+    const db = await openDB();
+    const store = db.transaction(NODES, 'readonly').objectStore(NODES);
+    return (await result(store.get(pk))) || null;
+  }
+
   async unpublishedCount() {
     const watermark = await this.getWatermark();
     const db = await openDB();
