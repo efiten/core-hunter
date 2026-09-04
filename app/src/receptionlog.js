@@ -19,6 +19,14 @@ import { isHashIdKind } from './names.js'
 // captured reception), sorts ascending by rx_at so the newest is last, and
 // caps to the most recent `cap` — the log is bounded to a recent window rather
 // than rendering the whole store.
+// nextRxMode is the filtered/all switch. One stand, shared with the HUD
+// (#555): with a filter set you look at the filtered set on both surfaces,
+// and flipping it in either place flips both. Anything unknown lands on
+// filtered, the stand the app opens in.
+export function nextRxMode(mode) {
+  return mode === 'filtered' ? 'all' : 'filtered'
+}
+
 export function rxView(filtered, all, mode, cap = 200) {
   const src = mode === 'all' ? (all || []) : (filtered || [])
   const sorted = src.slice().sort((a, b) => Date.parse(a.rx_at) - Date.parse(b.rx_at))
@@ -94,9 +102,9 @@ export function senderText(r) {
   return r.sender_label || r.sender_id || '—'
 }
 
-export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose } = {}) {
+export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onModeChange } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { render() {}, focusRecord() {} }
+  if (!root) return { render() {}, focusRecord() {}, setMode() {} }
   // The ✕ hides the whole ticker (#539) — the card has a fixed position, so
   // putting it away is the one size control it has. The app (onClose) owns
   // the visibility and the topbar button that brings it back.
@@ -190,7 +198,15 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     if (onRowActivate && view[idx]) onRowActivate(view[idx])
   })
   list.addEventListener('scroll', () => { follow = atBottom(); paint() })
-  const toggle = () => { mode = mode === 'filtered' ? 'all' : 'filtered'; follow = true; rebuild() }
+  // The header toggle asks the app to flip the shared stand; the app answers
+  // through setMode, so the ticker and the HUD never disagree about it.
+  const toggle = () => { if (onModeChange) onModeChange(nextRxMode(mode)); else setMode(nextRxMode(mode)) }
+  function setMode(next) {
+    if (next === mode) return
+    mode = next
+    follow = true
+    rebuild()
+  }
   tgEl.addEventListener('click', toggle)
   tgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
 
@@ -208,5 +224,5 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     if (idx >= 0) toLane(idx)
   }
 
-  return { render, focusRecord }
+  return { render, focusRecord, setMode }
 }
