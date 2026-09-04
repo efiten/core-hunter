@@ -96,10 +96,13 @@ describe('hudActions', () => {
     expect(hudActions(advert, none).target.active).toBe(false)
   })
 
-  it('marks ignore active, and says so, while the sender is on the ignore list', () => {
+  // The label stays one word in both states: the active colour is the trace,
+  // and "Ignored" is what pushed the row past 360 px.
+  it('marks ignore active while the sender is on the ignore list, without changing the word', () => {
     const a = hudActions(advert, { selected: new Set(), ignored: new Set(['ab12cd34ef56']) })
     expect(a.ignore.active).toBe(true)
-    expect(a.ignore.label).toBe('Ignored')
+    expect(a.ignore.label).toBe('Ignore')
     expect(hudActions(advert, none).ignore.label).toBe('Ignore')
+    expect(hudActions(advert, none).add.label).toBe('Add')
   })
 })

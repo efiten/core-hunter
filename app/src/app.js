@@ -26,6 +26,7 @@ import { requestSelfInfo } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
 import { hudShows, hiddenAfter, hudToggleText, hudActions } from './hudmode.js'
+import { createFloatReadout, floatModel, floatSupported } from './floatreadout.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
@@ -193,6 +194,9 @@ const state = {
   hudAt: null,
   hudHidden: 0,
   lastRec: null,
+  // The float readout (#555), or null where the browser cannot stream a
+  // canvas into a fullscreen video.
+  float: null,
   filter: { ...DEFAULT_FILTER },
   // Resolved name per selected target id (lowercased) — for the chip label
   // when exactly one target is selected (#178).
@@ -292,6 +296,55 @@ function showOnHud(rec, at) {
   // reception next to the previous one's age for up to a second.
   el('hud-since').textContent = sinceLabel(Date.now(), at)
   renderHudTools()
+  drawFloat()
+}
+
+// drawFloat repaints the float readout when it is out. It shows the HUD's own
+// reception, unless the PiP window's previous/next buttons have scrubbed the
+// ticker's playhead off the newest row: then it shows the row on the playhead,
+// with that reception's own age, the way the ticker does.
+function drawFloat() {
+  if (!state.float || !state.float.isOpen()) return
+  const now = Date.now()
+  const scrubbed = state.rxLog && !state.rxLog.following() ? state.rxLog.active() : null
+  const rec = scrubbed || state.hudRec
+  const at = scrubbed ? Date.parse(scrubbed.rx_at) : state.hudAt
+  state.float.draw(floatModel({
+    rec,
+    sinceText: sinceLabel(now, Number.isNaN(at) ? null : at),
+    mode: state.rxMode,
+    hidden: scrubbed ? 0 : state.hudHidden,
+    ble: state.connected,
+    mqtt: Boolean(state.publisher && state.publisher.connected()),
+    offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb),
+  }))
+}
+
+// initFloatReadout builds the float readout where the browser can, and wires
+// its button and the Media Session actions Android shows on the PiP window:
+// previous/next scrub the ticker's list, which is the one control a video
+// window has (#555). A browser without the pieces never shows the button.
+function initFloatReadout() {
+  const btn = el('hud-float')
+  if (!floatSupported(window)) { btn.hidden = true; return }
+  state.float = createFloatReadout({
+    canvas: el('float-canvas'),
+    video: el('float-video'),
+    colors: (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim(),
+    onChange: (open) => {
+      btn.classList.toggle('active', open)
+      btn.setAttribute('aria-pressed', String(open))
+      if (open) drawFloat()
+    },
+  })
+  btn.hidden = !state.float.supported
+  btn.addEventListener('click', () => { if (state.float.isOpen()) state.float.close(); else state.float.open() })
+  if (!('mediaSession' in navigator)) return
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: APP_NAME, artist: 'Float readout' })
+    navigator.mediaSession.setActionHandler('previoustrack', () => { if (state.rxLog) state.rxLog.step(-1); drawFloat() })
+    navigator.mediaSession.setActionHandler('nexttrack', () => { if (state.rxLog) state.rxLog.step(1); drawFloat() })
+  } catch (_) { /* an action the browser does not know: the window just has no such button */ }
 }
 
 // setRxMode flips the filtered/all stand for the ticker and the HUD together
@@ -304,7 +357,7 @@ function setRxMode(mode) {
   if (state.rxLog) state.rxLog.setMode(mode)
   state.hudHidden = 0
   if (mode === 'all' && state.lastRec && state.lastRec !== state.hudRec) showOnHud(state.lastRec, state.lastPacketAt)
-  else renderHudTools()
+  else { renderHudTools(); drawFloat() }
 }
 
 // renderHudTools writes the toggle and the three quick actions from state.
@@ -359,6 +412,8 @@ function setDot(id, on) {
   // driver glancing down. Clearing it here rather than at the call site means
   // no future caller can reintroduce it (#281).
   if (!on) d.classList.remove('low')
+  // The float readout carries the same two dots.
+  drawFloat()
 }
 
 // Companion battery (#281): the reading itself lives in Settings → Connection
@@ -923,6 +978,7 @@ async function drawOnce() {
     const rows = await state.queue.recent(RECENT_CAP)
     state.lastRows = rows
     el('hud-since').textContent = sinceLabel(now, state.hudAt)
+    drawFloat()
     await renderBacklog()
     // Enrich names on both the window and the recent rows to prevent mismatches
     // in the log and target list (BLOCKER 1 fix for PR #283)
@@ -2608,7 +2664,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // playhead reception highlights its map marker; tapping a marker rolls the
   // playhead to it (two-way sync).
   state.rxLog = createReceptionLog('rx-log', {
-    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null) },
+    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null); drawFloat() },
     // Tapping a row pans the map to that reception (#309). Without this the
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.
@@ -2627,6 +2683,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildTargetSheet()
   wireHudTools()
   renderHudTools()
+  initFloatReadout()
 
   // Wire controls
   el('connect-btn').addEventListener('click', () => {

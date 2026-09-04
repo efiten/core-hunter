@@ -112,6 +112,17 @@
          on the shown sender (#555). The closed eye appears while the filter
          is keeping receptions off the HUD. -->
     <div id="hud-tools">
+      <button type="button" id="hud-target" class="hud-btn" disabled aria-pressed="false" aria-label="Select as target">Target</button>
+      <button type="button" id="hud-add" class="hud-btn" disabled aria-pressed="false" aria-label="Add to targets">Add</button>
+      <button type="button" id="hud-ignore" class="hud-btn" disabled aria-pressed="false">Ignore</button>
+      <!-- The float readout: the HUD's reading as a fullscreen video, which
+           Android moves into a floating window when you leave the app. -->
+      <button type="button" id="hud-float" class="hud-btn hud-btn-icon" aria-label="Float readout" aria-pressed="false" hidden>
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+          <rect x="3" y="4" width="14" height="11" rx="1.5"/>
+          <rect x="10" y="9.5" width="6" height="4.5" rx="1" fill="currentColor" stroke="none"/>
+        </svg>
+      </button>
       <button type="button" id="hud-mode" class="hud-btn" aria-label="HUD shows filtered receptions">
         <svg class="hud-eye" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" hidden>
           <path d="M3 3l14 14"/>
@@ -120,9 +131,6 @@
         </svg>
         <span id="hud-mode-label">Filtered</span>
       </button>
-      <button type="button" id="hud-target" class="hud-btn" disabled aria-pressed="false">Target</button>
-      <button type="button" id="hud-add" class="hud-btn" disabled aria-pressed="false">+ Target</button>
-      <button type="button" id="hud-ignore" class="hud-btn" disabled aria-pressed="false">Ignore</button>
     </div>
     <div id="hud-bar">
       <div id="hud-bar-fill"></div>
@@ -133,6 +141,10 @@
       <span>WARMER · CLOSE</span>
     </div>
   </section>
+  <!-- The float readout's canvas and video (#555). Off-screen until the video
+       goes fullscreen; the canvas is only ever a source. -->
+  <canvas id="float-canvas" aria-hidden="true"></canvas>
+  <video id="float-video" muted playsinline aria-label="Float readout"></video>
   <button id="layer-toggle" aria-label="View"></button>
   <button id="discover-btn" aria-label="Auto-discover: off" disabled>
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
