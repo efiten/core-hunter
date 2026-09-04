@@ -251,6 +251,25 @@ export function selectedRepeaterIds(records, selectedIds) {
   return repeaterIds(records, (id) => selectedIds.has(id))
 }
 
+// selectedCompanionIds is the other half of the selection (#576): the targets
+// a trace-ping cannot reach. A companion answers only a sender it has as a
+// contact, and it adds us when it hears our advert, so these are the nodes the
+// self-advert is for each cycle. Defined as the selection minus the repeater
+// reading, so the two readings never disagree about one node; a room server or
+// a sensor lands here too, which is right, since neither forwards a trace.
+export function selectedCompanionIds(records, selectedIds) {
+  if (!selectedIds || selectedIds.size === 0) return []
+  const repeaters = new Set(selectedRepeaterIds(records, selectedIds).map((id) => id.slice(0, 2)))
+  const out = []
+  for (const r of records || []) {
+    if (r.sender_id == null) continue
+    const id = String(r.sender_id).toLowerCase()
+    if (!selectedIds.has(id) || out.includes(id) || repeaters.has(id.slice(0, 2))) continue
+    out.push(id)
+  }
+  return out
+}
+
 // heardRepeaterIds is the same reading over everything heard rather than over a
 // selection: the nodes worth trace-pinging when no target is chosen (#479). Same
 // per-frame collapse, so the sweep never spends two transmissions on one frame.

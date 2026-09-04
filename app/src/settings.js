@@ -45,6 +45,13 @@ export function loadThemePref() {
   return THEME_PREFS.includes(v) ? v : 'system'
 }
 
+// Share my node name (#576): the first setting that puts the hunter's own
+// identity on air. Off unless the stored value says on, exactly: a missing or
+// malformed slot must never read as "share".
+export function loadShareName() {
+  return readStored('core-hunter-share-name') === '1'
+}
+
 // Index into VIEW_STATES for the persisted view (#258). No/corrupt stored
 // value falls back to both/2D — the app's cold default before that merge
 // (huntmap.js's own mode/mode3D defaults), not index 0.
@@ -86,9 +93,12 @@ export function loadLegacyChangelogAck() {
 // button reads as noise, and the two mean the same thing to the person looking
 // at it — there is something behind this button you have not dealt with. What
 // it is, is one tap away, and the tab carries its own dot to say which.
-export function isSettingsActive({ attenuatorDb, unseenChangelog } = {}) {
+export function isSettingsActive({ attenuatorDb, unseenChangelog, shareName } = {}) {
   if (attenuatorDb) return true
   if (unseenChangelog) return true
+  // Sharing the node name is a non-default that transmits (#576), so it is
+  // exactly what the dot is for.
+  if (shareName === true) return true
   return false
 }
 

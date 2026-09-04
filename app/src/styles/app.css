@@ -398,6 +398,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .ss-acc-msg.ok { color: var(--ch-sig-cool); }
 .ss-radio-section { margin-top: 16px; }
 .ss-radio-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--ch-text); }
+/* A checkbox row in Settings (#576): the list-row shape, checkbox first, and
+   the label in accent while the setting is on, like the select rows. */
+.ss-check-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; color: var(--ch-text); }
+.ss-check-row.active > span { color: var(--ch-accent); }
+.ss-hint { margin: 4px 0 0; font-size: 12px; line-height: 1.4; color: var(--ch-muted); }
 .ss-radio-row select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--ch-muted);
   background: transparent; color: var(--ch-text); font-size: 14px; }
 .ss-version-row { display: flex; align-items: center; gap: 8px; }

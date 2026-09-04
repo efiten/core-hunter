@@ -30,7 +30,10 @@ import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName } from './settings.js'
+import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
+import { buildGetContactByKey, parseContactReply, needsPathOverride, buildOverrideFrame, buildRestoreFrame, encodePendingRestore, decodePendingRestore, RESP_CODE_OK, RESP_CODE_ERR, RESTORE_STORAGE_KEY } from './contactpath.js'
+import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
@@ -39,7 +42,7 @@ import { createReceptionLog } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
+import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
 import { createWakeLock } from './wakelock.js'
@@ -79,6 +82,15 @@ function saveIgnore(set) {
 // Loader lives in settings.js (guarded + unit-tested, #338).
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
+}
+
+// Share my node name (#576). Stored as '1' or removed, so loadShareName's
+// exact-match read has one on-value and everything else is off.
+function saveShareName(on) {
+  try {
+    if (on) localStorage.setItem('core-hunter-share-name', '1')
+    else localStorage.removeItem('core-hunter-share-name')
+  } catch (_) {}
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
@@ -165,6 +177,8 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  // Share my node name (#576): off by default, the hunter's own decision.
+  shareName: loadShareName(),
   soundMode: loadSoundMode(),
   themePref: loadThemePref(),
   // Unread release notes (#421). Lives on state so the settings button's dot
@@ -222,6 +236,10 @@ const state = {
   // Trace-pings we sent and may still get an answer to (#481). The tag on the
   // reply is what names the target it came back from; tracetag.js holds the rule.
   tracePings: [],
+  // Telemetry asks to selected companions (#553): the asks that may still be
+  // answered (telemetryreq.js names the reply), the rotation cursor, and
+  // whether a contact-path dance is in flight, since it holds the BLE link.
+  telemetry: { asks: [], cursor: 0, busy: false },
   // Sweep state (#479): who we asked when, how many asks went unheard, and when
   // each node was last heard at all. sweep.js turns those three into "who next".
   sweep: { cursor: 0, attempts: new Map(), lastAskedAt: new Map(), heardAt: new Map() },
@@ -734,6 +752,14 @@ async function processFrame(dv) {
       cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null }, heardUsSnr: heardUsSnr(decoded) }
     }
   }
+  // A companion's answer to our telemetry request is a RESPONSE datagram
+  // carrying only the 1-byte source hash (#553). Like a trace reply, it is
+  // named after the node we asked, while that ask is live and unambiguous;
+  // the 0x8B push that follows settles the identity on six bytes.
+  if (decodedOk && cls.packetType === 'Response' && cls.sender.kind === 'direct_hash') {
+    const target = matchTelemetryTarget(state.telemetry.asks, cls.sender.id, Date.now())
+    if (target) cls = { ...cls, sender: { kind: 'telemetry_reply', id: target, label: null, role: null } }
+  }
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
     // The only reason left to refuse is the fix, and that is the one worth
@@ -1002,7 +1028,7 @@ function selectedRepeaterTargets() {
 function updateDiscoverBtnVisual() {
   const btn = el('discover-btn')
   if (!btn) return
-  const targeting = state.autoPing.enabled && selectedRepeaterTargets().length > 0
+  const targeting = state.autoPing.enabled && (selectedRepeaterTargets().length > 0 || selectedCompanionTargets().length > 0)
   btn.classList.toggle('auto-on', state.autoPing.enabled)
   btn.classList.toggle('auto-target', targeting)
   btn.setAttribute('aria-label', !state.autoPing.enabled ? 'Auto-discover: off'
@@ -1033,6 +1059,11 @@ function autoPingTick() {
   sendDiscover()
   pulseDiscoverBtn()
   sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
+  // With Share my node name on, a cycle that has a companion as target also
+  // carries our advert (#576): that is the node that has to hear us before it
+  // can answer, and one advert at switch-on could be sent while it is out of
+  // range. Zero-hop, so it costs the mesh nothing beyond this one airtime.
+  if (announceThisCycle({ shareName: state.shareName, connected: state.connected, companionTargets: selectedCompanionTargets().length })) sendSelfAdvert()
   // Each staggered trace-ping is also a real transmission — pulse the FAB and
   // sound the cue for it too, but only if the ping actually succeeds (#254).
   // The tx cue follows the same rule as the pulse: it must mean "a frame went
@@ -1053,6 +1084,141 @@ function autoPingTick() {
     }, delayMs)
     state.autoPing.pendingPings.push(handle)
   }
+  // A selected companion cannot be trace-pinged; it gets the telemetry request
+  // (#553), one per cycle, rotating: the firmware keeps one pending telemetry
+  // tag, so two in flight would orphan a reply. Only with a target selected,
+  // never in the sweep: the answer needs a reader.
+  const companions = selectedCompanionTargets()
+  if (companions.length) {
+    const next = nextTelemetryTarget(companions, state.telemetry.cursor)
+    state.telemetry.cursor = next.cursor
+    askTelemetry(next.id).catch(() => {})
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry request to a companion (#553)
+// ---------------------------------------------------------------------------
+// The one directed probe a companion answers. Three things have to hold: our
+// companion has the target as a contact (else the firmware answers NOT_FOUND),
+// the target has us (Share my node name, #576), and the ask goes out zero-hop.
+// The last one is the contact-path dance from coredrive-rx: read the contact,
+// force its out_path_len to 0 for the ask, put it back right after, whether
+// the ask went out or not. Nothing here floods: an override that did not ack
+// means no ask this cycle.
+
+const CONTACT_TIMEOUT_MS = 4000
+const SENT_ACK_TIMEOUT_MS = 3000
+const FULL_PUBKEY = /^[0-9a-f]{64}$/
+
+// sendAndWait sends one command and resolves with the first reply `accept`
+// recognises, or null on a timeout or a send failure. Every reply the
+// companion gives to these commands carries no correlator, so the argument
+// is that nothing else in the app issues them concurrently: askTelemetry
+// runs one dance at a time (state.telemetry.busy).
+function sendAndWait(frame, accept, timeoutMs) {
+  const t = state.transport
+  if (!t) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const onFrame = (dv) => {
+      const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+      const r = accept(bytes)
+      if (r == null) return
+      cleanup()
+      resolve(r)
+    }
+    const timer = setTimeout(() => { cleanup(); resolve(null) }, timeoutMs)
+    function cleanup() { clearTimeout(timer); if (state.transport) state.transport.offFrame(onFrame) }
+    t.onFrame(onFrame)
+    t.send(frame).catch(() => { cleanup(); resolve(null) })
+  })
+}
+
+// getContact reads one contact. A found reply is matched on its echoed pubkey;
+// a NOT_FOUND reply carries none, and in this window can only be ours.
+function getContact(pubkey) {
+  return sendAndWait(buildGetContactByKey(pubkey), (bytes) => {
+    const parsed = parseContactReply(bytes)
+    if (!parsed) return null
+    if (parsed.found && parsed.pubkey !== pubkey) return null
+    return parsed
+  }, CONTACT_TIMEOUT_MS)
+}
+
+// writeContact sends an override or a restore and waits for OK or ERR.
+function writeContact(frame) {
+  return sendAndWait(frame, (bytes) => (bytes[0] === RESP_CODE_OK ? true : bytes[0] === RESP_CODE_ERR ? false : null), CONTACT_TIMEOUT_MS)
+}
+
+// restoreContact puts the original contact frame back. The crash-safety record
+// is cleared only once the restore acked; otherwise the next connect to this
+// same companion replays it (maybeReplayPendingRestore).
+async function restoreContact(pubkey, raw) {
+  const ok = await writeContact(buildRestoreFrame(raw))
+  if (!ok) { console.debug('[telemetry] restore did not ack, kept for the next connect:', idPrefix(pubkey)); return }
+  try {
+    const rec = decodePendingRestore(localStorage.getItem(RESTORE_STORAGE_KEY) || '')
+    if (rec && rec.self === state.rxPubkey && rec.target === pubkey) localStorage.removeItem(RESTORE_STORAGE_KEY)
+  } catch (_) {}
+}
+
+// maybeReplayPendingRestore runs once per connect, before any ask: a session
+// that died between an override and its restore left that contact zero-hop on
+// the companion. Replayed only against the same companion the record names.
+async function maybeReplayPendingRestore() {
+  let stored = null
+  try { stored = localStorage.getItem(RESTORE_STORAGE_KEY) } catch (_) { return }
+  if (!stored) return
+  const rec = decodePendingRestore(stored)
+  if (!rec) { try { localStorage.removeItem(RESTORE_STORAGE_KEY) } catch (_) {} return }
+  if (rec.self !== state.rxPubkey) return
+  await restoreContact(rec.target, rec.raw)
+}
+
+async function askTelemetry(pubkey) {
+  if (!state.connected || !state.transport || state.telemetry.busy) return
+  if (!FULL_PUBKEY.test(pubkey)) return   // the firmware looks the contact up by all 32 bytes
+  state.telemetry.busy = true
+  let restore = null
+  try {
+    const contact = await getContact(pubkey)
+    // Not a contact yet: our companion has not heard its advert, or has no
+    // slot. Nothing to ask through; the next advert fixes the first case.
+    if (contact && contact.found === false) { console.debug('[telemetry] not a contact yet:', idPrefix(pubkey)); return }
+    if (needsPathOverride(contact)) {
+      try { localStorage.setItem(RESTORE_STORAGE_KEY, encodePendingRestore(state.rxPubkey, pubkey, contact.raw)) } catch (_) {}
+      restore = contact.raw
+      const ok = await writeContact(buildOverrideFrame(contact.raw))
+      // No override, no ask: the firmware would flood it (#553, "geen flood").
+      if (!ok) { console.debug('[telemetry] path override did not ack, not asking:', idPrefix(pubkey)); return }
+    }
+    if (!state.connected || !state.transport) return
+    const ack = await sendAndWait(buildTelemetryRequest(pubkey), parseSentAck, SENT_ACK_TIMEOUT_MS)
+    if (!ack) return
+    // The frame went out: the same pulse and cue as every other transmission.
+    pulseDiscoverBtn()
+    sound.txBlip('trace')
+    if (ack.isFlood) { console.debug('[telemetry] asked over flood despite the override:', idPrefix(pubkey)); return }
+    state.telemetry.asks = rememberAsk(state.telemetry.asks, pubkey, Date.now())
+  } finally {
+    if (restore) await restoreContact(pubkey, restore)
+    state.telemetry.busy = false
+  }
+}
+
+// onCompanionFrame reads the pushes the probe answers arrive on. The telemetry
+// response names the responder by a 6-byte prefix; the node it belongs to is
+// the ask or the selected target that starts with it. What it said is kept
+// per node (queue.putNode), apart from the receptions: it describes the node,
+// not one hearing of it.
+function onCompanionFrame(dv) {
+  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+  const r = parseTelemetryResponse(bytes)
+  if (!r) return
+  const known = [...state.telemetry.asks.map((a) => a.pubkey), ...selectedCompanionTargets()]
+  const pubkey = known.find((id) => id.startsWith(r.prefix))
+  if (!pubkey) return
+  state.queue.putNode(pubkey, { ...r.telemetry, telemetry_at: new Date().toISOString() }).catch(() => {})
 }
 
 // Who this cycle probes. With a target selected it is those targets and nothing
@@ -1076,6 +1242,7 @@ function stopAutoPing() {
   if (state.autoPing.timer) { clearInterval(state.autoPing.timer); state.autoPing.timer = null }
   for (const handle of state.autoPing.pendingPings) clearTimeout(handle)
   state.autoPing.pendingPings = []
+  state.telemetry.asks = []
   updateDiscoverBtnVisual()
 }
 
@@ -1089,6 +1256,23 @@ function toggleAutoPing() {
   if (!state.autoPing.timer) state.autoPing.timer = setInterval(autoPingTick, 1000)
   autoPingTick()
   updateDiscoverBtnVisual()
+}
+
+// The selected targets a trace-ping cannot reach (#576): companions, which
+// answer only a sender they have as a contact.
+function selectedCompanionTargets() {
+  const selected = selectedSet()
+  if (!selected) return []
+  return selectedCompanionIds(state.lastRows, selected)
+}
+
+// sendSelfAdvert asks the companion for one zero-hop advert. A real frame
+// going out, so it gets the FAB pulse and the tx cue like every other one.
+function sendSelfAdvert() {
+  if (!state.connected || !state.transport) return
+  state.transport.send(buildSelfAdvertFrame()).catch(() => {})
+  pulseDiscoverBtn()
+  sound.txBlip('discover')
 }
 
 // ---------------------------------------------------------------------------
@@ -1225,8 +1409,11 @@ async function connectAll() {
     // publisher state.
     connectMqtt()
 
-    // 5. Register frame handler
+    // 5. Register frame handlers: the RX log, and the pushes the probe answers arrive on (#553)
     state.transport.onFrame(processFrame)
+    state.transport.onFrame(onCompanionFrame)
+    // A contact left zero-hop by a session that died mid-ask goes back first.
+    maybeReplayPendingRestore().catch(() => {})
 
     setHuntingChrome(true)
     el('discover-btn').disabled = false
@@ -1638,6 +1825,14 @@ function buildSettingsSheet() {
           </select>
         </label>
       </div>
+      <div class="ss-radio-section">
+        <h3>Identity</h3>
+        <label class="ss-check-row" id="ss-row-share-name">
+          <input type="checkbox" id="ss-share-name" />
+          <span>Share my node name</span>
+        </label>
+        <p class="ss-hint">Shares your companion's name and key with nodes in direct range, once per auto-discover cycle while a companion is your target. Off: the app never transmits who you are.</p>
+      </div>
       <div class="ss-theme-row">
         <span>Theme</span>
         <div id="ss-theme" class="ss-seg" role="group" aria-label="Theme">
@@ -1737,6 +1932,19 @@ function buildSettingsSheet() {
     }
   })
   refreshConnState()
+
+  // Share my node name (#576): a checkbox, saved on change, and the row and
+  // the settings dot both say when it is on.
+  const share = el('ss-share-name')
+  share.checked = state.shareName
+  const syncShareRow = () => el('ss-row-share-name').classList.toggle('active', state.shareName)
+  syncShareRow()
+  share.addEventListener('change', () => {
+    state.shareName = share.checked
+    saveShareName(state.shareName)
+    syncShareRow()
+    refreshSettingsIndicator()
+  })
 
   const atten = el('ss-atten')
   atten.value = String(state.attenuatorDb)

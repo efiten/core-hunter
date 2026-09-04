@@ -1,5 +1,19 @@
 [
   {
+    "id": "2026-09-04-companion-target-ping",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "A companion target gets pinged too",
+    "body": "Select a companion and auto-discover asks it for its telemetry each cycle, zero-hop. Its answer is a reception from where it stands, and its battery and temperature are kept per node."
+  },
+  {
+    "id": "2026-09-04-share-my-node-name",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "Share my node name, off unless you turn it on",
+    "body": "A new setting shares your companion's name and key with nodes in direct range, each auto-discover cycle while a companion is your target. Off, the app never transmits who you are."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",
