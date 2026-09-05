@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-faq-from-about",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "The FAQ is one tap away in About",
+    "body": "Both About tabs link the FAQ, and every question there has its own address to share."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

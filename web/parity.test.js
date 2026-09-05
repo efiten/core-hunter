@@ -811,3 +811,26 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
     }
   })
 })
+
+// #383: the app's About tab and the map's About tab both link pages on the
+// landing site, and nothing checked that the pages exist: the landing's own
+// test only reaches links inside landing/. A renamed or removed page there
+// would leave both surfaces pointing at a 404. The FAQ is the case that
+// prompted this, so it is also asserted to be reachable from both.
+describe('links from the app and the map into the landing site', () => {
+  const app = readFileSync(new URL('../app/src/app.js', import.meta.url), 'utf8')
+  const web = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
+  const pagesOf = (src) => [...src.matchAll(/href="https:\/\/mesh-hunter\.eu\/([^"#?]+)"/g)].map((m) => m[1])
+
+  it.each([['app', app], ['map', web]])('%s links the FAQ', (_, src) => {
+    expect(pagesOf(src)).toContain('faq.html')
+  })
+
+  it('points only at pages the landing site has', () => {
+    const pages = [...new Set([...pagesOf(app), ...pagesOf(web)])]
+    expect(pages.length).toBeGreaterThan(0)
+    for (const p of pages) {
+      expect(() => readFileSync(new URL(`../landing/${p}`, import.meta.url)), `no landing/${p}`).not.toThrow()
+    }
+  })
+})

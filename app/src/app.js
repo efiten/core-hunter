@@ -1679,6 +1679,10 @@ function buildSettingsSheet() {
             <span class="ss-link-title">How it works</span>
             <span class="ss-link-desc">Re-open the walkthrough of the map, controls and what gets logged.</span>
           </button>
+          <a href="https://mesh-hunter.eu/faq.html" target="_blank" rel="noopener">
+            <span class="ss-link-title">FAQ</span>
+            <span class="ss-link-desc">Short answers about mapping, hunting, accounts and what the map shows.</span>
+          </a>
           <a href="https://map.mesh-hunter.eu" target="_blank" rel="noopener">
             <span class="ss-link-title">Shared coverage map</span>
             <span class="ss-link-desc">Where MeshCore nodes have been heard, pooled from every hunter.</span>

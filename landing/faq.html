@@ -44,7 +44,7 @@
     </section>
 
     <section class="faq-list">
-      <details>
+      <details id="what-is">
         <summary>What is Mesh-Hunter?</summary>
         <p>A mapping and node-hunting toolkit for MeshCore. The
           <a href="https://rx.mesh-hunter.eu">RX webapp</a> logs every packet your companion radio
@@ -52,14 +52,14 @@
           shows every mapper's receptions together, and is where you follow one node's signal to
           where it transmits from.</p>
       </details>
-      <details>
+      <details id="what-do-i-need">
         <summary>What do I need to start mapping?</summary>
         <p>A MeshCore companion radio, and a phone with GPS and a browser that supports Web
           Bluetooth, such as Chrome on Android or the Bluefy browser on iOS. Open the
           <a href="https://rx.mesh-hunter.eu">RX webapp</a>, pair the radio over Bluetooth, and walk
           or drive. The webapp installs as a PWA: add it to your home screen.</p>
       </details>
-      <details>
+      <details id="account">
         <summary>Do I need an account?</summary>
         <p>Not to read the map: without one you see all-time coarse coverage and the last 24 hours
           of individual receptions. An account shows your own receptions in full detail. It is made
@@ -67,7 +67,7 @@
           sign-up form. Member verification, granted by the admins, opens the full history, Locate
           and the CoreScope layers.</p>
       </details>
-      <details>
+      <details id="node-position">
         <summary>Does the map show where my node is?</summary>
         <p>No. Position is inferred from radio measurements (RSSI/SNR) via mesh topology, not from
           GPS tracking of any target node. The coordinates stored with each reception are the
@@ -78,24 +78,33 @@
           measurements rather than a position your node reports, and it lands a few hundred metres
           out on average, so it is a search area and not a fix.</p>
       </details>
-      <details>
+      <details id="who-sees">
         <summary>Who sees what my radio hears?</summary>
         <p>Every reception you map is published to the shared map. Visitors without an account see
           it coarse and recent, you see your own receptions in full detail, and verified members
           see everything.</p>
       </details>
-      <details>
+      <details id="cost">
         <summary>Does it cost anything?</summary>
         <p>No. Mesh-Hunter is run by amateur-radio operators; accounts and member verification are
           free.</p>
       </details>
-      <details>
+      <details id="which-nodes">
         <summary>Which nodes can I hunt?</summary>
         <p>Any node that transmits: a companion, a repeater, a sensor or a room server. Hunting
           means driving toward where its signal is heard strongest, so anything that transmits can
           be found.</p>
       </details>
-      <details>
+      <details id="auto-discover">
+        <summary>What does auto-discover transmit?</summary>
+        <p>Nothing until you switch it on: the RX webapp only listens by default. With
+          auto-discover on, each cycle sends one Discover request, a zero-hop broadcast that nearby
+          nodes answer directly, and a trace-ping to each repeater you have selected as a target.
+          With no target selected it pings a few of the repeaters it has heard instead, in turn.
+          Both are direct transmissions from your companion, addressed to nodes in range; nothing is
+          sent through the mesh.</p>
+      </details>
+      <details id="community-tools">
         <summary>How does Mesh-Hunter relate to the other community tools?</summary>
         <p>Mesh-Hunter builds on <a href="https://analyzer.on8ar.eu/#/home">CoreScope</a>, the mesh
           observatory by ON8AR. The <a href="/#community">Community section</a> on the front page
@@ -124,6 +133,16 @@
         try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
         sync();
       });
+    })();
+    // A link to one answer (#383) has to show that answer, and a closed
+    // <details> is only opened by the fragment in some browsers.
+    (function () {
+      function reveal() {
+        var d = location.hash && document.getElementById(location.hash.slice(1));
+        if (d && d.tagName === 'DETAILS') d.open = true;
+      }
+      reveal();
+      window.addEventListener('hashchange', reveal);
     })();
   </script>
 </body>
