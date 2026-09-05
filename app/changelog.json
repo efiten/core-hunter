@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-look-ahead",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "The map looks ahead while it turns with you",
+    "body": "Your position sits lower on the screen in heading mode. The compass button now has three stops, switches to GPS course by itself when driving, and can turn following off."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

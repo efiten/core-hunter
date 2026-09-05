@@ -111,6 +111,15 @@ export function createHuntMap(containerId) {
   // handler and by focusReception (#309), which is the same intent by tap.
   function releaseFollow() { if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) } }
   map.on('dragstart', releaseFollow)
+  // Look-ahead (#403): the app decides when the map is oriented to travel and
+  // hands the padding in; the map re-derives it from its own height on resize,
+  // so a rotated phone keeps the position at the same fraction of the frame.
+  let lookAhead = null
+  function setLookAhead(paddingFor) {
+    lookAhead = paddingFor || null
+    map.setPadding(lookAhead ? lookAhead(map.getContainer().clientHeight) : { top: 0, bottom: 0, left: 0, right: 0 })
+  }
+  map.on('resize', () => { if (lookAhead) map.setPadding(lookAhead(map.getContainer().clientHeight)) })
   map.on('rotate', () => { if (rotateCb && !settingBearing) rotateCb(map.getBearing()) })
   // Hex resolution depends on zoom — rebuild once the zoom settles.
   map.on('zoomend', () => draw())
@@ -574,7 +583,10 @@ export function createHuntMap(containerId) {
     }
   }
   function centerOn(lat, lon) { map.easeTo({ center: [lon, lat], duration: 400 }) }
-  function recenter() { if (!lastPos) return; follow = true; map.jumpTo({ center: [lastPos[1], lastPos[0]] }); if (onFollow) onFollow(true) }
+  // Eases rather than jumps (#403): with padding in play a jump would land on
+  // the offset position in one frame, and the ease is what tells the hand
+  // where the map went.
+  function recenter() { if (!lastPos) return; follow = true; map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }); if (onFollow) onFollow(true) }
   function onFollowChange(cb) { onFollow = cb }
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
@@ -635,7 +647,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
+  return { setPosition, centerOn, recenter, releaseFollow, setLookAhead, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
 }
 
 function popupHtml(r, selectedIds) {

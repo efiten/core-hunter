@@ -26,17 +26,46 @@ export function bearingForHeading(heading) {
   return h === 0 ? 0 : -h
 }
 
-// nextCompassState advances the compass button through its Google-Maps-style
-// cycle: static -> follow (north up) -> follow + device heading -> follow +
-// GPS course ("driving mode", #242) -> follow (north up). Leaving follow
-// happens by panning the map, not via the button. `source` is the rotation
+// nextCompassState advances the compass button through its cycle: static ->
+// follow (north up) -> follow + heading -> static. `source` is the rotation
 // input: null (north up), 'device' (magnetometer), or 'course' (GPS
-// course-over-ground — steadier than the magnetometer while actually driving).
+// course-over-ground, steadier than the magnetometer while actually driving).
+// Since #403 the sensor is not a stop of the cycle: heading mode starts on the
+// device compass and autoSource hands it to the GPS course once driving, so
+// both sources tap to the same place. And the button releases follow, where
+// that used to take a pan (Kasper, 2026-09-05: four states on a one-handed
+// control was one too many, and a tap that cannot let go was the odd one).
 export function nextCompassState({ follow, source }) {
   if (!follow) return { follow: true, source: null }
   if (source == null) return { follow: true, source: 'device' }
-  if (source === 'device') return { follow: true, source: 'course' }
-  return { follow: true, source: null }
+  return { follow: false, source: null }
+}
+
+// The ring on the FAB shows the stop of the cycle, not the sensor: heading
+// and driving share a segment. Static is the off state, outside the ring.
+export const COMPASS_RING_STOPS = 2
+export function compassRingIndex({ follow, source }) {
+  if (!follow) return -1
+  return source == null ? 0 : 1
+}
+
+// orientedToTravel: is "up" the direction of travel? Only then does a
+// look-ahead offset mean anything; north-up "ahead" is not a direction.
+export function orientedToTravel({ follow, source }) {
+  return !!follow && (source === 'device' || source === 'course')
+}
+
+// lookAheadPadding (#403): while the map is oriented to travel the position
+// sits two thirds down the frame, so the half that can say where the signal
+// is going gets the room, the way Waze and Maps drop the puck during
+// navigation. MapLibre puts the camera centre in the middle of the un-padded
+// area, so the padding goes on TOP: a third of the viewport above moves the
+// centre from 1/2 to 2/3. One padding for every camera path (follow, recenter,
+// centerOn), rather than a per-call offset that the paths would disagree on.
+export const LOOK_AHEAD_FRACTION = 1 / 3
+export function lookAheadPadding(viewportHeight, oriented) {
+  const top = oriented ? Math.round((Number(viewportHeight) || 0) * LOOK_AHEAD_FRACTION) : 0
+  return { top, bottom: 0, left: 0, right: 0 }
 }
 
 // compassGlyph names the icon for a compass state: 'static' (not following),
@@ -56,6 +85,22 @@ export function compassGlyph({ follow, source }) {
 // would swing the map at every stop. ~2 m/s ≈ 7 km/h, comfortably above a
 // walking shuffle and below the slowest driving this mode targets.
 export const COURSE_MIN_SPEED_MS = 2
+
+// autoSource (#403): in heading mode the sensor follows the speed. At
+// COURSE_MIN_SPEED_MS the GPS course takes over from the compass; it hands
+// back only below COURSE_RELEASE_SPEED_MS, so a crawl at the threshold does
+// not swap sensors at every fix (between the two the current sensor holds).
+// An unknown speed holds too. A cleared source (a correction by two-finger
+// rotate, or not following) is never armed here: after a correction nothing
+// switches until the mode is cycled back (Kasper, 2026-09-05).
+export const COURSE_RELEASE_SPEED_MS = 1
+export function autoSource(source, speed) {
+  if (source !== 'device' && source !== 'course') return null
+  if (!Number.isFinite(speed)) return source
+  if (speed >= COURSE_MIN_SPEED_MS) return 'course'
+  if (speed < COURSE_RELEASE_SPEED_MS) return 'device'
+  return source
+}
 
 // resolveCourseHeading: per the W3C Geolocation spec, heading is null when
 // unavailable and NaN while stationary (#242) — hold the last known heading
