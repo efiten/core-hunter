@@ -1,5 +1,26 @@
 [
   {
+    "id": "2026-09-05-ticker-name-and-id",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "The receptions ticker shows the id next to a resolved name",
+    "body": "Six characters in their own column, so you can see which node a name came from. A line without a name is unchanged."
+  },
+  {
+    "id": "2026-08-31-map-ticker-card",
+    "date": "2026-08-31",
+    "where": "map",
+    "title": "The receptions ticker is a card, and only as tall as it needs",
+    "body": "It sits on its own plate instead of on the tiles, and grows with what it holds. Its button in the bar is a pulse now, not a second hamburger."
+  },
+  {
+    "id": "2026-08-31-ticker-sizes-itself",
+    "date": "2026-08-31",
+    "where": "app",
+    "title": "The receptions card is only as tall as it has to be",
+    "body": "It grows with what it holds: one line, three, five, then ten. The chevron steps a full card back to three, then one, then out again."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

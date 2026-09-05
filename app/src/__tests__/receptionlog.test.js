@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -87,17 +87,48 @@ describe('rxActiveIndex — playhead index from scroll, clamped', () => {
   })
 })
 
-describe('rxFade — playhead-relative opacity (6 above, 3 below, faster below)', () => {
+describe('rxFade, playhead-relative opacity', () => {
   it('is 1 on the lane', () => { expect(rxFade(0)).toBe(1) })
-  it('fades over ~6 lines above (negative d)', () => {
-    expect(rxFade(-3)).toBeCloseTo(0.5)
-    expect(rxFade(-6)).toBe(0)
-    expect(rxFade(-9)).toBe(0)
+
+  // Older rows fade across the lanes there are above the playhead, and stop at
+  // a floor rather than at nothing (#560): fading to zero on the card's own top
+  // lane is what made a ten-lane card show six rows and four invisible ones.
+  it('fades older rows across the span it is given, down to the floor', () => {
+    expect(rxFade(-9, 9)).toBe(RX_FADE_FLOOR)
+    expect(rxFade(-1, 9)).toBeGreaterThan(rxFade(-8, 9))
+    expect(rxFade(-8, 9)).toBeGreaterThan(RX_FADE_FLOOR)
   })
-  it('fades faster over ~3 lines below (positive d)', () => {
-    expect(rxFade(1)).toBeCloseTo(2 / 3)
-    expect(rxFade(3)).toBe(0)
-    expect(rxFade(5)).toBe(0)
+
+  it('never drops a visible row to nothing, at any card size', () => {
+    for (const above of [1, 2, 4, 9]) {
+      for (let d = -above; d <= -1; d++) {
+        expect(rxFade(d, above), `d=${d} of ${above}`).toBeGreaterThanOrEqual(RX_FADE_FLOOR)
+      }
+    }
+  })
+
+  // Newer rows still fall off faster than older ones, because the playhead has
+  // fewer lanes under it than above it. They land on the floor rather than on
+  // nothing, which is the change: since #560 those lanes hold receptions
+  // instead of being blank padding, and the newest one lives on the last of
+  // them.
+  it('fades newer rows faster than older ones, and stops at the floor', () => {
+    expect(rxFade(1, 6, 3)).toBeLessThan(rxFade(-1, 6, 3))
+    expect(rxFade(3, 6, 3), 'the newest row on a full card').toBe(RX_FADE_FLOOR)
+    expect(rxFade(5, 6, 3), 'past the card, clamped').toBe(RX_FADE_FLOOR)
+  })
+
+  it('never hides a row the card has made room for', () => {
+    for (const [above, below] of [[6, 3], [3, 1], [1, 1], [0, 0]]) {
+      for (let d = -above; d <= below; d++) {
+        expect(rxFade(d, above, below), `d=${d} of ${above}/${below}`).toBeGreaterThanOrEqual(RX_FADE_FLOOR)
+      }
+    }
+  })
+
+  it('is monotonic away from the lane on both sides', () => {
+    for (let d = -8; d < -1; d++) expect(rxFade(d, 9, 3)).toBeGreaterThanOrEqual(rxFade(d - 1, 9, 3))
+    for (let d = 1; d < 3; d++) expect(rxFade(d, 6, 3)).toBeGreaterThanOrEqual(rxFade(d + 1, 6, 3))
   })
 })
 
@@ -122,5 +153,24 @@ describe('rxLineHeight — row height parsed from the CSS variable', () => {
     expect(rxLineHeight('inherit')).toBe(26)
     expect(rxLineHeight('0px')).toBe(26)
     expect(rxLineHeight('-4px')).toBe(26)
+  })
+})
+
+// #451: a line showed a name OR an id, never both, so the id a name was
+// resolved from vanished the moment it resolved and a mis-resolution (#452)
+// had nothing on screen to check it against. The id gets its own column, cut
+// with idPrefix like every other surface; a line without a name keeps the id
+// in the name cell and the column empty, so the prefix never appears twice.
+describe('senderCell — the id stays beside the name it resolved to', () => {
+  it('puts the prefix in the id column once a name has resolved', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: 'repeater-3' })).toEqual({ id: 'a1b2f3', name: 'repeater-3' })
+  })
+  it('leaves the column empty while the id is the name', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: '' })).toEqual({ id: '', name: 'a1b2f3c4d5e6' })
+    expect(senderCell({ sender_kind: 'relay', sender_id: null, sender_label: null })).toEqual({ id: '', name: '—' })
+  })
+  it('gives a hash id no column: the # in the name cell is all it is', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
+    expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
   })
 })

@@ -4,8 +4,15 @@ import { test, expect } from './fixtures.js'
 // the content, colliding with Leaflet's zoom control, with no way to put it
 // away. It is now a placed box the user drags, and it folds.
 
-const RX = [{ lat: 51, lon: 4, rssi: -70, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
-  sender_label: 'NODE-1', hunter_name: 'H', packet_type: 'Advert', rx_at: '2026-08-24T10:00:00Z' }]
+// Twelve, not one: since #424 the card's height follows how much it holds, so
+// a single reception is a one-lane card with only the header-alone stop left
+// to reach. Twelve is past the last step, which is what makes every stop
+// reachable and the placement measurements stable.
+const RX = Array.from({ length: 12 }, (_, i) => ({
+  lat: 51, lon: 4, rssi: -70 - i, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
+  sender_label: 'NODE-' + i, hunter_name: 'H', packet_type: 'Advert',
+  rx_at: new Date(Date.parse('2026-08-24T10:00:00Z') + i * 1000).toISOString(),
+}))
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -108,7 +115,13 @@ test('a shorter window pulls the ticker back into view', async ({ page }) => {
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
 })
 
-test('folds away and back from one control, and the fold persists', async ({ page }) => {
+// One control, several stops since #424: full, three lanes, one, then the
+// header alone. How many of those exist depends on how much traffic the ticker
+// is holding, because a stop that would not make the card smaller is skipped
+// (it would swallow a click). So the test walks the cycle rather than assuming
+// its length: every click shrinks the card or hides the list, and one more
+// after that is back to where it started.
+test('shrinks a step at a time, and the cross puts it away', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   const list = page.locator('#rx-list')
@@ -116,21 +129,79 @@ test('folds away and back from one control, and the fold persists', async ({ pag
   await expect(list).toBeVisible()
   await expect(fold).toHaveAttribute('aria-expanded', 'true')
 
-  await fold.click()
-  await expect(list).toBeHidden()
-  await expect(fold).toHaveAttribute('aria-expanded', 'false')
-  // The header stays: it is how you get the list back.
-  await expect(page.locator('.rx-hd')).toBeVisible()
+  const height = () => page.evaluate(() => document.getElementById('rx-list').getBoundingClientRect().height)
+  const full = await height()
+  expect(full).toBeGreaterThan(0)
 
-  await page.reload()
-  await expect(page.locator('#rx-list')).toBeHidden()
+  // How many stops exist depends on how much the ticker holds, because one
+  // that would not make the card smaller is skipped rather than swallowing a
+  // click. So walk it rather than assuming a length.
+  let previous = full
+  let clicks = 0
+  while (clicks < 2) {
+    await fold.click()
+    clicks++
+    const now = await height()
+    expect(now, `click ${clicks} made the card smaller`).toBeLessThan(previous)
+    previous = now
+  }
+  // Never to nothing: putting it away is the cross, not a further stop.
+  expect(previous).toBeGreaterThan(0)
+  await expect(fold).toHaveAttribute('aria-expanded', 'false')
+
+  // One more is back to full.
+  await fold.click()
+  expect(await height()).toBe(full)
 })
 
-test('starts folded on a phone, where the band is what covers the map', async ({ page }) => {
+test('the cross puts the ticker away, and the bar brings it back', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const card = page.locator('#rx-log')
+  const barBtn = page.locator('#ticker-btn')
+  await expect(card).toBeVisible()
+  await expect(barBtn).toBeHidden()
+
+  await page.locator('.rx-close').click()
+  await expect(card).toBeHidden()
+  await expect(barBtn).toBeVisible()
+
+  // And it stays away across a reload, like every other view setting.
+  await page.reload()
+  await expect(page.locator('#rx-log')).toBeHidden()
+  await expect(page.locator('#ticker-btn')).toBeVisible()
+
+  await page.locator('#ticker-btn').click()
+  await expect(page.locator('#rx-log')).toBeVisible()
+  await expect(page.locator('#ticker-btn')).toBeHidden()
+})
+
+test('starts at its smallest on a phone, where the card is what covers the map', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await expect(page.locator('#rx-list')).toBeHidden()
-  await expect(page.locator('.rx-hd')).toBeVisible()
+  // Small, not away: a ticker nobody can see is a different thing from a
+  // one-line one, and the point of the per-surface default is only that it
+  // should not cover the map.
+  await expect(page.locator('#rx-log')).toBeVisible()
+  const h = await page.evaluate(() => document.getElementById('rx-list').getBoundingClientRect().height)
+  const line = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-rx-line-h')))
+  expect(Math.round(h / line)).toBe(1)
+})
+
+// The same phone, held sideways. 844px is wider than every phone breakpoint, so
+// a width test calls this a desktop and opens the card at ten lanes -- measured
+// at 844x390 before this: 298px of card over 309px of map, 110% of it, hanging
+// past the bottom edge. The rule is the space left under the bar, not the width.
+test('starts at its smallest on a phone held sideways, which no width test catches', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.goto('/')
+  await expect(page.locator('#rx-log')).toBeVisible()
+  const m = await page.evaluate(() => {
+    const bar = document.getElementById('bar').getBoundingClientRect()
+    const rx = document.getElementById('rx-log').getBoundingClientRect()
+    return { space: innerHeight - bar.bottom, card: rx.height }
+  })
+  expect(m.card, 'the card leaves most of the map').toBeLessThan(m.space / 2)
 })
 
 // #322 made the band frameless on purpose and #287/#322 keep pointer-events off

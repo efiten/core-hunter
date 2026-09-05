@@ -1,6 +1,6 @@
 import { rssiTier, tierColorVar } from './signal.js'
 import { packetTypeLabel } from './packettypes.js'
-import { senderName } from './names.js'
+import { senderName, isHashIdKind } from './names.js'
 
 // Reception ticker (#224) — parity with app's Receptions log (app/src/receptionlog.js,
 // #130): a scrollable tail-log of recent receptions, two-way synced with the
@@ -38,15 +38,147 @@ export function rxActiveIndex(scrollTop, lineH, count) {
 
 // rxFade is the opacity of a line `d` rows from the playhead: full on the lane,
 // fading out over ~6 rows above (older) and faster over ~3 rows below (newer).
-export function rxFade(d) {
+// The faintest a row on the card may be drawn (#560/#424). Without a floor the
+// fade reaches zero on the outermost lane of each side, which was harmless
+// while those lanes were blank padding and is not now that they hold
+// receptions. Kept identical to the app's; parity.test.js pins that.
+export const RX_FADE_FLOOR = 0.22
+
+export function rxFade(d, above = 6, below = 3) {
   if (d === 0) return 1
-  if (d < 0) return Math.max(0, 1 + d / 6)
-  return Math.max(0, 1 - d / 3)
+  const span = Math.max(1, d < 0 ? above : below)
+  const t = Math.min(1, Math.abs(d) / span)
+  return RX_FADE_FLOOR + (1 - t) * (1 - RX_FADE_FLOOR)
 }
 
 // relTime — ported from app/src/feed.js (not shared: #238 is scoped to
 // signal/locate/names only). Same behaviour, own copy per this file's own
 // "ported for parity, not shared" convention (see module docstring above).
+// ---------------------------------------------------------------------------
+// Card geometry (#560). The card used to be ten lanes or nothing: 298px, a
+// third of a 915px phone, whether it held one reception or two hundred. Worse,
+// a full card did not even show ten: the playhead sat six lanes down with
+// three lanes of padding under it, so ten receptions rendered as seven rows
+// and three blank lanes.
+//
+// It now grows in steps, and every step shows whole receptions with the newest
+// on the bottom lane. Kasper's curve, 31 August:
+//
+//   0 -> nothing but the header      3..5  -> 3 lanes
+//   1..2 -> 1 lane                   6..9  -> 5 lanes
+//                                    10+   -> 10 lanes
+//
+// Below six receptions the card shows everything it has; from six it caps, so
+// the oldest roll off the top rather than the card taking the whole screen.
+//
+// Every number below is in lanes, and the stylesheet multiplies them by
+// --ch-rx-line-h. Keeping them here rather than in the CSS is what lets the
+// relationship between them be asserted instead of maintained by hand.
+// ---------------------------------------------------------------------------
+export const RX_FULL_LANES = 10
+
+// Each step is the smallest reception count that earns it, highest first.
+const RX_STEPS = [
+  { from: 10, lanes: RX_FULL_LANES },
+  { from: 6, lanes: 5 },
+  { from: 3, lanes: 3 },
+  { from: 1, lanes: 1 },
+]
+
+// The ceilings the chevron cycles through, after full: three lanes, then one,
+// then back to full. Identical to the app's, and pinned equal by
+// parity.test.js. Putting the ticker away is the cross, not a further stop
+// (#424): folding to the header was the map's own way of doing it before it
+// had a button in the bar to come back from.
+export const RX_COLLAPSE_STOPS = [3, 1]
+
+// collapseLevels is the cycle the chevron actually walks for a given number of
+// receptions: full, then only those stops that would make the card smaller
+// than it already is. A stop at or above the natural height is skipped, since
+// tapping onto it changes nothing on screen and reads as a dead press. With
+// three receptions the card is three lanes anyway, so the three-lane stop is
+// not offered and the cycle is full <-> one lane.
+export function collapseLevels(count) {
+  const natural = rxLanes(count, 0)
+  const levels = [0]
+  for (let i = 0; i < RX_COLLAPSE_STOPS.length; i++) {
+    if (RX_COLLAPSE_STOPS[i] < natural) levels.push(i + 1)
+  }
+  return levels
+}
+
+// nextCollapse advances that cycle. A level the current count cannot reach
+// (stored while more had arrived, then the filter narrowed) is not in the
+// list, so it falls back to full rather than to nothing.
+export function nextCollapse(level, count) {
+  const levels = collapseLevels(count)
+  const i = levels.indexOf(level)
+  return levels[(i + 1) % levels.length]
+}
+
+// Whether this is the last stop, so the next tap goes back to full. Used for
+// the chevron's direction and its label.
+export function atLastCollapse(level, count) {
+  const levels = collapseLevels(count)
+  return levels.length > 1 && levels[levels.length - 1] === level
+}
+
+// rxLanes is the card's height for what it currently holds. The collapse level
+// is a ceiling rather than a size: with two receptions the card is one lane
+// already, and forcing three would put back the blank lanes the growth exists
+// to remove.
+export function rxLanes(count, collapse) {
+  const n = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+  let lanes = 0
+  for (const step of RX_STEPS) {
+    if (n >= step.from) { lanes = step.lanes; break }
+  }
+  // `undefined`, not falsy: a stop of zero lanes is a real stop (the map's
+  // header-alone one), and a truthiness check silently ignored it.
+  const cap = RX_COLLAPSE_STOPS[(collapse | 0) - 1]
+  return cap === undefined ? lanes : Math.min(lanes, cap)
+}
+
+// Whether the chevron has anywhere to go at all. On the map that is always,
+// since folding to the header is a stop of its own and is worth reaching even
+// with nothing to show.
+export function rxCanCollapse(count) {
+  return collapseLevels(count).length > 1
+}
+
+// rxPlayhead is the lane the active reception sits on, counted from the top.
+// It keeps the roll-through position of #130 at every card size: the original
+// full card put it 6 of 9 lanes down, two thirds, with three lanes below for
+// newer receptions to roll through, and that proportion is held here rather
+// than restated per size.
+//
+// The blank lanes under a full card were never the playhead's fault. They came
+// from padding the list below the last row, which is what rxPadBottom is now
+// zero for. With no padding under it, the browser clamps the follow-scroll
+// short of the lane, and that clamp is exactly what parks the newest reception
+// on the bottom lane while the playhead stays where it is. Both things at once,
+// which is what "laatste onderaan" and "rol-door" each needed.
+export function rxPlayhead(lanes) {
+  if (lanes <= 1) return 0
+  return Math.round((lanes - 1) * 2 / 3)
+}
+
+// rxBelow is how many lanes sit under the playhead, so newer receptions have
+// somewhere to roll through. Zero on the small cards, where there is no room
+// and the newest reception is the active one.
+export function rxBelow(lanes) {
+  return Math.max(0, lanes - 1 - rxPlayhead(lanes))
+}
+
+// rxPadBottom is the padding under the last row, in lanes: none. It used to be
+// three, which is what reserved the blank lanes a full card ended in. It stays
+// a function because the geometry reads better as four derived numbers than as
+// three plus a literal zero, and because the reachability assertion below is
+// written against it.
+export function rxPadBottom() {
+  return 0
+}
+
 export function relTime(rxAt, nowMs) {
   if (rxAt == null || Number.isNaN(Date.parse(rxAt))) return '—'
   const s = Math.max(0, Math.round((nowMs - Date.parse(rxAt)) / 1000))
@@ -157,6 +289,19 @@ const ROW_H = 26
 // rxLineHeight parses the variable's value. A missing or unusable value falls
 // back rather than yielding 0: rxActiveIndex divides scrollTop by this, and a 0
 // would pin every row to the playhead lane.
+// senderCell, the app's rule (app/src/receptionlog.js, #451): once a name has
+// resolved the id stands beside it in its own column, cut to the same six
+// characters the target picker uses; a line without a name keeps the id in
+// the name cell and the column empty, and a hash id is its # mark only.
+const ID_PREFIX_HEX_CHARS = 6
+export function senderCell(pt) {
+  const id = pt.sender_id ? String(pt.sender_id) : ''
+  if (isHashIdKind(pt.sender_kind) && id) return { id: '', name: '#' + id }
+  const name = senderName(pt)
+  const resolved = !!id && name !== id
+  return { id: resolved ? id.slice(0, ID_PREFIX_HEX_CHARS) : '', name }
+}
+
 export function rxLineHeight(raw) {
   const n = parseFloat(raw)
   return Number.isFinite(n) && n > 0 ? n : ROW_H
@@ -190,13 +335,23 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   // from a ticker the user has moved, and it is the ticker it collapses.
   root.innerHTML = '<div class="rx-grab" aria-hidden="true"><span class="rx-grab-t"></span><span class="rx-grab-l"></span></div>'
     + '<div class="rx-hd"><span class="rx-count">0 rx</span><span class="rx-tg" role="button" tabindex="0"></span>'
-    + '<button type="button" class="rx-fold" aria-expanded="true" aria-controls="rx-list"></button></div>'
+    + '<button type="button" class="rx-fold" aria-expanded="true" aria-controls="rx-list">'
+    + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8l5 5 5-5"/></svg>'
+    + '</button>'
+    + '<button type="button" class="rx-close" aria-label="Hide receptions">'
+    + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>'
+    + '</button></div>'
     + '<div class="rx-list" id="rx-list"></div>'
+  // The header's two controls are handled by map.js, delegated on #rx-log: the
+  // markup below is written after that module runs, so binding there directly
+  // would find nothing. The app's component owns its own instead, because there
+  // is no placement layer above it.
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')
   const list = root.querySelector('.rx-list')
 
   let mode = 'filtered'
+  let collapse = 0
   let follow = true
   let filtered = []
   let all = []
@@ -210,8 +365,38 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   const LINE_H = rxLineHeight(cssVar('--ch-rx-line-h'))
 
   const key = (r) => receptionKey(r)
-  const maxScroll = () => Math.max(0, (view.length - 1) * LINE_H)
+  // The browser's own maximum, not (rows - 1) * lineH. Since #424 there is no
+  // padding under the last row, so the list cannot scroll far enough to put
+  // that row on the playhead and clamps with it on the bottom lane instead.
+  // Comparing against the JS lane count would make atBottom() never true, which
+  // latches `follow` off and stops the ticker following live traffic.
+  const maxScroll = () => Math.max(0, list.scrollHeight - list.clientHeight)
   const atBottom = () => list.scrollTop >= maxScroll() - 2
+
+  // The card's height and the lane the playhead sits on, published as lane
+  // counts the stylesheet multiplies by --ch-rx-line-h (#424, mirroring #560).
+  // rx-empty is the card with nothing to show: the header alone, the same
+  // state the app renders. Putting the ticker away is the cross, which the app
+  // owns, not a collapse stop.
+  function applyGeometry() {
+    const lanes = rxLanes(view.length, collapse)
+    root.classList.toggle('rx-empty', lanes === 0)
+    list.style.setProperty('--rx-lanes', lanes)
+    list.style.setProperty('--rx-playhead', rxPlayhead(lanes))
+    list.style.setProperty('--rx-pad-bottom', rxPadBottom())
+  }
+
+  // Owned by map.js, which keeps it in the URL alongside the placement, so the
+  // stored state and what is on screen cannot disagree.
+  function setCollapse(level) {
+    const next = Number.isInteger(level) && level > 0 ? Math.min(level, RX_COLLAPSE_STOPS.length) : 0
+    if (collapse === next) return
+    collapse = next
+    follow = true
+    applyGeometry()
+    list.scrollTop = maxScroll()
+    paint()
+  }
 
   let _lastSig = null
   function rebuild() {
@@ -232,6 +417,7 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     }
     _lastSig = sig
 
+    applyGeometry()
     const filteredIds = new Set(filtered.map(key))
     countEl.textContent = view.length + ' rx'
     tgEl.innerHTML = mode === 'filtered'
@@ -245,11 +431,13 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
       // is outside the current filter so the map draws nothing for it — it
       // says nothing about whether the sender is identified.
       const nm = mode === 'all' && !filteredIds.has(key(r)) ? ' <span class="rx-nm" title="Outside your current filter, so it has no marker on the map.">outside filter</span>' : ''
+      const cell = senderCell(r)
       h += '<div class="rx-ln" data-idx="' + i + '" data-key="' + esc(key(r)) + '">'
         + '<span class="rx-gt"></span>'
         + '<span class="rx-tm">' + esc(relTime(r.rx_at, nowMs)) + '</span>'
         + '<span class="rx-rs" style="color:' + color + '">' + esc(r.rssi ?? '—') + '</span>'
-        + '<span class="rx-sn">' + esc(senderName(r)) + ' '
+        + '<span class="rx-id">' + esc(cell.id) + '</span>'
+        + '<span class="rx-sn">' + esc(cell.name) + ' '
         + '<span class="rx-me">' + esc(lineMeta(r)) + '</span>' + nm + '</span></div>'
     }
     list.innerHTML = h
@@ -269,7 +457,11 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     for (let i = 0; i < els.length; i++) {
       const d = i - ai
       if (d === 0) { els[i].classList.add('act'); els[i].style.opacity = '' }
-      else { els[i].classList.remove('act'); els[i].style.opacity = String(rxFade(d)) }
+      else {
+        const lanes = rxLanes(n, collapse)
+        els[i].classList.remove('act')
+        els[i].style.opacity = String(rxFade(d, rxPlayhead(lanes), rxBelow(lanes)))
+      }
     }
     const rec = view[ai]
     if (rec && key(rec) !== activeId) { activeId = key(rec); onActiveChange && onActiveChange(rec) }
@@ -318,5 +510,5 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   // it honours the filtered/all toggle the user actually has selected.
   const records = () => view.slice()
 
-  return { refetch: fetchAndRebuild, focusRecord, records, destroy() { clearInterval(timer) } }
+  return { refetch: fetchAndRebuild, focusRecord, records, setCollapse, destroy() { clearInterval(timer) } }
 }
