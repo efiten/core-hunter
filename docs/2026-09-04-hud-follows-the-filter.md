@@ -15,9 +15,10 @@ It now follows the same **filtered / all** stand as the receptions ticker. There
 With a filter set you look at the filtered set on both surfaces; with no filter set the two
 stands show the same thing.
 
-- **Filtered:** a reception the filter would keep off the map stays off the HUD. The HUD keeps
-  the last reception the filter let through, with that reception's own RSSI, SNR, sender and
-  age. A closed eye on the pill says the filter has kept something out since then; the count is
+- **Filtered:** a reception the filter would keep off the map stays off the HUD. The HUD shows
+  the reception on the ticker's playhead, which while the ticker follows is the last one the
+  filter let through, with that reception's own RSSI, SNR, sender and age (#453 made the HUD
+  the playhead; see `2026-09-05-hud-is-the-playhead.md`). A closed eye on the pill says the filter has kept something out since then; the count is
   in the pill's `aria-label` and tooltip, not on the row.
 - **All:** every capture reaches the HUD, which is what it did before. Flipping to All puts the
   last capture on the HUD at once if the filter had kept it off.

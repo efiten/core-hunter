@@ -56,3 +56,13 @@ export function hudActions(rec, { selected, ignored } = {}) {
     ignore: { enabled: !!id, active: isIgnored, label: 'Ignore' },
   }
 }
+
+// sameReadout: does this row still read as what the HUD shows? The HUD draws
+// the reception on the ticker's playhead (#453), and the tick hands it a
+// fresh row object every second, so identity is no test. What a reader can
+// see is the reception (its id) and the sender line, which changes when the
+// resolver's answer lands on a later tick.
+export function sameReadout(shown, row) {
+  if (!shown || !row) return false
+  return shown.id === row.id && (shown.sender_label || '') === (row.sender_label || '')
+}

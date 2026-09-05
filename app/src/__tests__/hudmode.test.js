@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hudShows, hiddenAfter, hudToggleText, hudActions } from '../hudmode.js'
+import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from '../hudmode.js'
 
 const advert = { sender_kind: 'advert_pubkey', sender_id: 'AB12CD34EF56', sender_label: 'alpha' }
 
@@ -104,5 +104,26 @@ describe('hudActions', () => {
     expect(a.ignore.label).toBe('Ignore')
     expect(hudActions(advert, none).ignore.label).toBe('Ignore')
     expect(hudActions(advert, none).add.label).toBe('Add')
+  })
+})
+
+// #453: the HUD draws the reception on the ticker's playhead, and the tick
+// hands it a fresh row object every second. sameReadout says whether that row
+// still reads as what is on the HUD, so a redraw happens for a change a
+// reader can see and not for the object identity. A name that resolved on a
+// later tick is such a change: it is the whole reason the HUD showed
+// "via 2beb" under a ticker that already said "repeater_3_".
+describe('sameReadout', () => {
+  const row = (extra = {}) => ({ id: 'r1', rssi: -98, sender_kind: 'relay', sender_id: 'abcd1234', sender_label: null, ...extra })
+
+  it('is the same readout for the same row again, whatever the object', () => {
+    expect(sameReadout(row(), row())).toBe(true)
+  })
+  it('is a new readout once the name has landed', () => {
+    expect(sameReadout(row(), row({ sender_label: 'repeater_3_' }))).toBe(false)
+  })
+  it('is a new readout for another reception, and for the first one', () => {
+    expect(sameReadout(row(), row({ id: 'r2' }))).toBe(false)
+    expect(sameReadout(null, row())).toBe(false)
   })
 })

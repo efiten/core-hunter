@@ -118,7 +118,7 @@ export function senderText(r) {
 
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onModeChange } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { render() {}, focusRecord() {}, setMode() {}, step() {}, active() { return null }, following() { return true } }
+  if (!root) return { render() {}, focusRecord() {}, setMode() {}, step() {}, follow() {}, active() { return null }, following() { return true } }
   // The ✕ hides the whole ticker (#539) — the card has a fixed position, so
   // putting it away is the one size control it has. The app (onClose) owns
   // the visibility and the topbar button that brings it back.
@@ -252,9 +252,19 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     return i >= 0 ? view[i] : null
   }
 
-  // following: the playhead sits on the newest row, so what the float readout
-  // shows is the HUD's own reception rather than a scrubbed one.
+  // following: the playhead sits on the newest row.
   function following() { return follow }
 
-  return { render, focusRecord, setMode, step, active, following }
+  // followAgain puts the playhead back on the newest row (#453): a reception
+  // that passes the filter goes on the HUD, so the ticker it shares its
+  // playhead with cannot stay scrubbed. The row itself lands on the next
+  // render; this scrolls to the current newest so the playhead is already
+  // there when it does.
+  function followAgain() {
+    follow = true
+    list.scrollTop = maxScroll()
+    paint()
+  }
+
+  return { render, focusRecord, setMode, step, follow: followAgain, active, following }
 }

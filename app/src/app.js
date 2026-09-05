@@ -25,7 +25,7 @@ import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js
 import { requestSelfInfo } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
-import { hudShows, hiddenAfter, hudToggleText, hudActions } from './hudmode.js'
+import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from './hudmode.js'
 import { createFloatReadout, floatModel, floatSupported } from './floatreadout.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
@@ -288,6 +288,12 @@ function updateHud(rec) {
 
 // showOnHud puts one reception on the readout: the numbers, the sender and
 // the "since" all come from it, so the HUD never shows two receptions at once.
+// Which reception: the one on the ticker's playhead (#453). The ticker calls
+// this through onActiveChange when the playhead moves (a tap, a scrub, a
+// stand flip), the capture path calls it for a reception that passes the
+// filter (which also makes the ticker follow again), and syncHudToPlayhead
+// redraws it from the tick's enriched row when the same reception reads
+// differently, which is how a name that resolved later reaches the HUD.
 function showOnHud(rec, at) {
   state.hudRec = rec
   state.hudAt = at
@@ -299,21 +305,33 @@ function showOnHud(rec, at) {
   drawFloat()
 }
 
-// drawFloat repaints the float readout when it is out. It shows the HUD's own
-// reception, unless the PiP window's previous/next buttons have scrubbed the
-// ticker's playhead off the newest row: then it shows the row on the playhead,
-// with that reception's own age, the way the ticker does.
+// syncHudToPlayhead, from the tick after the ticker has rendered: the row on
+// the playhead is fresh from IndexedDB and enriched, so when it reads
+// differently from what the HUD shows (a name landed, #453) the HUD is redrawn
+// from it. Same reception, same age, new sender line.
+function syncHudToPlayhead() {
+  const rec = state.rxLog ? state.rxLog.active() : null
+  if (!rec || sameReadout(state.hudRec, rec)) return
+  const at = Date.parse(rec.rx_at)
+  showOnHud(rec, Number.isNaN(at) ? state.hudAt : at)
+}
+
+// drawFloat repaints the float readout when it is out. It shows the HUD's
+// reception, which is the ticker's playhead (#453): the PiP window's
+// previous/next buttons scrub that playhead, and the HUD moves with it. The
+// hidden count only means something while the ticker follows; a scrubbed
+// playhead is a choice, not something the filter kept off.
 function drawFloat() {
   if (!state.float || !state.float.isOpen()) return
   const now = Date.now()
-  const scrubbed = state.rxLog && !state.rxLog.following() ? state.rxLog.active() : null
-  const rec = scrubbed || state.hudRec
-  const at = scrubbed ? Date.parse(scrubbed.rx_at) : state.hudAt
+  const following = !state.rxLog || state.rxLog.following()
+  const rec = state.hudRec
+  const at = state.hudAt
   state.float.draw(floatModel({
     rec,
-    sinceText: sinceLabel(now, Number.isNaN(at) ? null : at),
+    sinceText: sinceLabel(now, at == null || Number.isNaN(at) ? null : at),
     mode: state.rxMode,
-    hidden: scrubbed ? 0 : state.hudHidden,
+    hidden: following ? state.hudHidden : 0,
     ble: state.connected,
     mqtt: Boolean(state.publisher && state.publisher.connected()),
     offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb),
@@ -348,16 +366,16 @@ function initFloatReadout() {
 }
 
 // setRxMode flips the filtered/all stand for the ticker and the HUD together
-// (#555). Flipping to all puts the last capture on the HUD at once if the
-// filter had kept it off; flipping back keeps what is shown until the next
-// matching reception, since that is still the last thing the filter let by.
+// (#555). The ticker rebuilds its list and follows again, which puts its
+// newest row on the playhead; the HUD is that playhead (#453), so it moves
+// through onActiveChange. Flipping to all thus shows the last capture at once
+// if the filter had kept it off; flipping back shows the newest match.
 function setRxMode(mode) {
   if (mode === state.rxMode) return
   state.rxMode = mode
-  if (state.rxLog) state.rxLog.setMode(mode)
   state.hudHidden = 0
-  if (mode === 'all' && state.lastRec && state.lastRec !== state.hudRec) showOnHud(state.lastRec, state.lastPacketAt)
-  else { renderHudTools(); drawFloat() }
+  if (state.rxLog) state.rxLog.setMode(mode)
+  renderHudTools(); drawFloat()
 }
 
 // renderHudTools writes the toggle and the three quick actions from state.
@@ -931,8 +949,14 @@ async function processFrame(dv) {
   // so the toggle can say that something went by.
   const matches = makeFilter({ ...activeFilter(), ignore: state.ignore })(rec, state.lastPacketAt)
   state.hudHidden = hiddenAfter(state.hudHidden, { mode: state.rxMode, matches })
-  if (hudShows(state.rxMode, matches)) showOnHud(rec, state.lastPacketAt)
-  else renderHudTools()
+  // The HUD is the ticker's playhead (#453), and a reception that passes the
+  // filter always reaches the HUD (Kasper, 2026-09-05): so it puts the ticker
+  // back on the newest row if a scrub had moved it, and goes on the readout
+  // at once rather than on the next tick.
+  if (hudShows(state.rxMode, matches)) {
+    if (state.rxLog && !state.rxLog.following()) state.rxLog.follow()
+    showOnHud(rec, state.lastPacketAt)
+  } else renderHudTools()
   noteTickerTraffic()
 }
 
@@ -995,7 +1019,7 @@ async function drawOnce() {
     }
     // Receptions log (#130): filtered = the plotted set (one-to-one with the
     // map); all = every captured reception. The toggle is log-only.
-    if (state.rxLog) state.rxLog.render(filteredRows, rows, now)
+    if (state.rxLog) { state.rxLog.render(filteredRows, rows, now); syncHudToPlayhead() }
     if (state.targetList) state.targetList.render(rows, state.ignore, now, selected)
     updateDiscoverBtnVisual()
   } catch (_) {
@@ -2661,10 +2685,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise the receptions log (#130) — replaces the Messages panel. The
-  // playhead reception highlights its map marker; tapping a marker rolls the
-  // playhead to it (two-way sync).
+  // playhead reception highlights its map marker and is what the HUD shows
+  // (#453); tapping a marker rolls the playhead to it (two-way sync).
   state.rxLog = createReceptionLog('rx-log', {
-    onActiveChange: (rec) => { if (state.map) state.map.setHighlight(rec ? rec.id : null); drawFloat() },
+    onActiveChange: (rec) => {
+      if (state.map) state.map.setHighlight(rec ? rec.id : null)
+      if (rec) { const at = Date.parse(rec.rx_at); showOnHud(rec, Number.isNaN(at) ? Date.now() : at) }
+      else drawFloat()
+    },
     // Tapping a row pans the map to that reception (#309). Without this the
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.

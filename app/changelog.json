@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-hud-is-the-playhead",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "The HUD shows the reception the ticker points at",
+    "body": "Tap or scrub a row and the readout follows it. A name that resolves later now reaches the HUD too."
+  },
+  {
     "id": "2026-09-04-float-readout",
     "date": "2026-09-04",
     "where": "app",
