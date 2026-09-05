@@ -30,7 +30,7 @@ import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadExaggeration, loadTerrainOn } from './settings.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
@@ -49,6 +49,7 @@ import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotic
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
@@ -79,6 +80,15 @@ function saveIgnore(set) {
 // Loader lives in settings.js (guarded + unit-tested, #338).
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
+}
+
+// Terrain (#396): the FAB's on/off and the exaggeration step, persisted like
+// the attenuator; loaders in settings.js.
+function saveTerrainOn(on) {
+  try { localStorage.setItem('core-hunter-terrain', on ? '1' : '0') } catch (_) {}
+}
+function saveExaggeration(x) {
+  try { localStorage.setItem('core-hunter-exaggeration', String(x)) } catch (_) {}
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
@@ -165,6 +175,8 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  terrainOn: loadTerrainOn(),
+  exaggeration: loadExaggeration(),
   soundMode: loadSoundMode(),
   themePref: loadThemePref(),
   // Unread release notes (#421). Lives on state so the settings button's dot
@@ -1637,6 +1649,11 @@ function buildSettingsSheet() {
             <option value="-30">−30 dB</option>
           </select>
         </label>
+        <label class="ss-radio-row" id="ss-row-exag">
+          <span>Terrain exaggeration</span>
+          <select id="ss-exag">${EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')}</select>
+        </label>
+        <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The terrain button on the map turns terrain off.</p>
       </div>
       <div class="ss-theme-row">
         <span>Theme</span>
@@ -1742,6 +1759,17 @@ function buildSettingsSheet() {
   atten.value = String(state.attenuatorDb)
   const syncAttenRow = () => el('ss-row-atten').classList.toggle('active', (Number(atten.value) || 0) !== 0)
   syncAttenRow()
+  const exag = el('ss-exag')
+  exag.value = String(state.exaggeration)
+  const syncExagRow = () => el('ss-row-exag').classList.toggle('active', Number(exag.value) !== DEFAULT_EXAGGERATION)
+  syncExagRow()
+  exag.addEventListener('change', () => {
+    state.exaggeration = Number(exag.value) || DEFAULT_EXAGGERATION
+    saveExaggeration(state.exaggeration)
+    applyTerrainState()
+    syncExagRow()
+    refreshSettingsIndicator()
+  })
   atten.addEventListener('change', () => {
     state.attenuatorDb = Number(atten.value) || 0
     saveAttenuator(state.attenuatorDb)
@@ -2191,6 +2219,24 @@ function applyNodePosNotices({ glanceExpired = false } = {}) {
   keyEl.hidden = !key
 }
 
+// Terrain FAB (#396): on/off with the accent ring, the same idiom as the
+// sound and node-position FABs. The map draws hillshade at once and the
+// relief mesh in 3D once the DEM tiles are in (terrain.js).
+function applyTerrainState() {
+  const btn = el('terrain-btn')
+  if (btn) {
+    btn.classList.toggle('on', state.terrainOn)
+    btn.setAttribute('aria-pressed', String(state.terrainOn))
+    btn.setAttribute('aria-label', state.terrainOn ? 'Terrain: on' : 'Terrain: off')
+  }
+  if (state.map) state.map.setTerrain({ on: state.terrainOn, exaggeration: state.exaggeration })
+}
+function toggleTerrain() {
+  state.terrainOn = !state.terrainOn
+  saveTerrainOn(state.terrainOn)
+  applyTerrainState()
+}
+
 async function toggleNodePositions() {
   nodePosOn = !nodePosOn
   const btn = el('nodepos-toggle')
@@ -2509,6 +2555,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Initialise map
   state.map = createHuntMap('map')
   state.map.setAttenuator(state.attenuatorDb)
+  applyTerrainState()
   state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise the receptions log (#130) — replaces the Messages panel. The
@@ -2561,6 +2608,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   const restoredView = VIEW_STATES[viewIdx]
   state.map.setView(restoredView.mode, restoredView.mode3D)
   el('nodepos-toggle').addEventListener('click', () => { toggleNodePositions().catch(() => {}) })
+  el('terrain-btn').addEventListener('click', toggleTerrain)
 
   // Sound FAB (#145). A persisted non-off mode is restored here; the engine
   // resumes its (autoplay-suspended) context on the first tap anywhere.

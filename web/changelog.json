@@ -7,6 +7,13 @@
     "body": "Same basemap and colours as the RX webapp, smoother with many points. Shared links keep their zoom."
   },
   {
+    "id": "2026-09-05-terrain",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "Terrain is back: shaded relief, raised in 3D",
+    "body": "A terrain button on the map turns it off. Settings has the exaggeration, 7× by default so the Low Countries show any relief at all."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

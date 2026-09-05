@@ -201,8 +201,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   border: none; background: transparent; color: var(--ch-text);
   font-size: 20px; line-height: 1; padding: 2px 4px; cursor: pointer; }
 
+/* A caveat under a Radio row (#396): the same muted small type as the other
+   settings hints. */
+.ss-row-hint { margin: 2px 0 10px; color: var(--ch-muted); font-size: 12px; line-height: 1.4; }
+
 /* ---- FABs ---- */
-#layer-toggle, #discover-btn, #recenter-btn, #sound-toggle, #nodepos-toggle { position: fixed; right: 14px; width: 46px; height: 46px;
+#layer-toggle, #discover-btn, #recenter-btn, #sound-toggle, #nodepos-toggle, #terrain-btn { position: fixed; right: 14px; width: 46px; height: 46px;
   border-radius: 50%; border: none; background: var(--ch-surface); backdrop-filter: blur(8px);
   color: var(--ch-text); font-size: 20px; z-index: 500; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -221,7 +225,10 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    (#145), so this layer takes 328. #258 removed #mode3d-toggle from 274 and
    pulled both of these down one slot; the stack must stay contiguous. */
 #nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 328px); }
-#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #sound-toggle svg, #nodepos-toggle svg { pointer-events: none; }
+#layer-toggle svg, #discover-btn svg, #recenter-btn svg, #sound-toggle svg, #nodepos-toggle svg, #terrain-btn svg { pointer-events: none; }
+/* Terrain FAB (#396): the next slot in the 54px stack; on = the accent ring. */
+#terrain-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 382px); }
+#terrain-btn.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 /* On = the layer is drawing; same accent-ring idiom as the discover FAB. */
 #nodepos-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 /* Next slot in the 54px stack, anchored like the rest (#264). NOT the 408px
@@ -465,10 +472,10 @@ body.splash-gate #settings-btn { color: var(--ch-accent); }
 
 body.onboarding #topbar,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn,
-body.onboarding #sound-toggle, body.onboarding #nodepos-toggle { z-index: 560; }
+body.onboarding #sound-toggle, body.onboarding #nodepos-toggle, body.onboarding #terrain-btn { z-index: 560; }
 body.onboarding #topbar-controls, body.onboarding #settings-btn,
 body.onboarding #layer-toggle, body.onboarding #discover-btn, body.onboarding #recenter-btn,
-body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
+body.onboarding #sound-toggle, body.onboarding #nodepos-toggle, body.onboarding #terrain-btn {
   box-shadow: 0 0 0 2px var(--ch-accent); }
 
 /* top/left are computed per-callout in app.js (positionCallouts), anchored to
