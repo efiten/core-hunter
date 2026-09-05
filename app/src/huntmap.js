@@ -8,6 +8,7 @@ import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
+import { displayName } from './names.js'
 import { skyForHour, currentHour } from './sky.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -644,7 +645,7 @@ function popupHtml(r, selectedIds) {
   // for one known to be relaying (not originating) traffic. `relay` here is the
   // internal sender_kind value (meshpacket.js) -- only its display label changed.
   const kindLabel = { channel_name: 'name', advert_pubkey: 'sender', discover_pubkey: 'sender', relay: 'repeater' }[r.sender_kind] || 'sender'
-  const senderLine = r.sender_id ? `${kindLabel} ${esc(r.sender_label || r.sender_id)}` : 'sender — (none)'
+  const senderLine = r.sender_id ? `${kindLabel} ${esc(displayName(r) || r.sender_id)}` : 'sender — (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
   const key = r.sender_id ? String(r.sender_id).toLowerCase() : null

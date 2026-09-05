@@ -340,9 +340,9 @@ describe('targetParts', () => {
     expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'a1b2c3d4e5f6' }))
       .toEqual({ primary: 'Repeater-Zuid', secondary: 'a1b2c3' })
   })
-  it('does not pad ids shorter than 3 bytes', () => {
+  it('does not pad ids shorter than 3 bytes, and marks the name such an id carries as a guess (#452)', () => {
     expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'abcd' }))
-      .toEqual({ primary: 'Repeater-Zuid', secondary: 'abcd' })
+      .toEqual({ primary: '~Repeater-Zuid', secondary: 'abcd' })
   })
   it('shows the id prefix plus a "name not resolved" marker as primary when there is no name, and the bare prefix as secondary', () => {
     expect(targetParts({ sender_label: null, sender_id: 'a1b2c3d4e5f6' }))
@@ -600,5 +600,14 @@ describe('heardRepeaterIds (#479)', () => {
       { sender_kind: 'relay', sender_id: 'ab12cd', rx_at: at(1) },
     ]
     expect(heardRepeaterIds(rows)).toEqual(['ab12cd'])
+  })
+})
+
+// #452: the target list shows a guessed name with the mark, next to the
+// prefix it already shows.
+describe('targetParts marks a guessed name', () => {
+  it('marks a resolved name on a 2-byte id and not on a full key', () => {
+    expect(targetParts({ sender_kind: 'relay', sender_id: '2beb', sender_label: 'repeater_3_' })).toEqual({ primary: '~repeater_3_', secondary: '2beb' })
+    expect(targetParts({ sender_kind: 'advert_pubkey', sender_id: 'ab'.repeat(32), sender_label: 'alpha' }).primary).toBe('alpha')
   })
 })

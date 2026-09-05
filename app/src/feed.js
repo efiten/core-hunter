@@ -1,3 +1,4 @@
+import { displayName } from './names.js'
 // Kinds that name a directly-heard node, so they can be selected as a target.
 // discover_pubkey is a DISCOVER_RESP reply (#129); relay is a last-hop repeater
 // attributed via path[last] of a relayed FLOOD packet (see meshpacket.js).
@@ -176,7 +177,8 @@ export function idPrefix(id) {
 // name-first even before resolution completes.
 export function targetParts(rec) {
   const id = rec.sender_id != null ? String(rec.sender_id) : ''
-  const label = rec.sender_label ? String(rec.sender_label) : ''
+  // The guess mark on a name resolved for a short prefix (#452, names.js).
+  const label = rec.sender_label ? displayName(rec) : ''
   if (!id) return { primary: label || '—', secondary: '' }
   const prefix = idPrefix(id)
   if (label) return { primary: label, secondary: prefix }

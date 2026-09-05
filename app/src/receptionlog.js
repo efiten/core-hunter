@@ -1,7 +1,7 @@
 import { relTime } from './feed.js'
 import { rssiTier, tierColorVar } from './signal.js'
 import { packetTypeLabel } from './filters.js'
-import { isHashIdKind } from './names.js'
+import { isHashIdKind, displayName } from './names.js'
 
 // Receptions log (#130) — a frameless, log-style tail over the map that
 // replaces the bottom Messages panel. Newest reception at the bottom; a fixed
@@ -91,7 +91,8 @@ export function lineMeta(r) {
 // looking exactly like a resolved short name. Same # mark the HUD uses.
 export function senderText(r) {
   if (isHashIdKind(r.sender_kind) && r.sender_id) return '#' + String(r.sender_id)
-  return r.sender_label || r.sender_id || '—'
+  // A name resolved for a short prefix wears the guess mark (#452, names.js).
+  return displayName(r) || r.sender_id || '—'
 }
 
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose } = {}) {

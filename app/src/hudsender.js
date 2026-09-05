@@ -2,7 +2,7 @@
 // classifyReception() already resolves `sender` to the immediate transmitter —
 // the originating node at zero hops, or a FLOOD packet's last relay — so a
 // 'relay' kind is exactly the last-hop repeater we heard, not the origin.
-import { isHashIdKind } from './names.js'
+import { isHashIdKind, displayName } from './names.js'
 
 const ID_PREFIX_LEN = 6
 
@@ -19,7 +19,8 @@ export function senderReadout(rec) {
   // label, in a 256-way collision space. It arrives on a FLOOD path[last], so
   // it is still a relay we heard, and it reads "via #64".
   const isHashId = isHashIdKind(rec.sender_kind)
-  const label = !isHashId && typeof rec.sender_label === 'string' ? rec.sender_label.trim() : ''
+  // displayName carries the guess mark for a name on a short prefix (#452).
+  const label = !isHashId && typeof rec.sender_label === 'string' && rec.sender_label.trim() ? displayName({ ...rec, sender_label: rec.sender_label.trim() }) : ''
   const id = typeof rec.sender_id === 'string' ? rec.sender_id.trim() : ''
   const name = label || (id ? (isHashId ? '#' : '') + id.slice(0, ID_PREFIX_LEN) : '')
   if (!name || name === '#') return { text: '—', viaRelay: false }

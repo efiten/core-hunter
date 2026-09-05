@@ -3,9 +3,9 @@
 // config.json as a `resolvers` array (each { label?, sf?, url }). A bare
 // `resolveUrl` is supported for back-compat (synthesized to a one-element
 // resolvers array by normalizeConfig). Cached in memory for the session, so
-// each distinct node is fetched at most once. A name is returned only when the
-// prefix resolves uniquely across the first responding resolver; ambiguous/
-// not-found → '' (caller shows the prefix).
+// each distinct node is fetched at most once. A name is returned only when
+// every registry of the companion's SF that knows the prefix agrees on it
+// (#452); ambiguous, not-found or disagreeing → '' (caller shows the prefix).
 import { getConfig } from './config.js';
 
 // key (lowercase hex) -> { name: string|'', pos: {lat, lon} | null }.
@@ -74,28 +74,56 @@ export function cachedPosition(key) {
   return cache.has(k) ? cache.get(k).pos : undefined;
 }
 
-// orderResolvers returns a new array with resolvers whose sf matches
-// companionSf placed first (preserving their relative order), followed by the
-// rest in their original order. When companionSf is null/undefined (or no
-// resolver matches), returns the resolvers in config order unchanged.
-//
-// companionSf is read from the companion's SELF_INFO reply (byte 56) and passed
-// in by app.js; it is null when the frame is too short or out of range.
-export function orderResolvers(resolvers, companionSf) {
-  if (companionSf == null) return resolvers.slice();
-  const matching = resolvers.filter(r => r.sf === companionSf);
-  const rest = resolvers.filter(r => r.sf !== companionSf);
-  if (matching.length === 0) return resolvers.slice();
-  return [...matching, ...rest];
+// resolversFor picks the registries to ask (#452): every resolver of the
+// companion's spreading factor, in config order. A registry of another SF
+// names nodes this radio cannot hear, so it is left out; with the SF unknown
+// (firmware-gated) or matching none, all of them are asked.
+export function resolversFor(resolvers, companionSf) {
+  const matching = companionSf == null ? [] : resolvers.filter(r => r.sf === companionSf);
+  return matching.length ? matching : resolvers.slice();
 }
 
-// resolveName resolves a heard key (2-3 byte prefix or full pubkey) to a name.
-// companionSf (the connected companion's spreading factor) puts the matching-SF
-// resolver first; null falls back to config order. Resolvers are queried in
-// order; first unambiguous hit wins.
-// Returns '' when unconfigured, ambiguous, or unknown.
+// consensusName reduces the names the registries answered to one or none.
+// A registry's ambiguous=false is a claim about that registry only: a second
+// one may know the same prefix under another name. Unanimity is a name,
+// silence is no name, and disagreement is a refusal, which is evidence
+// against, exactly as mergePrefixGroups treats it (feed.js).
+export function consensusName(names) {
+  const distinct = [...new Set((names || []).map(n => String(n || '').trim()).filter(Boolean))];
+  if (distinct.length === 1) return { name: distinct[0], refused: false };
+  return { name: '', refused: distinct.length > 1 };
+}
+
+// A name resolved for a short prefix is a guess about who was heard: a 2- or
+// 3-byte id is one in 65,536 or 16 million per registry, and a relay hash is
+// the forwarder's, not a node id. The name stays (it is usually right, and
+// the field reads by it) and wears GUESS_MARK on every surface, so nothing
+// presents it as a resolved identity (#452). An advert's own name on its
+// full key, a channel sender's name and an 8-byte discover prefix are not
+// guesses; a 1-byte hash never carries a name at all (isHashIdKind).
+export const GUESS_MARK = '~';
+const GUESS_MAX_HEX = 6;
+export function isGuessedName(rec) {
+  if (!rec || !rec.sender_label) return false;
+  if (rec.sender_kind === 'channel_name' || isHashIdKind(rec.sender_kind)) return false;
+  const id = typeof rec.sender_id === 'string' ? rec.sender_id : '';
+  return /^[0-9a-f]+$/i.test(id) && id.length <= GUESS_MAX_HEX;
+}
+// displayName: the label as a surface should print it, marked when guessed;
+// '' when there is no label, so callers fall back to the id as before.
+export function displayName(rec) {
+  if (!rec || !rec.sender_label) return '';
+  return (isGuessedName(rec) ? GUESS_MARK : '') + String(rec.sender_label);
+}
+
+// resolveName resolves a heard key (2-3 byte prefix, 8-byte prefix or full
+// pubkey) to a name. Every resolver of the companion's SF is asked at once
+// (resolversFor) and the answers go through consensusName: a name only when
+// the registries that know the prefix agree on it (#452).
+// Returns '' when unconfigured, ambiguous, unknown or refused.
 // Network/transport errors are NOT cached (retry later); '' is only cached
-// when all resolvers responded but none produced a unique name.
+// when every resolver responded, or when two of them disagreed, which no
+// retry can turn into a name.
 export async function resolveName(key, companionSf /* = undefined */) {
   const c = getConfig();
   const resolvers = c && c.resolvers && c.resolvers.length > 0 ? c.resolvers : [];
@@ -110,36 +138,34 @@ export async function resolveName(key, companionSf /* = undefined */) {
   // `finally` so a failed lookup is retried on a later tick rather than wedged.
   if (inflight.has(k)) return inflight.get(k);
 
-  const ordered = orderResolvers(resolvers, companionSf);
+  const asked = resolversFor(resolvers, companionSf);
 
   const lookup = (async () => {
     let anyNetworkError = false;
-    for (const resolver of ordered) {
+    const hits = [];
+    await Promise.all(asked.map(async (resolver) => {
       try {
         const r = await fetch(resolver.url + '?prefix=' + encodeURIComponent(k));
-        if (!r.ok) {
-          // HTTP error from this resolver — treat as "no result", continue.
-          continue;
-        }
+        // An HTTP error from this resolver is "no result" from it.
+        if (!r.ok) return;
         const j = await r.json();
-        const name = !j.ambiguous && j.name ? j.name : '';
-        if (name) {
-          // Name and position are cached together (#197): the resolver returns
-          // both on a unique hit, so a key is fetched at most once whichever
-          // one the caller wanted.
-          cache.set(k, { name, pos: j.ambiguous ? null : positionOf(j) });
-          return name;
-        }
-        // ambiguous or not found — try next resolver
+        if (j && !j.ambiguous && j.name) hits.push(j);
       } catch (e) {
         // Transient network error — mark so we don't cache '' at the end.
         anyNetworkError = true;
       }
+    }));
+    const { name, refused } = consensusName(hits.map(j => j.name));
+    if (name) {
+      // Name and position are cached together (#197): the first hit that
+      // carries a position supplies it.
+      const withPos = hits.find(j => positionOf(j));
+      cache.set(k, { name, pos: withPos ? positionOf(withPos) : null });
+      return name;
     }
-
-    // All resolvers responded (or errored). Only cache '' if there were no
-    // network errors (i.e. every resolver definitively had no unique name).
-    if (!anyNetworkError) cache.set(k, { name: '', pos: null });
+    // Only cache '' when every resolver definitively had no unique name, or
+    // when they disagreed: a refusal stands however often it is retried.
+    if (refused || !anyNetworkError) cache.set(k, { name: '', pos: null });
     return '';
   })();
 
