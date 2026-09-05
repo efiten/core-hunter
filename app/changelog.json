@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-names-agree-or-nothing",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "A short id gets a name only when the registries agree, and it is marked ~",
+    "body": "Two registries naming one prefix differently now give no name. A name on a 2- or 3-byte id shows as a guess."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

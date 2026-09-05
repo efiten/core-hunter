@@ -20,9 +20,9 @@ describe('senderReadout', () => {
     expect(r.viaRelay).toBe(true)
   })
 
-  it('prefers the relay label over its id when resolved', () => {
+  it('prefers the relay label over its id when resolved, marked as the guess a 3-byte id makes it (#452)', () => {
     const r = senderReadout({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: 'repeater-3', hops: 1 })
-    expect(r.text).toBe('via repeater-3')
+    expect(r.text).toBe('via ~repeater-3')
     expect(r.viaRelay).toBe(true)
   })
 
@@ -88,5 +88,16 @@ describe('senderReadout never presents an id as an identity', () => {
     const { text, viaRelay } = senderReadout({ sender_id: full, sender_label: null, sender_kind: 'trace_reply' })
     expect(text).toBe('ab12cd')
     expect(viaRelay).toBe(false)
+  })
+})
+
+// #452: the HUD wears the same guess mark as the ticker on a name resolved
+// for a short prefix, and none on an advert's own name.
+describe('senderReadout marks a guessed name', () => {
+  it('prefixes the mark on a 2-byte relay name, via and all', () => {
+    expect(senderReadout({ sender_kind: 'relay', sender_id: '2beb', sender_label: 'repeater_3_', hops: 2 }).text).toBe('via ~repeater_3_')
+  })
+  it('leaves an advert name alone', () => {
+    expect(senderReadout({ sender_kind: 'advert_pubkey', sender_id: 'ab'.repeat(32), sender_label: 'alpha', hops: 0 }).text).toBe('alpha')
   })
 })
