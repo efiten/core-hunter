@@ -49,7 +49,7 @@ import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotic
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, resolveCourseHeading, autoSource, orientedToTravel, lookAheadPadding } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
@@ -660,15 +660,20 @@ function positionCallouts() {
 // (Re-)starts the GPS watch, e.g. on connect or after the user retries
 // location from the splash. Shared so both call sites update state the same way.
 function startGpsWatch() {
-  state.gps.start(
-    (fix) => {
-      state.lastGpsFixAt = Date.now()
-      if (state.map) state.map.setPosition(fix.lat, fix.lon)
-      if (!state.hasFix) { state.hasFix = true; refreshSplash() }
-      if (compassState.source === 'course') applyCourseHeading(fix.heading, fix.speed)
-    },
-    () => { state.gpsError = true; refreshSplash() }
-  )
+  state.gps.start(onGpsFix, () => { state.gpsError = true; refreshSplash() })
+}
+
+function onGpsFix(fix) {
+  state.lastGpsFixAt = Date.now()
+  if (state.map) state.map.setPosition(fix.lat, fix.lon)
+  if (!state.hasFix) { state.hasFix = true; refreshSplash() }
+  // Heading mode picks its sensor from the speed (#403): compass while slow,
+  // GPS course once driving. Only a live source is ever switched.
+  if (orientedToTravel(compassState)) {
+    const next = autoSource(compassState.source, fix.speed)
+    if (next !== compassState.source) switchCompassSource(next)
+  }
+  if (compassState.source === 'course') applyCourseHeading(fix.heading, fix.speed)
 }
 
 // ---------------------------------------------------------------------------
@@ -2274,16 +2279,25 @@ function cycleSound() {
 // Compass mode (map follow toggle) — pwa only
 // ---------------------------------------------------------------------------
 
-// Google-Maps-style cycle (#116): static → tap → follow (auto-centre, north
-// up) → tap → follow + heading rotation (map turns with the device) → tap →
-// follow north-up again. Panning drops back to static; a two-finger rotate
-// gesture takes over rotation manually and leaves heading mode.
+// The cycle (#116, #403): static → tap → follow (auto-centre, north up) → tap
+// → follow + heading (map turns with the device; the GPS course takes over
+// by itself once driving, autoSource) → tap → static. Panning also drops to
+// static; a two-finger rotate gesture takes over rotation manually and
+// leaves heading mode, after which nothing switches sensors until the mode
+// is cycled back.
 //
 // The FAB icon previews the state a tap will PRODUCE (via nextCompassState),
-// not the current one — so it reads as an action. Because every next-state is
-// a follow-state, only 'following' (centre), 'heading' (device compass), and
-// 'driving' (GPS course, #242) glyphs are ever shown; there is no 'static' icon.
+// not the current one — so it reads as an action. 'driving' is never a
+// preview (the sensor switches by itself), but it is the current-state label.
 const COMPASS_ICONS = {
+  static: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="10" cy="10" r="4"/>
+    <line x1="10" y1="1" x2="10" y2="4"/>
+    <line x1="10" y1="16" x2="10" y2="19"/>
+    <line x1="1" y1="10" x2="4" y2="10"/>
+    <line x1="16" y1="10" x2="19" y2="10"/>
+    <line x1="4" y1="16" x2="16" y2="4"/>
+  </svg>`,
   following: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <circle cx="10" cy="10" r="4"/>
     <line x1="10" y1="1" x2="10" y2="4"/>
@@ -2301,24 +2315,35 @@ const COMPASS_ICONS = {
 }
 const COMPASS_LABELS = {
   following: 'Compass: north up',
-  heading: 'Compass: device heading',
-  driving: 'Compass: driving (GPS course)',
+  heading: 'Compass: heading',
+  driving: 'Compass: heading (GPS course while driving)',
   static: 'Compass: off',
 }
-
-// Cycle order for the progress ring (#259) — tap destinations only. Static is
-// unreachable via tap (only via map pan/rotate), so it's not in this cycle.
-// nextCompassState cycles: following → heading → driving → following.
-const COMPASS_CYCLE = ['following', 'heading', 'driving']
 
 let compassState = { follow: true, source: null }
 function updateCompassIcon() {
   // Icon = the state a tap produces (preview); label = the CURRENT state,
-  // "Name: state" like the rest of the rail (#539). Ring = the current
-  // state's position too, so ring and label agree and only the icon previews.
-  const currentIdx = COMPASS_CYCLE.indexOf(compassGlyph(compassState))
-  el('recenter-btn').innerHTML = fabRingSvg(currentIdx, COMPASS_CYCLE.length) + COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
+  // "Name: state" like the rest of the rail (#539). Ring = the stop of the
+  // cycle (#259): heading and driving share one, static is outside it.
+  el('recenter-btn').innerHTML = fabRingSvg(compassRingIndex(compassState), COMPASS_RING_STOPS) + COMPASS_ICONS[compassGlyph(nextCompassState(compassState))]
   el('recenter-btn').setAttribute('aria-label', COMPASS_LABELS[compassGlyph(compassState)])
+  // The look-ahead offset follows the state (#403): on while the map is
+  // oriented to travel, centred otherwise. Set here, the one place every
+  // state change passes through, so the camera and the button never disagree.
+  if (state.map) state.map.setLookAhead(orientedToTravel(compassState) ? (h) => lookAheadPadding(h, true) : null)
+}
+
+// switchCompassSource swaps the rotation sensor under a live heading mode
+// (#403): the listeners follow, the state follows, the icon follows. The
+// device compass was granted at the tap that entered heading mode, so
+// re-enabling it here needs no gesture.
+function switchCompassSource(next) {
+  if (compassState.source === 'device') disableHeadingRotation()
+  if (compassState.source === 'course') disableCourseRotation()
+  compassState.source = next
+  if (next === 'course') enableCourseRotation()
+  if (next === 'device') enableHeadingRotation().catch(() => {})
+  updateCompassIcon()
 }
 
 // Device-heading rotation. iOS only hands out DeviceOrientation after an
@@ -2582,9 +2607,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (next.source === 'course' && compassState.source !== 'course') enableCourseRotation()
     if (compassState.source === 'device' && next.source !== 'device') disableHeadingRotation()
     if (compassState.source === 'course' && next.source !== 'course') disableCourseRotation()
-    if (next.source == null) state.map.setBearing(0)
+    if (next.source == null && next.follow) state.map.setBearing(0)
     compassState.source = next.source
     if (next.follow && !compassState.follow) state.map.recenter() // fires onFollowChange → icon update
+    else if (!next.follow) state.map.releaseFollow() // the button lets go (#403); fires onFollowChange → icon update
     else updateCompassIcon()
   })
   if (state.map) state.map.onFollowChange((follow) => {
