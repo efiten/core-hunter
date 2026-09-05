@@ -1,5 +1,26 @@
 [
   {
+    "id": "2026-09-05-hud-is-the-playhead",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "The HUD shows the reception the ticker points at",
+    "body": "Tap or scrub a row and the readout follows it. A name that resolves later now reaches the HUD too."
+  },
+  {
+    "id": "2026-09-04-float-readout",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "A floating readout for when another app is in front",
+    "body": "Float puts the HUD full screen; leave the app and Android keeps it as a small window on top. Previous and next step through the receptions."
+  },
+  {
+    "id": "2026-09-04-hud-follows-the-filter",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "The HUD follows your filter, and acts on what it shows",
+    "body": "It shows the last reception your filter let through, and a closed eye marks what it kept out. Target and Ignore act on the shown sender."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

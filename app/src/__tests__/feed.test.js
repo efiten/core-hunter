@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds, isTargetKind } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -600,5 +600,16 @@ describe('heardRepeaterIds (#479)', () => {
       { sender_kind: 'relay', sender_id: 'ab12cd', rx_at: at(1) },
     ]
     expect(heardRepeaterIds(rows)).toEqual(['ab12cd'])
+  })
+})
+
+// The HUD's target actions apply the list's own rule (#555): what dedupeSenders
+// keeps is what can be selected, and a 1-byte hash is not among it.
+describe('isTargetKind', () => {
+  it('accepts the kinds the target list is built from', () => {
+    for (const k of ['channel_name', 'advert_pubkey', 'discover_pubkey', 'relay']) expect(isTargetKind(k), k).toBe(true)
+  })
+  it('refuses a 1-byte hash and the unattributed kinds', () => {
+    for (const k of ['direct_hash', 'path_hash', 'unknown', null, undefined]) expect(isTargetKind(k), String(k)).toBe(false)
   })
 })
