@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from '../settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadExaggeration, loadTerrainOn } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -171,5 +171,48 @@ describe('changelog acknowledgement (#284, #422)', () => {
   it('does not throw when storage refuses the write', () => {
     vi.stubGlobal('localStorage', throwingStorage())
     expect(() => saveChangelogSeen('2026-08-22-b')).not.toThrow()
+  })
+})
+
+// #396: the exaggeration is a Radio setting like the attenuator, and a value
+// off the default lights the settings dot the way a non-zero attenuator does.
+describe('loadExaggeration', () => {
+  it('returns a stored step', () => {
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-exaggeration': '4' }))
+    expect(loadExaggeration()).toBe(4)
+  })
+  it('falls back to the decided default for a missing or off-step value', () => {
+    vi.stubGlobal('localStorage', storageWith({}))
+    expect(loadExaggeration()).toBe(7)
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-exaggeration': '3' }))
+    expect(loadExaggeration()).toBe(7)
+  })
+  it('returns the default instead of throwing when storage access throws', () => {
+    vi.stubGlobal('localStorage', throwingStorage())
+    expect(loadExaggeration()).toBe(7)
+  })
+})
+
+// Terrain is on unless switched off (#394: it ships, the control is the
+// opt-out); the FAB persists the choice under its own key.
+describe('loadTerrainOn', () => {
+  it('is on by default and off only when stored off', () => {
+    vi.stubGlobal('localStorage', storageWith({}))
+    expect(loadTerrainOn()).toBe(true)
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '0' }))
+    expect(loadTerrainOn()).toBe(false)
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '1' }))
+    expect(loadTerrainOn()).toBe(true)
+  })
+  it('is on instead of throwing when storage access throws', () => {
+    vi.stubGlobal('localStorage', throwingStorage())
+    expect(loadTerrainOn()).toBe(true)
+  })
+})
+
+describe('isSettingsActive with the exaggeration', () => {
+  it('lights the dot for an exaggeration off the default, and not for the default', () => {
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, exaggeration: 4 })).toBe(true)
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, exaggeration: 7 })).toBe(false)
   })
 })
