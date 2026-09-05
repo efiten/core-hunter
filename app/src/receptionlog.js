@@ -281,7 +281,7 @@ export function senderCell(r) {
 
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse, onModeChange } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { render() {}, focusRecord() {}, setCollapse() {}, setMode() {}, step() {}, active() { return null }, following() { return true } }
+  if (!root) return { render() {}, focusRecord() {}, setCollapse() {}, setMode() {}, step() {}, follow() {}, active() { return null }, following() { return true } }
   // The ✕ hides the whole ticker (#539); the collapse chevron beside it moves
   // between full and three lanes (#560). One chevron that swaps direction, not
   // a pair of buttons. The app (onClose / onCollapse) owns both states and the
@@ -446,8 +446,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     return i >= 0 ? view[i] : null
   }
 
-  // following: the playhead sits on the newest row, so what the float readout
-  // shows is the HUD's own reception rather than a scrubbed one.
+  // following: the playhead sits on the newest row.
   function following() { return follow }
 
   // setCollapse comes from the app, not from the click handler, so the stored
@@ -461,5 +460,16 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     rebuild()
   }
 
-  return { render, focusRecord, setCollapse, setMode, step, active, following }
+  // followAgain puts the playhead back on the newest row (#453): a reception
+  // that passes the filter goes on the HUD, so the ticker it shares its
+  // playhead with cannot stay scrubbed. The row itself lands on the next
+  // render; this scrolls to the current newest so the playhead is already
+  // there when it does.
+  function followAgain() {
+    follow = true
+    list.scrollTop = maxScroll()
+    paint()
+  }
+
+  return { render, focusRecord, setCollapse, setMode, step, follow: followAgain, active, following }
 }
