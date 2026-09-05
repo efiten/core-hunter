@@ -29,13 +29,16 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
+import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
+import { filterSheetMarkup } from './filtersheet.js'
+import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
-import { createReceptionLog } from './receptionlog.js'
+import { createReceptionLog, tickerState, tickerStored } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
@@ -155,6 +158,8 @@ const state = {
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
   map: null,
   rxLog: null,
+  tickerVisible: true,
+  tickerCollapse: 0,
   targetList: null,
   connected: false,
   wakeLock: null,
@@ -358,8 +363,23 @@ function stopBatteryPoll() {
 // Light the filter pill's badge when the view is narrowed — either the filter
 // differs from the default or the ignore-list (also a display filter) is
 // non-empty. Called wherever state.filter or state.ignore changes.
+// The pill says THAT and HOW MUCH is narrowed; the sheet says what (#564). The
+// map has carried a count since #539 and the app carried nothing, so a filter
+// left on was invisible until you opened the sheet.
 function refreshFilterState() {
+  const n = activeFilterCount({
+    directOnly: state.filter.directOnly,
+    types: state.filter.types,
+    idClasses: state.filter.idClasses,
+    window: state.filter.windowMs !== DEFAULT_FILTER.windowMs,
+  })
   el('filter-pill').classList.toggle('active', isFilterActive(activeFilter()) || state.ignore.size > 0)
+  const badge = el('filter-pill-count')
+  if (badge) { badge.hidden = n === 0; badge.textContent = String(n) }
+  const head = el('fs-count')
+  if (head) { head.hidden = n === 0; head.textContent = n === 1 ? '1 filter' : `${n} filters` }
+  const clear = el('fs-clear')
+  if (clear) clear.textContent = n === 0 ? 'Clear filters' : `Clear ${n} filter${n === 1 ? '' : 's'}`
 }
 
 // Reflect the topbar popovers' open state on their triggers (aria-expanded
@@ -377,18 +397,71 @@ function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
-// Ticker visibility (#539). The ticker is a fixed card that can be put away
-// with its ✕; the topbar list button brings it back and lights accent while
-// traffic arrives unseen. Persisted like the view and sound FABs — Discover
-// is the deliberate exception (see state.autoPing).
-function loadTickerVisible() {
-  try { return localStorage.getItem('core-hunter-ticker') !== 'closed' } catch (_) { return true }
+// Ticker state (#539, resized in #560). The card can be put away with its ✕,
+// collapsed to three lanes with its chevron, or left full; the topbar list
+// button brings a hidden one back and lights accent while traffic arrives
+// unseen. All three live in one stored value, because they are one question:
+// how much of the ticker is on screen. Persisted like the view and sound FABs;
+// Discover is the deliberate exception (see state.autoPing).
+function loadTickerState() {
+  try { return tickerState(localStorage.getItem('core-hunter-ticker')) } catch (_) { return tickerState(null) }
 }
-function setTickerVisible(v) {
-  el('rx-log').hidden = !v
-  el('ticker-btn').hidden = v
-  if (v) el('ticker-btn').classList.remove('active')
-  try { localStorage.setItem('core-hunter-ticker', v ? 'open' : 'closed') } catch (_) {}
+
+// Closing travels towards the button that brings it back (#560): the card
+// vanishing on the spot left nothing connecting it to a control in the top
+// bar. Measured per close rather than assumed, because #ticker-btn is only
+// laid out once it is un-hidden, and the card's own position depends on the
+// viewport.
+function playTickerExit(done) {
+  const card = el('rx-log')
+  const btn = el('ticker-btn')
+  const from = card.getBoundingClientRect()
+  btn.hidden = false
+  const to = btn.getBoundingClientRect()
+  if (!from.width || !to.width) { done(); return }
+  card.style.setProperty('--rx-exit-x', Math.round((to.left + to.width / 2) - (from.left + from.width / 2)) + 'px')
+  card.style.setProperty('--rx-exit-y', Math.round((to.top + to.height / 2) - (from.top + from.height / 2)) + 'px')
+  let settled = false
+  const finish = () => {
+    if (settled) return
+    settled = true
+    card.classList.remove('rx-leaving')
+    card.style.removeProperty('--rx-exit-x')
+    card.style.removeProperty('--rx-exit-y')
+    done()
+  }
+  // transitionend can be missed (a background tab never runs the transition,
+  // and prefers-reduced-motion swaps which property animates), so the timer is
+  // the one that guarantees the card is actually hidden.
+  card.addEventListener('transitionend', finish, { once: true })
+  setTimeout(finish, 400)
+  // Added straight away rather than inside requestAnimationFrame: the card has
+  // been on screen, so its from-state is already committed, and a hidden tab
+  // never runs rAF at all (the trap behind #539's walkthrough measurements).
+  card.classList.add('rx-leaving')
+}
+
+function setTickerVisible(v, { animate = false } = {}) {
+  state.tickerVisible = v
+  const apply = () => {
+    el('rx-log').hidden = !v
+    el('ticker-btn').hidden = v
+    if (v) el('ticker-btn').classList.remove('active')
+  }
+  if (!v && animate) playTickerExit(apply)
+  else apply()
+  saveTickerState()
+}
+
+function setTickerCollapse(level) {
+  state.tickerCollapse = level
+  if (state.rxLog) state.rxLog.setCollapse(level)
+  saveTickerState()
+}
+
+function saveTickerState() {
+  const stored = tickerStored({ visible: state.tickerVisible, collapse: state.tickerCollapse })
+  try { localStorage.setItem('core-hunter-ticker', stored) } catch (_) {}
 }
 function noteTickerTraffic() {
   if (el('rx-log').hidden) el('ticker-btn').classList.add('active')
@@ -1359,72 +1432,24 @@ async function disconnectAll(nextPhase = 'idle') {
 
 function buildFilterSheet() {
   const sheet = el('filter-sheet')
-  sheet.innerHTML = `
-    <div class="filter-sheet-inner">
-      <div class="sheet-head">
-        <h2>Filters</h2>
-        <button class="sheet-close" id="fs-close" aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
-          </svg>
-        </button>
-      </div>
-      <label class="fs-row" id="fs-row-direct" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet claims, not a measurement of distance.">
-        <input type="checkbox" id="fs-direct-only" />
-        <span>No path</span>
-      </label>
-      <label class="fs-row" id="fs-row-unnamed" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has.">
-        <input type="checkbox" id="fs-unnamed" />
-        <span>Sender unknown</span>
-      </label>
-      <label class="fs-row" id="fs-row-window">
-        <span>Plot last:</span>
-        <select id="fs-window">
-          <option value="600000">10 min</option>
-          <option value="1800000">30 min</option>
-          <option value="3600000">1 h</option>
-          <option value="0">All time</option>
-        </select>
-      </label>
-      <div class="fs-type-row">
-        <span class="fs-type-label">Types</span>
-        <div id="fs-type-chips" class="fs-type-chips">
-          <button class="fs-chip active" data-type="all">All</button>
-          ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="fs-type-row" title="How far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">
-        <span class="fs-type-label">Sender id</span>
-        <div id="fs-idclass-chips" class="fs-type-chips">
-          <button class="fs-chip active" data-idclass="all">All</button>
-          ${SENDER_ID_CLASSES.map(c => `<button class="fs-chip" data-idclass="${c.value}">${c.label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="ss-ignore-section">
-        <h3>Ignored senders</h3>
-        <div id="ss-ignore-list"></div>
-        <button id="ss-ignore-clear">Clear ignore-list</button>
-      </div>
-    </div>`
+  // The structure lives in filtersheet.js (#564), so the group order and the
+  // words are a value web/parity.test.js can read against the map's panel.
+  sheet.innerHTML = filterSheetMarkup({ types: FILTER_PACKET_TYPES, idClasses: SENDER_ID_CLASSES })
 
   const chk = el('fs-direct-only')
-  const unnamedChk = el('fs-unnamed')
   const sel = el('fs-window')
 
   chk.checked = state.filter.directOnly
-  unnamedChk.checked = state.filter.unnamed
   sel.value = String(state.filter.windowMs)
 
   // Mark each row active when its own value differs from DEFAULT_FILTER,
   // mirroring the existing .fs-chip.active / .ss-manfix-active pattern —
   // the filter-button badge shows *something* differs, these show *what*.
   const syncDirectRow = () => el('fs-row-direct').classList.toggle('active', chk.checked !== DEFAULT_FILTER.directOnly)
-  const syncUnnamedRow = () => el('fs-row-unnamed').classList.toggle('active', unnamedChk.checked !== DEFAULT_FILTER.unnamed)
   const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
-  syncDirectRow(); syncUnnamedRow(); syncWindowRow()
+  syncDirectRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
-  unnamedChk.addEventListener('change', () => { state.filter.unnamed = unnamedChk.checked; syncUnnamedRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
@@ -1433,34 +1458,58 @@ function buildFilterSheet() {
 
   // Chip rows — the "All" chip (default) means no filter on that dimension.
   // Picking a specific chip turns All off; clearing the last specific one turns
-  // All back on. Both rows behave that way, so the rule is written once (#475).
+  // All back on. The rule itself is `nextChipSelection` (#475, shared with the
+  // map since #564): this is only the DOM half of it, so the two surfaces
+  // cannot answer the same press differently.
+  const chipsOf = (hostId) => [...el(hostId).querySelectorAll('.fs-chip')].filter((c) => c.dataset.type !== 'all' && c.dataset.idclass !== 'all')
+  const paintChipRow = (hostId, attr, selected) => {
+    const chips = el(hostId)
+    for (const c of chips.querySelectorAll('.fs-chip')) {
+      const v = c.dataset[attr]
+      c.classList.toggle('active', v === ALL ? selected.size === 0 : selected.has(v))
+    }
+  }
   const wireChipRow = (hostId, attr, apply) => {
     const chips = el(hostId)
     chips.addEventListener('click', (e) => {
       const chip = e.target.closest('.fs-chip')
       if (!chip) return
-      const allChip = chips.querySelector(`.fs-chip[data-${attr}="all"]`)
-
-      if (chip === allChip) {
-        if (allChip.classList.contains('active')) return // already showing all — no-op
-        allChip.classList.add('active')
-        chips.querySelectorAll(`.fs-chip:not([data-${attr}="all"]).active`).forEach(c => c.classList.remove('active'))
-      } else {
-        chip.classList.toggle('active')
-        allChip.classList.remove('active')
-      }
-
-      const selected = [...chips.querySelectorAll('.fs-chip.active')]
-        .map(c => c.dataset[attr])
-        .filter(v => v !== 'all')
-      // nothing specific → fall back to All
-      if (selected.length === 0) allChip.classList.add('active')
-      apply(selected.length === 0 ? null : new Set(selected))
+      const before = new Set([...chips.querySelectorAll('.fs-chip.active')]
+        .map((c) => c.dataset[attr]).filter((v) => v !== ALL))
+      const after = nextChipSelection(before, chip.dataset[attr])
+      paintChipRow(hostId, attr, after)
+      apply(after.size === 0 ? null : after)
       refreshFilterState()
+      syncTypeOverflow()
     })
   }
   wireChipRow('fs-type-chips', 'type', (v) => { state.filter.types = v })
   wireChipRow('fs-idclass-chips', 'idclass', (v) => { state.filter.idClasses = v })
+
+  // "+N more" (#564). Fifteen 44px chips are four rows on a phone and push the
+  // rest of the sheet under the fold — the rule the map has had since #423,
+  // brought here, where every screen is below the breakpoint. The count is
+  // computed rather than measured, so it is right before layout too.
+  const typeValues = FILTER_PACKET_TYPES.map((t) => t.value)
+  function syncTypeOverflow() {
+    const selected = new Set(state.filter.types || [])
+    const hidden = hiddenChipCount(typeValues, selected, CHIP_CAP)
+    const more = el('fs-types-more')
+    const expanded = sheet.classList.contains('fs-types-all')
+    more.hidden = hidden === 0 && !expanded
+    more.textContent = expanded ? 'Show fewer' : `+${hidden} more`
+    const count = el('fs-types-count')
+    count.hidden = selected.size === 0
+    count.textContent = `${selected.size} of ${typeValues.length}`
+  }
+  el('fs-types-more').addEventListener('click', () => {
+    sheet.classList.toggle('fs-types-all')
+    syncTypeOverflow()
+  })
+  syncTypeOverflow()
+  // Every chip past the cap that is not active is hidden by CSS; this marks
+  // which ones those are, since :nth-child would count the All chip too.
+  chipsOf('fs-type-chips').forEach((c, i) => { c.dataset.overflow = i >= CHIP_CAP ? '1' : '' })
 
   renderIgnoreList(el('ss-ignore-list'))
   el('ss-ignore-clear').addEventListener('click', () => {
@@ -1468,6 +1517,25 @@ function buildFilterSheet() {
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
     refreshFilterState()
+    drawOnce()
+  })
+
+  // Clear, which the map has had since #539 and the app had nowhere. Resets
+  // every dimension the count counts, and nothing else: the ignore list has its
+  // own button, because forgetting who you silenced is not "clear the filters".
+  el('fs-clear').addEventListener('click', () => {
+    state.filter.types = null
+    state.filter.idClasses = null
+    state.filter.directOnly = DEFAULT_FILTER.directOnly
+    state.filter.windowMs = DEFAULT_FILTER.windowMs
+    chk.checked = state.filter.directOnly
+    sel.value = String(state.filter.windowMs)
+    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
+    paintChipRow('fs-type-chips', 'type', new Set())
+    paintChipRow('fs-idclass-chips', 'idclass', new Set())
+    syncDirectRow(); syncWindowRow()
+    refreshFilterState()
+    syncTypeOverflow()
     drawOnce()
   })
 
@@ -2520,11 +2588,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.
     onRowActivate: (rec) => { if (state.map) state.map.focusReception(rec) },
-    onClose: () => setTickerVisible(false),
+    onClose: () => setTickerVisible(false, { animate: true }),
+    onCollapse: (level) => setTickerCollapse(level),
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
   el('ticker-btn').addEventListener('click', () => setTickerVisible(true))
-  setTickerVisible(loadTickerVisible())
+  const ticker = loadTickerState()
+  state.tickerCollapse = ticker.collapse
+  state.rxLog.setCollapse(ticker.collapse)
+  setTickerVisible(ticker.visible)
 
   // Build sheets (static HTML injected once)
   buildFilterSheet()

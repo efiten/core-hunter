@@ -23,6 +23,7 @@ import * as webChangelog from './changelog.js'
 import * as appChangelog from '../app/src/changelog.js'
 import { FILTER_PACKET_TYPES as webTypes, packetTypeLabel as webPacketTypeLabel, SENDER_ID_CLASSES as webClasses, senderIdClass as webSenderIdClass } from './packettypes.js'
 import { FILTER_PACKET_TYPES as appTypes, packetTypeLabel as appPacketTypeLabel, SENDER_ID_CLASSES as appClasses, senderIdClass as appSenderIdClass } from '../app/src/filters.js'
+import { FILTER_GROUPS as appFilterGroups, filterSheetMarkup as appFilterSheetMarkup, groupHeadings as appGroupHeadings } from '../app/src/filtersheet.js'
 import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
 import { initialSettingsTab as webInitialTab } from './settingssheet.js'
@@ -478,6 +479,28 @@ function tickerBlock(rawCss) {
   return css.slice(start, end)
 }
 
+// Every declaration of the rule whose selector is exactly `selector`, as a map,
+// so two surfaces can be compared whole rather than property by property. Exact
+// match on purpose: `.rx-hd` must not be answered by `#rx-log.rx-empty .rx-hd`.
+const declBlock = (block, selector) => {
+  for (const chunk of block.split('}')) {
+    const i = chunk.indexOf('{')
+    if (i < 0) continue
+    const sel = chunk.slice(0, i).replace(/\/\*[\s\S]*?\*\//g, '').trim().split('\n').pop().trim()
+    if (sel !== selector) continue
+    const out = {}
+    for (const d of chunk.slice(i + 1).split(';')) {
+      const c = d.indexOf(':')
+      if (c < 0) continue
+      const k = d.slice(0, c).replace(/\/\*[\s\S]*?\*\//g, '').trim()
+      if (!k || k.startsWith('/*')) continue
+      out[k] = d.slice(c + 1).replace(/\/\*[\s\S]*?\*\//g, '').trim()
+    }
+    return out
+  }
+  return null
+}
+
 const decl = (block, selector, prop) => {
   const rule = new RegExp('(^|\\})[^{}]*\\' + selector + '\\b[^{}]*\\{([^}]*)\\}', 'm').exec(block)
   if (!rule) return null
@@ -499,16 +522,54 @@ describe('receptions ticker CSS parity (#322)', () => {
   // a pattern anchored on the *previous* rule's '}' consumes that brace, so two
   // adjacent :root rules (which is exactly how style.css declares --ch-bar-h and
   // this one) only ever yield the first.
-  const rootDecl = (rawCss) => {
+  const rootDecl = (rawCss, name = '--ch-rx-line-h') => {
     for (const chunk of stripComments(rawCss).split('}')) {
       const i = chunk.indexOf('{')
       if (i < 0) continue
       const head = chunk.slice(0, i)
-      const m = /--ch-rx-line-h:\s*([^;]+);/.exec(chunk.slice(i + 1))
+      const m = new RegExp(`${name}:\\s*([^;]+);`).exec(chunk.slice(i + 1))
       if (m && /(^|,)\s*(:root|html)\b/.test(head)) return m[1].trim()
     }
     return null
   }
+
+  // The plate the ticker floats on (#424). It was declared in the app's tokens
+  // by #539 and nowhere on the map, so the map's card resolved to
+  // rgba(0,0,0,0): a border and a blur with nothing behind them. Measured in
+  // the browser, not spotted by reading.
+  // The two tickers are meant to be one design (#424), and up to now only the
+  // behaviour was guarded: the map kept a header with no height and no rule
+  // under it, rows flush to the plate's edge, and a text glyph where the app
+  // has a drawn button. None of that is visible to a test that only checks
+  // lane counts, so it drifted until someone looked at the two side by side.
+  // This pins the chrome itself. What is deliberately per-surface is #rx-log's
+  // own box, which is placed and draggable on the map and centred in the app.
+  it('draws the same card on both surfaces', () => {
+    const decls = (block, selector) => {
+      const found = declBlock(block, selector)
+      expect(found, `${selector} exists`).toBeTruthy()
+      return found
+    }
+    for (const selector of ['.rx-hd', '.rx-list', '.rx-ln', '.rx-tm', '.rx-rs', '.rx-gt']) {
+      expect(decls(web, selector), selector).toEqual(decls(app, selector))
+    }
+    // The fold button's box, which the app declares alongside its close button.
+    for (const prop of ['width', 'height', 'display', 'align-items', 'justify-content']) {
+      expect(decl(web, '.rx-fold', prop), `.rx-fold ${prop}`).toBe(decl(app, '.rx-close, .rx-fold', prop))
+    }
+    // And it is a drawn chevron on both, not a glyph on one of them.
+    expect(WEB_CSS).not.toMatch(/\.rx-fold(\[[^\]]*\])?::before\s*\{\s*content/)
+    expect(declBlock(WEB_CSS, '.rx-fold[data-dir="up"] svg'), 'the map rotates the drawn chevron')
+      .toEqual(declBlock(APP_CSS, '.rx-fold[data-dir="up"] svg'))
+  })
+
+  it('declares the ticker plate on both surfaces, with the same values', () => {
+    const thin = (css) => [...css.matchAll(/--ch-surface-thin\s*:\s*([^;]+);/g)].map((m) => m[1].replace(/\s+/g, ''))
+    const appThin = thin(APP_TOKENS)
+    const webThin = thin(WEB_CSS)
+    expect(appThin.length, 'app declares it for both themes').toBe(2)
+    expect(webThin, 'map matches the app, dark and light').toEqual(appThin)
+  })
 
   it('declares the row height where the modules actually read it', () => {
     const appVar = rootDecl(APP_TOKENS)
@@ -529,15 +590,85 @@ describe('receptions ticker CSS parity (#322)', () => {
     expect(appTicker.rxLineHeight(appVar)).toBe(webTicker.rxLineHeight(webVar))
   })
 
+  // The other half of the card's geometry. map.js adds the two to work out
+  // whether there is room for a full card, at a moment when the card does not
+  // exist yet, so a surface that fails to declare this does not lay out wrong:
+  // it computes NaN and decides nothing. --ch-surface-thin was the same shape
+  // of miss and took a browser to find.
+  it('declares the header height on both surfaces, with the same value', () => {
+    const appVar = rootDecl(APP_TOKENS, '--ch-rx-head-h')
+    const webVar = rootDecl(WEB_CSS, '--ch-rx-head-h')
+    expect(appVar, 'tokens.css must declare --ch-rx-head-h on :root').not.toBeNull()
+    expect(webVar, 'style.css must declare --ch-rx-head-h on :root').not.toBeNull()
+    expect(appVar).toBe(webVar)
+    // And the header must take its height from it rather than restating 36px,
+    // or the token is decorative and the computed card is wrong.
+    // declBlock, not decl: `#rx-log.rx-empty .rx-hd` comes first in the map's
+    // block and has no height, and decl() answers with the first rule that
+    // mentions the class.
+    for (const [css, name] of [[web, 'map'], [app, 'app']]) {
+      expect(declBlock(css, '.rx-hd').height, `${name} .rx-hd height`).toBe('var(--ch-rx-head-h)')
+    }
+  })
+
   it('derives the list geometry from the variable rather than restating it', () => {
+    // The invariant is the pitch: both surfaces multiply the row-height
+    // variable instead of baking a pixel number, so changing the row height
+    // moves the whole card. What differs since #560 is where the multiplier
+    // comes from. The map still writes the full-card literals; the app
+    // publishes a lane count per render, because its card is one lane, three
+    // or full. #424 brings the map onto the same model, and the assertions
+    // below keep the two agreeing on the full card in the meantime.
+    const fromLinePitch = (v) => /var\(--ch-rx-line-h\)/.test(v) && !/\d+px/.test(v)
     for (const [name, block] of [['app', app], ['web', web]]) {
       const height = decl(block, '.rx-list', 'height')
       const padTop = decl(block, '.rx-list', 'scroll-padding-top')
-      expect(height, name + ': .rx-list height').toMatch(/calc\(\s*10\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
-      expect(padTop, name + ': .rx-list scroll-padding-top').toMatch(/calc\(\s*6\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+      expect(fromLinePitch(height), name + ': .rx-list height is a multiple of the row pitch').toBe(true)
+      expect(fromLinePitch(padTop), name + ': .rx-list scroll-padding-top is a multiple of the row pitch').toBe(true)
       // 6 lanes above the playhead and 3 below is what rxFade's divisors
       // encode; the padding is the same geometry expressed in CSS.
       expect(decl(block, '.rx-ln', 'height')).toBe('var(--ch-rx-line-h)')
+    }
+    // Both surfaces publish the same lane counts from their own module now
+    // (#560, #424), with the same fallbacks in the CSS for the render before
+    // the first rebuild.
+    for (const [name, block] of [['app', app], ['web', web]]) {
+      expect(decl(block, '.rx-list', 'height'), name).toMatch(/var\(--rx-lanes,\s*10\)/)
+      expect(decl(block, '.rx-list', 'scroll-padding-top'), name).toMatch(/var\(--rx-playhead,\s*6\)/)
+      expect(decl(block, '.rx-list', 'padding'), name + ': nothing under the last row')
+        .toMatch(/var\(--rx-pad-bottom,\s*0\)/)
+    }
+  })
+
+  // #424 brought the map onto #560's model, so the geometry is no longer a
+  // difference to pin but an agreement to hold. Compared by running both
+  // copies rather than by reading their constants: two modules that happen to
+  // declare the same numbers can still disagree on what they do with them.
+  it('sizes the card identically on both surfaces', () => {
+    for (let count = 0; count <= 60; count++) {
+      expect(webTicker.rxLanes(count, 0), `${count} receptions`).toBe(appTicker.rxLanes(count, 0))
+    }
+    for (const lanes of [0, 1, 3, 5, 10]) {
+      expect(webTicker.rxPlayhead(lanes), `${lanes} lanes`).toBe(appTicker.rxPlayhead(lanes))
+      expect(webTicker.rxBelow(lanes), `${lanes} lanes`).toBe(appTicker.rxBelow(lanes))
+      expect(webTicker.rxPadBottom(lanes), `${lanes} lanes`).toBe(appTicker.rxPadBottom(lanes))
+    }
+    expect(webTicker.RX_FULL_LANES).toBe(appTicker.RX_FULL_LANES)
+    expect(webTicker.RX_FADE_FLOOR).toBe(appTicker.RX_FADE_FLOOR)
+    for (const [above, below] of [[6, 3], [3, 1], [1, 1]]) {
+      for (let d = -above; d <= below; d++) {
+        expect(webTicker.rxFade(d, above, below), `d=${d}`).toBeCloseTo(appTicker.rxFade(d, above, below), 10)
+      }
+    }
+  })
+
+  // The stops are the same set on both surfaces, and putting the ticker away is
+  // the cross on both. The map used to fold to its header instead, because it
+  // had no button in the bar to come back from; it has one now (#424).
+  it('offers the same collapse stops on both surfaces', () => {
+    expect(webTicker.RX_COLLAPSE_STOPS).toEqual(appTicker.RX_COLLAPSE_STOPS)
+    for (let count = 0; count <= 60; count++) {
+      expect(webTicker.collapseLevels(count), `${count} receptions`).toEqual(appTicker.collapseLevels(count))
     }
   })
 
@@ -809,5 +940,64 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
       expect(webInitialTab(input)).toBe('settings')
       expect(appInitialTab(input)).toBe('status')
     }
+  })
+})
+
+// chiprow.js and barfilters.js are byte-identical copies (#564), not merely
+// equivalent ones: the rule for what a chip row does and the count of narrowed
+// dimensions have to be one thing, or the two panels start answering the same
+// question differently — which is what this issue was filed about.
+//
+// A byte comparison rather than a behaviour comparison, because these are small
+// enough for it and because it catches the case a behaviour test cannot: a
+// comment on one side explaining a rule the other side no longer follows.
+describe('the filter modules are one file on both surfaces (#564)', () => {
+  for (const name of ['chiprow.js', 'barfilters.js']) {
+    it(`${name} is identical in app/src`, () => {
+      const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
+      const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
+      expect(app, `app/src/${name} has drifted from web/${name}`).toBe(web)
+    })
+  }
+})
+
+// The two filter panels hold the same groups in the same order (#564). Before
+// this the app opened with two checkboxes and reached the chips third while the
+// map opened with the chips and reached the checkboxes third, and one said
+// "Types" where the other said "Traffic types".
+//
+// The map adds Overlays and View after the shared five, and Hunters and Time
+// carry the controls the bar hands over below 640px (#561). Those are the
+// deliberate difference: analysis is map-only, because the map is the superset.
+describe('the filter panels are one panel (#564)', () => {
+  const MAP_ONLY = ['Overlays', 'View', 'Hunters']
+
+  const mapGroups = () => {
+    const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
+    const panel = html.slice(html.indexOf('id="bar-filters"'), html.indexOf('class="bf-foot"'))
+    return [...panel.matchAll(/<div class="bf-group-head"[^>]*>([\s\S]*?)<\/div>/g)]
+      .map((m) => m[1].replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '').replace(/<[^>]+>/g, '').trim())
+  }
+
+  it('names the same groups in the same order', () => {
+    const shared = mapGroups().filter((g) => !MAP_ONLY.includes(g))
+    expect(shared, 'the map, minus what is map-only').toEqual(appFilterGroups)
+  })
+
+  it('agrees with the markup each surface actually renders', () => {
+    // Not just the two lists: the app's list is checked against its own markup
+    // in app/src/__tests__/filtersheet.test.js, and the map's comes from
+    // index.html above, so neither can claim an order it does not render.
+    expect(appGroupHeadings(appFilterSheetMarkup({ types: appTypes, idClasses: appClasses })))
+      .toEqual(appFilterGroups)
+  })
+
+  it('keeps Overlays and View after the shared groups, not among them', () => {
+    const groups = mapGroups()
+    const lastShared = Math.max(...groups.map((g, i) => (MAP_ONLY.includes(g) ? -1 : i)))
+    for (const name of ['Overlays', 'View']) {
+      expect(groups.indexOf(name), `${name} comes after the shared groups`).toBeGreaterThan(lastShared - 1)
+    }
+    expect(groups.indexOf('Overlays')).toBeGreaterThan(groups.indexOf('Ignored senders'))
   })
 })

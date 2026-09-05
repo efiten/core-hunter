@@ -4,8 +4,15 @@ import { test, expect } from './fixtures.js'
 // the content, colliding with Leaflet's zoom control, with no way to put it
 // away. It is now a placed box the user drags, and it folds.
 
-const RX = [{ lat: 51, lon: 4, rssi: -70, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
-  sender_label: 'NODE-1', hunter_name: 'H', packet_type: 'Advert', rx_at: '2026-08-24T10:00:00Z' }]
+// Twelve, not one: since #424 the card's height follows how much it holds, so
+// a single reception is a one-lane card with only the header-alone stop left
+// to reach. Twelve is past the last step, which is what makes every stop
+// reachable and the placement measurements stable.
+const RX = Array.from({ length: 12 }, (_, i) => ({
+  lat: 51, lon: 4, rssi: -70 - i, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
+  sender_label: 'NODE-' + i, hunter_name: 'H', packet_type: 'Advert',
+  rx_at: new Date(Date.parse('2026-08-24T10:00:00Z') + i * 1000).toISOString(),
+}))
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -108,7 +115,13 @@ test('a shorter window pulls the ticker back into view', async ({ page }) => {
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
 })
 
-test('folds away and back from one control, and the fold persists', async ({ page }) => {
+// One control, several stops since #424: full, three lanes, one, then the
+// header alone. How many of those exist depends on how much traffic the ticker
+// is holding, because a stop that would not make the card smaller is skipped
+// (it would swallow a click). So the test walks the cycle rather than assuming
+// its length: every click shrinks the card or hides the list, and one more
+// after that is back to where it started.
+test('shrinks a step at a time, and the cross puts it away', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   const list = page.locator('#rx-list')
@@ -116,21 +129,79 @@ test('folds away and back from one control, and the fold persists', async ({ pag
   await expect(list).toBeVisible()
   await expect(fold).toHaveAttribute('aria-expanded', 'true')
 
-  await fold.click()
-  await expect(list).toBeHidden()
-  await expect(fold).toHaveAttribute('aria-expanded', 'false')
-  // The header stays: it is how you get the list back.
-  await expect(page.locator('.rx-hd')).toBeVisible()
+  const height = () => page.evaluate(() => document.getElementById('rx-list').getBoundingClientRect().height)
+  const full = await height()
+  expect(full).toBeGreaterThan(0)
 
-  await page.reload()
-  await expect(page.locator('#rx-list')).toBeHidden()
+  // How many stops exist depends on how much the ticker holds, because one
+  // that would not make the card smaller is skipped rather than swallowing a
+  // click. So walk it rather than assuming a length.
+  let previous = full
+  let clicks = 0
+  while (clicks < 2) {
+    await fold.click()
+    clicks++
+    const now = await height()
+    expect(now, `click ${clicks} made the card smaller`).toBeLessThan(previous)
+    previous = now
+  }
+  // Never to nothing: putting it away is the cross, not a further stop.
+  expect(previous).toBeGreaterThan(0)
+  await expect(fold).toHaveAttribute('aria-expanded', 'false')
+
+  // One more is back to full.
+  await fold.click()
+  expect(await height()).toBe(full)
 })
 
-test('starts folded on a phone, where the band is what covers the map', async ({ page }) => {
+test('the cross puts the ticker away, and the bar brings it back', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const card = page.locator('#rx-log')
+  const barBtn = page.locator('#ticker-btn')
+  await expect(card).toBeVisible()
+  await expect(barBtn).toBeHidden()
+
+  await page.locator('.rx-close').click()
+  await expect(card).toBeHidden()
+  await expect(barBtn).toBeVisible()
+
+  // And it stays away across a reload, like every other view setting.
+  await page.reload()
+  await expect(page.locator('#rx-log')).toBeHidden()
+  await expect(page.locator('#ticker-btn')).toBeVisible()
+
+  await page.locator('#ticker-btn').click()
+  await expect(page.locator('#rx-log')).toBeVisible()
+  await expect(page.locator('#ticker-btn')).toBeHidden()
+})
+
+test('starts at its smallest on a phone, where the card is what covers the map', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await expect(page.locator('#rx-list')).toBeHidden()
-  await expect(page.locator('.rx-hd')).toBeVisible()
+  // Small, not away: a ticker nobody can see is a different thing from a
+  // one-line one, and the point of the per-surface default is only that it
+  // should not cover the map.
+  await expect(page.locator('#rx-log')).toBeVisible()
+  const h = await page.evaluate(() => document.getElementById('rx-list').getBoundingClientRect().height)
+  const line = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-rx-line-h')))
+  expect(Math.round(h / line)).toBe(1)
+})
+
+// The same phone, held sideways. 844px is wider than every phone breakpoint, so
+// a width test calls this a desktop and opens the card at ten lanes -- measured
+// at 844x390 before this: 298px of card over 309px of map, 110% of it, hanging
+// past the bottom edge. The rule is the space left under the bar, not the width.
+test('starts at its smallest on a phone held sideways, which no width test catches', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 })
+  await page.goto('/')
+  await expect(page.locator('#rx-log')).toBeVisible()
+  const m = await page.evaluate(() => {
+    const bar = document.getElementById('bar').getBoundingClientRect()
+    const rx = document.getElementById('rx-log').getBoundingClientRect()
+    return { space: innerHeight - bar.bottom, card: rx.height }
+  })
+  expect(m.card, 'the card leaves most of the map').toBeLessThan(m.space / 2)
 })
 
 // #322 made the band frameless on purpose and #287/#322 keep pointer-events off
@@ -169,4 +240,71 @@ test('the frame is invisible at rest and never covers the map', async ({ page })
     expect(s.outsideTop, 'a drag strip reaches above the band, over the map').toBe(false)
     expect(s.outsideRight, 'a drag strip reaches right of the band, over the map').toBe(false)
   }
+})
+
+// Dragging is a wide-screen affordance (#561). The card is full-bleed below
+// 640px, so every position is the same band at a different height -- there is
+// no "out of the way" to drag it to. Shrinking and dismissing are what move it
+// aside there, which is what the app does at every width.
+test.describe('in mobile view', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })
+
+  test('the ticker does not drag', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#rx-log')).toBeVisible()
+    // No frame to grab, and nothing invisible left behind that would take a
+    // press and do nothing. Measured as a box rather than as a computed
+    // `display`: the strips are children of `.rx-grab`, and a descendant of a
+    // display:none element still reports its own value.
+    const boxes = await page.locator('#rx-log .rx-grab-t, #rx-log .rx-grab-l')
+      .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width * e.getBoundingClientRect().height))
+    expect(boxes.length, 'the strips are in the markup').toBeGreaterThan(0)
+    expect(boxes.every((a) => a === 0), `strip areas: ${boxes}`).toBe(true)
+
+    const before = await page.locator('#rx-log').boundingBox()
+    const hd = await page.locator('#rx-log .rx-hd').boundingBox()
+    await page.mouse.move(hd.x + 40, hd.y + hd.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(hd.x + 40, hd.y + hd.height / 2 + 200, { steps: 8 })
+    await page.mouse.up()
+    const after = await page.locator('#rx-log').boundingBox()
+    expect(after.y, 'the card stayed put').toBe(before.y)
+  })
+
+  // The strips being hidden is the mechanism; map.js refusing the drag at this
+  // width is the belt to that pair of braces. Tested by forcing the frame back
+  // on, because a guard nothing exercises is a guard that quietly stops working
+  // -- this one survived its first mutation for exactly that reason.
+  test('and would not drag even if the frame were reachable', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#rx-log')).toBeVisible()
+    await page.addStyleTag({ content: '.rx-grab { display: block !important }' })
+    const strip = page.locator('#rx-log .rx-grab-t')
+    await expect(strip).toBeVisible()
+
+    const before = await page.locator('#rx-log').boundingBox()
+    const box = await strip.boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + 200, { steps: 8 })
+    await page.mouse.up()
+    expect((await page.locator('#rx-log').boundingBox()).y, 'the card stayed put').toBe(before.y)
+  })
+
+  test('it still gets out of the way, by its stops and by closing', async ({ page }) => {
+    await page.goto('/')
+    const card = page.locator('#rx-log')
+    await expect(card).toBeVisible()
+    // A phone opens at the smallest stop already (#424), so the chevron's first
+    // press grows it. What matters is that the control moves the card at all --
+    // that is the affordance dragging no longer has to provide here.
+    const before = (await card.boundingBox()).height
+    await page.locator('#rx-log .rx-fold').click()
+    await expect.poll(async () => (await card.boundingBox()).height, { timeout: 5000 })
+      .not.toBe(before)
+
+    await page.locator('#rx-log .rx-close').click()
+    await expect(card).toBeHidden()
+    await expect(page.locator('#ticker-btn')).toBeVisible()
+  })
 })

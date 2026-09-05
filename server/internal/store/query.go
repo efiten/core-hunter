@@ -33,13 +33,6 @@ type Filter struct {
 	// so there is no id to type into the sender box -- but every copy of one
 	// message still hashes alike. Empty = no filter.
 	Message string
-	// NoSender keeps only receptions nothing could be attributed to. That is
-	// not an error state: since #455 an unattributable reception is still a
-	// real measurement, and a flood sent with 1-byte path hashes produces
-	// nothing else -- 2,756 of the 3,078 receptions on the 2026-08-24 hunt had
-	// an empty sender, which is precisely the set the hunter wanted and had no
-	// way to ask for.
-	NoSender bool
 	// OriginOnly keeps, per message, only the copies that reached us with the
 	// FEWEST path hashes, and drops messages heard only once.
 	//
@@ -61,7 +54,11 @@ type Filter struct {
 	// The class is the byte length of sender_id, which reads directly as how far
 	// the sender can be identified: one byte is 1 in 256, a pubkey is unique.
 	// It is the axis that isolates a flood now that those receptions carry a
-	// byte instead of nothing (#521) and so no longer answer to NoSender.
+	// byte instead of nothing (#521). Its unnamed bucket is everything nothing
+	// could be attributed to -- not an error state: since #455 an
+	// unattributable reception is still a real measurement, and 2,756 of the
+	// 3,078 receptions on the 2026-08-24 hunt were one. A separate NoSender
+	// flag selected the same rows and went in #535.
 	SenderClasses []string
 	Limit         int
 	Offset        int
@@ -110,9 +107,6 @@ func (f Filter) where() (string, []any) {
 	if f.To != "" {
 		conds = append(conds, "rx_at <= ?")
 		args = append(args, f.To)
-	}
-	if f.NoSender {
-		conds = append(conds, "(sender_id IS NULL OR sender_id = '')")
 	}
 	// Sender-id classes (#475). Mirrors senderIdClass() in app/src/filters.js
 	// and web/packettypes.js -- the bucket is the byte length of sender_id, and
