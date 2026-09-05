@@ -311,6 +311,16 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   width: 100%; padding: 0; border: none; background: none; text-align: left;
   font-family: inherit; cursor: pointer; }
 .ss-link-title { display: block; color: var(--ch-accent-2); font-size: 14px; font-weight: 600; }
+/* External links (#536). A link that leaves the app opens, on Android, in a
+   tab painted in the app's own colour, so nothing said you were leaving. The
+   About and What's new links carry the standard marker: the arrow after the
+   label, and, in the same declaration, the alt text a screen reader gets
+   instead of the glyph. The plain content line first, so a browser without
+   the alt syntax (Bluefy's WebKit) still draws the arrow. One rule, keyed on
+   target="_blank", so a link added later is marked without being touched;
+   web/parity.test.js pins it identical on both surfaces. */
+.ss-about-links a[target="_blank"] .ss-link-title::after, .wn-feedback[target="_blank"]::after, .wn-more[target="_blank"]::after {
+  content: " \2197"; content: " \2197" / "opens outside the app"; font-size: 0.85em; opacity: 0.8; }
 .ss-link-desc { display: block; color: var(--ch-muted); font-size: 12.5px; line-height: 1.45; margin-top: 2px; }
 .ss-about-disclaimer { font-size: 12px; line-height: 1.5; color: var(--ch-muted);
   border-top: 1px solid var(--ch-border); padding-top: 12px; margin: 0; }

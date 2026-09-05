@@ -811,3 +811,46 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
     }
   })
 })
+
+// #536: a link that leaves the app opens, on Android, in a tab painted in the
+// app's own colour, so nothing said you were leaving. The About and What's
+// new links carry the external marker from one CSS rule per stylesheet, keyed
+// on target="_blank", with the alt text a screen reader gets instead of the
+// glyph. Two things keep it honest: the rule is the same on both surfaces,
+// and every off-origin link in those panels carries the attribute the rule
+// keys on.
+describe('external links in About and What\'s new (#536)', () => {
+  const SELECTOR = '.ss-about-links a[target="_blank"] .ss-link-title::after, .wn-feedback[target="_blank"]::after, .wn-more[target="_blank"]::after'
+  const ruleBody = (css) => {
+    const at = stripComments(css).indexOf(SELECTOR)
+    if (at === -1) return null
+    const open = stripComments(css).indexOf('{', at)
+    return stripComments(css).slice(open + 1, stripComments(css).indexOf('}', open)).replace(/\s+/g, ' ').trim()
+  }
+  it('marks them with the same rule on both surfaces, arrow and alt text', () => {
+    const app = ruleBody(APP_CSS)
+    const web = ruleBody(WEB_CSS)
+    expect(app, 'app rule').toBeTruthy()
+    expect(web).toEqual(app)
+    expect(app).toMatch(/2197/)
+    expect(app).toMatch(/opens outside the app/)
+  })
+  it('gives every off-origin About link the attribute the rule keys on', () => {
+    const appJs = readFileSync(new URL('../app/src/app.js', import.meta.url), 'utf8')
+    const webHtml = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
+    const nav = (src) => { const at = src.indexOf('class="ss-about-links"'); return src.slice(at, src.indexOf('</nav>', at)) }
+    for (const [name, src] of [['app', nav(appJs)], ['map', nav(webHtml)]]) {
+      const anchors = [...src.matchAll(/<a\s[^>]*href="https?:\/\/[^"]+"[^>]*>/g)].map((m) => m[0])
+      expect(anchors.length, name + ' has external About links').toBeGreaterThan(0)
+      for (const a of anchors) expect(a, name + ': ' + a).toMatch(/target="_blank"/)
+    }
+  })
+  it('builds the What\'s new links with the attribute on both surfaces', () => {
+    const appJs = readFileSync(new URL('../app/src/app.js', import.meta.url), 'utf8')
+    const webJs = readFileSync(new URL('./whatsnew.js', import.meta.url), 'utf8')
+    for (const [name, src] of [['app', appJs], ['map', webJs]]) {
+      const built = [...src.matchAll(/className = '(wn-feedback|wn-more)'[\s\S]{0,160}?\.target = '_blank'/g)]
+      expect(built.length, name + ' builds its What\'s new links with target=_blank').toBeGreaterThanOrEqual(2)
+    }
+  })
+})
