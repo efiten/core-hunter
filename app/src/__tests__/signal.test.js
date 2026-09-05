@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM , tintOver, pillarTint, EXTRUSION_LIGHT_INTENSITY } from '../signal.js'
 
 describe('thermal signal tiers (hot = strong)', () => {
   it('maps SNR to tiers', () => {
@@ -151,5 +151,32 @@ describe('withAlpha — pillars carry fade in the colour (#302)', () => {
   })
   it('tolerates whitespace around the token, as getPropertyValue returns it', () => {
     expect(withAlpha('  #ff453a  ', 0.25)).toBe('rgba(255,69,58,0.25)')
+  })
+})
+
+// #412: a flat cell is the tier colour at the tier's opacity over the
+// basemap, so a faint cell is a pale tint. The 3D bar drew the token colour
+// opaque, at one layer opacity for every tier, so a faint bar stood as a
+// solid purple on a pale patch: worse the weaker the signal. The bar now
+// draws the tint pre-mixed over the theme background, opaque, so shared walls
+// keep depth-testing (no translucent compounding, #402) and the bar reads as
+// its cell. Measured in the browser: bar within 2-4% of its cell at every
+// tier once the style light sits at EXTRUSION_LIGHT_INTENSITY.
+describe('tintOver and pillarTint', () => {
+  it('mixes the colour over the background by the alpha, in the channel maths the flat layer gets from the GPU', () => {
+    expect(tintOver('#ff453a', '#0b0e14', 0.7)).toBe('#b6352f')
+    expect(tintOver('#9b6bff', '#0b0e14', 0.19)).toBe('#262041')
+    expect(tintOver('#9b6bff', '#0b0e14', 1)).toBe('#9b6bff')
+    expect(tintOver('#9b6bff', '#0b0e14', 0)).toBe('#0b0e14')
+  })
+  it('gives a bar the same tint its cell has: the tier opacity, over the background', () => {
+    expect(pillarTint('faint', '#9b6bff', '#0b0e14')).toBe(tintOver('#9b6bff', '#0b0e14', fillOpacity('faint')))
+    expect(pillarTint('hot', '#ff453a', '#0b0e14')).toBe(tintOver('#ff453a', '#0b0e14', fillOpacity('hot')))
+  })
+  it('keeps the style light low enough that shading cannot pass for a lower tier', () => {
+    // Measured 2026-09-05 (dark theme, hot bar against its cell): 7% darker
+    // at MapLibre's default 0.5, 2% at 0.15, and buildings still shade.
+    expect(EXTRUSION_LIGHT_INTENSITY).toBeLessThanOrEqual(0.2)
+    expect(EXTRUSION_LIGHT_INTENSITY).toBeGreaterThan(0)
   })
 })
