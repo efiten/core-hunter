@@ -189,3 +189,28 @@ describe('the RX webapp leads', () => {
     expect(hero).toMatch(/companion/i)
   })
 })
+
+// #383: the map and the app link the FAQ, and a link to one answer is worth
+// more than a link to the page top. So every question carries an id, and the
+// one the apps most need to point at, "what does auto-discover transmit", is
+// on the page and says the one thing the reader came to check: zero-hop.
+describe('faq anchors', () => {
+  const html = read('faq.html')
+  const list = html.slice(html.indexOf('class="faq-list"'), html.indexOf('</section>', html.indexOf('class="faq-list"')))
+  const questions = [...list.matchAll(/<details([^>]*)>/g)].map((m) => m[1])
+
+  it('gives every question a stable id', () => {
+    expect(questions.length).toBeGreaterThan(5)
+    const ids = questions.map((attrs) => attrs.match(/\bid="([a-z0-9-]+)"/)?.[1])
+    for (const [i, id] of ids.entries()) expect(id, `question ${i + 1} has no id`).toBeTruthy()
+    expect(new Set(ids).size, 'ids must be unique').toBe(ids.length)
+  })
+
+  it('answers what auto-discover transmits, and that it is zero-hop', () => {
+    const at = html.indexOf('id="auto-discover"')
+    expect(at, 'no #auto-discover question').toBeGreaterThan(-1)
+    const answer = html.slice(at, html.indexOf('</details>', at))
+    expect(answer).toMatch(/zero-hop/)
+    expect(answer).toMatch(/Discover/)
+  })
+})
