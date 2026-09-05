@@ -7,6 +7,13 @@
     "body": "Same basemap and colours as the RX webapp, smoother with many points. Shared links keep their zoom."
   },
   {
+    "id": "2026-09-05-3d-bars-match-their-cell",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "3D bars now show the same colour as their cell",
+    "body": "A weak signal was a solid dark bar on a pale cell. The bar is painted the cell's tint, and the map's light no longer darkens it."
+  },
+  {
     "id": "2026-09-05-terrain",
     "date": "2026-09-05",
     "where": "app",
