@@ -549,7 +549,7 @@ describe('receptions ticker CSS parity (#322)', () => {
       expect(found, `${selector} exists`).toBeTruthy()
       return found
     }
-    for (const selector of ['.rx-hd', '.rx-list', '.rx-ln', '.rx-tm', '.rx-rs', '.rx-gt']) {
+    for (const selector of ['.rx-hd', '.rx-list', '.rx-ln', '.rx-tm', '.rx-rs', '.rx-gt', '.rx-id']) {
       expect(decls(web, selector), selector).toEqual(decls(app, selector))
     }
     // The fold button's box, which the app declares alongside its close button.
