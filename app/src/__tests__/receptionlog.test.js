@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, lineMeta } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -153,5 +153,24 @@ describe('rxLineHeight — row height parsed from the CSS variable', () => {
     expect(rxLineHeight('inherit')).toBe(26)
     expect(rxLineHeight('0px')).toBe(26)
     expect(rxLineHeight('-4px')).toBe(26)
+  })
+})
+
+// #451: a line showed a name OR an id, never both, so the id a name was
+// resolved from vanished the moment it resolved and a mis-resolution (#452)
+// had nothing on screen to check it against. The id gets its own column, cut
+// with idPrefix like every other surface; a line without a name keeps the id
+// in the name cell and the column empty, so the prefix never appears twice.
+describe('senderCell — the id stays beside the name it resolved to', () => {
+  it('puts the prefix in the id column once a name has resolved', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: 'repeater-3' })).toEqual({ id: 'a1b2f3', name: 'repeater-3' })
+  })
+  it('leaves the column empty while the id is the name', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: '' })).toEqual({ id: '', name: 'a1b2f3c4d5e6' })
+    expect(senderCell({ sender_kind: 'relay', sender_id: null, sender_label: null })).toEqual({ id: '', name: '—' })
+  })
+  it('gives a hash id no column: the # in the name cell is all it is', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
+    expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
   })
 })

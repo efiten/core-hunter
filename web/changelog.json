@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-ticker-name-and-id",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "The receptions ticker shows the id next to a resolved name",
+    "body": "Six characters in their own column, so you can see which node a name came from. A line without a name is unchanged."
+  },
+  {
     "id": "2026-08-31-map-ticker-card",
     "date": "2026-08-31",
     "where": "map",

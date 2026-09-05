@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels } from './receptionticker.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels, senderCell } from './receptionticker.js'
 
 // rxView/rxActiveIndex/rxFade are ported verbatim from app/src/receptionlog.js
 // (#238 explicitly excludes this file from the shared-core extraction, since
@@ -264,5 +264,20 @@ describe('the map\'s collapse stops', () => {
     expect(collapseLevels(1)).toEqual([0])
     expect(collapseLevels(3)).toEqual([0, 2])
     expect(collapseLevels(50)).toEqual([0, 1, 2])
+  })
+})
+
+// #451, the map's copy of the app's rule: the id stays beside the name it
+// resolved to, in its own column, and appears once on a line without a name.
+describe('senderCell — the id stays beside the name it resolved to', () => {
+  it('puts the prefix in the id column once a name has resolved', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: 'repeater-3' })).toEqual({ id: 'a1b2f3', name: 'repeater-3' })
+  })
+  it('leaves the column empty while the id is the name', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: '' })).toEqual({ id: '', name: 'a1b2f3c4d5e6' })
+    expect(senderCell({ sender_kind: 'relay', sender_id: '', sender_label: '' })).toEqual({ id: '', name: '—' })
+  })
+  it('gives a hash id no column', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
   })
 })

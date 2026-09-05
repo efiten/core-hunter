@@ -1,4 +1,4 @@
-import { relTime } from './feed.js'
+import { relTime, idPrefix } from './feed.js'
 import { rssiTier, tierColorVar } from './signal.js'
 import { packetTypeLabel } from './filters.js'
 import { isHashIdKind } from './names.js'
@@ -243,6 +243,19 @@ export function senderText(r) {
   return r.sender_label || r.sender_id || '—'
 }
 
+// senderCell splits the sender into the id column and the name cell (#451).
+// A line used to show a name OR an id, so the id a name resolved from was
+// gone the moment it resolved, and a mis-resolution (#452) had nothing on
+// screen to check against. Once a name has resolved the id stands beside it,
+// cut with idPrefix like the target list and the HUD; a line without a name
+// keeps the id in the name cell and the column empty, so a prefix is never
+// printed twice, and a hash id is its # mark and nothing else.
+export function senderCell(r) {
+  const name = senderText(r)
+  const resolved = !isHashIdKind(r.sender_kind) && !!r.sender_label && !!r.sender_id
+  return { id: resolved ? idPrefix(r.sender_id) : '', name }
+}
+
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { render() {}, focusRecord() {} }
@@ -322,11 +335,13 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
       // is outside the current filter so the map draws nothing for it — it
       // says nothing about whether the sender is identified.
       const nm = mode === 'all' && !filteredIds.has(r.id) ? ' <span class="rx-nm" title="Outside your current filter, so it has no marker on the map.">outside filter</span>' : ''
+      const cell = senderCell(r)
       h += '<div class="rx-ln" data-idx="' + i + '" data-id="' + esc(r.id) + '">'
         + '<span class="rx-gt"></span>'
         + '<span class="rx-tm">' + esc(relTime(r.rx_at, nowMs)) + '</span>'
         + '<span class="rx-rs" style="color:' + color + '">' + esc(r.rssi ?? '—') + '</span>'
-        + '<span class="rx-sn">' + esc(senderText(r)) + ' '
+        + '<span class="rx-id">' + esc(cell.id) + '</span>'
+        + '<span class="rx-sn">' + esc(cell.name) + ' '
         + '<span class="rx-me">' + esc(lineMeta(r)) + '</span>' + nm + '</span></div>'
     }
     list.innerHTML = h

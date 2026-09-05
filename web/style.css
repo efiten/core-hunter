@@ -342,11 +342,13 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .rx-gt { width: 2ch; flex: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tm { width: 4ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-rs { width: 4ch; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* The id beside a resolved name (#451), the app's column: see app.css. */
+.rx-id { width: 6ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
 .rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
 .rx-ln.act .rx-gt:before { content: '→'; }
-.rx-ln.act .rx-tm, .rx-ln.act .rx-rs, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
+.rx-ln.act .rx-tm, .rx-ln.act .rx-rs, .rx-ln.act .rx-id, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
 .guest-notice { color: var(--ch-muted); font-size: .85em; }
 .guest-notice[hidden] { display: none; }

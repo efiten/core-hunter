@@ -662,6 +662,10 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .rx-gt { width: 2ch; flex: none; color: var(--ch-accent); font-weight: 700; }
 .rx-tm { width: 4ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-rs { width: 4ch; flex: none; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* The id beside a resolved name (#451): six characters, idPrefix's cut, in a
+   column of its own so the ellipsis on .rx-sn never reaches it. Empty on a
+   line whose name cell already is the id. */
+.rx-id { width: 6ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
 .rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
@@ -679,7 +683,7 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   #rx-log.rx-leaving { transition: opacity .12s linear; transform: translateX(-50%); }
 }
 .rx-ln.act .rx-gt:before { content: '→'; }
-.rx-ln.act .rx-tm, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
+.rx-ln.act .rx-tm, .rx-ln.act .rx-id, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
 /* MapLibre popup themed to the app surface (#147) — default is white. */
 /* Above the ticker card (480), below the topbar (500): a popup opened from a
