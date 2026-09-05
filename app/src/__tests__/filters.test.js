@@ -39,19 +39,14 @@ describe('makeFilter', () => {
     expect(makeFilter({ sender: null, types: null, windowMs: 600000, directOnly: false, ignore: null })(rec({ rx_at: '2026-06-29T09:50:00Z' }), now)).toBe(false)
     expect(makeFilter({ sender: null, types: new Set(['Advert']), windowMs: null, directOnly: false, ignore: null })(rec({ packet_type: 'Response' }), now)).toBe(false)
   })
-  it('unnamed keeps only receptions nothing could be attributed to (#501)', () => {
-    // A 1-byte path hash is refused by classifyReception, so a flood sent with
-    // one leaves no sender at all. That is the only handle such traffic has,
-    // and since #455 those receptions are kept rather than dropped.
+  // #535: "Sender unknown" and the Unnamed chip selected the same rows, so
+  // the checkbox went. An unattributed reception is the chip's, and an
+  // `unnamed` option a caller still passes changes nothing.
+  it('no longer knows a Sender-unknown option: the Unnamed chip is the one handle', () => {
     const f = makeFilter({ sender: null, types: null, windowMs: null, directOnly: false, unnamed: true, ignore: null })
-    expect(f(rec({ sender_id: null }), now)).toBe(true)
-    expect(f(rec({ sender_id: '' }), now)).toBe(true)
-    expect(f(rec({ sender_id: '4a' }), now)).toBe(false)
-  })
-  it('unnamed off does not filter by attribution', () => {
-    const f = makeFilter({ sender: null, types: null, windowMs: null, directOnly: false, unnamed: false, ignore: null })
-    expect(f(rec({ sender_id: null }), now)).toBe(true)
     expect(f(rec({ sender_id: '4a' }), now)).toBe(true)
+    expect(DEFAULT_FILTER).not.toHaveProperty('unnamed')
+    expect(isFilterActive({ ...DEFAULT_FILTER, unnamed: true })).toBe(false)
   })
   it('type filter matches decoder packet_type names (GroupText)', () => {
     const f = makeFilter({ sender: null, types: new Set(['GroupText']), windowMs: null, directOnly: false, ignore: null })
@@ -66,12 +61,6 @@ describe('isFilterActive', () => {
   })
   it('a target selection is active', () => {
     expect(isFilterActive({ ...DEFAULT_FILTER, sender: { ids: ['aa'] } })).toBe(true)
-  })
-  it('an unnamed selection is active', () => {
-    expect(isFilterActive({ ...DEFAULT_FILTER, unnamed: true })).toBe(true)
-  })
-  it('the default filter has unnamed off', () => {
-    expect(DEFAULT_FILTER.unnamed).toBe(false)
   })
   it('the default filter has direct-only off', () => {
     expect(DEFAULT_FILTER.directOnly).toBe(false)

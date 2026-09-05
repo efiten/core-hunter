@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-one-unnamed-control",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "Sender unknown is gone; the Unnamed chip does the same",
+    "body": "The checkbox and the chip selected the same receptions. A shared map link that still carries the checkbox is ignored."
+  },
+  {
     "id": "2026-09-01-one-filter-panel",
     "date": "2026-09-01",
     "where": "both",

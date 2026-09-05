@@ -49,7 +49,7 @@ function resetFilters() {
   if (window.setIdClasses) window.setIdClasses('')
   // Through a change event, not a bare .checked write: the label sync and the
   // node-position teardown both listen for one.
-  for (const id of ['f-direct', 'f-unnamed', 'f-nodepos']) {
+  for (const id of ['f-direct', 'f-nodepos']) {
     const el = document.getElementById(id)
     if (el && el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })) }
   }
@@ -132,12 +132,7 @@ if (typeof document !== 'undefined') {
   const directLabel = directCb.closest('label')
   const syncDirectActive = () => directLabel.classList.toggle('active', directCb.checked)
   directCb.addEventListener('change', syncDirectActive)
-  const unnamedCb = document.getElementById('f-unnamed')
-  const unnamedLabel = unnamedCb.closest('label')
-  const syncUnnamedActive = () => unnamedLabel.classList.toggle('active', unnamedCb.checked)
-  unnamedCb.addEventListener('change', syncUnnamedActive)
   syncDirectActive()
-  syncUnnamedActive()
 
 
   window.__resetFilters = resetFilters
@@ -172,10 +167,6 @@ if (typeof document !== 'undefined') {
     // Amsterdam flood on 2026-08-24 claimed 1 to 37 hops for packets received
     // at -34 dBm, and the old label ("Direct only") promised the opposite.
     hops: document.getElementById('f-direct').checked ? '0' : '',
-    // Everything the classifier could not attribute. Not an error state: an
-    // unattributable reception is still a real measurement (#455), and it is
-    // all a 1-byte-hash flood leaves behind.
-    unnamed: document.getElementById('f-unnamed').checked ? '1' : '',
     // The viewer's ignore-list (#494), one repeated ?ignores= per node, same
     // pair shape as senderPairs and for the same #288 reason. map.js owns the
     // set, like it owns the picker selections.
@@ -189,7 +180,7 @@ if (typeof document !== 'undefined') {
   // reaches the server on the next refresh someone else triggers. That is not
   // visible on a relative range, where updateTimeRangeTimer (map.js) refreshes
   // every 10s and carries the param anyway (#503).
-  for (const id of ['f-sender', 'f-from', 'f-to', 'f-direct', 'f-unnamed']) {
+  for (const id of ['f-sender', 'f-from', 'f-to', 'f-direct']) {
     const el = document.getElementById(id)
     el.addEventListener('change', () => window.__refresh && window.__refresh())
     if (id === 'f-sender') el.addEventListener('input', () => window.__refresh && window.__refresh())

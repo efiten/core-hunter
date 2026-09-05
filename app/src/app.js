@@ -369,7 +369,6 @@ function stopBatteryPoll() {
 function refreshFilterState() {
   const n = activeFilterCount({
     directOnly: state.filter.directOnly,
-    senderUnknown: state.filter.unnamed,
     types: state.filter.types,
     idClasses: state.filter.idClasses,
     window: state.filter.windowMs !== DEFAULT_FILTER.windowMs,
@@ -1438,23 +1437,19 @@ function buildFilterSheet() {
   sheet.innerHTML = filterSheetMarkup({ types: FILTER_PACKET_TYPES, idClasses: SENDER_ID_CLASSES })
 
   const chk = el('fs-direct-only')
-  const unnamedChk = el('fs-unnamed')
   const sel = el('fs-window')
 
   chk.checked = state.filter.directOnly
-  unnamedChk.checked = state.filter.unnamed
   sel.value = String(state.filter.windowMs)
 
   // Mark each row active when its own value differs from DEFAULT_FILTER,
   // mirroring the existing .fs-chip.active / .ss-manfix-active pattern —
   // the filter-button badge shows *something* differs, these show *what*.
   const syncDirectRow = () => el('fs-row-direct').classList.toggle('active', chk.checked !== DEFAULT_FILTER.directOnly)
-  const syncUnnamedRow = () => el('fs-row-unnamed').classList.toggle('active', unnamedChk.checked !== DEFAULT_FILTER.unnamed)
   const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
-  syncDirectRow(); syncUnnamedRow(); syncWindowRow()
+  syncDirectRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
-  unnamedChk.addEventListener('change', () => { state.filter.unnamed = unnamedChk.checked; syncUnnamedRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
@@ -1532,15 +1527,13 @@ function buildFilterSheet() {
     state.filter.types = null
     state.filter.idClasses = null
     state.filter.directOnly = DEFAULT_FILTER.directOnly
-    state.filter.unnamed = DEFAULT_FILTER.unnamed
     state.filter.windowMs = DEFAULT_FILTER.windowMs
     chk.checked = state.filter.directOnly
-    unnamedChk.checked = state.filter.unnamed
     sel.value = String(state.filter.windowMs)
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
     paintChipRow('fs-type-chips', 'type', new Set())
     paintChipRow('fs-idclass-chips', 'idclass', new Set())
-    syncDirectRow(); syncUnnamedRow(); syncWindowRow()
+    syncDirectRow(); syncWindowRow()
     refreshFilterState()
     syncTypeOverflow()
     drawOnce()

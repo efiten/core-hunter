@@ -22,8 +22,11 @@
 //
 // This list is the panel's inventory, and it does not maintain itself: a
 // control added to the panel later stays dark here until it is added below.
-// #497 landed "Sender unknown" while a branch was open and the old boolean
-// version missed it — filtered map, pill said nothing.
+// #497 landed a checkbox while a branch was open and the old boolean version
+// missed it — filtered map, pill said nothing. Every dimension the panel
+// carries is a parameter here for that reason; a checkbox that is not one
+// cannot be counted. (That checkbox, "Sender unknown", was the Unnamed chip
+// under another name and went in #535.)
 //
 // Copied into app/src/barfilters.js verbatim since #564, when the app's panel
 // gained the same count; web/parity.test.js pins the two files byte-identical,
@@ -33,10 +36,9 @@
 // `window` is the app's "Plot last" (the map's timeframe is a bar control and
 // travels in the URL, so Clear has never reset it either); the three overlay
 // flags are the map's alone.
-export function activeFilterCount({ directOnly = false, senderUnknown = false, types = null, idClasses = null, window = false, csAdverts = false, csRelays = false, nodePos = false } = {}) {
+export function activeFilterCount({ directOnly = false, types = null, idClasses = null, window = false, csAdverts = false, csRelays = false, nodePos = false } = {}) {
   let n = 0
   if (directOnly) n++
-  if (senderUnknown) n++
   // An empty/absent set means "no type filter" -- same convention as the app's
   // isFilterActive, where `types` present and non-empty is the active state.
   if (types && [...types].length > 0) n++
