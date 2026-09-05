@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha, pillarTint, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
@@ -175,7 +175,10 @@ export function createHuntMap(containerId) {
     // is a perfectly good cache key and exactly the wrong one — the null has to
     // survive into the lookup.
     const sig = recordsKey(records)
-    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}`, () => buildHexFCUncached(records, res))
+    // The theme is in the key too (#412): the colours are read from the
+    // tokens at build time, so a theme switch on unchanged records must not
+    // serve the other theme's cells and bars from the cache.
+    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}`, () => buildHexFCUncached(records, res))
   }
   function buildHexFCUncached(records, res) {
     const cells = new Map()
@@ -189,10 +192,13 @@ export function createHuntMap(containerId) {
     for (const [id, c] of cells) {
       const ring = hexBoundary(id); if (!ring) continue // [lat,lon] closed ring → [lon,lat]
       const tier = rssiTier(c.best, currentOffset())
-      // height is only read by the 3D fill-extrusion twin (hex-3d); the flat
-      // 'hex' layer ignores it. Same source for both, per the decision log.
+      const token = cssVar(tierColorVar(tier))
+      // height and pillar are only read by the 3D fill-extrusion twin (hex-3d);
+      // the flat 'hex' layer ignores them. Same source for both, per the
+      // decision log. pillar is the cell's tint pre-mixed over the theme
+      // background (#412): opaque, so the bar reads as its cell does.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring.map(([la, lo]) => [lo, la])] },
-        properties: { color: cssVar(tierColorVar(tier)), op: fillOpacity(tier), height: extrusionHeight(c.best, currentOffset()) } })
+        properties: { color: token, op: fillOpacity(tier), pillar: pillarTint(tier, token, cssVar('--ch-bg')), height: extrusionHeight(c.best, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -254,6 +260,10 @@ export function createHuntMap(containerId) {
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
     applySky()
+    // The style light shades every extrusion face; at MapLibre's default it
+    // darkened a bar against its own cell (#412). Re-applied here like the
+    // sky, since setStyle drops it. Guarded for an older MapLibre.
+    if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
     for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
@@ -268,17 +278,18 @@ export function createHuntMap(containerId) {
       layout: { visibility: shown('hex') },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
     // 3D twin of 'hex': same source, extruded to 'height' (RSSI/SNR tier, #147).
-    // fill-extrusion-opacity doesn't support data-driven expressions (unlike
-    // fill-opacity on the flat layer), so it's a flat constant here — the tier
-    // is still visible via colour + height.
+    // fill-extrusion-opacity is not data-driven, and one opacity for every
+    // tier is what made a faint bar a solid purple on a 19% tint (#412). The
+    // bar takes 'pillar', the cell's tint pre-mixed over the background, and
+    // draws it opaque: no translucent compounding, shared walls depth-test.
     if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex',
       layout: { visibility: shown('hex-3d') },
-      paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+      paint: { 'fill-extrusion-color': ['get', 'pillar'], 'fill-extrusion-height': ['get', 'height'],
         // MapLibre shades extrusion sides darker toward their base by default
         // (#412). On a building that reads as depth; on these it reads as a
         // different tier, because colour is the signal the palette carries.
         'fill-extrusion-vertical-gradient': false,
-        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.85 } })
+        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     // Buildings reuse the hosted style's own vector source (already fetched for
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
     // bare fallback, hence the source guard.
