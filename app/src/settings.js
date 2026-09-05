@@ -1,6 +1,7 @@
 import { SOUND_MODES } from './sound.js'
 import { VIEW_STATES, viewKey } from './maplayers.js'
 import { THEME_PREFS } from './theme.js'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 
 // readStored returns the raw stored value for key, or null when it is absent
 // or storage is unavailable. Reading localStorage throws SecurityError where
@@ -20,6 +21,20 @@ function readStored(key) {
 export function loadAttenuator() {
   const v = Number(readStored('core-hunter-attenuator'))
   return v === -10 || v === -20 || v === -30 ? v : 0
+}
+
+// Terrain exaggeration (#396), one of EXAGGERATION_STEPS; anything else is
+// the decided default (#394). Display-only, like the attenuator.
+export function loadExaggeration() {
+  const v = Number(readStored('core-hunter-exaggeration'))
+  return EXAGGERATION_STEPS.includes(v) ? v : DEFAULT_EXAGGERATION
+}
+
+// Terrain on/off, the FAB's state (#396). On unless stored off: #394 ships
+// terrain, and the FAB is the opt-out for anyone who does not want a third
+// party's DEM fetched for their viewport.
+export function loadTerrainOn() {
+  return readStored('core-hunter-terrain') !== '0'
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
@@ -86,9 +101,10 @@ export function loadLegacyChangelogAck() {
 // button reads as noise, and the two mean the same thing to the person looking
 // at it — there is something behind this button you have not dealt with. What
 // it is, is one tap away, and the tab carries its own dot to say which.
-export function isSettingsActive({ attenuatorDb, unseenChangelog } = {}) {
+export function isSettingsActive({ attenuatorDb, unseenChangelog, exaggeration } = {}) {
   if (attenuatorDb) return true
   if (unseenChangelog) return true
+  if (exaggeration != null && exaggeration !== DEFAULT_EXAGGERATION) return true
   return false
 }
 

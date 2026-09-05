@@ -87,7 +87,7 @@ export const COACH_MARKS = [
   // ~590px down on a 667 screen, so a box below it would run off-screen into
   // the HUD. The line runs horizontally to a ring on the FAB's edge.
   { id: 'cm-fabs', anchor: 'layer-toggle', side: 'left',
-    html: '<b>Map controls:</b> node locations, auto-ping (zero-hop), 2D/3D, drive mode, sound modes.' },
+    html: '<b>Map controls:</b> node locations, auto-ping (zero-hop), 2D/3D, drive mode, sound modes, terrain.' },
 ]
 
 // The FAB stack the onboarding spotlight lifts, rings and points its `fabs`
@@ -96,7 +96,7 @@ export const COACH_MARKS = [
 // body.onboarding rules in styles/app.css — cannot drift apart again: #316
 // found #nodepos-toggle ringed by the CSS but missing from the union, so the
 // callout was anchored below a button it was also spotlighting.
-export const SPLASH_FAB_IDS = ['layer-toggle', 'discover-btn', 'recenter-btn', 'sound-toggle', 'nodepos-toggle']
+export const SPLASH_FAB_IDS = ['layer-toggle', 'discover-btn', 'recenter-btn', 'sound-toggle', 'nodepos-toggle', 'terrain-btn']
 
 // Spotlight callouts (was #119, updated for the #128 topbar). Each points at a
 // live control group revealed through the scrim.
@@ -104,5 +104,5 @@ export const SPLASH_CALLOUTS = {
   controls: 'Select repeaters or senders and filter for traffic type.',
   menu: 'Settings, connection and your account. Registering makes you a hunter and puts your captures on the shared coverage map.',
   // Listed bottom-to-top, in the order the buttons actually stack.
-  fabs: 'View: points/hex/both in 2D and 3D · auto-discover, which pings selected repeaters too · compass mode · sound pings · node positions: ▲ advertised, ● our estimate',
+  fabs: 'View: points/hex/both in 2D and 3D · auto-discover, which pings selected repeaters too · compass mode · sound pings · node positions: ▲ advertised, ● our estimate · terrain: shaded relief, raised in 3D',
 }
