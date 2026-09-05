@@ -1522,7 +1522,6 @@ urlstate.bindControl('to', 'f-to', { urlOnly: true })
 urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
 urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
-urlstate.bindControl('unnamed', 'f-unnamed', { checkbox: true })
 
 // Ticker placement, drag and fold (#424).
 //
@@ -1708,7 +1707,6 @@ if (barFilters && filterPill) {
     const typeCount = typeSet.size
     const count = activeFilterCount({
       directOnly: on('f-direct'),
-      senderUnknown: on('f-unnamed'),
       types: String(types || '').split(',').filter(Boolean),
       idClasses: String((window.currentIdClasses ? window.currentIdClasses() : '') || '').split(',').filter(Boolean),
       csAdverts: on('cs-adverts'),

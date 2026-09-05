@@ -60,10 +60,6 @@ export function filterSheetMarkup({ types, idClasses }) {
           <input type="checkbox" id="fs-direct-only" />
           <span>No path</span>
         </label>
-        <label class="fs-row" id="fs-row-unnamed" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has.">
-          <input type="checkbox" id="fs-unnamed" />
-          <span>Sender unknown</span>
-        </label>
       </div>
       <div class="fs-group">
         <div class="fs-group-head">Ignored senders</div>

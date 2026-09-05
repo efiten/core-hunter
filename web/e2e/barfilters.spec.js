@@ -101,14 +101,6 @@ test('the pill counts what is narrowed behind it (#539)', async ({ page }) => {
   await page.click('#f-types .f-chip >> nth=2')
   await expect(count).toBeHidden()
   await expect(page.locator('#filter-pill')).not.toHaveClass(/has-selection/)
-
-  // Every control the panel swallows, not just the one this branch was written
-  // against (#497 landed Sender unknown while the sheet branch was open).
-  await page.check('#f-unnamed')
-  await expect(count).toHaveText(' (1)')
-
-  await page.uncheck('#f-unnamed')
-  await expect(count).toBeHidden()
 })
 
 // #564: "everything" used to be written as no chip lit, which is correct in the
