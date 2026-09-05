@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-auto-discover-airtime-floor",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "Auto-discover keeps to the radio's airtime budget",
+    "body": "A cycle now waits for the airtime it spent, so it fires less often at speed and with many targets. Status shows the cadence."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

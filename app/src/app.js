@@ -40,8 +40,9 @@ import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
 import { selectedRepeaterIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
-import { shouldAutoFire, staggerTargets } from './autoping.js'
+import { shouldAutoFire, staggerTargets, autoPingCadenceText } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
+import { minPeriodMs, DISCOVER_BYTES, TRACE_BYTES } from './airtime.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
@@ -218,7 +219,9 @@ const state = {
   // Deliberately NOT persisted, unlike the view and sound FABs (#539): Discover
   // transmits, so every session starts with it off and turning it on is an
   // explicit choice. Do not "fix" this with a localStorage key.
-  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [] },
+  // sentBytes: on-air size of each frame the last cycle sent (airtime.js);
+  // what the next cycle's duty floor is computed from (#381).
+  autoPing: { enabled: false, lastFireAt: null, lastLat: null, lastLon: null, timer: null, pendingPings: [], sentBytes: [] },
   // Trace-pings we sent and may still get an answer to (#481). The tag on the
   // reply is what names the target it came back from; tracetag.js holds the rule.
   tracePings: [],
@@ -959,9 +962,21 @@ async function drainLoop() {
 // ---------------------------------------------------------------------------
 
 function sendDiscover() {
-  if (!state.connected || !state.transport) return
+  if (!state.connected || !state.transport) return false
   const tag = crypto.getRandomValues(new Uint8Array(4))
   state.transport.send(buildDiscoverFrame(tag)).catch(() => {})
+  return true
+}
+
+// The floor the next cycle waits for, from what the last one put on air
+// (#381), and the Status tab line that says so.
+function autoPingFloorMs() {
+  return minPeriodMs(state.autoPing.sentBytes, state.sf)
+}
+
+function renderAutoPingCadence() {
+  const dd = el('ss-conn-autoping')
+  if (dd) dd.textContent = autoPingCadenceText({ enabled: state.autoPing.enabled, minPeriodMs: autoPingFloorMs() })
 }
 
 // One byte-prefix hash per hop, same convention as Discover's
@@ -1026,11 +1041,16 @@ function autoPingTick() {
     // shouldAutoFire. Each timer removes its own handle below, so the length
     // is the count still queued rather than a running total.
     pendingTargets: state.autoPing.pendingPings.length,
+    minPeriodMs: autoPingFloorMs(),
   })
   if (!fire) return
   state.autoPing.lastFireAt = now
   if (fix) { state.autoPing.lastLat = fix.lat; state.autoPing.lastLon = fix.lon }
-  sendDiscover()
+  // Count frames as they go out, not as they are planned: a ping BLE dropped
+  // spent no airtime and buys no silence.
+  state.autoPing.sentBytes = []
+  if (sendDiscover()) state.autoPing.sentBytes.push(DISCOVER_BYTES)
+  renderAutoPingCadence()
   pulseDiscoverBtn()
   sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
   // Each staggered trace-ping is also a real transmission — pulse the FAB and
@@ -1043,6 +1063,8 @@ function autoPingTick() {
       const i = state.autoPing.pendingPings.indexOf(handle)
       if (i !== -1) state.autoPing.pendingPings.splice(i, 1)
       if (!sendTracePing(id)) return
+      state.autoPing.sentBytes.push(TRACE_BYTES)
+      renderAutoPingCadence()
       pulseDiscoverBtn()
       sound.txBlip('trace')
       // Bookkeeping follows the frame, not the plan (#479). A ping that never
@@ -1077,6 +1099,7 @@ function stopAutoPing() {
   for (const handle of state.autoPing.pendingPings) clearTimeout(handle)
   state.autoPing.pendingPings = []
   updateDiscoverBtnVisual()
+  renderAutoPingCadence()
 }
 
 // Tapping the FAB toggles auto-discover on/off — no separate manual one-shot;
@@ -1089,6 +1112,7 @@ function toggleAutoPing() {
   if (!state.autoPing.timer) state.autoPing.timer = setInterval(autoPingTick, 1000)
   autoPingTick()
   updateDiscoverBtnVisual()
+  renderAutoPingCadence()
 }
 
 // ---------------------------------------------------------------------------
@@ -1307,6 +1331,7 @@ function refreshConnState() {
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
   el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
+  renderAutoPingCadence()
   renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
   el('ss-ble-dot').classList.toggle('on', connected)
@@ -1581,6 +1606,7 @@ function buildSettingsSheet() {
           <dl class="ss-conn-status">
             <dt>Companion</dt><dd id="ss-conn-name">—</dd>
             <dt>Signal</dt><dd id="ss-conn-sf">—</dd>
+            <dt>Auto-discover</dt><dd id="ss-conn-autoping">Off</dd>
             <dt>Battery</dt><dd id="ss-conn-battery">—</dd>
             <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
           </dl>
