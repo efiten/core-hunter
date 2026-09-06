@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, openFilters, closeFilters, setFilter } from './fixtures.js'
 
 // #423: web/style.css had no @media rule, so #bar wrapped ~20 controls into six
 // rows on a phone and took roughly 45% of the viewport before the map got any.
@@ -103,4 +103,52 @@ test('the pill counts what is narrowed behind it (#539)', async ({ page }) => {
 
   await page.uncheck('#f-unnamed')
   await expect(count).toBeHidden()
+})
+
+// #590: the open panel was painted under the Locate readout and the
+// node-position notice. #bar-filters.bf-open carries z-index 700, but it is a
+// child of #bar, a fixed element at 630 and so a stacking context: against the
+// rest of the page the panel is at 630, and the two corner cards were body
+// children at 650. A stacking-context rule, so only the browser can pin it:
+// elementFromPoint at the panel's foot, and a click Playwright only lands on
+// an element that receives pointer events.
+test('an open panel paints over the Locate readout and the node-position notice on a phone (#590)', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 740 })
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
+  await page.goto('/?mode=points')
+  await setFilter(page, '#f-nodepos', true)
+  await expect(page.locator('#nodepos-key')).toContainText('Node registry unreachable', { timeout: 10000 })
+  await page.waitForFunction(() => typeof window.__locateRender === 'function')
+  await page.evaluate(() => window.__locateRender([
+    { lat: 51.000, lon: 4.000, rssi: -52 }, { lat: 51.010, lon: 4.000, rssi: -88 },
+    { lat: 50.990, lon: 4.000, rssi: -90 }, { lat: 51.000, lon: 4.012, rssi: -86 },
+  ], '4a'))
+  await expect(page.locator('#locate-info')).toBeVisible()
+
+  await openFilters(page)
+  const foot = page.locator('#bar-filters .bf-foot')
+  await foot.scrollIntoViewIfNeeded()
+  // Both corners: the readout sits bottom-right, the notice bottom-left, and
+  // the foot spans the panel's width, so each end of it lands under one card.
+  const under = await page.evaluate(() => {
+    const r = document.querySelector('#bar-filters .bf-foot').getBoundingClientRect()
+    const panel = document.getElementById('bar-filters')
+    return [r.x + 12, r.x + r.width / 2, r.right - 12].map((x) => {
+      const el = document.elementFromPoint(x, r.y + r.height / 2)
+      return el ? (panel.contains(el) ? 'panel' : el.id || el.className) : 'nothing'
+    })
+  })
+  expect(under, 'what is painted at the foot of the open panel').toEqual(['panel', 'panel', 'panel'])
+
+  // The cards are still there once the panel is shut.
+  await closeFilters(page)
+  await expect(page.locator('#locate-info')).toBeVisible()
+  await expect(page.locator('#nodepos-key')).toBeVisible()
+
+  // Tappable: Playwright refuses a click on a covered element. Last, since
+  // Clear ends Locate and drops the layer, and with them both cards.
+  await openFilters(page)
+  await foot.scrollIntoViewIfNeeded()
+  await page.click('#clear-filters', { timeout: 3000 })
+  await expect(page.locator('#f-nodepos')).not.toBeChecked()
 })
