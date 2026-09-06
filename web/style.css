@@ -515,39 +515,67 @@ body.wb-onboarding-on #bar { z-index:710; }
 /* Links are accent-2 on every surface (#539). */
 .lc-signup a, .lc-signup a:visited { color: var(--ch-accent-2); text-decoration: underline; }
 
-/* Leaflet's own controls (#427). Neither stylesheet had a single rule for
-   them, so the zoom buttons and the attribution strip kept Leaflet's defaults:
-   a pure white #fff button with #000 glyphs against an #0b0e14 page. In dark
-   theme that made the least important element on screen the highest-contrast
-   one.
-   style.css is appended by the module script and leaflet.css is a <link> in
-   the head, so these land later in the cascade and match Leaflet's own
-   specificity -- no !important needed, and none used. Tokens only, so both
-   themes follow the same switch as everything else. */
-.leaflet-bar { border: 1px solid var(--ch-border); box-shadow: none; }
-.leaflet-bar a {
-  background: var(--ch-surface); color: var(--ch-text);
-  border-bottom: 1px solid var(--ch-border);
-}
-/* --ch-border, not --ch-input-bg. Composited over the page, --ch-surface and
-   --ch-input-bg land within one 8-bit step of each other in both palettes
-   (dark rgb(17,22,32) against rgb(17,22,31), light rgb(254,251,244) against
-   rgb(255,252,245)), so hovering changed nothing a user could see. Leaflet's
-   own default had real feedback (#f4f4f4 on #fff) and this replaced it with
-   none -- and on a desktop the hover is that button's only affordance. */
-.leaflet-bar a:hover { background: var(--ch-border); }
-/* The last button has no divider under it; Leaflet writes that as a border on
-   the container's last child, so it has to be restated once the border above
-   is ours. */
-.leaflet-bar a:last-child { border-bottom: none; }
-.leaflet-bar a.leaflet-disabled { background: var(--ch-surface); color: var(--ch-muted); }
-/* Two classes, matching Leaflet's own `.leaflet-container .leaflet-control-
-   attribution`. A single-class rule loses on specificity however late it lands
-   -- measured: the text recoloured and the background stayed #fff-ish. */
-.leaflet-container .leaflet-control-attribution {
-  background: var(--ch-surface); color: var(--ch-muted);
-}
-.leaflet-container .leaflet-control-attribution a { color: var(--ch-accent-2); }
+/* MapLibre's own controls (#427, #465). Neither stylesheet had a rule for the
+   map's controls, so the zoom buttons and the attribution strip kept the
+   library defaults: white on an #0b0e14 page, the least important element
+   with the highest contrast. Tokens only, so both themes follow the same
+   switch as everything else. The same specificity as MapLibre's own rules,
+   landing later in the cascade; no !important. */
+.maplibregl-ctrl-group { background: var(--ch-surface); border: 1px solid var(--ch-border); box-shadow: none; border-radius: 4px; }
+.maplibregl-ctrl-group button { background: var(--ch-surface); color: var(--ch-text); border-bottom: 1px solid var(--ch-border); }
+/* --ch-border, not --ch-input-bg: composited over the page the two land within
+   one 8-bit step of each other in both palettes, so a hover changed nothing a
+   user could see (#427 review). On a desktop the hover is the button's only
+   affordance. */
+.maplibregl-ctrl-group button:not(:disabled):hover { background: var(--ch-border); }
+.maplibregl-ctrl-group button:last-child { border-bottom: none; }
+/* A visible hover is a new way to get this wrong: at min or max zoom the
+   button is disabled, and lighting it under the cursor would offer feedback
+   for a click that does nothing. Written after the hover rule on purpose. */
+.maplibregl-ctrl-group button:disabled, .maplibregl-ctrl-group button:disabled:hover { background: var(--ch-surface); color: var(--ch-muted); }
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: none; }
+.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon, .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon { background-image: none; }
+.maplibregl-ctrl-zoom-in::before { content: "+"; }
+.maplibregl-ctrl-zoom-out::before { content: "\2212"; }
+.maplibregl-ctrl-zoom-in::before, .maplibregl-ctrl-zoom-out::before { font-size: 18px; line-height: 29px; display: block; }
+/* Two classes, matching MapLibre's own `.maplibregl-ctrl.maplibregl-ctrl-attrib`
+   (the compact form too): a single-class rule loses on specificity however
+   late it lands, the same lesson #427 recorded for Leaflet. */
+.maplibregl-ctrl.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib.maplibregl-compact, .maplibregl-ctrl-attrib.maplibregl-compact-show { background: var(--ch-surface); color: var(--ch-muted); }
+.maplibregl-ctrl-attrib a { color: var(--ch-accent-2); }
+.maplibregl-ctrl-attrib-button { background-color: var(--ch-surface); }
+/* The controls sit under the bar and the panels (bar 630). */
+.maplibregl-ctrl-top-left { top: 8px; left: 8px; }
+.maplibregl-control-container { z-index: 500; }
+
+/* MapLibre popup themed to the surface, as in the app (app/src/styles/app.css). */
+.maplibregl-popup { z-index: 610; }
+.maplibregl-popup-content { background: var(--ch-surface); color: var(--ch-text);
+  border: 1px solid var(--ch-border); border-radius: 8px; padding: 10px 12px;
+  backdrop-filter: blur(8px); font-size: 12px; line-height: 1.45; }
+.maplibregl-popup-close-button { color: var(--ch-muted); font-size: 16px; padding: 0 5px; }
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--ch-surface); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--ch-surface); }
+.maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--ch-surface); }
+.maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--ch-surface); }
+/* The hex cell's hover line: a closeless popup that follows the pointer, since
+   MapLibre has no tooltip. Smaller than a real popup, no pointer events. */
+.ch-hover .maplibregl-popup-content { padding: 4px 8px; font-size: 11px; pointer-events: none; }
+.ch-hover .maplibregl-popup-tip { display: none; }
+/* The node's RSSI estimate (●) as a marker element, the same mark the app
+   draws; its colour is set per node from the drift rule. */
+.np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg); cursor: pointer; position: relative; }
+.np-advert::after, .np-estimate::after { content: ''; position: absolute;
+  left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
+/* Reach (#549): the hub of the star, accent when it is the advertised position
+   and muted when it is the RSSI estimate, so the two never look alike. */
+.rc-hub { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ch-bg); background: var(--ch-accent); }
+.rc-hub.rc-estimate { background: var(--ch-muted); }
+.rc-toggle { margin-top: 6px; padding: 3px 9px; border: 1px solid var(--ch-border); border-radius: 6px; cursor: pointer;
+  background: none; color: var(--ch-text); font-size: 12px; }
+/* The selected hunter's latest position (#195): a pin, anchored at its tip. */
+.hunter-pin { width: 14px; height: 14px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--ch-accent); border: 2px solid var(--ch-bg); cursor: pointer; }
 
 /* The filter panel (#423 built it for phones; #539 made it the only
    presentation). The bar keeps five controls; everything that narrows the
