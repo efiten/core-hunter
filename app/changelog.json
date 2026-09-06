@@ -4,7 +4,7 @@
     "date": "2026-09-05",
     "where": "app",
     "title": "Terrain is back: shaded relief, raised in 3D",
-    "body": "A terrain button on the map turns it off. Settings has the exaggeration, 7× by default so the Low Countries show any relief at all."
+    "body": "A terrain button on the map turns it on. Settings has the exaggeration, 7× by default so the Low Countries show any relief at all."
   },
   {
     "id": "2026-08-29-theme-follows-your-device",
