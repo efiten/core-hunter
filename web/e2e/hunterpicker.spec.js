@@ -177,3 +177,52 @@ test('hunters past the first page are reachable on a tall viewport (#290)', asyn
   await list.evaluate((el) => { el.scrollTop = el.scrollHeight })
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(24, { timeout: 10000 })
 })
+
+// #463: /api/hunters answers as the role the server sees, and it was fetched
+// once, before /api/auth/me had answered, so a login kept the guest's
+// pseudonyms on screen and a logout kept the real names.
+test('the roster follows the role: pseudonyms as a guest, names after login, pseudonyms again after logout, and a pick that the new roster does not name is dropped (#463)', async ({ page }) => {
+  const G1 = { hunter_pubkey: 'h1', hunter_name: 'Hunter 1', count: 42 }
+  const G2 = { hunter_pubkey: 'h2', hunter_name: 'Hunter 2', count: 7 }
+  let member = false
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: member ? [H1, H2] : [G1, G2] } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: member ? { role: 'member', username: 'alice' } : { role: 'guest' } }))
+  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { ok: true } }))
+  await page.route('**/api/auth/logout', (r) => r.fulfill({ status: 204 }))
+  await page.goto('/?mode=hex')
+
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('Hunter 1 (42)')
+  await page.locator('#hp-list .tl-row', { hasText: 'Hunter 1' }).click()
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters (1) ▾')
+  await expect(page).toHaveURL(/hunter=h1/)
+  await page.keyboard.press('Escape')
+
+  // Log in without a reload. The pick was a pseudonym token the member roster
+  // does not name, so it goes with the roster; the label and the URL follow.
+  member = true
+  await page.click('#auth-btn')
+  await page.fill('#login-user', 'alice')
+  await page.fill('#login-pass', 'correcthorse')
+  await page.click('#login-submit')
+  await expect(page.locator('#auth-btn')).toHaveText(/alice/i)
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters ▾')
+  await expect(page).not.toHaveURL(/hunter=/)
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('ON8AR (42)')
+  await expect(page.locator('#hp-list')).not.toContainText('Hunter 1')
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
+  await expect(page).toHaveURL(/hunter=abc123def456/)
+  await page.keyboard.press('Escape')
+
+  // And back: a logged-out page must not keep the names it is no longer
+  // allowed to see, nor a pubkey filter a guest cannot send.
+  member = false
+  await page.click('#auth-btn')
+  await expect(page.locator('#auth-btn')).toHaveText(/log in/i)
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters ▾')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('Hunter 1 (42)')
+  await expect(page.locator('#hp-list')).not.toContainText('ON8AR')
+})

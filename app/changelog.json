@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-hunter-names-after-login",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "Hunter names follow your login",
+    "body": "Logging in on the map used to leave the hunter list on the guest pseudonyms until a reload. It now reloads with your role, and again when you log out."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

@@ -37,6 +37,18 @@ export function dedupeHunterActivity(points) {
   return byHunter
 }
 
+// keptSelection is what survives a roster refetch (#463): the ids the new
+// roster still names, in the order they were picked. The roster's ids change
+// with the role: a guest picks pseudonym tokens, a member real pubkeys, and a
+// hunter sees their own pubkey among the pseudonyms. A token and a pubkey are
+// different ids for the same hunter, and the client cannot map one onto the
+// other, so a pick the new roster does not name is dropped rather than sent
+// as a filter the server would answer with nothing.
+export function keptSelection(selected, hunters) {
+  const known = new Set((hunters || []).map((h) => String(h.hunter_pubkey)))
+  return (selected || []).filter((id) => known.has(String(id)))
+}
+
 // hunterList sorts the full hunter roster (from /api/hunters) by label
 // (falling back to pubkey prefix, same as hunterOptionLabel), case-
 // insensitive, optionally limited for lazy-loaded batches.
