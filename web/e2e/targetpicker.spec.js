@@ -1,4 +1,4 @@
-import { test, expect, openPicker, clickClearFilters } from './fixtures.js'
+import { test, expect, openPicker, clickClearFilters, typeSenderPrefix } from './fixtures.js'
 
 // Target-list picker (#223) — browsable multi-select parity with app's target sheet.
 
@@ -136,7 +136,7 @@ test('the plain text prefix search still works unchanged (single value, no comma
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [A] } }) })
   await page.goto('/?mode=points')
-  await page.fill('#f-sender', 'aa11')
+  await typeSenderPrefix(page, 'aa11')
   await expect.poll(() => urls.some((u) => u.includes('sender=aa11') && !u.includes(','))).toBe(true)
 })
 
@@ -205,7 +205,7 @@ test('typing a prefix clears an active pick instead of being ignored (#299)', as
   await expect.poll(() => urls.some((u) => sendersOf(u).length === 1)).toBe(true)
 
   urls.length = 0
-  await page.fill('#f-sender', 'cc33')
+  await typeSenderPrefix(page, 'cc33')
   // The typed prefix now reaches the server, and the pick is gone rather than
   // silently overriding it.
   await expect.poll(() => urls.some((u) => new URL(u).searchParams.get('sender') === 'cc33')).toBe(true)
@@ -296,9 +296,11 @@ test('the toggle names one picked node, and counts several', async ({ page }) =>
 
   // Typing a prefix drops the pick (#299), so the button has to follow it back
   // to the empty state rather than keep naming a node that is no longer picked.
-  await page.locator('#f-sender').fill('aa')
-  await expect(page.locator('#sp-toggle')).toHaveText('Select target ▾')
-  await expect(page.locator('#sp-toggle')).not.toHaveClass(/has-selection/)
+  await typeSenderPrefix(page, 'aa')
+  // ...and the button traces the prefix instead (#498), since the field is
+  // inside the panel and out of sight once it closes.
+  await expect(page.locator('#sp-toggle')).toHaveText('⌖ aa… ▾')
+  await expect(page.locator('#sp-toggle')).toHaveClass(/has-selection/)
 })
 
 test('a ?senders= deep link names the node before the picker has ever opened', async ({ page }) => {

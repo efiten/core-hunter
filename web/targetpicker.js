@@ -323,8 +323,14 @@ function rowIds(rec) {
 // rows is the picker's current row set (senderList output). It is empty on a
 // cold start with ?senders= in the URL, so a selected id that no row claims
 // counts as its own node and takes nameOf, the caller's resolver, for a label.
-export function targetChipLabel(selectedIds, { rows = [], nameOf } = {}) {
+export function targetChipLabel(selectedIds, { rows = [], nameOf, prefix = '' } = {}) {
   const sel = new Set((selectedIds || []).filter(Boolean).map((i) => String(i).toLowerCase()))
+  // The typed prefix lives inside the picker since #498, so once the panel
+  // closes the button is the only trace of it, exactly as it is for a pick.
+  // A pick outranks a leftover prefix: picking clears the field (onPick), so
+  // both being set is a transient state, and the pick is what the map shows.
+  const p = String(prefix || '').trim()
+  if (sel.size === 0 && p) return { text: `⌖ ${p}…`, title: `Sender ids starting with ${p}`, count: 1 }
   if (sel.size === 0) return { text: 'Select target', title: '', count: 0 }
   const nodes = []
   const claimed = new Set()
@@ -367,7 +373,8 @@ export function targetChipLabel(selectedIds, { rows = [], nameOf } = {}) {
 // and "K." -- whichever delimiter was chosen. Picking a real sender could
 // therefore select something else entirely, or nothing.
 //
-// So #f-sender is the typed leading-prefix search and nothing else, and the
+// So #f-sender is the typed leading-prefix search and nothing else (inside the
+// picker's panel since #498, so the map has one control for targets), and the
 // selection lives here as a Set. onChange fires whenever it moves, so map.js
 // can refresh and persist without this module knowing about either.
 // `ignored` is a getter rather than a value: the list changes while the picker

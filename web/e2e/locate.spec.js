@@ -1,4 +1,4 @@
-import { test, expect, toggleLocate, clickPanelChip } from './fixtures.js'
+import { test, expect, toggleLocate, clickPanelChip, typeSenderPrefix } from './fixtures.js'
 
 // A small spread of synthetic receptions around (51, 4): one strong, several weak,
 // all > 10 m apart (so dedupe keeps them) and < 20 km (so none are rejected).
@@ -25,7 +25,7 @@ test('__locateRender draws centroid, strongest marker, heatmap and info card', a
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
   await expect(page.locator('.lc-strongest')).toHaveCount(1)
-  await expect(page.locator('img.leaflet-image-layer')).toHaveCount(1) // heatmap overlay
+  await expect.poll(() => page.evaluate(() => !!window.__locateHeat())).toBe(true) // heatmap image source
   const info = page.locator('#locate-info')
   await expect(info).toBeVisible()
   await expect(info).toContainText('search radius')
@@ -60,15 +60,14 @@ test('heatmap fades to a transparent border — no rectangle artifact', async ({
   await page.goto('/')
   await page.waitForFunction(() => typeof window.__locateRender === 'function')
   await page.evaluate((pts) => window.__locateRender(pts, '4a'), POINTS)
-  await expect(page.locator('img.leaflet-image-layer')).toHaveCount(1)
+  await expect.poll(() => page.evaluate(() => !!window.__locateHeat())).toBe(true)
 
   // The whole outer ring of the heatmap image must be fully transparent (the 3σ
   // padding guarantees it), so there's no visible rectangular edge; the centre
   // (the hotspot) must still be drawn.
   const res = await page.evaluate(async () => {
-    const img = document.querySelector('img.leaflet-image-layer')
     const im = new Image()
-    await new Promise((r) => { im.onload = r; im.src = img.src })
+    await new Promise((r) => { im.onload = r; im.src = window.__locateHeat().url })
     const cv = document.createElement('canvas')
     cv.width = im.naturalWidth; cv.height = im.naturalHeight
     const ctx = cv.getContext('2d'); ctx.drawImage(im, 0, 0)
@@ -91,7 +90,7 @@ test('heatmap fades to a transparent border — no rectangle artifact', async ({
 test('Locate button fetches /api/points and renders the overlay', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
-  await page.fill('#f-sender', '4a')
+  await typeSenderPrefix(page, '4a')
   await toggleLocate(page) // Locate lives in the filter panel (#539)
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
@@ -127,7 +126,7 @@ test('Locate with no sender but a type filter locates over that filtered set (#1
 test('Locate surfaces a fetch error instead of crashing the poll loop', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ status: 500, body: 'boom' }))
   await page.goto('/')
-  await page.fill('#f-sender', '4a')
+  await typeSenderPrefix(page, '4a')
   await toggleLocate(page) // Locate lives in the filter panel (#539)
   await expect(page.locator('#locate-info')).toContainText('Could not load points')
 })

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mesh-Hunter — analysis</title>
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <!-- Installable (#194): manifest only, no service worker (no offline caching --
        this is an online analysis tool that always needs the server/API). The
        manifest + touch icon are added in the module below with the same ?v=
@@ -118,9 +118,14 @@
       </div>
     </span>
     <span class="ms-wrap">
-      <input id="f-sender" type="text" placeholder="sender id (prefix)" aria-label="Sender id prefix" />
       <button id="sp-toggle" type="button" class="ms-toggle" title="Pick from heard senders" aria-expanded="false">Select target ▾</button>
       <div id="sender-picker" class="tl-panel" hidden>
+        <!-- One control for targets (#498): the typed prefix search lives in
+             the picker's panel, above the rows, where the app's target sheet
+             keeps its search. Same id as before, so urlstate, filters.js and
+             the ?sender= links keep working; the button carries the trace. -->
+        <input id="f-sender" type="search" class="tl-search" placeholder="Sender id starts with…" aria-label="Sender id prefix"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
         <div class="tl-pinned-label">Top</div>
         <div id="tp-pinned" class="tl-list tl-pinned"></div>
         <ul id="tp-list" class="tl-list tl-scroll"></ul>
@@ -384,7 +389,8 @@
   </aside>
   <div id="map"></div>
   <div id="rx-log"></div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- MapLibre GL (#465), the app's map, pinned to the same version app/index.html carries. -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script type="module">
     import { VERSION } from './version.js';
     import { API_BASE } from './config.js';
