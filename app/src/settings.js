@@ -30,13 +30,6 @@ export function loadExaggeration() {
   return EXAGGERATION_STEPS.includes(v) ? v : DEFAULT_EXAGGERATION
 }
 
-// Terrain on/off, the FAB's state (#396). Off unless switched on (Kasper,
-// 2026-09-06): the DEM is a third party's tiles fetched for the viewport, so
-// the button is the opt-in, and the choice persists under its own key.
-export function loadTerrainOn() {
-  return readStored('core-hunter-terrain') === '1'
-}
-
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
 // like the attenuator; unknown stored values fall back to off. Also migrates
 // the pre-#255 4-state values (a couple of days of dogfooding only, never
