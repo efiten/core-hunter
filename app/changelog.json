@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-panels-follow-the-bar",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "Open panels follow the bar",
+    "body": "A panel opened from the bar now moves with it when the bar grows after loading, instead of staying where its button used to be."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

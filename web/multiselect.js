@@ -19,6 +19,7 @@
 // the two current instances.
 
 import { popoverPosition } from './popoverPosition.js'
+import { onBarChange } from './barwatch.js'
 
 const PAGE_SIZE = 12
 
@@ -211,9 +212,11 @@ export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, a
     panelEl.hidden = true
     toggleEl.setAttribute('aria-expanded', 'false')
   }
-  // #bar wraps, so a resize moves the toggle to another row and the panel has
-  // to follow. Only while open: a measurement on a hidden panel is all zeroes.
-  window.addEventListener('resize', () => {
+  // #bar wraps, on a resize or when late content grows it, and that moves
+  // the toggle to another row, so the panel has to follow (#405: the one bar
+  // watcher, which also sees the growth window.resize never reported). Only
+  // while open: a measurement on a hidden panel is all zeroes.
+  onBarChange(() => {
     if (!panelEl.hidden) placePopover(toggleEl, panelEl, { align })
   })
   toggleEl.addEventListener('click', () => (panelEl.hidden ? open() : close()))

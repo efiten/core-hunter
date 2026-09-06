@@ -107,3 +107,30 @@ test('#bar is the containing block for the panels, and its frame coincides with 
   expect(m.border, '#bar has no border to offset its padding box').toEqual(['0px', '0px'])
   expect(m.transform, '#bar is untransformed').toBe('none')
 })
+
+// #405: window.resize never fires for content that grows the bar after load
+// (the role notice, the node counts, the version), so a panel opened before
+// that landed stayed where its toggle had been. The one bar watcher sees the
+// growth. Simulated by inserting a full-width block at the bar's start, which
+// pushes every control down a row; the real arrivals do the same thing later.
+for (const [toggle, panel] of [['#tr-toggle', '#time-picker'], ['#hp-toggle', '#hunter-picker']]) {
+  test(`an open ${panel} follows its toggle when late content grows the bar (#405)`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/')
+    await openPicker(page, toggle, panel)
+    const before = await page.locator(toggle).boundingBox()
+    await page.evaluate(() => {
+      const grow = document.createElement('div')
+      grow.id = 'e2e-grow'; grow.style.cssText = 'flex-basis:100%;height:40px'
+      document.getElementById('bar').prepend(grow)
+    })
+    // The toggle moved down: the panel has to hang off where it is now.
+    await expect.poll(async () => (await page.locator(toggle).boundingBox()).y).toBeGreaterThan(before.y + 30)
+    await expect.poll(async () => {
+      const p = await page.locator(panel).boundingBox()
+      const t = await page.locator(toggle).boundingBox()
+      return p.y >= t.y + t.height
+    }, { message: 'panel below its moved toggle' }).toBe(true)
+    await expectOnScreen(page, panel)
+  })
+}
