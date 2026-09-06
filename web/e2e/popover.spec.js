@@ -14,14 +14,21 @@ test.beforeEach(async ({ page }) => {
 })
 
 // Every part of a popover has to be inside the viewport, not just its box.
+// Polled, not read once: a panel is re-placed in the page's resize handler,
+// and under a parallel run that can land after setViewportSize has resolved,
+// so a single read saw the old placement (1 in ~3 full runs, 0 in 10 alone).
+// Every edge still has to end up inside; the poll only decides when to look.
 async function expectOnScreen(page, selector) {
   const vp = page.viewportSize()
-  const box = await page.locator(selector).boundingBox()
-  expect(box, `${selector} has a box`).not.toBeNull()
-  expect(box.x, `${selector} left edge`).toBeGreaterThanOrEqual(0)
-  expect(box.y, `${selector} top edge`).toBeGreaterThanOrEqual(0)
-  expect(box.x + box.width, `${selector} right edge`).toBeLessThanOrEqual(vp.width)
-  expect(box.y + box.height, `${selector} bottom edge`).toBeLessThanOrEqual(vp.height)
+  await expect.poll(async () => {
+    const box = await page.locator(selector).boundingBox()
+    if (!box) return 'no box'
+    if (box.x < 0) return `left edge at ${box.x}`
+    if (box.y < 0) return `top edge at ${box.y}`
+    if (box.x + box.width > vp.width) return `right edge at ${box.x + box.width}, viewport ${vp.width}`
+    if (box.y + box.height > vp.height) return `bottom edge at ${box.y + box.height}, viewport ${vp.height}`
+    return 'on screen'
+  }, { message: `${selector} on screen` }).toBe('on screen')
 }
 
 for (const [label, width, height] of [['a phone', 412, 915], ['a desktop', 1280, 720]]) {

@@ -7,6 +7,8 @@
      Previously undefined here, so the active-filter state borrowed a signal-tier
      color (--ch-sig-cool) meant for RSSI/SNR display, not UI selection. */
   --ch-accent:#38e0a6; --ch-accent-2:#ffb020;
+  /* 3D building extrusions (#595), the app's --ch-building (tokens.css). */
+  --ch-building:#39465a;
 }
 /* ---- LIGHT theme ---- */
 [data-theme="light"] {
@@ -14,6 +16,7 @@
   --ch-surface:rgba(255,252,245,0.92); --ch-input-bg:#fffcf5; --ch-border:#cfc8b8;
   --ch-sig-hot:#d11f1f; --ch-sig-warm:#e07000; --ch-sig-mid:#c79100; --ch-sig-cool:#1577c0; --ch-sig-cold:#3a44b8; --ch-sig-faint:#6a2fb0; --ch-sig-none:#9aa3ad;
   --ch-accent:#0e9f7e; --ch-accent-2:#b4530a;
+  --ch-building:#cfc7b6;
 }
 /* Bar height as a layout token, not a theme one, so it is defined once outside
    both palettes. #bar is flex-wrap, so its height depends on its content, and
@@ -544,6 +547,20 @@ body.wb-onboarding-on #bar { z-index:710; }
 .maplibregl-ctrl.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib.maplibregl-compact, .maplibregl-ctrl-attrib.maplibregl-compact-show { background: var(--ch-surface); color: var(--ch-muted); }
 .maplibregl-ctrl-attrib a { color: var(--ch-accent-2); }
 .maplibregl-ctrl-attrib-button { background-color: var(--ch-surface); }
+/* The view button (#595), a control group of one under the zoom and the
+   compass (mapcore.js addButton). On = the accent, the ring drawn inside the
+   button since the group clips its edge; the app's FAB draws it outside. */
+.maplibregl-ctrl-group button svg { display: block; margin: 0 auto; pointer-events: none; }
+.maplibregl-ctrl-group button.on { color: var(--ch-accent); box-shadow: inset 0 0 0 2px var(--ch-accent); }
+/* MapLibre's compass ships as a dark needle in a background image, invisible
+   on the dark surface, and the filter that lightens it is the library's own
+   white-on-white idiom. The needle is a mask over currentColor instead, so
+   it takes the button's token in both themes; the north half is solid, the
+   south half at 45%, and MapLibre's inline rotate on the icon turns the
+   mask with it. */
+.maplibregl-ctrl-compass .maplibregl-ctrl-icon { background-image: none; background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 2l3.6 8H6.4z'/%3E%3Cpath d='M10 18l-3.6-8h7.2z' opacity='.45'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 2l3.6 8H6.4z'/%3E%3Cpath d='M10 18l-3.6-8h7.2z' opacity='.45'/%3E%3C/svg%3E") center / 20px 20px no-repeat; }
 /* The controls sit under the bar and the panels (bar 630). */
 .maplibregl-ctrl-top-left { top: 8px; left: 8px; }
 .maplibregl-control-container { z-index: 500; }
@@ -666,6 +683,9 @@ body.wb-onboarding-on #bar { z-index:710; }
 .ss-panel[hidden] { display: none; }
 .ss-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ss-row-label { font-size: 14px; }
+/* The hint under a Settings row (#595), the app's .ss-row-hint. */
+.ss-row-hint { margin: 2px 0 10px; color: var(--ch-muted); font-size: 12px; line-height: 1.4; }
+#ss-exag { padding: 5px 8px; background: var(--ch-input-bg); color: var(--ch-text); border: 1px solid var(--ch-border); border-radius: 6px; font: inherit; }
 .ss-about-name { font-size: 17px; font-weight: 700; }
 .ss-about-desc { margin: 6px 0 14px; font-size: 13px; line-height: 1.5; color: var(--ch-muted); }
 .ss-about-links { display: flex; flex-direction: column; gap: 2px; }

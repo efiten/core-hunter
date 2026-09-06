@@ -319,6 +319,14 @@
             <svg class="th-sun" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
           </button>
         </label>
+        <!-- Terrain exaggeration (#595), the app's Settings control (#396). The
+             steps come from terrain.js, so the options are filled by map.js.
+             In 3D the ground is raised; the caveat is on the control. -->
+        <label class="ss-row" id="ss-row-exag">
+          <span class="ss-row-label">Terrain exaggeration</span>
+          <select id="ss-exag"></select>
+        </label>
+        <p class="ss-row-hint">The 3D view raises the ground. Exaggeration shows which way it rises, not how steep it is: only 1× reads true for a line of sight, and 7× is what makes the relief of the Low Countries visible at all.</p>
         <!-- Ignored senders (#494): the same section the app carries, and the
              only place an ignored node can be found again — it is gone from the
              map and from the target picker by then. -->

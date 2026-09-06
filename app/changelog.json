@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-map-in-3d",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "The map in 3D, as in the app",
+    "body": "A view button under the zoom tilts the map: hex bars, pillars, buildings and the terrain. Drag to turn it; the compass puts north back."
+  },
+  {
     "id": "2026-09-06-map-on-maplibre",
     "date": "2026-09-06",
     "where": "map",

@@ -14,6 +14,10 @@ const BLOCKED = [
   '**/*.basemaps.cartocdn.com/**',
   '**/basemaps.cartocdn.com/**',
   '**/corsproxy.on8ar.eu/**',
+  // The DEM host (#595): terrain tiles would otherwise be fetched for real
+  // in every 3D test. Blocked, the map stays flat and the hillshade layer is
+  // still mounted, which is what the specs read.
+  '**/s3.amazonaws.com/elevation-tiles-prod/**',
 ]
 
 // Leaflet is the one third-party request that must still resolve — `L` is
