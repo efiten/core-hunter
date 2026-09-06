@@ -30,11 +30,11 @@ export function loadExaggeration() {
   return EXAGGERATION_STEPS.includes(v) ? v : DEFAULT_EXAGGERATION
 }
 
-// Terrain on/off, the FAB's state (#396). On unless stored off: #394 ships
-// terrain, and the FAB is the opt-out for anyone who does not want a third
-// party's DEM fetched for their viewport.
+// Terrain on/off, the FAB's state (#396). Off unless switched on (Kasper,
+// 2026-09-06): the DEM is a third party's tiles fetched for the viewport, so
+// the button is the opt-in, and the choice persists under its own key.
 export function loadTerrainOn() {
-  return readStored('core-hunter-terrain') !== '0'
+  return readStored('core-hunter-terrain') === '1'
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted

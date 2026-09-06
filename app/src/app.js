@@ -1653,7 +1653,7 @@ function buildSettingsSheet() {
           <span>Terrain exaggeration</span>
           <select id="ss-exag">${EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')}</select>
         </label>
-        <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The terrain button on the map turns terrain off.</p>
+        <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The terrain button on the map turns terrain on.</p>
       </div>
       <div class="ss-theme-row">
         <span>Theme</span>
