@@ -31,11 +31,13 @@ export function hillshadeFor(exaggeration) {
   return Math.min(1, Math.max(0.1, v))
 }
 
-// terrainPlan: what to draw. Hillshade is cheap and reads in 2D, so it
-// follows the FAB alone. The mesh (setTerrain) is what froze weak GPUs in
-// #247 and makes easeTo({pitch}) a no-op, so it waits for three things: the
-// FAB, the DEM tiles having arrived (flat until then, Kasper 2026-09-05), and
-// a 3D view, the only one where displacement can be seen.
+// terrainPlan: what to draw for a terrain state. `on` is the surface's
+// switch: the 3D view itself on both the app and the map (Kasper,
+// 2026-09-06: 3D takes the terrain and the exaggeration along at once).
+// Hillshade follows it alone. The mesh (setTerrain) is what froze weak GPUs
+// in #247 and makes easeTo({pitch}) a no-op, so it waits for three things:
+// the switch, the DEM tiles having arrived (flat until then, Kasper
+// 2026-09-05), and a 3D view, the only one where displacement can be seen.
 export function terrainPlan({ on, ready, mode3D, exaggeration } = {}) {
   const x = EXAGGERATION_STEPS.includes(Number(exaggeration)) ? Number(exaggeration) : DEFAULT_EXAGGERATION
   return { hillshade: !!on, mesh: !!on && !!ready && !!mode3D, exaggeration: x }
