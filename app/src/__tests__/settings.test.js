@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadExaggeration, loadTerrainOn } from '../settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadExaggeration } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -190,25 +190,6 @@ describe('loadExaggeration', () => {
   it('returns the default instead of throwing when storage access throws', () => {
     vi.stubGlobal('localStorage', throwingStorage())
     expect(loadExaggeration()).toBe(7)
-  })
-})
-
-// Terrain is off unless switched on (the FAB is the opt-in, 2026-09-06);
-// the FAB persists the choice under its own key.
-describe('loadTerrainOn', () => {
-  it('is off by default and on only when stored on', () => {
-    vi.stubGlobal('localStorage', storageWith({}))
-    expect(loadTerrainOn()).toBe(false)
-    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '1' }))
-    expect(loadTerrainOn()).toBe(true)
-    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '0' }))
-    expect(loadTerrainOn()).toBe(false)
-    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': 'yes' }))
-    expect(loadTerrainOn()).toBe(false)
-  })
-  it('is off instead of throwing when storage access throws', () => {
-    vi.stubGlobal('localStorage', throwingStorage())
-    expect(loadTerrainOn()).toBe(false)
   })
 })
 

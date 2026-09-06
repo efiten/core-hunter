@@ -61,7 +61,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, setTerrain() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, setExaggeration() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -92,12 +92,13 @@ export function createHuntMap(containerId) {
 
   let mode = 'both', lastRecords = [], lastSelected = null
   let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
-  // Terrain (#396): the FAB's state and the exaggeration, applied through
-  // terrainPlan. demReady flips once the DEM source has tiles for the view;
-  // until then the map stays flat, whatever the FAB says (#394 left "what
-  // does the map do when the host is slow" open; this is the answer). It is
-  // reset on every style load, since setStyle drops the source.
-  let terrainOn = false, terrainExag = DEFAULT_EXAGGERATION, demReady = false
+  // Terrain (#396): the 3D view raises it (Kasper, 2026-09-06: no switch of
+  // its own), at the exaggeration from Settings, applied through terrainPlan.
+  // demReady flips once the DEM source has tiles for the view; until then the
+  // map stays flat, whatever the view says (#394 left "what does the map do
+  // when the host is slow" open; this is the answer). It is reset on every
+  // style load, since setStyle drops the source.
+  let terrainExag = DEFAULT_EXAGGERATION, demReady = false
   map.on('sourcedata', (e) => {
     if (e.sourceId === 'dem' && e.isSourceLoaded && !demReady) { demReady = true; applyTerrain() }
   })
@@ -283,16 +284,16 @@ export function createHuntMap(containerId) {
     }
   }
   // applyTerrain draws the plan for the current state: shading follows the
-  // FAB, the mesh follows the FAB, the tiles and the 3D view (terrain.js).
+  // 3D view, the mesh follows the 3D view and the tiles (terrain.js).
   // setTerrain is only called when the plan changes, since each call
   // re-derives the mesh.
   function applyTerrain() {
     // Gated on the overlays being mounted, not on isStyleLoaded(): that one
     // stays false while any tile is still loading, which with a DEM host in
-    // the picture can be a long time, and a FAB tap in that window did
+    // the picture can be a long time, and a view tap in that window did
     // nothing. addOverlays runs this itself once the layers are there.
     if (!overlaysReady) return
-    const plan = terrainPlan({ on: terrainOn, ready: demReady, mode3D, exaggeration: terrainExag })
+    const plan = terrainPlan({ on: mode3D, ready: demReady, mode3D, exaggeration: terrainExag })
     if (plan.hillshade) {
       ensureDem()
       map.setLayoutProperty('hillshade', 'visibility', 'visible')
@@ -307,8 +308,7 @@ export function createHuntMap(containerId) {
       map.setTerrain(null)
     }
   }
-  function setTerrain({ on, exaggeration } = {}) {
-    terrainOn = !!on
+  function setExaggeration(exaggeration) {
     if (exaggeration != null) terrainExag = exaggeration
     applyTerrain()
   }
@@ -712,7 +712,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, setTerrain, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, setExaggeration, destroy }
 }
 
 function popupHtml(r, selectedIds) {
