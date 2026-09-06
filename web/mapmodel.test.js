@@ -87,3 +87,33 @@ describe('latLonBounds', () => {
     expect(latLonBounds([])).toBeNull()
   })
 })
+
+// #549: a node's reach is the star of its direct hearings, one line per
+// reception in that reception's tier colour, from the node's position. The
+// hub is the registry's advertised position when there is one, else the RSSI
+// estimate (Kasper, 2026-09-06), and the line says which it hangs from.
+import { reachFeatures, reachOrigin } from './mapmodel.js'
+
+describe('reachOrigin', () => {
+  it('takes the advertised position first, the estimate second, and nothing without either', () => {
+    expect(reachOrigin({ advertised: { lat: 51, lon: 4 }, estimate: { centroid: { lat: 51.1, lon: 4.1 } } })).toEqual({ lat: 51, lon: 4, kind: 'advertised' })
+    expect(reachOrigin({ advertised: null, estimate: { centroid: { lat: 51.1, lon: 4.1 } } })).toEqual({ lat: 51.1, lon: 4.1, kind: 'estimate' })
+    expect(reachOrigin({ advertised: null, estimate: null })).toBeNull()
+    expect(reachOrigin({ advertised: { lat: 0, lon: 0 }, estimate: null })).toBeNull()
+  })
+})
+
+describe('reachFeatures', () => {
+  const origin = { lat: 51, lon: 4, kind: 'advertised' }
+  it('draws one line per hearing, from the hub, in the hearing\'s tier colour', () => {
+    const fc = reachFeatures(origin, [{ lat: 51.01, lon: 4.02, rssi: -60 }, { lat: 50.99, lon: 3.98, rssi: -118 }], color)
+    expect(fc.features).toHaveLength(2)
+    expect(fc.features[0].geometry).toEqual({ type: 'LineString', coordinates: [[4, 51], [4.02, 51.01]] })
+    expect(fc.features[0].properties).toEqual({ color: 'c-hot', op: 0.7, hub: 'advertised' })
+    expect(fc.features[1].properties.color).toBe('c-faint')
+  })
+  it('skips a hearing without a position, and draws nothing without a hub', () => {
+    expect(reachFeatures(origin, [{ lat: null, lon: 4, rssi: -60 }], color).features).toHaveLength(0)
+    expect(reachFeatures(null, [{ lat: 51, lon: 4, rssi: -60 }], color).features).toHaveLength(0)
+  })
+})

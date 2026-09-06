@@ -1,11 +1,11 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
-import { leafletZoom, mapZoomFromLeaflet, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds } from './mapmodel.js'
+import { leafletZoom, mapZoomFromLeaflet, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, reachOrigin, reachFeatures } from './mapmodel.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
+import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows, estimateFor } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
@@ -252,7 +252,7 @@ function pointPopupHtml(pt) {
   // Ignoring is per person and needs no role: it only ever removes rows from
   // the asker's own view. Same wording as the app's popup (huntmap.js).
   const ignBtn = sid ? `<br><button class="pp-ignore" data-sender="${esc(sid)}">Ignore this ID</button>` : ''
-  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}${ignBtn}`
+  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}${ignBtn}${reachBtn(sid)}`
 }
 // Reception ticker two-way sync (#224): clicking a point scrolls the ticker
 // to the matching line, keyed by receptionKey since /api/points rows carry no
@@ -492,6 +492,7 @@ export function refresh() {
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
     drawNodePositions()   // follows the same filter/bbox set as the points
+    drawReach()           // the selection and the popup toggles (#549)
     if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
 }
@@ -869,6 +870,7 @@ function activateLocate() {
   currentPoints = []; currentHexRings = []
   wm.setData('points', null); wm.setData('hex', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
   clearNodePosLayer(); nodePosSig = null
+  clearReachLayer()
   setRxHighlight(null) // suppress ticker rings in focus mode (#287 blocker 3)
   urlstate.save()
   drawLocate()
@@ -908,6 +910,84 @@ document.addEventListener('click', (e) => {
   if (leg) leg.hidden = !legendOpen
 })
 
+// --- Reach (#549) ----------------------------------------------------------
+// A node's reach is the star of its direct hearings: one line per reception
+// attributed to it, from its position, in that reception's tier colour. It is
+// a lower bound built from where hunters drove, not an RF prediction:
+// unmeasured is not unreachable. And it hangs on an unauthenticated identity
+// (#320), the same caveat Locate carries.
+//
+// On for every node in the target picker's selection, and for any node
+// toggled from a popup (a point, a CoreScope sighting, a registry node), so a
+// companion heard in passing can show its star without becoming a target.
+// The hub is the registry's advertised position when the resolver has one
+// (members; the resolve proxy strips it below), else the RSSI estimate over
+// the same hearings, marked so the two never look alike.
+const reachExtra = new Set()
+let reachGen = 0
+function reachIds() {
+  const ids = new Set(reachExtra)
+  for (const id of (targetPicker ? targetPicker.getSelected() : [])) ids.add(String(id).toLowerCase())
+  return [...ids]
+}
+function reachBtn(id) {
+  if (!id) return ''
+  const on = reachExtra.has(String(id).toLowerCase())
+  return `<br><button class="rc-toggle" data-sender="${esc(id)}" title="Where hunters heard this node directly. A lower bound from where they drove; unmeasured is not unreachable.">${on ? 'Hide reach' : 'Show reach'}</button>`
+}
+async function fetchReachPoints(id, f) {
+  const p = new URLSearchParams()
+  p.append('senders', id)
+  if (f.from) p.set('from', f.from)
+  if (f.to) p.set('to', f.to)
+  const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
+  return points
+}
+function clearReachLayer() {
+  wm.setData('reach', null)
+  wm.clearMarkers('reach')
+}
+async function drawReach() {
+  const gen = ++reachGen
+  const ids = reachIds()
+  if (!ids.length || locateActive) { clearReachLayer(); return }
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  const stars = []
+  for (const id of ids) {
+    let points
+    try { points = await fetchReachPoints(id, f) } catch (_) { continue }
+    if (isResolvableId(id) && cachedName(id) === undefined) await resolveName(id).catch(() => '')
+    if (gen !== reachGen) return
+    const advertised = cachedPosition(id) || null
+    const estimate = points.length ? estimateFor(points) : null
+    stars.push({ id, origin: reachOrigin({ advertised, estimate }), points })
+  }
+  if (gen !== reachGen) return
+  const features = []
+  for (const s of stars) features.push(...reachFeatures(s.origin, s.points, tierColor).features)
+  wm.setData('reach', { type: 'FeatureCollection', features })
+  wm.clearMarkers('reach')
+  for (const s of stars) {
+    if (!s.origin) continue
+    const el = document.createElement('div')
+    el.className = `rc-hub rc-${s.origin.kind}`
+    const name = cachedName(s.id) || s.id.slice(0, 6)
+    el.title = `${name}: reach from its ${s.origin.kind === 'advertised' ? 'advertised position' : 'RSSI estimate'}, ${s.points.length} hearings. A lower bound from where hunters drove; unmeasured is not unreachable.`
+    wm.addMarker('reach', el, [s.origin.lat, s.origin.lon])
+  }
+}
+// "Show reach" / "Hide reach" in a popup, delegated like the Locate button.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.rc-toggle')
+  if (!btn) return
+  const id = String(btn.dataset.sender || '').toLowerCase()
+  if (!id) return
+  if (reachExtra.has(id)) reachExtra.delete(id); else reachExtra.add(id)
+  wm.closePopup()
+  drawReach()
+})
+window.__reachIds = () => reachIds() // test hook
+
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---
 // Timeframe-scoped (from/to), not bbox; the heard_key resolves to the node /
 // repeater name. Relays (last-hop repeaters) drawn as a ring to distinguish them
@@ -925,7 +1005,7 @@ function observerPopupHtml(pt, ring) {
   // Glossary (#174): 'observer' -> 'hunter' (our own term for the capturer);
   // 'relay'/'node' left as-is, tied to the CS-relays/CS-adverts toggle wording
   // (CoreScope's own source distinction, not our sender/repeater glossary).
-  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>hunter ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}`
+  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>hunter ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}${reachBtn(hk)}`
 }
 for (const [src, ring] of [['advert', false], ['rxlog', true]]) {
   wm.onLayerClick(`observer-${src}`, (props) => {
@@ -1013,7 +1093,7 @@ function nodePosPopup(name, id, p, est) {
         : 'one-sided — radius not trusted'}`
     : ''
   return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}`
-    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
+    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>${reachBtn(id)}`
 }
 
 // Generation token: a draw can be re-entered while its /api/points fetch is in
@@ -1478,6 +1558,7 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   syncTargetToggleLabel()
   syncHunterToggleLabel()
   clearObserverLayers()
+  reachExtra.clear()
   if (locateActive) deactivateLocate() // restores points/hex per mode
   refresh()
   urlstate.save()

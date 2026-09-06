@@ -567,6 +567,12 @@ body.wb-onboarding-on #bar { z-index:710; }
 .np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg); cursor: pointer; position: relative; }
 .np-advert::after, .np-estimate::after { content: ''; position: absolute;
   left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
+/* Reach (#549): the hub of the star, accent when it is the advertised position
+   and muted when it is the RSSI estimate, so the two never look alike. */
+.rc-hub { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ch-bg); background: var(--ch-accent); }
+.rc-hub.rc-estimate { background: var(--ch-muted); }
+.rc-toggle { margin-top: 6px; padding: 3px 9px; border: 1px solid var(--ch-border); border-radius: 6px; cursor: pointer;
+  background: none; color: var(--ch-text); font-size: 12px; }
 /* The selected hunter's latest position (#195): a pin, anchored at its tip. */
 .hunter-pin { width: 14px; height: 14px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
   background: var(--ch-accent); border: 2px solid var(--ch-bg); cursor: pointer; }

@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-reach-of-a-node",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "See how far a node reaches",
+    "body": "Pick a node, or tap Show reach in a popup: a line from the node to every place it was heard directly, coloured by signal."
+  },
+  {
     "id": "2026-09-06-map-on-maplibre",
     "date": "2026-09-06",
     "where": "map",

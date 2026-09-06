@@ -20,7 +20,7 @@ const STYLES = {
 const EMPTY = { type: 'FeatureCollection', features: [] }
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
 // The sources the data layers read, all GeoJSON, all set through setData.
-const GEO_SOURCES = ['hex', 'points', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle']
+const GEO_SOURCES = ['hex', 'reach', 'points', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle']
 
 export function createWebMap(containerId, { center, zoom, theme = 'dark' } = {}) {
   const map = new maplibregl.Map({
@@ -70,6 +70,10 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark' } = {})
       paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.9 } })
     if (heat && !map.getLayer('locate-heat')) map.addLayer({ id: 'locate-heat', type: 'raster', source: 'locate-heat',
       paint: { 'raster-opacity': 0.7, 'raster-fade-duration': 0 } })
+    // A node's reach (#549): one line per direct hearing, under the dots so
+    // the hearings stay readable at the hub.
+    if (!map.getLayer('reach')) map.addLayer({ id: 'reach', type: 'line', source: 'reach',
+      paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': ['get', 'op'] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
       paint: { 'circle-radius': 5, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'op'],
         'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1 } })
