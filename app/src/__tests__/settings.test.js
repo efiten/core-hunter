@@ -193,20 +193,22 @@ describe('loadExaggeration', () => {
   })
 })
 
-// Terrain is on unless switched off (#394: it ships, the control is the
-// opt-out); the FAB persists the choice under its own key.
+// Terrain is off unless switched on (the FAB is the opt-in, 2026-09-06);
+// the FAB persists the choice under its own key.
 describe('loadTerrainOn', () => {
-  it('is on by default and off only when stored off', () => {
+  it('is off by default and on only when stored on', () => {
     vi.stubGlobal('localStorage', storageWith({}))
-    expect(loadTerrainOn()).toBe(true)
-    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '0' }))
     expect(loadTerrainOn()).toBe(false)
     vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '1' }))
     expect(loadTerrainOn()).toBe(true)
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': '0' }))
+    expect(loadTerrainOn()).toBe(false)
+    vi.stubGlobal('localStorage', storageWith({ 'core-hunter-terrain': 'yes' }))
+    expect(loadTerrainOn()).toBe(false)
   })
-  it('is on instead of throwing when storage access throws', () => {
+  it('is off instead of throwing when storage access throws', () => {
     vi.stubGlobal('localStorage', throwingStorage())
-    expect(loadTerrainOn()).toBe(true)
+    expect(loadTerrainOn()).toBe(false)
   })
 })
 
