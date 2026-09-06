@@ -27,7 +27,7 @@ const BLOCKED = [
 // promise (not the body) is cached so concurrent tests share the one fetch,
 // and a failure is not cached — the next test retries rather than inheriting
 // a permanent empty Leaflet.
-const CDN = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css']
+const CDN = ['https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css']
 const cdnCache = new Map()
 function cdnBody(url) {
   if (!cdnCache.has(url)) {
@@ -49,6 +49,12 @@ export const test = base.extend({
       try { localStorage.setItem('ch-onboarding-seen', '1') } catch (_) {}
     })
     for (const pattern of BLOCKED) await page.route(pattern, (r) => r.abort())
+    // The hosted basemap style (#465): answered here with a bare background
+    // style, so the map's 'load' fires at once and offline, instead of the
+    // 12 s fallback timer deciding when the data layers may mount. Tiles,
+    // glyphs and sprites are never asked for, since the bare style has none.
+    await page.route('**/tiles.openfreemap.org/**', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#111' } }] }) }))
     for (const url of CDN) {
       const contentType = url.endsWith('.css') ? 'text/css' : 'application/javascript'
       await page.route(url, async (route) => {
@@ -63,6 +69,15 @@ export const test = base.extend({
     await use(page)
   },
 })
+
+// Click the map at a coordinate. Points and cells are drawn on a canvas since
+// #465 (as they were on Leaflet's canvas renderer), so there is no element to
+// click; the page's __mapProject hook says where the coordinate is.
+export async function clickMapAt(page, lat, lon) {
+  const box = await page.locator('#map').boundingBox()
+  const pt = await page.evaluate(([la, lo]) => window.__mapProject(la, lo), [lat, lon])
+  await page.mouse.click(box.x + pt.x, box.y + pt.y)
+}
 
 // Wait until the map stops moving. Several specs click a map feature by pixel
 // position (canvas points have no DOM node to target), which silently misses
