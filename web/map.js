@@ -17,7 +17,7 @@ import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilt
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
 import { createMultiSelectPicker, wirePopover, placePopover } from './multiselect.js'
 import { activeFilterCount } from './barfilters.js'
-import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
+import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter, keptSelection } from './hunterpicker.js'
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP } from './receptionticker.js'
 import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
@@ -456,6 +456,12 @@ function applyRole(me) {
   applyLocateGate()
   applyObserverGate()
   applyPointLayerGate()
+  // The roster answers as the role the server saw (#463): below member every
+  // hunter the caller does not own is a pseudonym. It was fetched once, at
+  // module scope and before /api/auth/me had answered, so a login kept the
+  // guest's "Hunter N" on screen until a reload, and a logout kept the real
+  // names. Fetched here instead, once per role the page learns.
+  if (currentRole !== rosterRole) { rosterRole = currentRole; loadHunterRoster() }
   // The range label depends on the role (#300), and this runs after
   // /api/auth/me resolves — at module-eval time currentRole is still the
   // 'guest' default, so without this a member keeps the clamp note.
@@ -1979,6 +1985,9 @@ wirePopover({
 const hpToggle = document.getElementById('hp-toggle')
 hunterPanel = document.getElementById('hunter-picker')
 let hunterRoster = []
+// The role the roster was fetched as; applyRole refetches when it moves (#463).
+let rosterRole = null
+let rosterLoaded = false
 const hunterAdapter = {
   idOf: (h) => h.hunter_pubkey,
   rowParts: (h) => ({ primary: hunterOptionLabel(h), secondary: '', meta: [] }),
@@ -2019,20 +2028,28 @@ wirePopover({
   onOpen: () => { hunterPicker.reset(); hunterPicker.render(cachedHunterCandidatePoints, Date.now()); refresh() },
 })
 
-// Hunter roster (#290) -- fetched once; the picker's row labels and Top-
-// section ranking both read it through the hunterRoster closure above.
+// Hunter roster (#290) -- fetched from applyRole, once per role (#463); the
+// picker's row labels and Top-section ranking both read it through the
+// hunterRoster closure above.
 async function loadHunterRoster() {
   try {
-    const r = await fetch(`${API_BASE}/api/hunters`); const d = await r.json()
+    const r = await fetch(`${API_BASE}/api/hunters`, { credentials: 'same-origin' }); const d = await r.json()
     hunterRoster = d.hunters || []
     // The shared/saved selection can only be applied once the roster exists
     // (it arrives async). Re-assert it and fire the same save/refresh/snap
     // effects a user pick would, so the view + URL pick it up. Read the value
     // captured before load (index.html), not initial('hunter') here -- by now
     // urlstate.load()'s save() has already normalized the URL/storage to the
-    // still-empty live selection and would return '' (#196).
-    const want = String(window.__initialHunter || '').split(',').filter(Boolean)
-    if (want.length) {
+    // still-empty live selection and would return '' (#196). First roster
+    // only: a refetch after a role change keeps what the new roster still
+    // names (keptSelection) and drops the rest, since a pseudonym token and a
+    // pubkey are different ids for one hunter.
+    const want = rosterLoaded
+      ? keptSelection(hunterPicker.getSelected(), hunterRoster)
+      : String(window.__initialHunter || '').split(',').filter(Boolean)
+    const had = hunterPicker.getSelected()
+    rosterLoaded = true
+    if (want.length !== had.length || want.some((id, i) => id !== had[i])) {
       hunterPicker.setSelected(want)
       syncHunterToggleLabel()
       urlstate.save(); refresh(); snapToHunter()
@@ -2047,7 +2064,6 @@ async function loadHunterRoster() {
     hunterPicker.render(cachedHunterCandidatePoints, Date.now())
   } catch (_) {}
 }
-loadHunterRoster()
 
 // Reception ticker (#224) -- created once, available to every role (the
 // server already applies guest/member windowing to /api/points itself, same
