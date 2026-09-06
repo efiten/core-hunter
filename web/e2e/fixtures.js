@@ -70,6 +70,14 @@ export const test = base.extend({
   },
 })
 
+// Types a sender-id prefix. The field lives inside the sender picker's panel
+// since #498, so it is opened first; the panel is left open, since the map
+// and the URL react to the field whether the panel is up or not.
+export async function typeSenderPrefix(page, value) {
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await page.fill('#f-sender', value)
+}
+
 // Click the map at a coordinate. Points and cells are drawn on a canvas since
 // #465 (as they were on Leaflet's canvas renderer), so there is no element to
 // click; the page's __mapProject hook says where the coordinate is.

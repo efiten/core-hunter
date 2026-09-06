@@ -1,4 +1,4 @@
-import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode } from './fixtures.js'
+import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, typeSenderPrefix } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -286,7 +286,8 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
   }).toPass()
   await page.locator('.lc-locate').click()
 
-  await expect(page.locator('#f-sender')).toHaveValue(SID)
+  // The popup picks the node (an exact id, #498) rather than filling a prefix.
+  expect(await page.evaluate(() => window.selectedSenderIds())).toEqual([SID])
   await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
   await expect(page.locator('#locate-info')).toBeVisible()
 })
@@ -345,7 +346,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   }).toPass()
   await page.locator('.lc-locate').click()
 
-  await expect(page.locator('#f-sender')).toHaveValue(HK)
+  expect(await page.evaluate(() => window.selectedSenderIds())).toEqual([HK])
   await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
   await locateReq // Locate pulled this relay's CoreScope sightings by heard_key
   await expect(page.locator('#locate-info')).toBeVisible()
@@ -402,14 +403,14 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
 test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
   await page.goto('/')
-  await page.fill('#f-sender', '7b0e24700e0c0d3e')
+  await typeSenderPrefix(page, '7b0e24700e0c0d3e')
   await expect(page.locator('#f-sender')).toHaveAttribute('title', 'NEO7HI')
 })
 
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/?mode=points') // points requests — the cold default is hex (#141)
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))
-  await page.fill('#f-sender', '4a')
+  await typeSenderPrefix(page, '4a')
   await req // only resolves if a points request carrying sender=4a was issued
 })
 

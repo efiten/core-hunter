@@ -417,6 +417,19 @@ describe('targetChipLabel — what the picker button says', () => {
     expect(out.title).toBe('')
   })
 
+  // #498: the typed prefix lives inside the picker now, so the button is the
+  // only trace of it once the panel closes, the same lesson the picks taught.
+  it('shows a typed prefix as the selection when nothing is picked', () => {
+    const out = targetChipLabel([], { rows: [row()], prefix: '4a2b' })
+    expect(out.text).toBe('⌖ 4a2b…')
+    expect(out.count).toBe(1)
+    expect(out.title).toMatch(/4a2b/)
+  })
+  it('lets a pick outrank a leftover prefix, since picking clears it', () => {
+    const rows = [row({ sender_id: 'aabb', sender_label: 'KH-01', merged_ids: ['aabb'] })]
+    expect(targetChipLabel(['aabb'], { rows, prefix: '4a' }).text).toBe('⌖ KH-01')
+  })
+
   it('names the node when one is picked', () => {
     const rows = [row({ sender_id: 'aabb', sender_label: 'KH-01', merged_ids: ['aabb'] })]
     const out = targetChipLabel(['aabb'], { rows })

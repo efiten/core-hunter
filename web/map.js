@@ -887,13 +887,18 @@ function deactivateLocate() {
 }
 locateBtn.addEventListener('click', () => (locateActive ? deactivateLocate() : activateLocate()))
 
-// "Locate this sender" button inside a point popup: set the sender filter to the
-// clicked node's ID and start (or refresh) a Locate for it.
+// "Locate this sender" button inside a popup: pick the clicked node in the
+// target picker (an exact id, not a prefix, #498) and start or refresh a
+// Locate for it. The pick is what locateSender reads, so Locate follows.
 document.addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('.lc-locate')
   if (!btn) return
-  document.getElementById('f-sender').value = btn.dataset.sender
   wm.closePopup()
+  if (targetPicker) {
+    targetPicker.setSelected([String(btn.dataset.sender).toLowerCase()])
+    syncTargetToggleLabel()
+    urlstate.save()
+  }
   activateLocate()
 })
 
@@ -1913,7 +1918,7 @@ wirePopover({
 renderIgnoreList()
 syncIgnoreToggleLabel()
 
-// Target-list picker (#223): a small dropdown beside #f-sender, a "toggle
+// Target-list picker (#223): a small dropdown, a "toggle
 // button reveals a panel" shape rather than app's full sheet -- web's top bar
 // keeps every control inline (#225 decision), so this stays a compact
 // popover, not a sheet. The hunter picker below (#290) shares the same shape.
@@ -1935,6 +1940,9 @@ function syncTargetToggleLabel() {
   const { text, title, count } = targetChipLabel(ids, {
     rows: ids.length ? senderList(cachedCandidatePoints) : [],
     nameOf: (id) => cachedName(id) || '',
+    // The typed prefix is inside the panel since #498, so the button is its
+    // only trace once the panel closes.
+    prefix: document.getElementById('f-sender').value,
   })
   spToggle.textContent = `${text} ▾`
   spToggle.title = title || 'Pick from heard senders'
@@ -1957,12 +1965,12 @@ window.selectedSenderIds = () => targetPicker.getSelected()
 // nothing said why (#299). Typing is an explicit act, so let it win — the same
 // direction the pick already has when it clears the field.
 document.getElementById('f-sender').addEventListener('input', (e) => {
-  if (!e.target.value.trim()) return
-  if (!targetPicker.getSelected().length) return
-  targetPicker.setSelected([])
-  syncTargetToggleLabel()
-  urlstate.save()
-  refresh()
+  if (e.target.value.trim() && targetPicker.getSelected().length) {
+    targetPicker.setSelected([])
+    urlstate.save()
+    refresh()
+  }
+  syncTargetToggleLabel() // the button traces the prefix as well as a pick (#498)
 })
 
 // Selection persists as JSON: a sender_id is arbitrary operator text, so the

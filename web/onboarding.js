@@ -42,7 +42,7 @@ export const ONBOARDING_CALLOUTS = [
   // both sit below targets this close together without overlapping.
   {
     id: 'wb-co-filters',
-    targets: ['hp-toggle', 'f-sender', 'sp-toggle', 'tr-toggle', 'filter-pill'],
+    targets: ['hp-toggle', 'sp-toggle', 'tr-toggle', 'filter-pill'],
     side: 'below',
     align: 'left',
     text: 'Choose hunters, a sender and a time range. Everything else — packet types, sender classes, zero-hop only, the overlays, the points/hex view, and (for members) Locate — lives behind Filters. Filtering changes what you see, not what is kept.',

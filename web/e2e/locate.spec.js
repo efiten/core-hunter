@@ -1,4 +1,4 @@
-import { test, expect, toggleLocate, clickPanelChip } from './fixtures.js'
+import { test, expect, toggleLocate, clickPanelChip, typeSenderPrefix } from './fixtures.js'
 
 // A small spread of synthetic receptions around (51, 4): one strong, several weak,
 // all > 10 m apart (so dedupe keeps them) and < 20 km (so none are rejected).
@@ -90,7 +90,7 @@ test('heatmap fades to a transparent border — no rectangle artifact', async ({
 test('Locate button fetches /api/points and renders the overlay', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: POINTS } }))
   await page.goto('/')
-  await page.fill('#f-sender', '4a')
+  await typeSenderPrefix(page, '4a')
   await toggleLocate(page) // Locate lives in the filter panel (#539)
 
   await expect(page.locator('.lc-centroid')).toHaveCount(1)
@@ -126,7 +126,7 @@ test('Locate with no sender but a type filter locates over that filtered set (#1
 test('Locate surfaces a fetch error instead of crashing the poll loop', async ({ page }) => {
   await page.route('**/api/points*', (r) => r.fulfill({ status: 500, body: 'boom' }))
   await page.goto('/')
-  await page.fill('#f-sender', '4a')
+  await typeSenderPrefix(page, '4a')
   await toggleLocate(page) // Locate lives in the filter panel (#539)
   await expect(page.locator('#locate-info')).toContainText('Could not load points')
 })

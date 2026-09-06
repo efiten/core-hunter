@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-one-target-control",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "One place to choose a target",
+    "body": "The sender id box moved into the target picker, above the list. The button shows what is chosen, a pick or a typed prefix."
+  },
+  {
     "id": "2026-09-06-map-on-maplibre",
     "date": "2026-09-06",
     "where": "map",
