@@ -2,7 +2,9 @@
 // what the API answers. mapcore.js is the DOM/WebGL glue and stays out of the
 // unit suite, the way huntmap.js does in the app; everything a test can pin
 // lives here.
-import { rssiTier, fillOpacity } from './signal.js'
+import { rssiTier, fillOpacity, extrusionHeight, withAlpha, pillarTint } from './signal.js'
+import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
+import { PITCH_3D } from './maplayers.js'
 
 const fc = (features) => ({ type: 'FeatureCollection', features })
 
@@ -30,13 +32,60 @@ export function pointFeatures(points, colorOf) {
 // The server's heatmap cells, restyled: the ring stays, the tier of the best
 // RSSI decides the colour, and the count and hunter count ride along for the
 // hover line. A withheld hunter list (a degraded caller, #440) is null, not 0.
-export function hexFeatures(features, colorOf) {
+// height and pillar are only read by the 3D twin, hex-3d (#595), the app's
+// rule (huntmap.js buildHexFC): the bar's height by tier, and the tint the
+// bar is painted, the tier colour at the tier's opacity pre-mixed over the
+// theme background (#412), opaque, so a bar reads as its own cell does.
+export function hexFeatures(features, colorOf, background = '') {
   return fc((features || []).map((f, i) => {
     const tier = rssiTier(f.properties.best_rssi)
+    const token = colorOf(tier)
     return { type: 'Feature', geometry: f.geometry,
-      properties: { i, color: colorOf(tier), op: fillOpacity(tier), best: f.properties.best_rssi, count: f.properties.count,
-        hunters: Array.isArray(f.properties.hunters) ? f.properties.hunters.length : null } }
+      properties: { i, color: token, op: fillOpacity(tier), best: f.properties.best_rssi, count: f.properties.count,
+        hunters: Array.isArray(f.properties.hunters) ? f.properties.hunters.length : null,
+        pillar: pillarTint(tier, token, background), height: extrusionHeight(f.properties.best_rssi) } }
   }))
+}
+
+// The 3D twin of pointFeatures (#595), the app's buildPoints3DFC: an octagon
+// footprint per reception, extruded to the same tier height as the hex bars,
+// so a hotter reception stands taller. Tier opacity rides in the colour's
+// alpha, since fill-extrusion-opacity is one number for the whole layer
+// (#302). Coincident receptions collapse onto the strongest first (#402):
+// coplanar side walls in one depth pass z-fight, and a stationary hunter's
+// samples are exactly that. The footprint is metres, widened to a 4 px floor
+// when the zoom would make 3 m a hairline (pointmarker.js).
+const POINT_PILLAR_RADIUS_M = 3
+const POINT_PILLAR_MIN_RADIUS_PX = 4
+export function pillarFeatures(points, zoom, colorOf) {
+  const placed = points.map((pt, i) => ({ ...pt, i })).filter((pt) => pt.lat != null && pt.lon != null)
+  return fc(collapsePillars(placed).map((pt) => {
+    const tier = rssiTier(pt.rssi)
+    const ring = octagonRing(pt.lat, pt.lon, pillarRadiusM(pt.lat, zoom, POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
+      properties: { i: pt.i, color: withAlpha(colorOf(tier), fillOpacity(tier)), height: extrusionHeight(pt.rssi) } }
+  }))
+}
+
+// What the URL says about the camera (#595). ?view=3d is the layer state,
+// and on its own it implies the app's fixed pitch (PITCH_3D); ?pitch= and
+// ?bearing= are the camera itself and win when present, so a tilt or a turn
+// the visitor chose survives the link. Clamped to what MapLibre accepts:
+// pitch 0..85 (the app's MAX_PITCH), bearing wrapped into -180..180.
+export function cameraFor({ view, pitch, bearing } = {}) {
+  const view3D = view === '3d'
+  const p = Number(pitch), b = Number(bearing)
+  const hasPitch = pitch != null && pitch !== '' && Number.isFinite(p)
+  const hasBearing = bearing != null && bearing !== '' && Number.isFinite(b)
+  const wrapped = hasBearing ? ((((b + 180) % 360) + 360) % 360) - 180 : 0
+  return { view3D, pitch: hasPitch ? Math.max(0, Math.min(85, p)) : (view3D ? PITCH_3D : 0), bearing: wrapped }
+}
+
+// A camera angle as it travels in the URL: whole degrees, and nothing at all
+// for zero, so a flat north-up link stays as short as it was.
+export function angleParam(deg) {
+  const r = Math.round(Number(deg))
+  return Number.isFinite(r) && r !== 0 ? String(r) : ''
 }
 
 // CoreScope observer points: a relay (last-hop repeater) is a ring, an advert

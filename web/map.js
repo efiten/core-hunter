@@ -1,6 +1,7 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
-import { leafletZoom, mapZoomFromLeaflet, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds } from './mapmodel.js'
+import { leafletZoom, mapZoomFromLeaflet, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
@@ -39,6 +40,15 @@ document.documentElement.setAttribute('data-theme', theme)
 const iLat = parseFloat(urlstate.initial('lat', '')), iLon = parseFloat(urlstate.initial('lon', ''))
 const iZoom = parseInt(urlstate.initial('z', ''), 10)
 const hasSavedView = Number.isFinite(iLat) && Number.isFinite(iLon)
+const MODES = ['points', 'hex', 'both']
+// Cold default is hex (#141) — a URL-/persisted mode still wins via urlstate.
+let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
+// The camera and the 3D view from the URL (#595, mapmodel.js cameraFor):
+// ?view=3d is the layer state, ?pitch= and ?bearing= the camera, and the
+// exaggeration is a Settings choice that travels like the theme does.
+const cam = cameraFor({ view: urlstate.initial('view', ''), pitch: urlstate.initial('pitch', ''), bearing: urlstate.initial('bearing', '') })
+let view3D = cam.view3D
+let exag = EXAGGERATION_STEPS.includes(Number(urlstate.initial('exag', ''))) ? Number(urlstate.initial('exag', '')) : DEFAULT_EXAGGERATION
 // Zoom keeps its own independent fallback (a shared link can carry z= without
 // lat/lon, e.g. to set a default zoom level) -- only the center changes.
 // The map is MapLibre since #465, the app's map (mapcore.js). ?z= keeps
@@ -47,8 +57,26 @@ const hasSavedView = Number.isFinite(iLat) && Number.isFinite(iLon)
 const wm = createWebMap('map', {
   center: hasSavedView ? [iLat, iLon] : [20, 0],
   zoom: Number.isFinite(iZoom) ? mapZoomFromLeaflet(iZoom) : (hasSavedView ? 11 : 1),
-  theme,
+  theme, mode, mode3D: view3D, pitch: cam.pitch, bearing: cam.bearing, exaggeration: exag,
 })
+// The view button (#595): 2D or 3D, in the control corner under the zoom and
+// the compass, the app's view in the house form. In 3D the hex cells stand
+// as bars, the receptions as pillars, the buildings rise, and the terrain
+// comes with it at the exaggeration from Settings (Kasper, 2026-09-06: 3D
+// carries the terrain, on the app as well, #396).
+const VIEW_ICON = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+  <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7z"/>
+  <path d="M4 6.5l6 3.5 6-3.5M10 10v7"/>
+</svg>`
+const viewBtn = wm.addButton({ id: 'view-toggle', label: 'View: 2D', html: VIEW_ICON,
+  onClick: () => { view3D = !view3D; applyView(); urlstate.save(); refresh() } })
+function applyView() {
+  wm.setView(mode, view3D)
+  viewBtn.classList.toggle('on', view3D)
+  viewBtn.setAttribute('aria-pressed', String(view3D))
+  viewBtn.setAttribute('aria-label', view3D ? 'View: 3D' : 'View: 2D')
+}
+applyView()
 const tierColor = (tier) => cssVar(tierColorVar(tier))
 // The two CoreScope layers are named by their source (mapcore.js); the
 // call sites below pass these names where they used to pass layer groups.
@@ -123,9 +151,6 @@ function heatStops() {
   return ['--ch-sig-mid', '--ch-sig-warm', '--ch-sig-hot'].map((nm) => hex(cssVar(nm)))
 }
 
-const MODES = ['points', 'hex', 'both']
-// Cold default is hex (#141) — a URL-/persisted mode still wins via urlstate.
-let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
 const bar = document.getElementById('bar')
 // The layer mode is a segmented control in the filter panel (#539): one
 // button per mode, the active one pressed, instead of a cycling button whose
@@ -257,12 +282,16 @@ function pointPopupHtml(pt) {
 // Reception ticker two-way sync (#224): clicking a point scrolls the ticker
 // to the matching line, keyed by receptionKey since /api/points rows carry no
 // stable id.
-wm.onLayerClick('points', (props) => {
+const onPointClick = (props) => {
   const pt = currentPoints[props.i]
   if (!pt) return
   wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
   if (rxTicker) rxTicker.focusRecord(receptionKey(pt))
-})
+}
+// The pillar carries the index of the reception it stands for (#595), so a
+// click in 3D resolves the same way.
+wm.onLayerClick('points', onPointClick)
+wm.onLayerClick('points-3d', onPointClick)
 
 async function drawPoints() {
   const isCurrent = pointsDraw()
@@ -288,6 +317,9 @@ async function drawPoints() {
   // which gets a feature index back rather than a marker object.
   currentPoints = points
   wm.setData('points', pointFeatures(points, tierColor))
+  // The pillars (#595) are rebuilt with the points, and on every move since
+  // the footprint floor is a pixel size; only in 3D, where they are drawn.
+  wm.setData('points-3d', view3D ? pillarFeatures(points, wm.getZoom(), tierColor) : null)
   // Same rule for the points layer. Its cap is the client's own maxTotal and the
   // rows carry rx_at, so the date comes from the data already in hand rather
   // than from a second server field.
@@ -309,19 +341,23 @@ let currentHexRings = []
 // The hunter count is omitted rather than shown as 0 when the server
 // withholds it (#440): a degraded caller gets no identities at all, and
 // "0 hunters" over a cell with receptions in it reads as a bug.
-wm.hoverText('hex', (p) => `best RSSI ${p.best} · ${p.count} pts` + (p.hunters != null ? ` · ${p.hunters} hunters` : ''))
+const hexHover = (p) => `best RSSI ${p.best} · ${p.count} pts` + (p.hunters != null ? ` · ${p.hunters} hunters` : '')
+wm.hoverText('hex', hexHover)
+wm.hoverText('hex-3d', hexHover)
 // Ticker sync from hex mode (#224). The point-click path only exists in
 // 'points'/'both', and the cold default is 'hex' (#141), so without this a
 // first-time visitor clicking the map got nothing. newestInRing returns null
 // when the ticker holds none of the cell's rows (ordinary — it caps at CAP
 // recent rows), and then the ticker is left as it is.
-wm.onLayerClick('hex', (props) => {
+const onHexClick = (props) => {
   if (!rxTicker) return
   const ring = currentHexRings[props.i]
   if (!ring) return
   const hit = newestInRing(rxTicker.records(), ring)
   if (hit) rxTicker.focusRecord(receptionKey(hit))
-})
+}
+wm.onLayerClick('hex', onHexClick)
+wm.onLayerClick('hex-3d', onHexClick)
 
 async function drawHex() {
   const isCurrent = hexDraw()
@@ -338,7 +374,9 @@ async function drawHex() {
   // The rings are kept for the click handler: a cell is an aggregate with no
   // reception of its own, so a click matches it against the ticker's rows.
   currentHexRings = (fc.features || []).map((f) => f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]))
-  wm.setData('hex', hexFeatures(fc.features, tierColor))
+  // The background goes in for the bars' tint (#412): read now, so a theme
+  // switch, which refreshes, rebuilds them over the new ground.
+  wm.setData('hex', hexFeatures(fc.features, tierColor, cssVar('--ch-bg')))
   // "cells (capped)" under a range button reading All time is a contradiction a
   // reader cannot resolve. The truncation is the most RECENT n receptions, so
   // the honest report is the date it reaches back to (#440).
@@ -486,7 +524,7 @@ export function refresh() {
     // The else branches take a ticket as well as clearing: a draw started
     // under the previous mode is obsolete the moment the toggle empties its
     // layer, and would otherwise still be the newest and repaint it.
-    if (mode === 'points' || mode === 'both') drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null) }
+    if (mode === 'points' || mode === 'both') drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
     if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); currentHexRings = []; wm.setData('hex', null) }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
@@ -501,6 +539,7 @@ for (const segBtn of document.querySelectorAll('#layer-seg button')) {
     if (segBtn.dataset.mode === mode) return
     mode = segBtn.dataset.mode
     syncLayerSeg()
+    applyView() // the 3D twins follow the mode (maplayers.js)
     urlstate.save()
     refresh()
   })
@@ -526,6 +565,11 @@ window.__mapCenter = () => wm.getCenter() // test hook
 window.__mapProject = (lat, lon) => wm.project(lat, lon) // test hook
 // Canvas layers have no DOM to count; the tests read the sources instead.
 window.__featureCount = (id) => wm.featureCount(id) // test hook
+window.__layerVisible = (id) => wm.layerVisible(id) // test hook (#595)
+window.__mapPitch = () => wm.getPitch() // test hook
+window.__mapBearing = () => wm.getBearing() // test hook
+window.__paint = (id, prop) => wm.paint(id, prop) // test hook
+window.__terrain = () => wm.terrainState() // test hook
 window.__locateHeat = () => wm.heatImage() // test hook
 
 // Bbox-less query carrying every active filter (hunter/sender/time/types/hops)
@@ -867,7 +911,7 @@ function activateLocate() {
   // and never repopulates — the layer would stay empty for the rest of the
   // session. One clear, one reset.
   currentPoints = []; currentHexRings = []
-  wm.setData('points', null); wm.setData('hex', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
+  wm.setData('points', null); wm.setData('points-3d', null); wm.setData('hex', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
   clearNodePosLayer(); nodePosSig = null
   setRxHighlight(null) // suppress ticker rings in focus mode (#287 blocker 3)
   urlstate.save()
@@ -1507,7 +1551,27 @@ senderEl.addEventListener('input', () => { clearTimeout(senderTitleTimer); sende
 urlstate.register({ key: 'theme', get: () => theme,
   set: (v) => { if (v === 'light' || v === 'dark') { theme = v; document.documentElement.setAttribute('data-theme', theme); wm.setTheme(theme); syncThemeBtn() } } })
 urlstate.register({ key: 'mode', get: () => mode,
-  set: (v) => { if (MODES.includes(v)) { mode = v; syncLayerSeg() } } })
+  set: (v) => { if (MODES.includes(v)) { mode = v; syncLayerSeg(); applyView() } } })
+// The 3D view and the camera (#595). view is the layer state; pitch and
+// bearing are read at construction like lat/lon/z, so only the getters are
+// needed here, and a flat north-up view keeps them out of the URL.
+urlstate.register({ key: 'view', get: () => (view3D ? '3d' : ''),
+  set: (v) => { view3D = v === '3d'; applyView() } })
+urlstate.register({ key: 'pitch', get: () => angleParam(wm.getPitch()), set: () => {} })
+urlstate.register({ key: 'bearing', get: () => angleParam(wm.getBearing()), set: () => {} })
+// Terrain exaggeration, the app's Settings control (#396), steps from
+// terrain.js; the default stays out of the URL.
+const exagSel = document.getElementById('ss-exag')
+exagSel.innerHTML = EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')
+const applyExag = (n) => { exag = n; exagSel.value = String(n); wm.setExaggeration(n) }
+applyExag(exag)
+exagSel.addEventListener('change', () => {
+  const n = Number(exagSel.value)
+  applyExag(EXAGGERATION_STEPS.includes(n) ? n : DEFAULT_EXAGGERATION)
+  urlstate.save()
+})
+urlstate.register({ key: 'exag', get: () => (exag === DEFAULT_EXAGGERATION ? '' : String(exag)),
+  set: (v) => { const n = Number(v); if (EXAGGERATION_STEPS.includes(n)) applyExag(n) } })
 // Map view: applied synchronously at construction (top of file); here we only
 // need the getters so pan/zoom lands in the URL and storage.
 urlstate.register({ key: 'lat', get: () => wm.getCenter().lat.toFixed(5), set: () => {} })

@@ -11,10 +11,10 @@ import {
 
 const TIERS = ['hot', 'warm', 'mid', 'cool', 'cold', 'faint', 'none']
 
-// This module is a hand-kept subset of the app's (the two are merged by #238);
-// until then these assertions are the only thing keeping them from drifting,
-// and a drift shows up as the same reception rendering in two different
-// colours on the map and in the app.
+// Since #595 the web copy is the app's file whole (parity.test.js pins the
+// bytes); these assertions stay as the function-level reading of the same
+// promise, since a drift shows up as the same reception rendering in two
+// different colours on the map and in the app.
 describe('signal — parity with app/src/signal.js', () => {
   it('bands RSSI identically across the whole scale', () => {
     for (let rssi = -130; rssi <= -20; rssi++) {
@@ -42,15 +42,12 @@ describe('signal — parity with app/src/signal.js', () => {
     expect(fillOpacity('nonsense')).toBe(appFillOpacity('nonsense'))
     expect(fillOpacity(undefined)).toBe(appFillOpacity(undefined))
   })
-  // Structural guard (#238 option 2): web is a subset of app by design, so a
-  // name here that app does not have is a fork rather than a subset. And the
-  // covered list is asserted so that ADDING an export to web fails this test
-  // until it gets a parity assertion of its own — otherwise the next shared
-  // function drifts exactly the way the opacity fallback did.
-  it('exports a subset of the app module, all of it covered above', () => {
-    const webExports = Object.keys(webSignal).sort()
-    for (const name of webExports) expect(appSignal).toHaveProperty(name)
-    expect(webExports).toEqual(['fillOpacity', 'rssiTier', 'snrTier', 'tierColorVar'])
+  // Structural guard (#238 option 2), the other way round since #595: the
+  // web copy is the app's file whole, so the two export the same set. The
+  // bytes are pinned in parity.test.js; this reads the same promise at the
+  // module surface, so a copy that stops being one fails on both.
+  it('exports the same set as the app module', () => {
+    expect(Object.keys(webSignal).sort()).toEqual(Object.keys(appSignal).sort())
   })
 })
 
