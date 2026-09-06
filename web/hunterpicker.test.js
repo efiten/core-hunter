@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hunterOptionLabel, dedupeHunterActivity, hunterList, topHunters, withoutHunterFilter } from './hunterpicker.js'
+import { hunterOptionLabel, dedupeHunterActivity, hunterList, topHunters, withoutHunterFilter, keptSelection } from './hunterpicker.js'
 
 const h = (o) => ({ hunter_pubkey: 'h1', hunter_name: '', count: 0, ...o })
 const pt = (o) => ({ lat: 51, lon: 4, rssi: -80, rx_at: '2026-07-22T10:00:00Z', ...o })
@@ -85,5 +85,21 @@ describe('withoutHunterFilter — candidate pool must not narrow by the hunter s
   it('tolerates an absent or empty filter object', () => {
     expect(withoutHunterFilter({})).toEqual({})
     expect(withoutHunterFilter()).toEqual({})
+  })
+})
+
+// #463: the roster is refetched when the role changes, and the ids in it
+// change with the role. A guest picks pseudonym tokens (h3), a member real
+// pubkeys, and a hunter sees their own pubkey among the pseudonyms, so the
+// selection that survives a refetch is whatever the new roster still names.
+describe('keptSelection', () => {
+  const roster = [{ hunter_pubkey: 'abc123', hunter_name: 'ON8AR', count: 4 }, { hunter_pubkey: 'h2', hunter_name: 'Hunter 2', count: 1 }]
+  it('keeps the ids the new roster names and drops the rest, in the order picked', () => {
+    expect(keptSelection(['h9', 'h2', 'abc123'], roster)).toEqual(['h2', 'abc123'])
+  })
+  it('is empty for an empty pick or an empty roster', () => {
+    expect(keptSelection([], roster)).toEqual([])
+    expect(keptSelection(['h2'], [])).toEqual([])
+    expect(keptSelection(undefined, roster)).toEqual([])
   })
 })
