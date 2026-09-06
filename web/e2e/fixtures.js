@@ -74,6 +74,14 @@ export const test = base.extend({
   },
 })
 
+// Types a sender-id prefix. The field lives inside the sender picker's panel
+// since #498, so it is opened first; the panel is left open, since the map
+// and the URL react to the field whether the panel is up or not.
+export async function typeSenderPrefix(page, value) {
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await page.fill('#f-sender', value)
+}
+
 // Click the map at a coordinate. Points and cells are drawn on a canvas since
 // #465 (as they were on Leaflet's canvas renderer), so there is no element to
 // click; the page's __mapProject hook says where the coordinate is.
@@ -182,15 +190,6 @@ export async function closeFilters(page) {
   const panel = page.locator('#bar-filters')
   if (!(await panel.evaluate((el) => el.classList.contains('bf-open')))) return
   await page.keyboard.press('Escape')
-}
-
-// The typed prefix search moved off the bar into the panel's Sender id group
-// (#561), so a test drives it the way a reader does: open Filters, type, close.
-// `close` is opt-out for the specs that go on to read the field back.
-export async function fillSender(page, value, { close = true } = {}) {
-  await openFilters(page)
-  await page.fill('#f-sender', value)
-  if (close) await closeFilters(page)
 }
 
 // Same move for the ignore picker (#561/#564): the bar carried it, the panel
