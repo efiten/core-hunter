@@ -10,6 +10,7 @@ import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
+import { startBarWatch, onBarChange } from './barwatch.js'
 import { initAuthBar } from './login.js'
 import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
 import { packetTypeLabel } from './packettypes.js'
@@ -146,7 +147,8 @@ const syncLayerSeg = () => {
 syncLayerSeg()
 // A wrapped bar -- more filter chips than fit on one line, or a narrow viewport
 // -- grows taller than any fixed offset would assume, so the map's top comes
-// from the bar's actual rendered height rather than a guessed constant.
+// from the bar's actual rendered height rather than a guessed constant. On
+// window.resize only, not the bar watcher below: barwatch.js says why.
 const setMapTop = () => {
   document.getElementById('map').style.top = bar.offsetHeight + 'px'
   map.invalidateSize()
@@ -155,24 +157,17 @@ setMapTop()
 window.addEventListener('resize', setMapTop)
 
 // #rx-log (#224) sits below the bar too, but it is published as a token and
-// observed, because it is the one whose staleness steals clicks: at z-index 620
-// over the bar's 600 it sat on the bar's last row and swallowed everything meant
-// for the bar's last-row control (#386) -- #settings-btn since #420. The bar
-// keeps growing after module load -- the packet
-// chips render, the role notice arrives with /api/auth/me, the node counts and
-// the server version land later still -- and each one wraps another row, so one
-// measurement is stale within a second of load and only a resize repaired it.
+// follows the bar watcher, because it is the one whose staleness steals
+// clicks: at z-index 620 over the bar's 600 it sat on the bar's last row and
+// swallowed everything meant for the bar's last-row control (#386) --
+// #settings-btn since #420. The bar keeps growing after module load -- the
+// packet chips render, the role notice arrives with /api/auth/me, the node
+// counts and the server version land later still -- and each one wraps
+// another row, so one measurement is stale within a second of load.
 //
-// Deliberately not wired to #map, which stays on the resize-driven path above:
-// it follows the bar when the window changes, and not when the bar's own
-// content grows. That asymmetry is the point. invalidateSize moves the centre
-// coordinate by half the size change whatever `pan` is set to, so running it
-// for every late arrival during load walks the neutral world view off its mark
-// (#218) -- 0.14 degrees with pan on, 13 with it off, measured. A user-driven
-// resize is a different case: it already re-runs invalidateSize today, and
-// holding the visible content still across it is the wanted behaviour. What
-// #map loses by staying put is a few stale pixels behind the bar, which paints
-// above it. What #rx-log lost was every click on that control.
+// One watcher for all of that (#405, barwatch.js): this, the open popovers
+// and the onboarding callouts hang off it. #map deliberately does not; the
+// reason is recorded there, once.
 const publishBarHeight = () => {
   document.documentElement.style.setProperty('--ch-bar-h', `${bar.offsetHeight}px`)
   // The ticker hangs below the bar and is placed in pixels (#424), so it has to
@@ -182,7 +177,8 @@ const publishBarHeight = () => {
   if (window.__reflowTicker) window.__reflowTicker()
 }
 publishBarHeight()
-new ResizeObserver(publishBarHeight).observe(bar)
+startBarWatch(bar)
+onBarChange(publishBarHeight)
 
 const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
 
@@ -1448,8 +1444,9 @@ document.addEventListener('click', (e) => {
   closeTimePicker()
 }, true)
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !trPanel.hidden) closeTimePicker() })
-// A resize rewraps #bar and moves the toggle, so an open panel has to follow.
-window.addEventListener('resize', () => {
+// The bar rewraps and moves the toggle, on a resize or when late content
+// grows it, so an open panel has to follow (#405: the one bar watcher).
+onBarChange(() => {
   if (!trPanel.hidden) placePopover(trToggle, trPanel, { align: 'right' })
 })
 window.__syncTimeUi = syncTimeUi // test hook

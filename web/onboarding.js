@@ -8,6 +8,7 @@
 // capture here, so the basics are about reading someone else's coverage rather
 // than producing your own.
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
+import { onBarChange } from './barwatch.js'
 
 const SEEN_KEY = 'ch-onboarding-seen'
 
@@ -207,14 +208,15 @@ export function initOnboarding() {
   // And the toolbar keeps moving after that: the role notice arrives with
   // /api/auth/me, the node counts and the server version land later still, and
   // each one reflows the bar and slides the controls the callouts point at. A
-  // one-shot measurement is stale within a second of opening, so watch the bar
-  // for as long as the tour is open and re-measure on the next frame.
+  // one-shot measurement is stale within a second of opening, so the tour
+  // listens to the one bar watcher (#405, barwatch.js) while it is open; that
+  // covers a resize as well, since a narrower window rewraps the bar too.
   let pending = 0
   const schedule = () => {
     if (pending) return
     pending = requestAnimationFrame(() => { pending = 0; if (!overlay.hidden) positionCallouts() })
   }
-  const barWatch = new MutationObserver(schedule)
+  onBarChange(() => { if (!overlay.hidden) schedule() })
   const bar = document.getElementById('bar')
 
   function open() {
@@ -224,7 +226,6 @@ export function initOnboarding() {
     help.setAttribute('aria-expanded', 'true')
     setSpots(true)
     reposition()
-    if (bar) barWatch.observe(bar, { childList: true, subtree: true, characterData: true, attributes: true })
     // Focus into the tour, and back to the opener on close — the pattern
     // whatsnew.js landed in #363. Without it a keyboard user on a first run is
     // left on <body>, with "Got it" behind the whole toolbar in tab order.
@@ -237,7 +238,6 @@ export function initOnboarding() {
     document.body.classList.remove('wb-onboarding-on')
     help.setAttribute('aria-expanded', 'false')
     setSpots(false)
-    barWatch.disconnect()
     saveSeen()
     // Since #420 the "?" lives inside the settings sheet as "How it works", so
     // on a first run -- the tour's own case -- it is inside a closed dialog.
@@ -265,7 +265,6 @@ export function initOnboarding() {
   // the ringed controls lifted above the scrim does not — those are the tour.
   scrim.addEventListener('click', close)
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.hidden) close() })
-  window.addEventListener('resize', () => { if (!overlay.hidden) positionCallouts() })
 
   if (shouldShowOnboarding(loadSeen())) open()
 }
