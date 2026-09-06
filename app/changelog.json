@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-one-palette",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "The map takes the app's palette",
+    "body": "Panel surfaces, borders and secondary text on the map now use the same values as the app: a hairline border and slightly more see-through panels."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

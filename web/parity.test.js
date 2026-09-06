@@ -811,3 +811,149 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// The picker block and the shared tokens (#407): the two stylesheets carry
+// deliberate copies of each other beyond the ticker, and only the ticker had
+// a guard. A stopgap until #238 puts the tokens in one file both ship; while
+// they are two files, this is what stops the next port coming from whichever
+// copy was open.
+//
+// rulesOf splits on '}' (the fix from #404, eb404d9): a global regex anchored
+// on the previous rule's '}' consumes that brace, so two adjacent :root rules
+// only ever yielded the first, and comments are stripped first, since a
+// comment naming a selector otherwise satisfies a match.
+function rulesOf(rawCss) {
+  const out = []
+  for (const chunk of stripComments(rawCss).split('}')) {
+    const i = chunk.indexOf('{')
+    if (i < 0) continue
+    const selector = chunk.slice(0, i).trim().replace(/\s+/g, ' ')
+    const decls = new Map()
+    for (const d of chunk.slice(i + 1).split(';')) {
+      const j = d.indexOf(':')
+      if (j < 0) continue
+      decls.set(d.slice(0, j).trim(), d.slice(j + 1).trim().replace(/\s+/g, ' '))
+    }
+    out.push({ selector, decls })
+  }
+  return out
+}
+// One selector's declarations, merged in cascade order when it appears twice.
+function ruleDecls(rules, selector) {
+  const merged = new Map()
+  for (const r of rules) if (r.selector === selector) for (const [k, v] of r.decls) merged.set(k, v)
+  return merged
+}
+
+describe('picker CSS parity (#407)', () => {
+  const app = rulesOf(APP_CSS)
+  const web = rulesOf(WEB_CSS)
+  // The row anatomy the two surfaces share: the checkbox, the name, the meta
+  // line and its three cells, the list and its items. A change to any of them
+  // is a change to how a target reads, and it has to land on both.
+  const SHARED = ['.tl-check', '.tl-row.active .tl-check', '.tl-row.active .tl-check::after',
+    '.tl-name', '.tl-row.active .tl-name', '.tl-meta', '.tl-prefix', '.tl-rssi', '.tl-time',
+    '.tl-list', '.tl-pinned', '.tl-item', '.tl-item:first-child']
+  it('keeps the row anatomy identical, declaration for declaration', () => {
+    for (const sel of SHARED) {
+      const a = ruleDecls(app, sel), w = ruleDecls(web, sel)
+      expect(a.size, `${sel} in app.css`).toBeGreaterThan(0)
+      expect(Object.fromEntries(w), sel).toEqual(Object.fromEntries(a))
+    }
+  })
+  // .tl-row is shared except for its density: the app is a sheet under a
+  // thumb (10px rows), the web a popover under a mouse (8px rows, and its
+  // own 13px size since the popover does not inherit the sheet's). Listed
+  // here so the guard cannot be read as "the two rows must be identical".
+  const PER_SURFACE_ROW = ['padding', 'font-size']
+  it('keeps .tl-row identical apart from its per-surface density', () => {
+    const a = ruleDecls(app, '.tl-row'), w = ruleDecls(web, '.tl-row')
+    for (const k of PER_SURFACE_ROW) { a.delete(k); w.delete(k) }
+    expect(a.size).toBeGreaterThan(5)
+    expect(Object.fromEntries(w)).toEqual(Object.fromEntries(a))
+  })
+  it('states the colours through tokens, never as literals', () => {
+    // The whole point of the copies is that a theme switch reaches both; a
+    // literal colour in either row block would survive one and not the other.
+    for (const [name, rules] of [['app', app], ['web', web]]) {
+      for (const sel of [...SHARED, '.tl-row']) {
+        for (const [k, v] of ruleDecls(rules, sel)) {
+          if (/color|background|border(?!-radius|-width)/.test(k) && v !== 'transparent' && v !== '0') {
+            expect(v, `${name} ${sel} ${k}`).toMatch(/var\(--ch-|^solid var\(--ch-|^1(\.5)?px solid var\(--ch-|^0 /)
+          }
+        }
+      }
+    }
+  })
+  // Deliberately per-surface, and not pinned: .tl-panel and .tl-scroll are the
+  // popover (fixed, placed from JS, 40vh cap); .tl-search, .tl-empty and
+  // .tl-clear are the sheet's; .tl-pinned-label's top margin is 12px under a
+  // sheet heading and 0 at the top of a popover.
+})
+
+// The token sets. Both files say they carry the same values; this is the
+// set that must, and the list of what each surface owns alone.
+function tokensOf(rawCss, theme) {
+  const out = new Map()
+  for (const r of rulesOf(rawCss)) {
+    const dark = /(^|,)\s*:root\b/.test(r.selector) && !r.selector.includes('light')
+    const light = r.selector.includes('[data-theme="light"]')
+    if (!(theme === 'dark' ? dark : light)) continue
+    for (const [k, v] of r.decls) if (k.startsWith('--ch-')) out.set(k, v.replace(/\s+/g, ''))
+  }
+  return out
+}
+describe('--ch-* token parity (#407)', () => {
+  // Shared by construction: a reception has one colour in the field and on
+  // the shared map, the selection accent is one accent, and the ground, the
+  // text, the surfaces and their borders are one design (Kasper, 2026-09-06:
+  // the web took the app's border, surface and muted values rather than
+  // keeping its own).
+  const SHARED = ['--ch-accent', '--ch-accent-2', '--ch-bg', '--ch-text', '--ch-muted', '--ch-surface', '--ch-border',
+    '--ch-sig-hot', '--ch-sig-warm', '--ch-sig-mid', '--ch-sig-cool', '--ch-sig-cold', '--ch-sig-faint', '--ch-sig-none']
+  // Owned by one surface: the app's basemap flag, its bar track, its thin
+  // surface and (with #596) its buildings; the web's bar height and input
+  // ground. Named so an addition to either list is a decision, not drift.
+  const APP_ONLY = ['--ch-basemap', '--ch-bar-track', '--ch-surface-thin', '--ch-building']
+  const WEB_ONLY = ['--ch-bar-h', '--ch-input-bg']
+  for (const theme of ['dark', 'light']) {
+    it(`${theme}: the shared tokens carry one value`, () => {
+      const a = tokensOf(APP_TOKENS, theme), w = tokensOf(WEB_CSS, theme)
+      for (const k of SHARED) {
+        expect(a.get(k), `${k} in tokens.css`).toBeDefined()
+        expect(w.get(k), `${k} in style.css`).toBe(a.get(k))
+      }
+    })
+    it(`${theme}: every token is either shared, listed as one surface's own, or a per-surface value named below`, () => {
+      const a = tokensOf(APP_TOKENS, theme), w = tokensOf(WEB_CSS, theme)
+      const known = new Set([...SHARED, ...APP_ONLY, ...WEB_ONLY, ...PER_SURFACE_TOKENS])
+      for (const k of [...a.keys(), ...w.keys()]) expect(known.has(k), `${k} is not accounted for`).toBe(true)
+      for (const k of APP_ONLY) expect(w.has(k), `${k} is the app's alone`).toBe(false)
+      for (const k of WEB_ONLY) expect(a.has(k), `${k} is the web's alone`).toBe(false)
+    })
+  }
+})
+// Pinned elsewhere: --ch-rx-line-h, above, with the ticker.
+const PER_SURFACE_TOKENS = ['--ch-rx-line-h']
+
+// The node-position layer colours a drift by its kind through cssVar() on
+// both sides (driftColor in huntmap.js, driftColorVar in map.js), and
+// neither function is importable here: both modules are DOM-bound. The
+// source text is what can be read, so this pins that the two name the same
+// tokens in the same order: tight is the accent, drifted outside its circle
+// the second accent, anything else muted. The function body is read up to
+// its closing brace at the function's own indentation.
+describe('node-position drift colours (#407)', () => {
+  const tokensNamed = (src, name) => {
+    const fn = new RegExp('( *)function ' + name + '\\(p\\) \\{[\\s\\S]*?\\n\\1\\}').exec(src)
+    expect(fn, name + ' found').not.toBeNull()
+    return [...fn[0].matchAll(/--ch-[a-z0-9-]+/g)].map((m) => m[0])
+  }
+  it('names the same tokens for the same kinds', () => {
+    const app = tokensNamed(readFileSync(new URL('../app/src/huntmap.js', import.meta.url), 'utf8'), 'driftColor')
+    const web = tokensNamed(readFileSync(new URL('./map.js', import.meta.url), 'utf8'), 'driftColorVar')
+    expect(app).toEqual(['--ch-accent', '--ch-accent-2', '--ch-muted'])
+    expect(web).toEqual(app)
+  })
+})
