@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-06-map-on-maplibre",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "The map now runs on the same engine as the app",
+    "body": "Same basemap and colours as the RX webapp, smoother with many points. Shared links keep their zoom."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",

@@ -31,7 +31,7 @@ async function openPointPopup(page) {
   await expect(async () => {
     const box = await page.locator('#map').boundingBox()
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await expect(page.locator('.leaflet-popup')).toBeVisible({ timeout: 1000 })
+    await expect(page.locator('.maplibregl-popup')).toBeVisible({ timeout: 1000 })
   }).toPass()
 }
 
