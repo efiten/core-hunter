@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-05-terrain",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "Terrain is back, raised in 3D",
+    "body": "The 3D view now raises the ground on shaded relief. Settings has the exaggeration, 7× by default so the Low Countries show any relief at all."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",
