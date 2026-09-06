@@ -205,6 +205,22 @@ test('a guest who deep-links the layer is told it is the account (#376)', async 
   await page.goto('/?mode=points&nodepos=1')
   await expect(page.locator('#nodepos-key')).toContainText('verified member account', { timeout: 10000 })
   await expect(page.locator('#nodepos-note')).toBeHidden()
+  // And it stays. The gate put the key up and unchecked the box; the refresh
+  // it then asked for redrew from the box and took the key back 250 ms later,
+  // so this used to pass only when the poll above fell inside that window
+  // (2 in 6 full runs missed it). A retrying assertion cannot see a flash;
+  // an observer armed before the next draw can, and the draw is forced rather
+  // than waited for.
+  await page.evaluate(() => {
+    window.__keyHid = 0
+    new MutationObserver(() => { if (document.getElementById('nodepos-key').hidden) window.__keyHid++ })
+      .observe(document.getElementById('nodepos-key'), { attributes: true, attributeFilter: ['hidden'] })
+  })
+  const heat = page.waitForRequest('**/api/heatmap*')
+  await page.evaluate(() => window.__refresh())
+  await heat // the debounced draw ran: hex is fetched from the same tick as the node layer
+  await expect(page.locator('#nodepos-key')).toContainText('verified member account')
+  expect(await page.evaluate(() => window.__keyHid), 'the key was hidden by a later draw').toBe(0)
 })
 
 test('a node nobody in this filter heard is still drawn (#377)', async ({ page }) => {

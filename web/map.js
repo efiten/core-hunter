@@ -437,15 +437,19 @@ function applyObserverGate() {
   if (!show) {
     // Read before clearing: ?nodepos=1 binds the checkbox even for a guest,
     // whose control is hidden, and that ask is the only thing separating "you
-    // cannot see this layer" from a line about a layer nobody wanted.
-    const asked = nodePosCb.checked
+    // cannot see this layer" from a line about a layer nobody wanted. Kept
+    // (nodePosAskedBelowMember): the next refresh redraws from the checkbox,
+    // which is now off, and used to take the key back 250 ms after this put
+    // it up (the #376 test caught it only when its poll fell in that window).
+    nodePosAskedBelowMember = nodePosAskedBelowMember || nodePosCb.checked
     nodePosCb.checked = false
     clearNodePosLayer(); nodePosSig = null
-    showNodePosNotice({ on: asked, member: false })
+    showNodePosNotice({ on: nodePosAskedBelowMember, member: false })
   }
   if (!show) {
     clearObserverLayers()
   } else {
+    nodePosAskedBelowMember = false
     // Deferred CS-layer deep-link restore (mirrors the Locate restore below):
     // the ?adv=1/?rel=1 checkbox state was applied at module-eval time, before
     // the real role was known, so drawObserverPoints() early-returned then.
@@ -1039,6 +1043,10 @@ async function drawObserverPoints(src, layer, ring) {
 // web only covers senders present in the current filter set; registry-wide
 // coverage would need a bulk proxy endpoint on the Go server.
 const nodePosCb = document.getElementById('f-nodepos')
+// A guest's ?nodepos=1 ask, held past the gate's uncheck (applyObserverGate)
+// so every later draw keeps answering it; cleared once the role can see the
+// layer, where the checkbox itself is the state again.
+let nodePosAskedBelowMember = false
 
 // Colour states the rule that produced them, never a verdict on which position
 // is "right": the advertised one is operator-self-reported and can be stale.
@@ -1204,8 +1212,9 @@ async function drawNodePositions() {
     clearNodePosLayer(); nodePosSig = null
     // A guest can still reach this with ?nodepos=1, since urlstate binds the
     // checkbox whether or not the control is on screen — and that is state 1
-    // of #376: an empty layer whose cause is the account, not the area.
-    showNodePosNotice({ member: canSeeObserverPoints(currentRole) })
+    // of #376: an empty layer whose cause is the account, not the area. The
+    // ask outlives the checkbox below member, or this draw would clear it.
+    showNodePosNotice({ on: nodePosCb.checked || nodePosAskedBelowMember, member: canSeeObserverPoints(currentRole) })
     return
   }
   // Past the guards, so this is a draw that really puts the layer up. A guest
