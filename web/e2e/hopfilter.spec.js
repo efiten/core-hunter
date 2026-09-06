@@ -22,7 +22,7 @@ test('Sender unknown narrows on the tick, not on the next rolling refresh', asyn
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: flood } }) })
   await page.goto('/?mode=points&from=2026-08-24T00:00:00Z&to=2026-08-25T00:00:00Z')
-  await expect(page.locator('.leaflet-container')).toBeVisible()
+  await expect(page.locator('#map .maplibregl-canvas')).toBeVisible()
   // Wait for the initial load to settle before touching the control. Ticking
   // while the map is still fitting its view lets a moveend refresh carry the
   // param a few hundred ms later, which looks exactly like the control working.

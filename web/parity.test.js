@@ -37,6 +37,8 @@ import * as webTicker from './receptionticker.js'
 import * as webLabels from './nodelabels.js'
 import * as appLabels from '../app/src/nodelabels.js'
 import * as appTicker from '../app/src/receptionlog.js'
+import * as webSky from './sky.js'
+import * as appSky from '../app/src/sky.js'
 
 // ~15 m and ~70 m north of the origin point: the first collapses under the
 // 10 m default dedupe cell only if that default is still 10 m-ish, the second
@@ -810,4 +812,56 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
       expect(appInitialTab(input)).toBe('status')
     }
   })
+})
+
+// #465: the map's sky is the app's sky, copied whole (the deploy paths cannot
+// share a file, the #238 rule). Pinned export for export and value for value
+// at the palette's stops, so a change to one copy shows up here.
+describe('sky.js — parity between the app and web copies', () => {
+  it('exports the same set', () => {
+    expect(Object.keys(webSky).sort()).toEqual(Object.keys(appSky).sort())
+  })
+  it('paints the same sky for the same hour and theme', () => {
+    for (const hour of [0, 5, 6.5, 8, 12, 18.5, 20, 23]) for (const theme of ['dark', 'light']) {
+      expect(webSky.skyForHour(hour, theme)).toEqual(appSky.skyForHour(hour, theme))
+    }
+    expect(webSky.SKY_STOPS).toEqual(appSky.SKY_STOPS)
+  })
+})
+
+// #595: 3D on the map is the app's 3D, and the modules that decide it are the
+// app's files whole, not a subset: which layers a view shows (maplayers.js),
+// the pillar footprint (pointmarker.js), the terrain plan (terrain.js), and
+// signal.js, which the web copy used to carry only half of. Byte for byte,
+// since the deploy paths cannot share a file (#238) and a hand-kept copy is
+// what drifts.
+describe('files copied whole from the app (#595)', () => {
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js']) {
+    it(`web/${name} is app/src/${name}`, () => {
+      const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
+      const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
+      expect(web).toBe(app)
+    })
+  }
+})
+
+// #595: the buildings take --ch-building, the app's token. Undefined here it
+// was '', which MapLibre rejects as a paint value and then skips the whole
+// layer without throwing: a 3D view with no buildings and nothing in the
+// console. Pinned per theme, since the two blocks are edited separately.
+describe('--ch-building matches the app in both themes (#595)', () => {
+  const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const block = (css, light) => {
+    const c = stripComments(css)
+    const start = c.indexOf(light ? '[data-theme="light"]' : ':root')
+    return c.slice(start, c.indexOf('}', start))
+  }
+  const value = (b) => { const m = /--ch-building\s*:\s*([^;]+);/.exec(b); return m ? m[1].trim() : undefined }
+  for (const light of [false, true]) {
+    it(`${light ? 'light' : 'dark'}`, () => {
+      const app = value(block(APP_TOKENS, light)), web = value(block(WEB_CSS, light))
+      expect(app).toBeDefined()
+      expect(web).toBe(app)
+    })
+  }
 })

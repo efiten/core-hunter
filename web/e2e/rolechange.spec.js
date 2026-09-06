@@ -47,7 +47,7 @@ test('the notice is said once, not on every reload', async ({ page }) => {
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(page.locator('#role-notice')).toBeVisible({ timeout: 10000 })
   await page.reload()
-  await expect(page.locator('.leaflet-container')).toBeVisible()
+  await expect(page.locator('#map .maplibregl-canvas')).toBeVisible()
   await expect(page.locator('#role-notice')).toBeHidden()
 })
 

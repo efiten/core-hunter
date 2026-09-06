@@ -67,7 +67,7 @@ test('checking it draws the advertised marker, reflects in the URL, and shows th
   await expect(page).toHaveURL(/nodepos=1/)
 
   await page.locator('.np-advert').click({ force: true })
-  const popup = page.locator('.leaflet-popup-content')
+  const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText('Repeater-Zuid')
   await expect(popup).toContainText('▲ advertised · ● estimated')
   await expect(popup).toContainText('self-reported')
@@ -80,7 +80,7 @@ test('a drift under 100 m reports a distance but claims no radius', async ({ pag
   await page.goto('/')
   await setFilter(page, '#f-nodepos', true)
   await page.locator('.np-advert').first().click({ force: true })
-  const popup = page.locator('.leaflet-popup-content')
+  const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText(/drift \d+ m/)
   await expect(popup).not.toContainText('search radius')
   await expect(popup).not.toContainText('radius not trusted')
@@ -99,7 +99,7 @@ test('a one-sided estimate does not claim a search radius', async ({ page }) => 
   await setFilter(page, '#f-nodepos', true)
   await expect(page.locator('.np-advert')).toHaveCount(1)
   await page.locator('.np-advert').click({ force: true })
-  await expect(page.locator('.leaflet-popup-content')).toContainText('radius not trusted')
+  await expect(page.locator('.maplibregl-popup-content')).toContainText('radius not trusted')
 })
 
 test('the layer is hidden from a guest, whose resolve responses carry no position', async ({ page }) => {
@@ -205,6 +205,22 @@ test('a guest who deep-links the layer is told it is the account (#376)', async 
   await page.goto('/?mode=points&nodepos=1')
   await expect(page.locator('#nodepos-key')).toContainText('verified member account', { timeout: 10000 })
   await expect(page.locator('#nodepos-note')).toBeHidden()
+  // And it stays. The gate put the key up and unchecked the box; the refresh
+  // it then asked for redrew from the box and took the key back 250 ms later,
+  // so this used to pass only when the poll above fell inside that window
+  // (2 in 6 full runs missed it). A retrying assertion cannot see a flash;
+  // an observer armed before the next draw can, and the draw is forced rather
+  // than waited for.
+  await page.evaluate(() => {
+    window.__keyHid = 0
+    new MutationObserver(() => { if (document.getElementById('nodepos-key').hidden) window.__keyHid++ })
+      .observe(document.getElementById('nodepos-key'), { attributes: true, attributeFilter: ['hidden'] })
+  })
+  const heat = page.waitForRequest('**/api/heatmap*')
+  await page.evaluate(() => window.__refresh())
+  await heat // the debounced draw ran: hex is fetched from the same tick as the node layer
+  await expect(page.locator('#nodepos-key')).toContainText('verified member account')
+  expect(await page.evaluate(() => window.__keyHid), 'the key was hidden by a later draw').toBe(0)
 })
 
 test('a node nobody in this filter heard is still drawn (#377)', async ({ page }) => {
@@ -465,7 +481,7 @@ test('overlapping names are dropped, and the markers they belong to are not', as
 
   // The name of a node whose label was dropped is still reachable.
   await page.locator('.np-advert').first().click({ force: true })
-  await expect(page.locator('.leaflet-popup-content')).toContainText('NL-DR-GTN-OBS0')
+  await expect(page.locator('.maplibregl-popup-content')).toContainText('NL-DR-GTN-OBS0')
 })
 
 // The width the decluttering uses is measured, not estimated (#425 review).
@@ -537,7 +553,7 @@ test('the measuring probe is hidden and parked, and reads the label font', async
     const label = document.querySelector('.np-label')
     const cs = getComputedStyle(el)
     return {
-      insideMap: !!el.closest('.leaflet-container'),
+      insideMap: !!el.closest('#map'),
       // Not counted as a drawn name by anything querying .np-label.
       countedAsLabel: el.matches('.np-label'),
       visibility: cs.visibility,

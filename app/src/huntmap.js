@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha, pillarTint, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
@@ -9,6 +9,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
 import { skyForHour, currentHour } from './sky.js'
+import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan } from './terrain.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -60,7 +61,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, setExaggeration() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -91,6 +92,20 @@ export function createHuntMap(containerId) {
 
   let mode = 'both', lastRecords = [], lastSelected = null
   let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
+  // Terrain (#396): the 3D view raises it (Kasper, 2026-09-06: no switch of
+  // its own), at the exaggeration from Settings, applied through terrainPlan.
+  // demReady flips once the DEM source has tiles for the view; until then the
+  // map stays flat, whatever the view says (#394 left "what does the map do
+  // when the host is slow" open; this is the answer). It is reset on every
+  // style load, since setStyle drops the source.
+  let terrainExag = DEFAULT_EXAGGERATION, demReady = false
+  map.on('sourcedata', (e) => {
+    if (e.sourceId === 'dem' && e.isSourceLoaded && !demReady) { demReady = true; applyTerrain() }
+  })
+  // A DEM tile that fails is a tile that never arrives: the map stays flat
+  // rather than stalled. MapLibre reports it as an error event, which would
+  // otherwise reach the console for every tile.
+  map.on('error', (e) => { if (e && e.sourceId === 'dem') e.preventDefault && e.preventDefault() })
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
   let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
@@ -175,7 +190,10 @@ export function createHuntMap(containerId) {
     // is a perfectly good cache key and exactly the wrong one — the null has to
     // survive into the lookup.
     const sig = recordsKey(records)
-    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}`, () => buildHexFCUncached(records, res))
+    // The theme is in the key too (#412): the colours are read from the
+    // tokens at build time, so a theme switch on unchanged records must not
+    // serve the other theme's cells and bars from the cache.
+    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}`, () => buildHexFCUncached(records, res))
   }
   function buildHexFCUncached(records, res) {
     const cells = new Map()
@@ -189,10 +207,13 @@ export function createHuntMap(containerId) {
     for (const [id, c] of cells) {
       const ring = hexBoundary(id); if (!ring) continue // [lat,lon] closed ring → [lon,lat]
       const tier = rssiTier(c.best, currentOffset())
-      // height is only read by the 3D fill-extrusion twin (hex-3d); the flat
-      // 'hex' layer ignores it. Same source for both, per the decision log.
+      const token = cssVar(tierColorVar(tier))
+      // height and pillar are only read by the 3D fill-extrusion twin (hex-3d);
+      // the flat 'hex' layer ignores them. Same source for both, per the
+      // decision log. pillar is the cell's tint pre-mixed over the theme
+      // background (#412): opaque, so the bar reads as its cell does.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring.map(([la, lo]) => [lo, la])] },
-        properties: { color: cssVar(tierColorVar(tier)), op: fillOpacity(tier), height: extrusionHeight(c.best, currentOffset()) } })
+        properties: { color: token, op: fillOpacity(tier), pillar: pillarTint(tier, token, cssVar('--ch-bg')), height: extrusionHeight(c.best, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -251,9 +272,54 @@ export function createHuntMap(containerId) {
   // (the tightest stop gap is 1.5 h) and costs one paint-property write.
   const skyTimer = setInterval(applySky, 60000)
 
+  // ensureDem mounts the DEM source and the hillshade layer under the signal
+  // overlays (before 'trail', the first of them), on the current style.
+  function ensureDem() {
+    if (!map.getSource('dem')) {
+      map.addSource('dem', { type: 'raster-dem', tileSize: 256, maxzoom: DEM_MAX_ZOOM, encoding: DEM_ENCODING, tiles: [DEM_TILES], attribution: DEM_ATTRIBUTION })
+    }
+    if (!map.getLayer('hillshade')) {
+      map.addLayer({ id: 'hillshade', type: 'hillshade', source: 'dem', layout: { visibility: 'none' },
+        paint: { 'hillshade-exaggeration': hillshadeFor(terrainExag) } }, map.getLayer('trail') ? 'trail' : undefined)
+    }
+  }
+  // applyTerrain draws the plan for the current state: shading follows the
+  // 3D view, the mesh follows the 3D view and the tiles (terrain.js).
+  // setTerrain is only called when the plan changes, since each call
+  // re-derives the mesh.
+  function applyTerrain() {
+    // Gated on the overlays being mounted, not on isStyleLoaded(): that one
+    // stays false while any tile is still loading, which with a DEM host in
+    // the picture can be a long time, and a view tap in that window did
+    // nothing. addOverlays runs this itself once the layers are there.
+    if (!overlaysReady) return
+    const plan = terrainPlan({ on: mode3D, ready: demReady, mode3D, exaggeration: terrainExag })
+    if (plan.hillshade) {
+      ensureDem()
+      map.setLayoutProperty('hillshade', 'visibility', 'visible')
+      map.setPaintProperty('hillshade', 'hillshade-exaggeration', hillshadeFor(plan.exaggeration))
+    } else if (map.getLayer('hillshade')) {
+      map.setLayoutProperty('hillshade', 'visibility', 'none')
+    }
+    const have = map.getTerrain && map.getTerrain()
+    if (plan.mesh) {
+      if (!have || have.exaggeration !== plan.exaggeration) map.setTerrain({ source: 'dem', exaggeration: plan.exaggeration })
+    } else if (have) {
+      map.setTerrain(null)
+    }
+  }
+  function setExaggeration(exaggeration) {
+    if (exaggeration != null) terrainExag = exaggeration
+    applyTerrain()
+  }
+
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
     applySky()
+    // The style light shades every extrusion face; at MapLibre's default it
+    // darkened a bar against its own cell (#412). Re-applied here like the
+    // sky, since setStyle drops it. Guarded for an older MapLibre.
+    if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
     for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
@@ -268,20 +334,24 @@ export function createHuntMap(containerId) {
       layout: { visibility: shown('hex') },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
     // 3D twin of 'hex': same source, extruded to 'height' (RSSI/SNR tier, #147).
-    // fill-extrusion-opacity doesn't support data-driven expressions (unlike
-    // fill-opacity on the flat layer), so it's a flat constant here — the tier
-    // is still visible via colour + height.
+    // fill-extrusion-opacity is not data-driven, and one opacity for every
+    // tier is what made a faint bar a solid purple on a 19% tint (#412). The
+    // bar takes 'pillar', the cell's tint pre-mixed over the background, and
+    // draws it opaque: no translucent compounding, shared walls depth-test.
     if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex',
       layout: { visibility: shown('hex-3d') },
-      paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+      paint: { 'fill-extrusion-color': ['get', 'pillar'], 'fill-extrusion-height': ['get', 'height'],
         // MapLibre shades extrusion sides darker toward their base by default
         // (#412). On a building that reads as depth; on these it reads as a
         // different tier, because colour is the signal the palette carries.
         'fill-extrusion-vertical-gradient': false,
-        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0.85 } })
+        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     // Buildings reuse the hosted style's own vector source (already fetched for
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
     // bare fallback, hence the source guard.
+    // Terrain rides every style load like the sky: setStyle drops the source.
+    demReady = false
+    applyTerrain()
     if (map.getSource('openmaptiles') && !map.getLayer('buildings-3d')) {
       // minzoom 13, not 14: OpenFreeMap's own TileJSON declares the `building`
       // vector layer at minzoom 13 (verified against tiles.openfreemap.org),
@@ -603,7 +673,14 @@ export function createHuntMap(containerId) {
     mode3D = !!v
     applyLayerVisibility()
     const pitch = pitchTransition(was3D, mode3D)
-    if (pitch !== null) map.easeTo({ pitch, duration: 500 })
+    // easeTo({pitch}) is a no-op while a mesh is set (docs/2026-07-11-3d-mode.md),
+    // so the mesh comes off before the tilt back, and goes on after the tilt
+    // up has settled; the plan itself (mode3D) is what decides either way.
+    if (pitch !== null) {
+      if (!mode3D) applyTerrain()
+      map.easeTo({ pitch, duration: 500 })
+      if (mode3D) map.once('moveend', applyTerrain)
+    } else applyTerrain()
     // draw() is needed even when only the flag changed: the hidden collection's
     // source is left at EMPTY (that is the point of the per-tick build guard),
     // so revealing it without repopulating shows nothing until the next 1 Hz tick.
@@ -635,7 +712,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, setExaggeration, destroy }
 }
 
 function popupHtml(r, selectedIds) {

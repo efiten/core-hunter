@@ -250,27 +250,30 @@ test('no callout is placed over the bar it is describing', async ({ page }) => {
   // #bar's height depends on content that lands after load. So a quarter of the
   // time the guard for #428 was not running, and the summary line said
   // `1 skipped` rather than anything alarming.
-  const count = await page.locator('.wb-callout:not([hidden])').count()
-
-  if (count === 0) {
-    // Spotlight gave up: the copy has to be in the panel instead, or the tour
-    // says nothing at all. One <li> per callout, same text.
-    const inline = page.locator('#wb-inline')
-    await expect(inline, 'spotlight fell back, so the inline panel must carry the copy').toBeVisible()
-    await expect(inline.locator('li')).toHaveCount(ONBOARDING_CALLOUTS.length)
-    return
-  }
-
-  const overlaps = await page.evaluate(() => {
+  //
+  // One snapshot, not two reads: positionCallouts() flips the boxes and the
+  // inline panel together, synchronously, and re-runs on the next frame and
+  // on load. Counting the boxes and then waiting on the panel read the two
+  // sides of that flip from different passes (1 in ~5 runs on this branch,
+  // the spotlight coming back between them), which is the same fault as the
+  // skip this replaced: an assertion that never ran against one state.
+  const snap = await page.evaluate(() => {
     const bar = document.getElementById('bar').getBoundingClientRect()
     const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
-    return [...document.querySelectorAll('.wb-callout')]
-      .filter((el) => !el.hidden)
-      .map((el) => ({ id: el.id, over: hit(el.getBoundingClientRect(), bar) }))
-      .filter((c) => c.over)
-      .map((c) => c.id)
+    const boxes = [...document.querySelectorAll('.wb-callout')].filter((el) => !el.hidden)
+    const inline = document.getElementById('wb-inline')
+    return { count: boxes.length, inlineHidden: inline.hidden, inlineItems: inline.querySelectorAll('li').length,
+      overlaps: boxes.filter((el) => hit(el.getBoundingClientRect(), bar)).map((el) => el.id) }
   })
-  expect(overlaps, 'callouts sitting on top of #bar').toEqual([])
+
+  if (snap.count === 0) {
+    // Spotlight gave up: the copy has to be in the panel instead, or the tour
+    // says nothing at all. One <li> per callout, same text.
+    expect(snap.inlineHidden, 'spotlight fell back, so the inline panel must carry the copy').toBe(false)
+    expect(snap.inlineItems).toBe(ONBOARDING_CALLOUTS.length)
+    return
+  }
+  expect(snap.overlaps, 'callouts sitting on top of #bar').toEqual([])
 })
 
 // #490 review, found by CI at a width this laptop does not reproduce: the bar
