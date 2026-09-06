@@ -200,11 +200,12 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    Ported from app/src/styles/app.css for exact visual parity; parity.test.js
    pins the two copies together. Full-width centred layout and the
    --ch-rx-line-h geometry are #322 -- see app.css for the reasoning. */
-/* z-index 620: above #bar (600, so a wrapped/tall bar row can't steal its
-   clicks, see #224) but below #locate-info and .lc-modal (650/1000) -- an
-   expanded Locate legend can grow to ~480px and overlap this box's top-right
-   corner at the real 1280x720 test viewport, and floating info panels/modals
-   should always win a stacking tie over a background ticker. */
+/* z-index 620: below #bar (630, so a wrapped/tall bar row can't steal its
+   clicks, see #224) and below #locate-info, #nodepos-stack and .lc-modal
+   (625/625/1000) -- an expanded Locate legend can grow to ~480px and overlap
+   this box's top-right corner at the real 1280x720 test viewport, and
+   floating info panels/modals should always win a stacking tie over a
+   background ticker. */
 /* top: 52px is only the pre-JS fallback -- map.js's setMapTop() overrides it to
    the bar's actual offsetHeight + 4px on load and on resize, the same
    mechanism #map itself already used for a wrapped/taller bar. */
@@ -429,7 +430,13 @@ body.wb-onboarding-on #bar { z-index:710; }
    for why the map deliberately does not follow the bar's later growth (#218). */
 #map { position:fixed; inset:0; top:48px; }
 #locate-toggle.on { background: var(--ch-sig-warm); color: var(--ch-bg); }
-#locate-info { position: fixed; right: 12px; bottom: 12px; z-index: 650; max-width: 264px;
+/* 625, under the bar (630) and over the ticker (620), the same for
+   #nodepos-stack (#590). The two corner cards were 650, and that painted them
+   over the open filter panel: the panel's own 700 orders it inside #bar,
+   which is a stacking context, so against the page it is at the bar's 630.
+   The cards sit at the bottom and the bar at the top, so nothing is lost by
+   keeping them under it, and the panel is the topmost thing on the map. */
+#locate-info { position: fixed; right: 12px; bottom: 12px; z-index: 625; max-width: 264px;
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
@@ -440,7 +447,7 @@ body.wb-onboarding-on #bar { z-index:710; }
    the visual order, so it holds the bottom corner while the note (hidden in
    every state that drew nothing, #376) grows upward above it. Neither box
    needs a magic offset for the other's height. */
-#nodepos-stack { position: fixed; left: 12px; bottom: 12px; z-index: 650; max-width: 300px;
+#nodepos-stack { position: fixed; left: 12px; bottom: 12px; z-index: 625; max-width: 300px;
   display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
 #nodepos-note, #nodepos-key { background: var(--ch-surface); border: 1px solid var(--ch-border);
   border-radius: 8px; font-size: 11px; line-height: 1.45; backdrop-filter: blur(8px); }
