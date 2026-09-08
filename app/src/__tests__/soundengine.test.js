@@ -238,11 +238,13 @@ describe('finished voices are not retained (#145)', () => {
 
 // #260/#301: backgrounding while a sound mode is active must be audible AND
 // cheap — the normal bed+music (two looped noise sources, two LFOs, seven
-// note timers) stop outright and are replaced by a single minimal held tone,
-// so nothing keeps idling in a pocket for atmosphere that carries no
-// information. A short cue marks each transition so background/foreground is
-// a real event like everything else this engine plays, never a silent state
-// nobody notices.
+// note timers) stop outright, so nothing keeps idling in a pocket for
+// atmosphere that carries no information. A short cue marks each transition so
+// background/foreground is a real event like everything else this engine
+// plays, never a silent state nobody notices.
+// #568 withdrew the held tone that used to stand in for the bed: with the bed
+// gone nothing masked it, so the one voice carrying no information was the
+// loudest continuous thing in the mix.
 // Async: the visible branch now waits on ctx.resume() before it cues or
 // rebuilds anything, so a caller must let the microtask queue drain before
 // asserting. Awaiting twice covers resume()'s own .then plus the engine's.
@@ -253,7 +255,19 @@ async function fireVisibility(hidden) {
   await Promise.resolve()
 }
 
-describe('backgrounding swaps to a minimal ambience and cues the transition (#260, #301)', () => {
+describe('backgrounding stops the atmosphere and cues the transition (#260, #301, #568)', () => {
+  // #568: the held tone that used to stand in for the bed is withdrawn. The
+  // pocket is quiet apart from the transition cue and the receptions
+  // themselves, which is what the cue count pins: two notes, nothing held.
+  it('leaves nothing running while hidden — only the transition cue sounds', async () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    ctx.oscillators.length = 0
+    await fireVisibility(true)
+    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(2)
+  })
+
   it('stops the generative music while hidden, in full mode', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
@@ -297,41 +311,18 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     expect(bedSources.some((o) => o.stopped)).toBe(true)
   })
 
-  it('starts a single minimal ambience tone while hidden, in full mode', async () => {
-    ctx.gestureGiven = true
-    const e = createSoundEngine()
-    e.setMode('full')
-    ctx.oscillators.length = 0
-    await fireVisibility(true)
-    // The ambience is three partials + its swell LFO + its breath LFO (5),
-    // plus the backgroundCue's own two notes (2) -- not the bed, whose three
-    // noise layers bring six LFOs of their own (#496). The point of the count
-    // is still that the bed is NOT what is playing while hidden.
-    expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(7)
-  })
-
-  it('stops the ambience tone and restarts the normal bed on return', async () => {
+  it('restarts the bed itself on return, not only the music', async () => {
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('full')
     await fireVisibility(true)
-    // Identify the ambience by its own fundamental (B3, 246 Hz since #496).
-    // Slicing every oscillator and asserting `some(stopped)` passed with the
-    // fix deleted: the slice includes the two cue tones, and the fake marks an
-    // oscillator stopped as soon as osc.stop(when) is called at creation -- so
-    // it was already true before stopBgAmbience() ran at all.
-    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 246) < 0.01)
-    expect(tone).toBeDefined()
-    expect(tone.stopped).toBe(false)
-
+    vi.advanceTimersByTime(1000) // stopBed()'s own fade-then-.stop() setTimeout
+    const loops = ctx.bufferSources
     await fireVisibility(false)
-    vi.advanceTimersByTime(1000) // stopBgAmbience()'s own fade-then-.stop() setTimeout
-    expect(tone.stopped).toBe(true)
-
-    ctx.oscillators.length = 0
-    vi.advanceTimersByTime(60_000)
-    // The bed (and its LFOs) started up again, distinct from the ambience.
-    expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(2)
+    // The bed is looped noise sources; the music is oscillators. Counting
+    // oscillators cannot tell the two apart, so a return path that restarted
+    // the music and forgot the bed would pass that assertion.
+    expect(ctx.bufferSources).toBeGreaterThan(loops)
   })
 
   it('plays a cue on hidden and on resume, distinct from the bed/music', async () => {
@@ -367,33 +358,16 @@ describe('backgrounding swaps to a minimal ambience and cues the transition (#26
     expect(ctx.oscillators.filter((o) => o.started).length).toBeGreaterThan(0)
   })
 
-  // Blocker 2. startBgAmbience() was the one voice on this path with no
-  // isRunning() guard. Persisted 'full' with no gesture yet means a suspended
-  // context at currentTime 0: the tone gets started and ramped from t=0 while
-  // nothing is audible, and bgAmbience goes non-null — so the early return at
-  // the top then believes an ambience is playing and a later, real
-  // backgrounding is silently skipped.
-  it('starts no ambience tone while the context is still suspended', async () => {
+  // The hidden branch is not awaited, so it runs on a context that a PWA
+  // launched with a persisted mode and no gesture yet leaves suspended at
+  // currentTime 0. Nothing may be started or scheduled against that clock.
+  it('starts nothing while the context is still suspended', async () => {
     ctx.state = 'suspended'; ctx.gestureGiven = false
     const e = createSoundEngine()
     e.setMode('full')
     ctx.oscillators.length = 0
     await fireVisibility(true)
     expect(ctx.oscillators.filter((o) => o.started)).toHaveLength(0)
-  })
-
-  it('still starts the ambience on a later backgrounding once the clock is running', async () => {
-    ctx.state = 'suspended'; ctx.gestureGiven = false
-    const e = createSoundEngine()
-    e.setMode('full')
-    await fireVisibility(true)   // suspended: must not latch bgAmbience
-    await fireVisibility(false)
-    ctx.state = 'running'; ctx.gestureGiven = true
-    ctx.oscillators.length = 0
-    await fireVisibility(true)   // now it genuinely should play
-    const tone = ctx.oscillators.find((o) => Math.abs(o.frequency.value - 246) < 0.01)
-    expect(tone).toBeDefined()
-    expect(tone.started).toBe(true)
   })
 
   // The other half of #301: parking the atmosphere must not park the signal.
@@ -559,19 +533,4 @@ describe('the ambient layer has depth, and gives it all back', () => {
     expect([...after].some((f) => !before.has(f)), 'the harmony never moved').toBe(true)
   })
 
-  it('parks on a chord with a breath, not on one held sine', async () => {
-    ctx.gestureGiven = true
-    const e = createSoundEngine()
-    e.setMode('full')
-    ctx.oscillators.length = 0
-    await fireVisibility(true)
-    const started = ctx.oscillators.filter((o) => o.started)
-    const fundamental = started.filter((o) => Math.abs(o.frequency.value - 246) < 0.01)
-    const partials = started.filter((o) => [492, 738].some((f) => Math.abs(o.frequency.value - f) < 0.01))
-    expect(fundamental, 'the parked tone itself').toHaveLength(1)
-    expect(partials, 'the two partials that make it a chord').toHaveLength(2)
-    // The breath is a sub-audio oscillator; the swell is slower still.
-    const mods = started.filter((o) => o.frequency.value > 0 && o.frequency.value < 5)
-    expect(mods.length, 'swell and breath').toBe(2)
-  })
 })
