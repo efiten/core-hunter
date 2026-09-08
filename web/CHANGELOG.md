@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.21.0](https://github.com/efiten/core-hunter/compare/web-v1.20.0...web-v1.21.0) (2026-09-08)
+
+
+### Features
+
+* **app,web:** mark the About and What's new links that leave the app ([#589](https://github.com/efiten/core-hunter/issues/589)) ([f14d205](https://github.com/efiten/core-hunter/commit/f14d205e3964432f744368a6b777b71186ac518f))
+* **app:** give auto-discover a duty floor from the airtime the last cycle spent ([#581](https://github.com/efiten/core-hunter/issues/581)) ([6450c3c](https://github.com/efiten/core-hunter/commit/6450c3c8979e25b6616de910ffd4b98f94675dd9))
+* **app:** give the time window the map's presets ([#574](https://github.com/efiten/core-hunter/issues/574)) ([bfef541](https://github.com/efiten/core-hunter/commit/bfef541350eb79c3aa2c41ca91de0ed757400922))
+* **landing,app,web:** link the FAQ from both About tabs, and give every question an anchor ([#580](https://github.com/efiten/core-hunter/issues/580)) ([ae1410c](https://github.com/efiten/core-hunter/commit/ae1410cc0ad12ca52738f06f8a4607da597df32d))
+
+
+### Bug Fixes
+
+* **app:** stop the parked tone that stood in for the bed while backgrounded ([#569](https://github.com/efiten/core-hunter/issues/569)) ([0d595f8](https://github.com/efiten/core-hunter/commit/0d595f8d71882e83aa2215c7b02cbba9dae26941))
+
 ## [1.20.0](https://github.com/efiten/core-hunter/compare/web-v1.19.0...web-v1.20.0) (2026-08-30)
 
 
