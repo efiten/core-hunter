@@ -311,10 +311,15 @@ export function createSoundEngine() {
   //
   // Also owns the #260/#301 background behaviour: the normal bed+music (two
   // looped noise sources, two LFOs, seven note timers) cost real CPU/battery
-  // for something that carries no information by design, so hidden swaps to
-  // a single minimal held tone (startBgAmbience) instead of leaving them
-  // idling in a pocket. A short cue marks each transition, a real event like
-  // everything else this engine plays.
+  // for something that carries no information by design, so hidden stops them
+  // rather than leaving them idling in a pocket. A short cue marks each
+  // transition, a real event like everything else this engine plays.
+  //
+  // Hidden used to swap in a held tone in their place ("parked, not dead").
+  // Withdrawn by #568: with the bed gone there is nothing left to mask it, so
+  // it was the loudest continuous thing in the mix while being the one voice
+  // that carries no information — and the receptions, which do carry it, keep
+  // sounding while hidden either way.
   let visibilityBound = false
   function resumeOnVisibility() {
     if (visibilityBound) return
@@ -322,7 +327,7 @@ export function createSoundEngine() {
     const handler = () => {
       if (document.hidden) {
         if (mode !== 'off') backgroundCue()
-        if (mode === 'full') { stopBed(); stopMusic(); startBgAmbience() }
+        if (mode === 'full') { stopBed(); stopMusic() }
         return
       }
       // ctx.resume() is async: ctx.state stays 'suspended' until the promise
@@ -341,7 +346,7 @@ export function createSoundEngine() {
         // the resume is in flight, and mode can change under a slow resume.
         if (document.hidden) return
         if (mode !== 'off') resumeCue()
-        if (mode === 'full') { stopBgAmbience(); startBed(); startMusic() }
+        if (mode === 'full') { startBed(); startMusic() }
       })
     }
     document.addEventListener('visibilitychange', handler)
@@ -443,90 +448,6 @@ export function createSoundEngine() {
       nodes.push({ src, gain, lfo, panLfo })
     }
     bed = nodes
-  }
-
-  // Backgrounding swaps to a dedicated, minimal ambience (#260/#301) rather
-  // than ducking the normal bed in place: the bed+music are two looped noise
-  // sources, two LFOs and seven note timers, all idling for no reason in a
-  // pocket alongside BLE/GPS/MQTT — real cost for something that carries no
-  // information by design. A single held tone (one oscillator, one LFO) reads
-  // as "parked, not dead" for a fraction of the resource cost.
-  // Dialled 2026-08-25 (#496). A single sine read as a test tone next to a bed
-  // with space in it; this is a B3 with two partials and a slow breath, which
-  // reads as the same place with the lights off. Still cheap next to the bed and
-  // ten pad voices it replaces: three oscillators and two LFOs against three
-  // noise loops, six LFOs and up to thirty pad oscillators.
-  const BG = { hz: 246, gain: 0.045, wave: 'square', lowpassHz: 5300,
-    partials: [[1, 1], [2, 0.3], [3, 0.15]], swellHz: 0.01, swellDepth: 0.3,
-    pulseHz: 1.2, pulseDepth: 0.55 }
-  let bgAmbience = null
-  function startBgAmbience() {
-    if (bgAmbience) return
-    const c = ensureCtx()
-    // Same guard every other voice on this path has. Without it: persisted
-    // 'full' with no gesture yet means a suspended context at currentTime 0,
-    // so the tone is started and ramped from t=0 while nothing is audible,
-    // bgAmbience goes non-null (so the guard above then believes an ambience
-    // is playing), and ensureCtx() has just armed a pointerdown listener while
-    // the page is hidden. stopBgAmbience()'s ctx.currentTime + 0.4 is exposed
-    // to the same frozen clock.
-    if (!isRunning()) return
-    const gain = c.createGain()
-    gain.gain.value = 0
-    const lp = c.createBiquadFilter()
-    lp.type = 'lowpass'
-    lp.frequency.value = BG.lowpassHz
-    gain.connect(lp).connect(master)
-    const oscs = []
-    for (const [mult, level] of BG.partials) {
-      const o = c.createOscillator()
-      const og = c.createGain()
-      o.type = BG.wave
-      o.frequency.value = BG.hz * mult
-      og.gain.value = level
-      o.connect(og).connect(gain)
-      o.start()
-      oscs.push(o)
-    }
-    // Two modulators on the same gain: a very slow swell (100 s) and a breath
-    // near 1 Hz. The swell is the room, the breath is what says the app is
-    // still awake in your pocket.
-    const lfo = c.createOscillator()
-    const lfoGain = c.createGain()
-    lfo.frequency.value = BG.swellHz
-    lfoGain.gain.value = BG.gain * BG.swellDepth
-    lfo.connect(lfoGain).connect(gain.gain)
-    const pulse = c.createOscillator()
-    const pulseGain = c.createGain()
-    pulse.frequency.value = BG.pulseHz
-    pulseGain.gain.value = BG.gain * BG.pulseDepth
-    pulse.connect(pulseGain).connect(gain.gain)
-    lfo.start()
-    pulse.start()
-    gain.gain.linearRampToValueAtTime(BG.gain, c.currentTime + 1.5)
-    bgAmbience = { oscs, gain, lfo, pulse }
-  }
-  function stopBgAmbience() {
-    if (!bgAmbience) return
-    const { oscs, gain, lfo, pulse } = bgAmbience
-    // Every partial and both modulators, or the tone survives foregrounding.
-    const stopAll = () => {
-      try { for (const o of oscs) o.stop(); lfo.stop(); pulse.stop() } catch (_) {}
-    }
-    bgAmbience = null
-    try {
-      const now = ctx.currentTime
-      // The fade-in ramp targets t0+1.5. Foregrounding inside that window
-      // leaves it scheduled later in the timeline than this ramp-to-zero, and
-      // per spec the param then climbs back up between the two events — the
-      // tone swells instead of dying. Cancel and re-anchor at the current
-      // value first. (Previously only the setTimeout below hid this, by
-      // stopping the oscillator ~100ms later.)
-      gain.gain.cancelScheduledValues(now)
-      gain.gain.setValueAtTime(gain.gain.value, now)
-      gain.gain.linearRampToValueAtTime(0, now + 0.4)
-      setTimeout(stopAll, 500)
-    } catch (_) { stopAll() }
   }
 
   function stopBed() {
@@ -651,11 +572,6 @@ export function createSoundEngine() {
   function setMode(m) {
     mode = m
     if (mode === 'off' || mode === 'rxtx') { stopBed(); stopMusic() }
-    // The parked tone only belongs to 'full'. Both call sites are foreground-
-    // only today, so leaving it out was unreachable rather than wrong — but it
-    // made the invariant implicit, and a mode change while hidden would orphan
-    // a tone with nothing left to stop it.
-    if (mode !== 'full') stopBgAmbience()
     if (mode === 'off') return
     ensureCtx()
     if (mode === 'full' && !document.hidden) { startBed(); startMusic() }
@@ -829,7 +745,6 @@ export function createSoundEngine() {
   function destroy() {
     stopBed()
     stopMusic()
-    stopBgAmbience()
     if (ctx) { try { ctx.close() } catch (_) {} ctx = null; master = null; genGain = null }
   }
 

@@ -3,14 +3,20 @@ import { haversineM } from './geometry.js'
 // Auto-ping gate (#233): fires when EITHER the interval has elapsed OR the
 // hunter has moved past the threshold since the last fire, whichever comes
 // first — a steady baseline cadence while stationary/slow, sped up by
-// movement while driving. Defaults picked from a duty-cycle estimate at SF7
-// (~46ms airtime per ~13-byte frame): 10s alone is ~0.46% duty cycle for
-// this feature, comfortable headroom below a 1% sub-band with no other
-// traffic on the hunter's own radio.
+// movement while driving.
+//
+// Neither gate bounds the rate from below on its own, and a cycle is not one
+// frame: it is the Discover plus a trace-ping per target, five frames for a
+// standing sweep (#479). So the caller passes minPeriodMs, the airtime the
+// previous cycle spent divided by the duty budget (airtime.js: 10% for the
+// firmware's default sub-band, per-SF airtime), and no gate fires inside it
+// (#381). At SF8 that floor is 12.9 s for a standing sweep of four, above
+// the interval, and at speed it is what stops the distance gate from firing
+// every 50 m.
 export const INTERVAL_MS = 10000
 export const MOVE_THRESHOLD_M = 50
 
-export function shouldAutoFire({ lastFireAt, lastLat, lastLon, now, lat, lon, pendingTargets = 0, intervalMs = INTERVAL_MS, moveThresholdM = MOVE_THRESHOLD_M }) {
+export function shouldAutoFire({ lastFireAt, lastLat, lastLon, now, lat, lon, pendingTargets = 0, minPeriodMs = 0, intervalMs = INTERVAL_MS, moveThresholdM = MOVE_THRESHOLD_M }) {
   // A cycle whose predecessor is still transmitting would interleave two chains
   // of trace-pings at arbitrary phase. The companion's send queue is 16 slots
   // and queueOutbound drops silently on overflow, so the overlap costs packets
@@ -20,6 +26,9 @@ export function shouldAutoFire({ lastFireAt, lastLat, lastLon, now, lat, lon, pe
   // (cycleSpanMs), and the movement gate can fire far sooner than that.
   if (pendingTargets > 0) return false
   if (lastFireAt == null) return true
+  // The duty floor (#381) sits under both gates: the interval cannot fire
+  // before it, and neither can movement.
+  if (now - lastFireAt < minPeriodMs) return false
   if (now - lastFireAt >= intervalMs) return true
   if (lat == null || lon == null || lastLat == null || lastLon == null) return false
   return haversineM({ lat: lastLat, lon: lastLon }, { lat, lon }) >= moveThresholdM
@@ -42,4 +51,13 @@ export function staggerTargets(ids) {
 // pendingTargets gate, which is what actually prevents the overlap.
 export function cycleSpanMs(targetCount, staggerMs = STAGGER_MS) {
   return targetCount > 0 ? targetCount * staggerMs : 0
+}
+
+// What the Status tab says about the cadence (#381): the period the next
+// cycle waits for, which is the interval unless the floor is longer. A
+// suppressed cycle is a decision the hunter can read, not a silent cap
+// (AGENTS.md §5.4).
+export function autoPingCadenceText({ enabled, minPeriodMs = 0, intervalMs = INTERVAL_MS }) {
+  if (!enabled) return 'Off'
+  return `On, every ${Math.ceil(Math.max(intervalMs, minPeriodMs || 0) / 1000)} s`
 }

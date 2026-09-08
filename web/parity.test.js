@@ -812,6 +812,42 @@ describe('initialSettingsTab — parity between the app and web copies', () => {
   })
 })
 
+// timewindows.js is a byte-identical copy (#557), not an equivalent one: the
+// map's quick ranges and the app's "Plot last" select are both built from it,
+// and the issue was filed because the two lists had drifted apart in length
+// and in wording. A byte comparison also catches what a behaviour test cannot:
+// a comment on one side explaining a rule the other side no longer follows.
+describe('the time windows are one file on both surfaces (#557)', () => {
+  it('timewindows.js is identical in app/src', () => {
+    const web = readFileSync(new URL('./timewindows.js', import.meta.url), 'utf8')
+    const app = readFileSync(new URL('../app/src/timewindows.js', import.meta.url), 'utf8')
+    expect(app, 'app/src/timewindows.js has drifted from web/timewindows.js').toBe(web)
+  })
+})
+
+// #383: the app's About tab and the map's About tab both link pages on the
+// landing site, and nothing checked that the pages exist: the landing's own
+// test only reaches links inside landing/. A renamed or removed page there
+// would leave both surfaces pointing at a 404. The FAQ is the case that
+// prompted this, so it is also asserted to be reachable from both.
+describe('links from the app and the map into the landing site', () => {
+  const app = readFileSync(new URL('../app/src/app.js', import.meta.url), 'utf8')
+  const web = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
+  const pagesOf = (src) => [...src.matchAll(/href="https:\/\/mesh-hunter\.eu\/([^"#?]+)"/g)].map((m) => m[1])
+
+  it.each([['app', app], ['map', web]])('%s links the FAQ', (_, src) => {
+    expect(pagesOf(src)).toContain('faq.html')
+  })
+
+  it('points only at pages the landing site has', () => {
+    const pages = [...new Set([...pagesOf(app), ...pagesOf(web)])]
+    expect(pages.length).toBeGreaterThan(0)
+    for (const p of pages) {
+      expect(() => readFileSync(new URL(`../landing/${p}`, import.meta.url)), `no landing/${p}`).not.toThrow()
+    }
+  })
+})
+
 // #536: a link that leaves the app opens, on Android, in a tab painted in the
 // app's own colour, so nothing said you were leaving. The About and What's
 // new links carry the external marker from one CSS rule per stylesheet, keyed
