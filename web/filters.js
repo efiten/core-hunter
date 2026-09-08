@@ -48,10 +48,12 @@ function resetFilters() {
   if (window.setIdClasses) window.setIdClasses('')
   // Through a change event, not a bare .checked write: the label sync and the
   // node-position teardown both listen for one.
-  for (const id of ['f-direct', 'f-unnamed', 'f-nodepos']) {
+  for (const id of ['f-direct', 'f-unnamed']) {
     const el = document.getElementById(id)
     if (el && el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })) }
   }
+  // Node positions is a three-stop control since #603, owned by map.js.
+  if (window.setNodePos) window.setNodePos('')
 }
 
 // All DOM wiring below is guarded so this module can be imported under Vitest

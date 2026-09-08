@@ -198,8 +198,16 @@
           <label class="cs-cb"><input type="checkbox" id="cs-adverts" /> CS adverts</label>
           <label class="cs-cb"><input type="checkbox" id="cs-relays" /> CS relays</label>
         </span>
+        <!-- Node positions has three stops (#603): off, the ▲/● layer, and
+             that layer plus every repeater's reach. A segmented control like
+             the layer choice below, since a checkbox has two states. -->
         <span class="np-layer-toggle">
-          <label class="cs-cb"><input type="checkbox" id="f-nodepos" /> Node positions</label>
+          <span class="bf-seg-label">Node positions</span>
+          <span id="nodepos-seg" class="bf-seg" role="group" aria-label="Node positions">
+            <button id="np-off" type="button" data-nodepos="" aria-pressed="false">Off</button>
+            <button id="np-pos" type="button" data-nodepos="1" aria-pressed="false">Positions</button>
+            <button id="np-reach" type="button" data-nodepos="reach" aria-pressed="false">Positions + reach</button>
+          </span>
         </span>
       </div>
       <div class="bf-group">

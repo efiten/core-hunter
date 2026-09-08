@@ -20,6 +20,11 @@
   --ch-bar-track: #1b2230;   /* HUD signal-bar track */
   --ch-border:    rgba(255,255,255,0.08);
   --ch-building:  #39465a;   /* 3D-mode building extrusions (#147) */
+  /* Repeater hues for the coverage overview (#603): one per hueSlot()
+     (coverage.js), fixed per id. Twelve that stay apart on the basemap. */
+  --ch-hue-0:  #4f8cff;  --ch-hue-1:  #ff8a3d;  --ch-hue-2:  #38d17a;  --ch-hue-3:  #e858c8;
+  --ch-hue-4:  #f2c94c;  --ch-hue-5:  #2fd4d4;  --ch-hue-6:  #ff5b5b;  --ch-hue-7:  #9b7bff;
+  --ch-hue-8:  #a3e635;  --ch-hue-9:  #ff7eb6;  --ch-hue-10: #d4a053;  --ch-hue-11: #5bd0ff;
   /* Ticker backing plate (#539): more transparent than --ch-surface so the
      map still reads through the card, but enough plate to keep the lines
      legible over busy streets. */
@@ -49,6 +54,10 @@
   --ch-bar-track: #d8d2c4;   /* HUD signal-bar track (light) */
   --ch-border:    rgba(0,0,0,0.10);
   --ch-building:  #cfc7b6;   /* 3D-mode building extrusions (#147) */
+  /* Repeater hues (#603), the same twelve a step darker for paper. */
+  --ch-hue-0:  #2a63d6;  --ch-hue-1:  #d9600f;  --ch-hue-2:  #15934c;  --ch-hue-3:  #b8309b;
+  --ch-hue-4:  #b8900a;  --ch-hue-5:  #0f9b9b;  --ch-hue-6:  #d12f2f;  --ch-hue-7:  #6a48d9;
+  --ch-hue-8:  #5f9a12;  --ch-hue-9:  #d13f82;  --ch-hue-10: #9a6d22;  --ch-hue-11: #1d8fc4;
 }
 
 /* ---- Geometry, not colour: the same in both themes ----

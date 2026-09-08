@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, setFilter, openFilters, closeFilters, toggleLocate } from './fixtures.js'
+import { test, expect, mapSettled, setNodePos, openFilters, closeFilters, toggleLocate } from './fixtures.js'
 import { NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
@@ -45,7 +45,7 @@ test('layer is off by default and the toggle is visible to a member', async ({ p
   await page.goto('/')
   await openFilters(page) // the layer toggle lives in the filter panel (#539)
   await expect(page.locator('.np-layer-toggle')).toBeVisible()
-  await expect(page.locator('#f-nodepos')).not.toBeChecked()
+  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true')
   await closeFilters(page)
   await expect(page.locator('#nodepos-note')).toBeHidden()
 })
@@ -53,7 +53,7 @@ test('layer is off by default and the toggle is visible to a member', async ({ p
 test('checking it draws the advertised marker, reflects in the URL, and shows the disclaimer', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
 
   // Exactly one marker per node — concurrent redraws must not leave duplicates.
   // The marker only appears after two sequential round-trips (points, then the
@@ -78,7 +78,7 @@ test('a drift under 100 m reports a distance but claims no radius', async ({ pag
   // popup states the drift but draws (and mentions) no circle.
   await routes(page, { lat: 51.0004, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await page.locator('.np-advert').first().click({ force: true })
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText(/drift \d+ m/)
@@ -96,7 +96,7 @@ test('a one-sided estimate does not claim a search radius', async ({ page }) => 
   // Pin the view: with all points on one bearing the auto-fit (#218) is very
   // tight, which can push the advertised marker outside the viewport.
   await page.goto('/?lat=51.0012&lon=4.0&z=14')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1)
   await page.locator('.np-advert').click({ force: true })
   await expect(page.locator('.maplibregl-popup-content')).toContainText('radius not trusted')
@@ -122,7 +122,7 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   // early return fires and the layer stays empty for the rest of the session.
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 
   await toggleLocate(page) // Locate lives in the filter panel (#539)
@@ -145,7 +145,7 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
     points: ring(51, 4, 250, 8).map((p) => ({ ...p, sender_kind: 'relay' })),
   })
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('#nodepos-note')).toBeVisible()
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   // No ● and no connector: the relay receptions carried no attributable identity.
@@ -159,7 +159,7 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
 test('with markers on screen it names the glyphs and disclaims them', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   await expect(page.locator('#nodepos-key')).toContainText('▲ advertised position')
   await expect(page.locator('#nodepos-note')).toBeVisible()
@@ -176,7 +176,7 @@ for (const [label, fulfil, expected] of [
     await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
     await page.route('**/api/nodes/positions*', (r) => r.fulfill(fulfil))
     await page.goto('/?mode=points')
-    await setFilter(page, '#f-nodepos', true)
+    await setNodePos(page, '1')
     await expect(page.locator('#nodepos-key')).toContainText(expected, { timeout: 10000 })
     // The disclaimer would claim positions are being shown. None are.
     await expect(page.locator('#nodepos-note')).toBeHidden()
@@ -190,7 +190,7 @@ test('marks a registry the server could not refresh (#376)', async ({ page }) =>
     json: { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }], stale: true },
   }))
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   // Drawn, and dated: the positions are real, their age is not guaranteed.
   await expect(page.locator('#nodepos-key')).toContainText('positions may be a few minutes old')
@@ -229,7 +229,7 @@ test('a node nobody in this filter heard is still drawn (#377)', async ({ page }
   // nodes from the filtered reception set, so this drew nothing at all.
   await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
   await expect(page.locator('.np-estimate')).toHaveCount(0)
@@ -245,7 +245,7 @@ test('the registry slice follows the viewport, not the reception filter (#377)',
   })
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   expect(urls.length).toBeGreaterThan(0)
   const bbox = new URL(urls[urls.length - 1]).searchParams.get('bbox')
@@ -283,7 +283,7 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
     { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }] })
 
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   // The registry is in flight, so the draw is parked on its await and nothing
   // is on the map yet.
   await expect(page.locator('.np-advert')).toHaveCount(0)
@@ -307,7 +307,7 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
 
   const note = page.locator('#nodepos-note')
   const key = page.locator('#nodepos-key')
@@ -317,14 +317,14 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
   await expect(key).toContainText('▲')
 
   // Off and on again is a fresh glance, not a memory of the last one.
-  await setFilter(page, '#f-nodepos', false)
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '')
+  await setNodePos(page, '1')
   await expect(note).toBeVisible()
 
   // Same page, wide: the prose stays put well past the glance.
   await page.setViewportSize({ width: 1280, height: 800 })
-  await setFilter(page, '#f-nodepos', false)
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '')
+  await setNodePos(page, '1')
   await expect(note).toBeVisible()
   await expect(key).toBeVisible()
   await page.waitForTimeout(3000)
@@ -343,7 +343,7 @@ test('a layer restored from the URL glances too, without a change event', async 
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/?mode=points&nodepos=1')
 
-  await expect(page.locator('#f-nodepos')).toBeChecked()
+  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
   const note = page.locator('#nodepos-note')
   const key = page.locator('#nodepos-key')
@@ -359,12 +359,12 @@ test('a layer restored from localStorage glances too', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
 
   // Plain revisit, no query string: the checkbox comes back from the store.
   await page.goto('/')
-  await expect(page.locator('#f-nodepos')).toBeChecked()
+  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -383,7 +383,7 @@ test('rotating across the boundary re-decides the disclaimer without a redraw', 
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
 
   const note = page.locator('#nodepos-note')
   const key = page.locator('#nodepos-key')
@@ -414,7 +414,7 @@ test('a redraw after the glance does not bring the disclaimer back', async ({ pa
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
 
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -460,7 +460,7 @@ test('overlapping names are dropped, and the markers they belong to are not', as
   }))
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8), nodes: cluster })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
 
   // Every node keeps its marker: decluttering hides names, never nodes.
   await expect(page.locator('.np-advert')).toHaveCount(4, { timeout: 15000 })
@@ -500,7 +500,7 @@ test('a pair the character estimate would call clear is decluttered on its real 
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8),
     nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.01)] })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
 
   const pxPerDeg = await page.evaluate(() => {
@@ -516,8 +516,8 @@ test('a pair the character estimate would call clear is decluttered on its real 
   await page.route('**/api/nodes/positions*', (r) => r.fulfill({
     json: { nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.0 + GAP_PX / pxPerDeg)] },
   }))
-  await setFilter(page, '#f-nodepos', false)
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '')
+  await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
 
   // Both markers, one name. Under the estimate both names were drawn, 4 px of
@@ -544,7 +544,7 @@ test('a pair the character estimate would call clear is decluttered on its real 
 test('the measuring probe is hidden and parked, and reads the label font', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid', { timeout: 15000 })
 
   const probe = await page.evaluate(() => {

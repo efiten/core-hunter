@@ -63,7 +63,7 @@ test('the panel does not re-parent anything out of the bar', async ({ page }) =>
   await page.goto('/')
   await page.click('#filter-pill')
   const inBar = await page.evaluate(() =>
-    ['f-types', 'f-direct', 'layer-seg', 'cs-adverts', 'cs-relays', 'f-nodepos', 'clear-filters']
+    ['f-types', 'f-direct', 'layer-seg', 'cs-adverts', 'cs-relays', 'nodepos-seg', 'clear-filters']
       .every((id) => !!document.getElementById(id)?.closest('#bar')))
   expect(inBar, 'a control left #bar').toBe(true)
 })

@@ -915,7 +915,9 @@ describe('sky.js — parity between the app and web copies', () => {
 // since the deploy paths cannot share a file (#238) and a hand-kept copy is
 // what drifts.
 describe('files copied whole from the app (#595)', () => {
-  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js']) {
+  // coverage.js and raylayer.js (#603) join the list: the stars, the hues
+  // and the 3D ray buffers are one rule on both maps.
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js']) {
     it(`web/${name} is app/src/${name}`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')

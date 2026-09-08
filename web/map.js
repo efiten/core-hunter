@@ -1,12 +1,13 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
-import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam, reachOrigin, reachFeatures } from './mapmodel.js'
+import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from './coverage.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows, estimateFor } from './nodelayer.js'
+import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
@@ -278,7 +279,7 @@ function pointPopupHtml(pt) {
   // Ignoring is per person and needs no role: it only ever removes rows from
   // the asker's own view. Same wording as the app's popup (huntmap.js).
   const ignBtn = sid ? `<br><button class="pp-ignore" data-sender="${esc(sid)}">Ignore this ID</button>` : ''
-  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}${ignBtn}${reachBtn(sid)}`
+  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>sender ${esc(senderName(pt))}${role}${idLine}<br>hunter ${esc(pt.hunter_name)}<br>${esc(pt.channel_name || packetTypeLabel(pt.packet_type))}<br>${esc(pt.rx_at)}${locBtn}${ignBtn}`
 }
 // Reception ticker two-way sync (#224): clicking a point scrolls the ticker
 // to the matching line, keyed by receptionKey since /api/points rows carry no
@@ -293,6 +294,7 @@ const onPointClick = (props) => {
 // click in 3D resolves the same way.
 wm.onLayerClick('points', onPointClick)
 wm.onLayerClick('points-3d', onPointClick)
+wm.onEmptyClick(() => clearCoverageSelection())
 
 async function drawPoints() {
   const isCurrent = pointsDraw()
@@ -317,7 +319,7 @@ async function drawPoints() {
   // until the new ones are here. The array is kept for the click handler,
   // which gets a feature index back rather than a marker object.
   currentPoints = points
-  wm.setData('points', pointFeatures(points, tierColor))
+  wm.setData('points', pointFeatures(points, tierColor, { colorFor: pointHue }))
   // The pillars (#595) are rebuilt with the points, and on every move since
   // the footprint floor is a pixel size; only in 3D, where they are drawn.
   wm.setData('points-3d', view3D ? pillarFeatures(points, wm.getZoom(), tierColor) : null)
@@ -534,8 +536,7 @@ export function refresh() {
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
-    drawNodePositions()   // follows the same filter/bbox set as the points
-    drawReach()           // the selection and the popup toggles (#549)
+    drawNodePositions()   // follows the same filter/bbox set as the points; the reach rides in it (#603)
     if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
 }
@@ -919,7 +920,6 @@ function activateLocate() {
   currentPoints = []; currentHexRings = []
   wm.setData('points', null); wm.setData('points-3d', null); wm.setData('hex', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
   clearNodePosLayer(); nodePosSig = null
-  clearReachLayer()
   setRxHighlight(null) // suppress ticker rings in focus mode (#287 blocker 3)
   urlstate.save()
   drawLocate()
@@ -959,83 +959,78 @@ document.addEventListener('click', (e) => {
   if (leg) leg.hidden = !legendOpen
 })
 
-// --- Reach (#549) ----------------------------------------------------------
-// A node's reach is the star of its direct hearings: one line per reception
-// attributed to it, from its position, in that reception's tier colour. It is
-// a lower bound built from where hunters drove, not an RF prediction:
-// unmeasured is not unreachable. And it hangs on an unauthenticated identity
-// (#320), the same caveat Locate carries.
+// --- Coverage: every repeater's reach (#549, #603) ---------------------------
+// The third stop of Node positions draws every repeater's star at once: one
+// ray from the repeater's position to each reception attributed to it
+// (coverage.js: the classifyReception rule), in a hue fixed per id, the
+// signal's strength in the ray's width and opacity, a two-way hearing at full
+// opacity and a one-way one receded. A lower bound built from where hunters
+// drove, not an RF prediction: unmeasured is not unreachable. And it hangs on
+// an unauthenticated identity (#320), the same caveat Locate carries.
 //
-// On for every node in the target picker's selection, and for any node
-// toggled from a popup (a point, a CoreScope sighting, a registry node), so a
-// companion heard in passing can show its star without becoming a target.
-// The hub is the registry's advertised position when the resolver has one
-// (members; the resolve proxy strips it below), else the RSSI estimate over
-// the same hearings, marked so the two never look alike.
-const reachExtra = new Set()
-let reachGen = 0
-function reachIds() {
-  const ids = new Set(reachExtra)
+// A selection (a tap on a ▲, or a picked target) keeps that star as it is
+// and drops every other one to a quarter, so the hand-over to the neighbours
+// stays readable. The rays are drawn by drawNodePositions(), which already
+// holds the registry slice and the receptions of the view.
+const coverageSel = new Set()
+// The colour a repeater got in the last draw, for the dots (#603: the point
+// takes the repeater's hue while the reach is on) and the ▲ markers.
+let coverageHue = new Map()
+function coverageOn() { return nodePosStop === 'reach' }
+function coverageSelected() {
+  const ids = new Set(coverageSel)
   for (const id of (targetPicker ? targetPicker.getSelected() : [])) ids.add(String(id).toLowerCase())
-  return [...ids]
+  return ids
 }
-function reachBtn(id) {
-  if (!id) return ''
-  const on = reachExtra.has(String(id).toLowerCase())
-  return `<br><button class="rc-toggle" data-sender="${esc(id)}" title="Where hunters heard this node directly. A lower bound from where they drove; unmeasured is not unreachable.">${on ? 'Hide reach' : 'Show reach'}</button>`
+function toggleCoverageSelection(id) {
+  const key = String(id).toLowerCase()
+  if (coverageSel.has(key)) coverageSel.delete(key); else coverageSel.add(key)
+  nodePosSig = null   // the selection is part of what is drawn
+  drawNodePositions()
 }
-async function fetchReachPoints(id, f) {
-  const p = new URLSearchParams()
-  p.append('senders', id)
-  if (f.from) p.set('from', f.from)
-  if (f.to) p.set('to', f.to)
-  const { points } = await fetchPointsPaged(p.toString(), { maxTotal: 25000 })
-  return points
+function clearCoverageSelection() {
+  if (!coverageSel.size) return
+  coverageSel.clear()
+  nodePosSig = null
+  drawNodePositions()
 }
-function clearReachLayer() {
+function clearCoverageLayer() {
   wm.setData('reach', null)
   wm.clearMarkers('reach')
+  coverageHue = new Map()
 }
-async function drawReach() {
-  const gen = ++reachGen
-  const ids = reachIds()
-  if (!ids.length || locateActive) { clearReachLayer(); return }
+// The receptions the stars are built from. With a target picked the view's
+// points are already narrowed to it, and the other stars have to stay up at a
+// quarter, so the coverage set is fetched without the sender filter then.
+async function coveragePoints(viewPoints) {
   const f = (window.currentFilters && window.currentFilters()) || {}
-  const stars = []
-  for (const id of ids) {
-    let points
-    try { points = await fetchReachPoints(id, f) } catch (_) { continue }
-    if (isResolvableId(id) && cachedName(id) === undefined) await resolveName(id).catch(() => '')
-    if (gen !== reachGen) return
-    const advertised = cachedPosition(id) || null
-    const estimate = points.length ? estimateFor(points) : null
-    stars.push({ id, origin: reachOrigin({ advertised, estimate }), points })
+  if (!(f.senderPairs && f.senderPairs.length)) return viewPoints
+  const p = new URLSearchParams(viewportParams())
+  for (const [k, v] of Object.entries(withoutSenderFilters(f))) {
+    if (k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
+    if (v) p.set(k, v)
   }
-  if (gen !== reachGen) return
-  const features = []
-  for (const s of stars) features.push(...reachFeatures(s.origin, s.points, tierColor).features)
-  wm.setData('reach', { type: 'FeatureCollection', features })
-  wm.clearMarkers('reach')
-  for (const s of stars) {
-    if (!s.origin) continue
-    const el = document.createElement('div')
-    el.className = `rc-hub rc-${s.origin.kind}`
-    const name = cachedName(s.id) || s.id.slice(0, 6)
-    el.title = `${name}: reach from its ${s.origin.kind === 'advertised' ? 'advertised position' : 'RSSI estimate'}, ${s.points.length} hearings. A lower bound from where hunters drove; unmeasured is not unreachable.`
-    wm.addMarker('reach', el, [s.origin.lat, s.origin.lon])
-  }
+  try { return (await fetchPointsPaged(p.toString(), { maxTotal: 25000 })).points } catch (_) { return viewPoints }
 }
-// "Show reach" / "Hide reach" in a popup, delegated like the Locate button.
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest && e.target.closest('.rc-toggle')
-  if (!btn) return
-  const id = String(btn.dataset.sender || '').toLowerCase()
-  if (!id) return
-  if (reachExtra.has(id)) reachExtra.delete(id); else reachExtra.add(id)
-  wm.closePopup()
-  drawReach()
-})
-window.__reachIds = () => reachIds() // test hook
+// Builds the stars and their hues for one draw: the registry's advertised
+// position when the id is a full pubkey it knows, the RSSI estimate otherwise
+// (a relay hash never has a registry position). Returns null when the layer
+// is off, so the caller draws nothing.
+function buildCoverage(points, registryNodes) {
+  if (!coverageOn()) return null
+  const byKey = new Map((registryNodes || []).map((n) => [String(n.pubkey).toLowerCase(), n]))
+  const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
+  const stars = coverageStars(points, { positionOf })
+  const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
+  const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
+  const selected = coverageSelected()
+  return { stars, hues, colorOf, selected, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
+}
+window.__coverageSel = () => [...coverageSel] // test hook
+window.__rayCount = () => wm.rayCount() // test hook
+window.__raysVisible = () => wm.raysVisible() // test hook
+window.__features = (id) => wm.features(id).map((f) => f.properties) // test hook
+window.setNodePos = (stop) => setNodePosStop(stop) // Clear filters (filters.js) and tests
 
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---
 // Timeframe-scoped (from/to), not bbox; the heard_key resolves to the node /
@@ -1054,7 +1049,7 @@ function observerPopupHtml(pt, ring) {
   // Glossary (#174): 'observer' -> 'hunter' (our own term for the capturer);
   // 'relay'/'node' left as-is, tied to the CS-relays/CS-adverts toggle wording
   // (CoreScope's own source distinction, not our sender/repeater glossary).
-  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>hunter ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}${reachBtn(hk)}`
+  return `RSSI ${esc(pt.rssi)} · SNR ${esc(pt.snr)}<br>${ring ? 'relay' : 'node'} ${esc(name)}${idLine}<br>hunter ${esc(pt.observer)}<br>${esc(pt.rx_at)}${locBtn}`
 }
 for (const [src, ring] of [['advert', false], ['rxlog', true]]) {
   wm.onLayerClick(`observer-${src}`, (props) => {
@@ -1123,7 +1118,43 @@ async function drawObserverPoints(src, layer, ring) {
 // layer stays empty. Unlike the app (which bulk-fetches the whole registry),
 // web only covers senders present in the current filter set; registry-wide
 // coverage would need a bulk proxy endpoint on the Go server.
-const nodePosCb = document.getElementById('f-nodepos')
+// Node positions has three stops (#603): '' off, '1' the ▲/● layer (the
+// value ?nodepos=1 links carry since #197), 'reach' that layer plus every
+// repeater's reach. nodePosCb keeps the checkbox's shape for the code below:
+// `checked` is "the layer is on", whichever of the two on-stops it is.
+const NODEPOS_STOPS = ['', '1', 'reach']
+let nodePosStop = ''
+const nodePosCb = {
+  get checked() { return nodePosStop !== '' },
+  // The gate's "off" (applyObserverGate) is a silent write, as unchecking
+  // the box was: no draw, no glance, no save.
+  set checked(v) { setNodePosStop(v ? '1' : '', { restore: true }) },
+}
+const syncNodePosSeg = () => {
+  for (const b of document.querySelectorAll('#nodepos-seg button')) {
+    const on = b.dataset.nodepos === nodePosStop
+    b.classList.toggle('active', on)
+    b.setAttribute('aria-pressed', String(on))
+  }
+}
+// One entry for every way the stop changes: a tap on the control, a restored
+// URL or store, Clear filters, and the tests. `restore` is the silent path
+// urlstate takes (its set() dispatches nothing), which starts no glance: the
+// draw starts one itself, once, as it did for the checkbox (#426).
+function setNodePosStop(stop, { restore = false } = {}) {
+  const next = NODEPOS_STOPS.includes(stop) ? stop : ''
+  if (next === nodePosStop) return
+  const wasOn = nodePosStop !== ''
+  nodePosStop = next
+  syncNodePosSeg()
+  if (next !== 'reach') { coverageSel.clear(); clearCoverageLayer() }
+  wm.setReach(next === 'reach')
+  nodePosSig = null
+  if (restore) return
+  if (!wasOn || next === '') restartNodePosGlance()
+  drawNodePositions()
+  urlstate.save()
+}
 // A guest's ?nodepos=1 ask, held past the gate's uncheck (applyObserverGate)
 // so every later draw keeps answering it; cleared once the role can see the
 // layer, where the checkbox itself is the state again.
@@ -1146,7 +1177,7 @@ function nodePosPopup(name, id, p, est) {
         : 'one-sided — radius not trusted'}`
     : ''
   return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}`
-    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>${reachBtn(id)}`
+    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
 }
 
 // Generation token: a draw can be re-entered while its /api/points fetch is in
@@ -1371,9 +1402,15 @@ async function drawNodePositions() {
     { measure: labelMeasurer() },
   ))
 
+  // The coverage (#603) rides on this draw: same registry slice, same view.
+  // Built before the signature, since the hues and the selection are part
+  // of what the markers show.
+  const cov = buildCoverage(coverageOn() ? await coveragePoints(points) : [], registry.nodes)
+  if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),
     d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
+    + (cov ? '#reach:' + cov.fc.features.length + ':' + [...cov.selected].join(',') + ':' + [...cov.hues].map(([k, v]) => k.slice(0, 8) + v).join(',') : '')
     // The label set is part of what is drawn, and it depends on the projection
     // rather than on the rows: a zoom that changes nothing about which nodes
     // are in view still changes which names fit. Without it in the signature,
@@ -1382,10 +1419,16 @@ async function drawNodePositions() {
   if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
   nodePosSig = sig
   clearNodePosLayer()
+  drawCoverage(cov)
 
   const lines = [], circles = []
   for (const { id, advertised, est, p, name } of deduped) {
-    const color = cssVar(driftColorVar(p))
+    // With the reach on, a repeater's ▲ takes the hue of its star, so the
+    // marker and the rays read as one (#603); the drift colour stays for a
+    // node without a star. A selected star's name sits in a pill.
+    const hue = coverageHue.get(id)
+    const color = hue || cssVar(driftColorVar(p))
+    const selected = !!(cov && cov.selected.has(id))
     const html = nodePosPopup(name, id, p, est)
     // The name rides on the map next to the ▲, not just in the popup: the
     // layer is opt-in, so it can afford the labels while it is on. Only the ▲
@@ -1394,7 +1437,11 @@ async function drawNodePositions() {
     // the name is still in the popup, so nothing becomes unreachable (#425).
     const label = labelled.has(id) ? `<span class="np-label">${esc(rawLabel({ id, name }))}</span>` : ''
     const adv = document.createElement('div')
-    adv.className = 'np-advert'; adv.style.color = color; adv.innerHTML = `▲${label}`
+    adv.className = 'np-advert' + (selected ? ' np-selected' : '') + (cov && cov.selected.size && !selected && hue ? ' np-dim' : '')
+    adv.style.color = color; adv.innerHTML = `▲${label}`
+    // In the reach stop a tap on the ▲ selects the star (and clears it on the
+    // second tap); the popup still opens, from the marker's own handler.
+    if (hue) adv.addEventListener('click', () => toggleCoverageSelection(id))
     wm.addMarker('nodepos', adv, [advertised.lat, advertised.lon], { popupHtml: html })
     if (!est || !est.centroid) continue
     const estEl = document.createElement('div')
@@ -1411,13 +1458,48 @@ async function drawNodePositions() {
   wm.setData('nodecircle', { type: 'FeatureCollection', features: circles })
 }
 
+// Puts the rays up (the line source in 2D, the ray layer in 3D, one setData),
+// a ● hub for a star with no registry position, and recolours the dots of the
+// hearings in the repeater's hue. Null (the stop below reach) clears it.
+function drawCoverage(cov) {
+  if (!cov) { clearCoverageLayer(); recolourPoints(); return }
+  coverageHue = new Map([...cov.hues].map(([id, slot]) => [id, cov.colorOf(slot)]))
+  wm.setData('reach', cov.fc)
+  wm.clearMarkers('reach')
+  for (const st of cov.stars) {
+    if (st.origin.kind !== 'estimate') continue   // the ▲ of the node layer is the hub
+    const el = document.createElement('div')
+    const dim = cov.selected.size && !cov.selected.has(st.id)
+    el.className = 'rc-hub rc-estimate' + (dim ? ' np-dim' : '')
+    el.style.background = coverageHue.get(st.id)
+    const name = cachedName(st.id) || st.id.slice(0, 6)
+    el.title = `${name}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where hunters drove; unmeasured is not unreachable.`
+    el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
+    wm.addMarker('reach', el, [st.origin.lat, st.origin.lon])
+  }
+  recolourPoints()
+}
+// The dots of the points layer take the repeater's hue while the reach is on
+// (#603), the tier colour otherwise; the pillars keep the tier.
+function recolourPoints() {
+  if (!currentPoints.length) return
+  wm.setData('points', pointFeatures(currentPoints, tierColor, { colorFor: pointHue }))
+}
+function pointHue(pt) {
+  if (!coverageHue.size || !isRepeaterHearing(pt) || pt.sender_id == null) return null
+  return coverageHue.get(String(pt.sender_id).toLowerCase()) || null
+}
+
 // The layer is three things: the two GeoJSON sources and the markers.
 function clearNodePosLayer() {
   wm.setData('nodedrift', null); wm.setData('nodecircle', null)
   wm.clearMarkers('nodepos')
 }
 
-nodePosCb.addEventListener('change', () => { restartNodePosGlance(); drawNodePositions() })
+for (const b of document.querySelectorAll('#nodepos-seg button')) {
+  b.addEventListener('click', () => setNodePosStop(b.dataset.nodepos))
+}
+syncNodePosSeg()
 
 const csAdvertCb = document.getElementById('cs-adverts')
 const csRelayCb = document.getElementById('cs-relays')
@@ -1612,7 +1694,7 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   syncTargetToggleLabel()
   syncHunterToggleLabel()
   clearObserverLayers()
-  reachExtra.clear()
+  coverageSel.clear()
   if (locateActive) deactivateLocate() // restores points/hex per mode
   refresh()
   urlstate.save()
@@ -1868,7 +1950,7 @@ if (barFilters && filterPill) {
   refreshFilterPill()
 }
 
-urlstate.bindControl('nodepos', 'f-nodepos', { checkbox: true })
+urlstate.register({ key: 'nodepos', get: () => nodePosStop, set: (v) => setNodePosStop(v, { restore: true }) })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 urlstate.register({ key: 'idclass', get: () => window.currentIdClasses(), set: (v) => window.setIdClasses(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),

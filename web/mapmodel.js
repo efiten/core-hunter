@@ -24,13 +24,15 @@ export function zoomParam(mapZoom) { return String(Math.round((Number(mapZoom) +
 
 // One reception, one circle: tier colour and the tier's opacity, plus the
 // index into the array it came from, which is how a click finds its point.
-export function pointFeatures(points, colorOf) {
+// colorFor(pt) may answer a colour of its own for a point (#603: the hue of
+// the repeater it belongs to while the reach is on); null keeps the tier.
+export function pointFeatures(points, colorOf, { colorFor = () => null } = {}) {
   const out = []
   points.forEach((pt, i) => {
     if (pt.lat == null || pt.lon == null) return
     const tier = rssiTier(pt.rssi)
     out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [pt.lon, pt.lat] },
-      properties: { i, color: colorOf(tier), op: fillOpacity(tier) } })
+      properties: { i, color: colorFor(pt) || colorOf(tier), op: fillOpacity(tier) } })
   })
   return fc(out)
 }
@@ -157,26 +159,3 @@ export function latLonBounds(latLons) {
   return [[minLon, minLat], [maxLon, maxLat]]
 }
 
-// The reach of a node (#549): the star of its direct hearings. The hub is the
-// registry's advertised position when there is one and the RSSI estimate
-// otherwise (Kasper, 2026-09-06); a 0,0 is no position (the §9 trap). One
-// line per hearing, in that hearing's tier colour, so the star reads strong
-// near the node and weak at its edge, and the hearings keep their own dots.
-export function reachOrigin({ advertised, estimate } = {}) {
-  const usable = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lon) && !(p.lat === 0 && p.lon === 0)
-  if (usable(advertised)) return { lat: advertised.lat, lon: advertised.lon, kind: 'advertised' }
-  const c = estimate && estimate.centroid
-  if (usable(c)) return { lat: c.lat, lon: c.lon, kind: 'estimate' }
-  return null
-}
-export function reachFeatures(origin, points, colorOf) {
-  if (!origin) return fc([])
-  const out = []
-  for (const pt of points || []) {
-    if (pt.lat == null || pt.lon == null) continue
-    const tier = rssiTier(pt.rssi)
-    out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [[origin.lon, origin.lat], [pt.lon, pt.lat]] },
-      properties: { color: colorOf(tier), op: fillOpacity(tier), hub: origin.kind } })
-  }
-  return fc(out)
-}

@@ -18,6 +18,7 @@
 // terrain.js; both are the app's files, pinned byte for byte.
 import { skyForHour, currentHour } from './sky.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
+import { createRayLayer } from './raylayer.js'
 import { EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 
@@ -133,6 +134,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     for (const id of ['hex', 'hex-3d', 'points', 'points-3d']) set(id, vis[id])
     set('hex-outline', vis.hex)
     set('buildings-3d', is3D)
+    applyReachVisibility()
   }
 
   function addOverlays() {
@@ -178,8 +180,8 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
       paint: { 'raster-opacity': 0.7, 'raster-fade-duration': 0 } })
     // A node's reach (#549): one line per direct hearing, under the dots so
     // the hearings stay readable at the hub.
-    if (!map.getLayer('reach')) map.addLayer({ id: 'reach', type: 'line', source: 'reach',
-      paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': ['get', 'op'] } })
+    if (!map.getLayer('reach')) map.addLayer({ id: 'reach', type: 'line', source: 'reach', layout: shown(reachOn && !is3D),
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': ['get', 'op'] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points', layout: shown(vis.points),
       paint: { 'circle-radius': 5, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'op'],
         'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1 } })
@@ -219,6 +221,8 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // The ticker's playhead ring (#224): last, so it is never under a point.
     if (!map.getLayer('rxhighlight')) map.addLayer({ id: 'rxhighlight', type: 'circle', source: 'rxhighlight',
       paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 2 } })
+    if (!map.getLayer('reach-3d')) map.addLayer(rays)
+    rays.setVisible(reachOn && is3D)
     // Terrain rides every style load like the sky: setStyle drops the source.
     demReady = false
     applyTerrain()
@@ -276,11 +280,25 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     }
   }
 
+  // The rays in the air (#603): the 3D twin of the 'reach' line source, a
+  // custom layer fed the same features. On only in the reach stop and in 3D;
+  // the flat line layer takes the reach stop in 2D.
+  let reachOn = false
+  const rays = createRayLayer('reach-3d', {
+    toMerc: (lon, lat, alt) => maplibregl.MercatorCoordinate.fromLngLat([lon, lat], alt),
+    elevation: (lon, lat) => (typeof map.queryTerrainElevation === 'function' && map.getTerrain && map.getTerrain() ? (map.queryTerrainElevation([lon, lat]) || 0) : 0),
+  })
+  function applyReachVisibility() {
+    if (map.getLayer('reach')) map.setLayoutProperty('reach', 'visibility', reachOn && !is3D ? 'visible' : 'none')
+    rays.setVisible(reachOn && is3D)
+  }
+  function setReach(on) { reachOn = !!on; if (overlaysReady) applyReachVisibility() }
   function setData(id, fcOrNull) {
     const data = fcOrNull || EMPTY
     pending.set(id, data)
     const src = map.getSource(id)
     if (src) src.setData(data)
+    if (id === 'reach') rays.setData(data.features)
   }
 
   // ---- popups ----
@@ -326,6 +344,18 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     if (!f) return
     for (const cb of clickCbs.get(f.layer.id)) cb(f.properties, e.lngLat, e)
   })
+
+  // A click on bare map: no feature of a clickable layer under the pointer.
+  // Marker clicks never reach here (they stop propagation), so this is what
+  // clears a selection.
+  const clickable = ['points', 'points-3d', 'hex', 'hex-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out']
+  function onEmptyClick(cb) {
+    map.on('click', (e) => {
+      const layers = clickable.filter((id) => map.getLayer(id))
+      const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers }) : []
+      if (!hit.length) cb(e.lngLat)
+    })
+  }
   function onLayerClick(layerId, cb) {
     if (!clickCbs.has(layerId)) clickCbs.set(layerId, [])
     clickCbs.get(layerId).push(cb)
@@ -386,11 +416,13 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     onOverlaysReady(cb) { readyCbs.push(cb); if (overlaysReady) cb() },
     isReady() { return overlaysReady },
     setData, setHeat, syncSize,
-    openPopup, closePopup, onPopup(cb) { popupCbs.push(cb) }, hoverText, onLayerClick,
+    openPopup, closePopup, onPopup(cb) { popupCbs.push(cb) }, hoverText, onLayerClick, onEmptyClick,
+    setReach, rayCount() { return rays.rayCount() }, raysVisible() { return rays.isVisible() },
     addMarker, clearMarkers, markerCount, markerLatLng,
     // Counts what a source holds, for the tests that used to count Leaflet's
     // SVG paths: canvas circles have no DOM node to count.
     featureCount(id) { const d = pending.get(id); return d ? d.features.length : 0 },
+    features(id) { const d = pending.get(id); return d ? d.features : [] },
     heatImage() { return heat },
     getBounds() {
       const b = map.getBounds()
