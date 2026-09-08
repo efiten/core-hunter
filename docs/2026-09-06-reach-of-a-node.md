@@ -1,7 +1,7 @@
 # The reach of a node is the star of its direct hearings (#549, phase 1)
 
 **Date:** 2026-09-06
-**Status:** decided (Kasper, 2026-09-06, after design rounds R13 and R14 in `design-canvas/`), implemented on the map
+**Status:** decided (Kasper, 2026-09-06, after design rounds R13 and R14 in `design-canvas/`); grown into the coverage overview of #603 in the same PR (`2026-09-08-coverage-overview.md`), which draws this star for every repeater at once and retires the popup buttons and the tier colouring below
 **Related:** #465 (the map this is drawn on), #197 (node positions and the estimate), #320 (the identity is unauthenticated), #452 (a name on a short id is a guess), #517 and phase 2 of #549 (the inverse question, a spike)
 
 ## What changed

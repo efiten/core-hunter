@@ -1,10 +1,10 @@
 [
   {
-    "id": "2026-09-06-reach-of-a-node",
-    "date": "2026-09-06",
-    "where": "map",
-    "title": "See how far a node reaches",
-    "body": "Pick a node, or tap Show reach in a popup: a line from the node to every place it was heard directly, coloured by signal."
+    "id": "2026-09-08-coverage-overview",
+    "date": "2026-09-08",
+    "where": "both",
+    "title": "See what every repeater covers",
+    "body": "Node positions gets a third stop: every repeater's reach in its own colour, stronger hearings brighter and wider. Tap a repeater to keep its star and fade the rest."
   },
   {
     "id": "2026-09-06-map-in-3d",
