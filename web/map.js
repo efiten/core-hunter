@@ -1909,7 +1909,7 @@ if (barFilters && filterPill) {
       idClasses: String((window.currentIdClasses ? window.currentIdClasses() : '') || '').split(',').filter(Boolean),
       csAdverts: on('cs-adverts'),
       csRelays: on('cs-relays'),
-      nodePos: on('f-nodepos'),
+      nodePos: nodePosCb.checked,   // either on-stop of the three (#603)
     })
     const pillCount = document.getElementById('filter-pill-count')
     pillCount.hidden = count === 0
