@@ -77,6 +77,9 @@ singing-bowl and sampled-ambiance beds; real music tracks vs. generative.
 
 ## Addendum 2026-07-27 — background behaviour (#260, #301)
 
+> **The held tone below is withdrawn — see the 2026-08-31 addendum (#568).**
+> Everything else here still holds.
+
 Backgrounding (`visibilitychange` → hidden) while a sound mode is active
 previously left the bed/music playing unchanged, with no audible sign the app
 was no longer visibly hunting. Verified separately (#260, comment
@@ -113,3 +116,29 @@ design — so ducking still paid that cost for no reason.
 - #301's other two points are separate: the two-tap-to-silence `nextSoundMode`
   cycle order, and the open question of whether the 7-voice generative engine
   matches the original #145/#255 intent — neither addressed here.
+
+## Addendum 2026-08-31 — the parked tone is withdrawn (#568)
+
+The held tone above is gone. Backgrounding in `full` still stops the bed and
+the generative music; it now starts nothing in their place.
+
+Two readings of the same fact settle it, both about what the tone stands next
+to rather than about the tone itself:
+
+- **Nothing masks it.** The bed is already stopped by the time it starts, so it
+  is the only continuous sound in the mix. A level that sits under a bed is not
+  the same level on its own — and by the time #496 had dialled it from a C3
+  sine at 0.025 into a B3 square with three partials at 0.045, swelling and
+  breathing at 1.2 Hz, the one voice designed to carry no information was the
+  most attention-seeking shape in the engine.
+- **The pocket is not silent without it.** `cue()` and `txBlip()` have no
+  visibility guard, so every reception and every transmission keeps sounding
+  while hidden. Those are what say the hunt is alive; "parked, not dead" was
+  already being said by the thing that carries information, over which the tone
+  simply sat.
+
+Unchanged: the transition cues (falling on backgrounded, rising on resumed) in
+either active mode, the hard stop of bed and music on hidden, and the restart
+of both on return. What went with the tone is `startBgAmbience` /
+`stopBgAmbience`, the `BG` profile, and the `setMode` call that existed only to
+keep a parked tone from being orphaned by a mode change while hidden.

@@ -7,6 +7,27 @@
     "body": "A cycle now waits for the airtime it spent, so it fires less often at speed and with many targets. Status shows the cadence."
   },
   {
+    "id": "2026-09-05-faq-from-about",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "The FAQ is one tap away in About",
+    "body": "Both About tabs link the FAQ, and every question there has its own address to share."
+  },
+  {
+    "id": "2026-09-04-time-window-presets",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "The time window has the map's presets",
+    "body": "Five minutes to seven days, in the same steps and words as the map. Between one hour and all time there was nothing."
+  },
+  {
+    "id": "2026-08-31-quiet-in-your-pocket",
+    "date": "2026-08-31",
+    "where": "app",
+    "title": "Nothing hums while the app is in your pocket",
+    "body": "The held background tone is gone. Receptions and transmissions still sound while the app is away."
+  },
+  {
     "id": "2026-08-29-theme-follows-your-device",
     "date": "2026-08-29",
     "where": "app",
