@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.1](https://github.com/efiten/core-hunter/compare/app-v1.25.0...app-v1.25.1) (2026-09-09)
+
+
+### Tests
+
+* **app:** let a test name the harmony drift's pick instead of hoping for one ([#607](https://github.com/efiten/core-hunter/issues/607)) ([14f98ee](https://github.com/efiten/core-hunter/commit/14f98ee9996b404300a5bf8a660d3ae99b563478)), closes [#606](https://github.com/efiten/core-hunter/issues/606)
+
 ## [1.25.0](https://github.com/efiten/core-hunter/compare/app-v1.24.0...app-v1.25.0) (2026-09-08)
 
 
