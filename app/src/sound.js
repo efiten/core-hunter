@@ -227,7 +227,15 @@ const GEN_LOWPASS_HZ = 2400
 const GEN_DETUNE = 0.005     // ratio of the second oscillator, the beating
 const GEN_OCTAVE_LEVEL = 0.26
 
-export function createSoundEngine() {
+// `random` is the source the harmony drift picks from, and it is a parameter
+// only so a test can state a pick instead of hoping for one (#606). The default
+// is Math.random, so nothing about the music changes; the atmosphere the rest of
+// this module builds is meant to be unrepeatable and stays that way. Deliberately
+// NOT threaded through the note envelopes or the voices' phase offsets: those
+// draws are unobserved, and seeding them would move which oscillators exist at a
+// given instant, which is the ground every other test in soundengine.test.js
+// stands on.
+export function createSoundEngine({ random = Math.random } = {}) {
   const AC = typeof AudioContext !== 'undefined' ? AudioContext
     : typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : null
   // No Web Audio (node tests, unsupported WebView) → inert engine, never throw.
@@ -543,9 +551,10 @@ export function createSoundEngine() {
       genTimers.push(t0)
     })
     // Harmony drift. Kept in genTimers so stopMusic() clears it with the rest.
+    // Both picks come from `random` (#606): a voice, then a note for it.
     genTimers.push(setInterval(() => {
-      const v = voices[Math.floor(Math.random() * voices.length)]
-      v.f = GEN_NOTES[Math.floor(Math.random() * GEN_NOTES.length)]
+      const v = voices[Math.floor(random() * voices.length)]
+      v.f = GEN_NOTES[Math.floor(random() * GEN_NOTES.length)]
     }, DRIFT_SECONDS * 1000))
   }
 

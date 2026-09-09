@@ -517,20 +517,59 @@ describe('the ambient layer has depth, and gives it all back', () => {
     expect(bedOscs.every((o) => o.stopped), 'an LFO outlived the bed').toBe(true)
   })
 
-  it('gives the music more voices than it has notes in one octave, and drifts them', () => {
+  it('gives the music more voices than it has notes in one octave', () => {
     // Ten voices out of an eight-note scale is why the pool spans octaves: with
     // one octave two voices would sound the same note for the whole session.
-    // The drift timer is what stops the set being fixed at all.
     ctx.gestureGiven = true
     const e = createSoundEngine()
     e.setMode('full')
     vi.advanceTimersByTime(120_000)   // every voice has fired by now
     const pitches = new Set(ctx.oscillators.filter((o) => o.started).map((o) => Math.round(o.frequency.value)))
     expect(pitches.size, 'the music repeats one handful of notes').toBeGreaterThan(8)
-    const before = new Set(pitches)
-    vi.advanceTimersByTime(600_000)   // four drift intervals
+  })
+
+  // #606: this used to advance four drift intervals and assert that some pitch
+  // was sounding that had not been before. The drift picks its voice and its
+  // note with the injected `random`, which was `Math.random` with no way in, so
+  // four picks could land on notes already sounding and the assertion failed
+  // with nothing wrong. Measured 2 failures in 25 runs, and it had two PRs
+  // parked on a red check for five days.
+  //
+  // The engine now takes `random`, so the pick is stated rather than hoped for.
+  //
+  // The target is GEN_NOTES[10], the A2 at 110 Hz. Picking a note is not enough
+  // to pick a PITCH: genNote sounds each note as three oscillators, the
+  // fundamental, a unison detune and a quiet octave at f*2. So the ten voices
+  // that start on GEN_NOTES[0..9] already put 698 on screen as the octave of
+  // their F4, and half the pool is unusable as a target for that reason. 110 is
+  // below every starting fundamental and is nobody's octave, so its appearance
+  // can only be the drift.
+  it('drifts a voice onto the note the pick names', () => {
+    ctx.gestureGiven = true
+    // Two draws per drift tick: the voice index over GEN_VOICES, then the note
+    // index over GEN_NOTES. Mid-bucket values, so neither floor() sits on a
+    // boundary where the division could land a hair under the integer.
+    const draws = [0.5 / 10, 10.5 / 24]
+    let i = 0
+    const random = () => (i < draws.length ? draws[i++] : 0)
+    const e = createSoundEngine({ random })
+    e.setMode('full')
+    vi.advanceTimersByTime(120_000)
+    const before = new Set(ctx.oscillators.filter((o) => o.started).map((o) => Math.round(o.frequency.value)))
+    expect(before.has(110), 'the A2 is nobody\'s note and nobody\'s octave at the start').toBe(false)
+    // One drift interval, plus room for voice 0 to come round again: its period
+    // is GEN_PERIODS[0] / MUSIC_DENSITY, under 13 s, so it sounds many times.
+    vi.advanceTimersByTime(150_000)
     const after = new Set(ctx.oscillators.filter((o) => o.started).map((o) => Math.round(o.frequency.value)))
-    expect([...after].some((f) => !before.has(f)), 'the harmony never moved').toBe(true)
+    expect(after.has(110), 'the drifted voice never sounded its new note').toBe(true)
+  })
+
+  it('leaves the pick to Math.random when the caller names none', () => {
+    ctx.gestureGiven = true
+    const e = createSoundEngine()
+    e.setMode('full')
+    vi.advanceTimersByTime(600_000)
+    expect(ctx.oscillators.some((o) => o.started), 'the default engine plays nothing').toBe(true)
   })
 
 })
