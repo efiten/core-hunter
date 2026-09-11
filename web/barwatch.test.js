@@ -8,14 +8,13 @@ import { barSignature, startBarWatch, onBarChange, _resetForTests } from './barw
 function fakes() {
   const cbs = { resize: null, mutation: null }
   const frames = []
-  class Resize { constructor(cb) { cbs.resize = cb } observe() {} disconnect() { cbs.resize = null } }
-  class Mutation { constructor(cb) { cbs.mutation = cb } observe() {} disconnect() { cbs.mutation = null } }
+  class Resize { constructor(cb) { cbs.resize = cb } observe() {} }
+  class Mutation { constructor(cb) { cbs.mutation = cb } observe() {} }
   const raf = (cb) => { frames.push(cb); return frames.length }
   const flush = () => { const f = frames.splice(0); for (const cb of f) cb() }
   const onResize = new Set()
   const win = { innerWidth: 800, innerHeight: 915,
-    addEventListener(type, cb) { if (type === 'resize') onResize.add(cb) },
-    removeEventListener(type, cb) { if (type === 'resize') onResize.delete(cb) } }
+    addEventListener(type, cb) { if (type === 'resize') onResize.add(cb) } }
   const resizeWindow = (w, h) => { win.innerWidth = w; win.innerHeight = h; for (const cb of onResize) cb() }
   return { cbs, Resize, Mutation, raf, flush, win, resizeWindow }
 }
