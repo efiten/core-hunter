@@ -83,8 +83,11 @@ test('an open panel is placed again when only the window height changes', async 
   await page.setViewportSize({ width: 412, height: 915 })
   await page.goto('/')
   // The status line lands late and moves the controls after it, which places
-  // the panel again by itself. Wait for it, so the height change is the only
-  // thing left that can.
+  // the panel again whatever the window did. Wait for it before opening.
+  // The resize still moves the map, and the refresh that follows rewrites
+  // #status without moving a control. That mutation asks for a check too, so
+  // what this test pins is the window's size in the compared signature. That
+  // the window's resize event asks for a check is pinned in barwatch.test.js.
   await expect(page.locator('#status')).not.toBeEmpty()
   await openPicker(page, '#tr-toggle', '#time-picker')
   await page.setViewportSize({ width: 412, height: 520 })
