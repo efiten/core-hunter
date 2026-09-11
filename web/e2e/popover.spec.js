@@ -62,11 +62,16 @@ test('an open panel follows the toggle when a resize rewraps the bar', async ({ 
   await openPicker(page, '#tr-toggle', '#time-picker')
   await page.setViewportSize({ width: 412, height: 915 })
   await expect(page.locator('#time-picker')).toBeVisible()
-  await expectOnScreen(page, '#time-picker')
-  await expectOnScreen(page, '#tr-quick')
-  const panel = await page.locator('#time-picker').boundingBox()
-  const toggle = await page.locator('#tr-toggle').boundingBox()
-  expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
+  // setViewportSize resolves before the page renders the new size, and the
+  // panel is placed in that rendering update, so a single read can still see
+  // it where the wide bar put it. Poll for the settled position, same bounds.
+  await expect(async () => {
+    await expectOnScreen(page, '#time-picker')
+    await expectOnScreen(page, '#tr-quick')
+    const panel = await page.locator('#time-picker').boundingBox()
+    const toggle = await page.locator('#tr-toggle').boundingBox()
+    expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
+  }).toPass({ timeout: 5000 })
 })
 
 // #405: the bar watcher took over from the panels' window.resize listeners,
