@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-06
 **Status:** decided (Kasper, 2026-09-06), implemented on the MapLibre map (#465)
-**Related:** #223 (the two sender params), #288 (why the pick is a Set), #299 (typing drops a pick), #449 (the app's sheet got its search), #495 (the selection on the button), #573 (moves the same field into the filter panel; on a rebase the move here wins)
+**Related:** #223 (the two sender params), #288 (why the pick is a Set), #299 (typing drops a pick), #449 (the app's sheet got its search), #495 (the selection on the button), #572 (moves the same field into the filter panel; whichever of the two lands second puts the field in the picker)
 
 ## What changed
 
@@ -17,4 +17,4 @@ The map filtered targets with two controls side by side: a typed leading-prefix 
 ## Left out
 
 - Filtering the rows client-side by name as the app does; the server prefix was chosen instead.
-- #573's placement of the field in the filter panel; this supersedes it.
+- #572's placement of the field in the filter panel; the picker's panel is the placement that stands (Kasper, 2026-09-11).
