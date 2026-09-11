@@ -286,7 +286,7 @@ export function createHuntMap(containerId) {
     // the picture can be a long time, and a view tap in that window did
     // nothing. addOverlays runs this itself once the layers are there.
     if (!overlaysReady) return
-    const plan = terrainPlan({ on: mode3D, ready: demReady, mode3D, exaggeration: terrainExag })
+    const plan = terrainPlan({ mode3D, ready: demReady, exaggeration: terrainExag })
     if (plan.hillshade) {
       ensureDem()
       map.setLayoutProperty('hillshade', 'visibility', 'visible')
