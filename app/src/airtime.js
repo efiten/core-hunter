@@ -19,6 +19,11 @@
 //     Discover request: header, path_len, 6 payload bytes (discover.js) = 8
 //     Trace-ping:       header, path_len, 1 path byte, 9 payload bytes
 //                       (Mesh.cpp createTrace: tag 4, auth 4, flags 1) = 12
+//     Self-advert:      header, path_len, no path (zero-hop), then Mesh.cpp
+//                       createAdvert: pubkey 32, timestamp 4, signature 64,
+//                       and app data (AdvertDataHelpers.cpp encodeTo): flags
+//                       1, lat/lon 8 when the location is shared, the name,
+//                       capped at MAX_ADVERT_DATA_SIZE 32 = 103 to 134
 //
 //   Budget. 869.618 MHz sits in the 869.400 to 869.650 MHz sub-band, which
 //   ERC 70-03 limits to a 10% duty cycle. The app cannot read the frequency,
@@ -29,6 +34,16 @@ export const DEFAULT_SF = 8
 export const BW_KHZ = 62.5
 export const DISCOVER_BYTES = 8
 export const TRACE_BYTES = 12
+
+// On-air bytes of the companion's self-advert (#577), for the name it
+// advertises. The location bytes always count: SELF_INFO carries the location
+// policy only from companion firmware v1.7.1, and earlier firmware sends 0 in
+// that byte while its advert still carries the location. A floor that assumes
+// them comes out long, never short.
+export function advertBytes(name) {
+  const nameBytes = new TextEncoder().encode(String(name || '')).length
+  return 2 + 32 + 4 + 64 + Math.min(1 + 8 + nameBytes, 32)
+}
 
 export function preambleSymbols(sf) {
   return sf <= 8 ? 32 : 16

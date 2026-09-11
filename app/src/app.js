@@ -44,7 +44,7 @@ import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
 import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets, autoPingCadenceText } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
-import { minPeriodMs, DISCOVER_BYTES, TRACE_BYTES } from './airtime.js'
+import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES } from './airtime.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
@@ -1069,8 +1069,12 @@ function autoPingTick() {
   // With Share my node name on, a cycle that has a companion as target also
   // carries our advert (#576): that is the node that has to hear us before it
   // can answer, and one advert at switch-on could be sent while it is out of
-  // range. Zero-hop, so it costs the mesh nothing beyond this one airtime.
-  if (announceThisCycle({ shareName: state.shareName, connected: state.connected, companionTargets: selectedCompanionTargets().length })) sendSelfAdvert()
+  // range. Zero-hop, so it costs the mesh nothing beyond this one airtime, and
+  // that airtime joins the floor's count like the other frames' (#381).
+  if (announceThisCycle({ shareName: state.shareName, connected: state.connected, companionTargets: selectedCompanionTargets().length }) && sendSelfAdvert()) {
+    state.autoPing.sentBytes.push(advertBytes(state.name))
+    renderAutoPingCadence()
+  }
   // Each staggered trace-ping is also a real transmission — pulse the FAB and
   // sound the cue for it too, but only if the ping actually succeeds (#254).
   // The tx cue follows the same rule as the pulse: it must mean "a frame went
@@ -1142,12 +1146,14 @@ function selectedCompanionTargets() {
 }
 
 // sendSelfAdvert asks the companion for one zero-hop advert. A real frame
-// going out, so it gets the FAB pulse and the tx cue like every other one.
+// going out, so it gets the FAB pulse and the tx cue like every other one, and
+// it returns whether it went, as sendDiscover does.
 function sendSelfAdvert() {
-  if (!state.connected || !state.transport) return
+  if (!state.connected || !state.transport) return false
   state.transport.send(buildSelfAdvertFrame()).catch(() => {})
   pulseDiscoverBtn()
   sound.txBlip('discover')
+  return true
 }
 
 // ---------------------------------------------------------------------------
