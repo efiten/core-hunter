@@ -257,14 +257,19 @@ export function selectedRepeaterIds(records, selectedIds) {
 // self-advert is for each cycle. Defined as the selection minus the repeater
 // reading, so the two readings never disagree about one node; a room server or
 // a sensor lands here too, which is right, since neither forwards a trace.
+//
+// The comparison is on full ids, before repeaterIds collapses them onto the
+// first byte. That byte is the key only for the trace frame, which a companion
+// is never sent: comparing on it dropped a companion that shares its first
+// byte with a selected repeater.
 export function selectedCompanionIds(records, selectedIds) {
   if (!selectedIds || selectedIds.size === 0) return []
-  const repeaters = new Set(selectedRepeaterIds(records, selectedIds).map((id) => id.slice(0, 2)))
+  const repeaters = new Set(repeaterReading(records, (id) => selectedIds.has(id)))
   const out = []
   for (const r of records || []) {
     if (r.sender_id == null) continue
     const id = String(r.sender_id).toLowerCase()
-    if (!selectedIds.has(id) || out.includes(id) || repeaters.has(id.slice(0, 2))) continue
+    if (!selectedIds.has(id) || out.includes(id) || repeaters.has(id)) continue
     out.push(id)
   }
   return out
@@ -277,7 +282,10 @@ export function heardRepeaterIds(records) {
   return repeaterIds(records, () => true)
 }
 
-function repeaterIds(records, wanted) {
+// repeaterReading: every wanted id whose most recent record behaves as a
+// repeater, uncollapsed. repeaterIds narrows it to one id per frame;
+// selectedCompanionIds needs all of them (#576).
+function repeaterReading(records, wanted) {
   const bySender = new Map()
   for (const r of records || []) {
     if (r.sender_id == null) continue
@@ -286,6 +294,19 @@ function repeaterIds(records, wanted) {
     const prev = bySender.get(id)
     if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
   }
+  const out = []
+  for (const [id, r] of bySender) {
+    // trace_reply (#481) counts as forwarding behaviour: only a node that
+    // forwards retransmits a directed trace, and the reply is by construction
+    // the newest record for a target we are already pinging. Reading the newest
+    // record alone, without this, drops a target from the ping set BECAUSE it
+    // answered.
+    if (r.sender_role === 'Repeater' || r.sender_kind === 'relay' || r.sender_kind === 'trace_reply') out.push(id)
+  }
+  return out
+}
+
+function repeaterIds(records, wanted) {
   // A trace-ping addresses the node by the first byte of its id (sendTracePing
   // sends id.slice(0, 2)), so every prefix variant of one merged node yields
   // the byte-identical frame. Emitting all of them would spend 2-3x the airtime
@@ -293,13 +314,7 @@ function repeaterIds(records, wanted) {
   // (#268). Collapse on the byte actually transmitted, keeping the longest id
   // as the representative so the caller still has the most specific form.
   const byFrame = new Map()
-  for (const [id, r] of bySender) {
-    // trace_reply (#481) counts as forwarding behaviour: only a node that
-    // forwards retransmits a directed trace, and the reply is by construction
-    // the newest record for a target we are already pinging. Reading the newest
-    // record alone, without this, drops a target from the ping set BECAUSE it
-    // answered.
-    if (!(r.sender_role === 'Repeater' || r.sender_kind === 'relay' || r.sender_kind === 'trace_reply')) continue
+  for (const id of repeaterReading(records, wanted)) {
     const frame = id.slice(0, 2)
     const prev = byFrame.get(frame)
     if (!prev || id.length > prev.length) byFrame.set(frame, id)

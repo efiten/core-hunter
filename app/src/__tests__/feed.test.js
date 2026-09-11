@@ -628,4 +628,22 @@ describe('selectedCompanionIds', () => {
     const rows = [rec({ sender_id: 'AA', sender_role: 'ChatNode' }), rec({ sender_id: 'aa', sender_role: 'ChatNode', rx_at: '2026-06-29T10:01:00Z' })]
     expect(selectedCompanionIds(rows, new Set(['aa']))).toEqual(['aa'])
   })
+  // The trace frame addresses a repeater by its first byte, so that byte is
+  // the key for collapsing repeater variants. A companion is never sent that
+  // frame: sharing a first byte with a selected repeater, one pubkey in 256,
+  // says nothing about whether it needs the advert.
+  it('keeps a companion whose first byte matches a selected repeater', () => {
+    const companion = 'ab' + '12'.repeat(31)
+    const repeater = 'ab' + 'ff'.repeat(31)
+    const rows = [rec({ sender_id: companion, sender_role: 'ChatNode' }), rec({ sender_id: repeater, sender_role: 'Repeater' })]
+    expect(selectedCompanionIds(rows, new Set([companion, repeater]))).toEqual([companion])
+  })
+  // Every id the repeater reading claims stays out, not only the one variant
+  // the collapse keeps to address the frame: a 2-byte relay id of the same
+  // repeater is still that repeater.
+  it('leaves out every prefix variant of a selected repeater', () => {
+    const repeater = 'abff' + '00'.repeat(30)
+    const rows = [rec({ sender_id: repeater, sender_role: 'Repeater' }), rec({ sender_id: 'abff', sender_kind: 'relay', sender_role: null })]
+    expect(selectedCompanionIds(rows, new Set([repeater, 'abff']))).toEqual([])
+  })
 })
