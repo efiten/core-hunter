@@ -9,7 +9,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
 import { skyForHour, currentHour } from './sky.js'
-import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan } from './terrain.js'
+import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -102,10 +102,9 @@ export function createHuntMap(containerId) {
   map.on('sourcedata', (e) => {
     if (e.sourceId === 'dem' && e.isSourceLoaded && !demReady) { demReady = true; applyTerrain() }
   })
-  // A DEM tile that fails is a tile that never arrives: the map stays flat
-  // rather than stalled. MapLibre reports it as an error event, which would
-  // otherwise reach the console for every tile.
-  map.on('error', (e) => { if (e && e.sourceId === 'dem') e.preventDefault && e.preventDefault() })
+  // Every map error reaches the console except a failed DEM tile, which only
+  // leaves the map flat (terrain.js).
+  map.on('error', reportMapError)
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
   let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
