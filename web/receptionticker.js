@@ -139,9 +139,8 @@ export function rxLanes(count, collapse) {
   return cap === undefined ? lanes : Math.min(lanes, cap)
 }
 
-// Whether the chevron has anywhere to go at all. On the map that is always,
-// since folding to the header is a stop of its own and is worth reaching even
-// with nothing to show.
+// Whether the chevron has anywhere to go at all. Below the smallest stop it
+// would be a control that does nothing.
 export function rxCanCollapse(count) {
   return collapseLevels(count).length > 1
 }
@@ -335,6 +334,7 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   // is no placement layer above it.
   const countEl = root.querySelector('.rx-count')
   const tgEl = root.querySelector('.rx-tg')
+  const foldEl = root.querySelector('.rx-fold')
   const list = root.querySelector('.rx-list')
 
   let mode = 'filtered'
@@ -368,6 +368,9 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   function applyGeometry() {
     const lanes = rxLanes(view.length, collapse)
     root.classList.toggle('rx-empty', lanes === 0)
+    // The count decides whether any stop would make the card smaller, and the
+    // count lives here, so the chevron's presence does too, as in the app.
+    foldEl.hidden = !rxCanCollapse(view.length)
     list.style.setProperty('--rx-lanes', lanes)
     list.style.setProperty('--rx-playhead', rxPlayhead(lanes))
     list.style.setProperty('--rx-pad-bottom', rxPadBottom())

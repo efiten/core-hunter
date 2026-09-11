@@ -176,6 +176,27 @@ test('the cross puts the ticker away, and the bar brings it back', async ({ page
   await expect(page.locator('#ticker-btn')).toBeHidden()
 })
 
+// Two receptions are a one-lane card already, so no stop would make it smaller
+// and a click on the chevron changes nothing. A control offers only what would
+// change something (docs/design-system.md), so the chevron is not drawn, as in
+// the app. The cross stays: putting the card away still does something.
+test('offers no chevron when no stop would make the card smaller', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: RX.slice(0, 2) } }))
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  await expect(page.locator('.rx-count')).toHaveText('2 rx')
+  await expect(page.locator('.rx-fold')).toBeHidden()
+  await expect(page.locator('.rx-close')).toBeVisible()
+  // The cross takes the chevron's place at the header's right edge, as in the
+  // app, rather than sitting against the filtered/all toggle.
+  const gap = await page.evaluate(() => {
+    const hd = document.querySelector('#rx-log .rx-hd').getBoundingClientRect()
+    const x = document.querySelector('#rx-log .rx-close').getBoundingClientRect()
+    return hd.right - x.right
+  })
+  expect(gap).toBeLessThan(4)
+})
+
 test('starts at its smallest on a phone, where the card is what covers the map', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')

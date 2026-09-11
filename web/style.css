@@ -289,6 +289,8 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    Same button as the app's: same box, same drawn chevron, rather than a text
    glyph that sat on a different baseline and at a different weight. */
 .rx-fold[data-dir="up"] svg { transform: rotate(180deg); }
+.rx-fold[hidden] { display: none; }
+.rx-fold[hidden] + .rx-close { margin-left: auto; }
 /* 44px hit areas (#539). The four smallest controls measured 11x14 to 40x29;
    the glyph keeps its size and an ::after extension carries the touch box to
    44px. No layout change, so the bar's measured geometry stays as it is.
