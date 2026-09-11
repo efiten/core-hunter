@@ -11,7 +11,7 @@ The map filtered targets with two controls side by side: a typed leading-prefix 
 - **The prefix field lives inside the picker's panel**, above the Top rows, styled as the app's sheet search. Same element id, so urlstate, `filters.js`, the `?sender=` links and `onPick` (a pick clears the prefix) work unchanged.
 - **The search is the server's prefix match** (Kasper's call, over the app's client-side row filter): typing narrows the map through `?sender=`, and can find a node that has no row in view. Old `?sender=` links keep narrowing the map.
 - **The button carries the trace.** With no pick and a prefix typed it reads `⌖ 4a2b…` and lights up, the way it does for a pick; clearing the field or Clear filters takes it away. Once the panel closes the button is the only thing left on screen, the lesson #495 recorded.
-- **"Locate this sender" in a popup picks the node** (an exact id) instead of filling the prefix. Locate reads the pick, so it follows.
+- **"Locate this sender" in a popup fills the prefix field**, from the point popup and the CoreScope observer popup alike (Kasper, 2026-09-11, after review). The id reaches the server as `?sender=`, as it did before this change. The observer popup passes a `heard_key`, which can be a short relay prefix such as `1d6f`. As an exact `?senders=` pick it would match only rows whose id is exactly those bytes. Filling the field drops an active pick, as typing does (#299), and the button traces the prefix.
 - The onboarding callout no longer names the field; it points at the picker button and its neighbours.
 
 ## Left out

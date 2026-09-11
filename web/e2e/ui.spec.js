@@ -295,10 +295,47 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
   }).toPass()
   await page.locator('.lc-locate').click()
 
-  // The popup picks the node (an exact id, #498) rather than filling a prefix.
-  expect(await page.evaluate(() => window.selectedSenderIds())).toEqual([SID])
+  // The id goes into the prefix field, so the view narrows with ?sender=, the
+  // leading-prefix search, rather than an exact ?senders= pick.
+  await expect(page.locator('#f-sender')).toHaveValue(SID)
+  await expect(page).toHaveURL((u) => u.searchParams.get('sender') === SID && !u.searchParams.has('senders'))
   await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
   await expect(page.locator('#locate-info')).toBeVisible()
+})
+
+// Ids outrank a typed prefix in senderParams, so a field filled behind an
+// active pick would leave Locate on the picked node. Filling it has to drop
+// the pick, the way typing does (#299).
+test('"Locate this sender" drops an active pick and locates the node clicked', async ({ page }) => {
+  const SID = 'db11db11f7808b97'
+  const PICKED = 'aa11bb22'
+  const urls = []
+  await page.route('**/api/points*', (r) => {
+    urls.push(r.request().url())
+    return r.fulfill({ json: { points: [{
+      lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: SID, sender_label: '',
+      sender_role: 'Repeater', hunter_name: 'X', packet_type: 'Control', rx_at: '2026-06-30T15:40:51Z',
+    }] } })
+  })
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
+  await page.goto('/?mode=points&senders=' + encodeURIComponent(JSON.stringify([PICKED])))
+  await expect.poll(() => page.evaluate(() => window.selectedSenderIds())).toEqual([PICKED])
+
+  await mapSettled(page)
+  await expect(async () => {
+    const box = await page.locator('#map').boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  urls.length = 0
+  await page.locator('.lc-locate').click()
+
+  await expect(page.locator('#f-sender')).toHaveValue(SID)
+  await expect.poll(() => page.evaluate(() => window.selectedSenderIds())).toEqual([])
+  await expect(page.locator('#sp-toggle')).toHaveText(`⌖ ${SID}… ▾`)
+  // Locate's own fetch names the clicked node, not the pick it replaced.
+  await expect.poll(() => urls.some((u) => new URL(u).searchParams.get('sender') === SID)).toBe(true)
+  expect(urls.some((u) => new URL(u).searchParams.get('sender') === PICKED)).toBe(false)
 })
 
 test('CoreScope relays checkbox (off by default) draws observer points with resolved name', async ({ page }) => {
@@ -355,7 +392,11 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   }).toPass()
   await page.locator('.lc-locate').click()
 
-  expect(await page.evaluate(() => window.selectedSenderIds())).toEqual([HK])
+  // A heard_key can be a short relay prefix. As ?sender= it still matches
+  // the longer ids that start with it; as an exact ?senders= pick it would
+  // narrow the view to rows carrying just those bytes.
+  await expect(page.locator('#f-sender')).toHaveValue(HK)
+  await expect(page).toHaveURL((u) => u.searchParams.get('sender') === HK && !u.searchParams.has('senders'))
   await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
   await locateReq // Locate pulled this relay's CoreScope sightings by heard_key
   await expect(page.locator('#locate-info')).toBeVisible()

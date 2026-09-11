@@ -946,18 +946,20 @@ function deactivateLocate() {
 }
 locateBtn.addEventListener('click', () => (locateActive ? deactivateLocate() : activateLocate()))
 
-// "Locate this sender" button inside a popup: pick the clicked node in the
-// target picker (an exact id, not a prefix, #498) and start or refresh a
-// Locate for it. The pick is what locateSender reads, so Locate follows.
+// "Locate this sender" button inside a popup: set the sender filter to the
+// clicked node's id and start (or refresh) a Locate for it. The filter is the
+// field's leading-prefix search (?sender=), not an exact pick: the CoreScope
+// observer popup passes a heard_key, which can be a short relay prefix, and
+// it has to keep matching the longer ids that start with it. The input event
+// is the one typing sends, so an active pick is dropped (#299), the URL
+// follows and the picker button traces the prefix (#498).
 document.addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('.lc-locate')
   if (!btn) return
+  const field = document.getElementById('f-sender')
+  field.value = btn.dataset.sender
+  field.dispatchEvent(new Event('input', { bubbles: true }))
   wm.closePopup()
-  if (targetPicker) {
-    targetPicker.setSelected([String(btn.dataset.sender).toLowerCase()])
-    syncTargetToggleLabel()
-    urlstate.save()
-  }
   activateLocate()
 })
 
