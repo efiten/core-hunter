@@ -46,7 +46,7 @@ import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
 import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets, autoPingCadenceText } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
-import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES } from './airtime.js'
+import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES, TELEMETRY_REQ_BYTES } from './airtime.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
@@ -1196,9 +1196,12 @@ async function askTelemetry(pubkey) {
       if (!state.connected || !state.transport) return
       const ack = await sendAndWait(buildTelemetryRequest(pubkey), parseSentAck, SENT_ACK_TIMEOUT_MS)
       if (!ack) return
-      // The frame went out: the same pulse and cue as every other transmission.
-      // The ask is remembered here, before the restore, so a reply that beats
-      // the restore's ack is still named after it.
+      // The frame went out: the same pulse and cue as every other transmission,
+      // and its airtime joins the floor's count (#381). The ask is remembered
+      // here, before the restore, so a reply that beats the restore's ack is
+      // still named after it.
+      state.autoPing.sentBytes.push(TELEMETRY_REQ_BYTES)
+      renderAutoPingCadence()
       pulseDiscoverBtn()
       sound.txBlip('trace')
       if (ack.isFlood) { console.debug('[telemetry] asked over flood despite the override:', idPrefix(pubkey)); return }

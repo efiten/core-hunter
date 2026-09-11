@@ -24,6 +24,12 @@
 //                       and app data (AdvertDataHelpers.cpp encodeTo): flags
 //                       1, lat/lon 8 when the location is shared, the name,
 //                       capped at MAX_ADVERT_DATA_SIZE 32 = 103 to 134
+//     Telemetry request: header, path_len, no path (sent direct at zero hop,
+//                       contactpath.js), then Mesh.cpp createDatagram: dest
+//                       and src hash 1 each, and Utils.cpp encryptThenMAC:
+//                       MAC 2 and the 13 bytes BaseChatMesh.cpp sendRequest
+//                       builds (tag 4, type 1, reserved 4, random 4) in one
+//                       16-byte AES block = 22
 //
 //   Budget. 869.618 MHz sits in the 869.400 to 869.650 MHz sub-band, which
 //   ERC 70-03 limits to a 10% duty cycle. The app cannot read the frequency,
@@ -34,6 +40,7 @@ export const DEFAULT_SF = 8
 export const BW_KHZ = 62.5
 export const DISCOVER_BYTES = 8
 export const TRACE_BYTES = 12
+export const TELEMETRY_REQ_BYTES = 22
 
 // On-air bytes of the companion's self-advert (#577), for the name it
 // advertises. The location bytes always count: SELF_INFO carries the location

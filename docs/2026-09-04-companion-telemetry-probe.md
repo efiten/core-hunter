@@ -30,7 +30,7 @@ The reply's route is the target's choice: direct when it knows a path to us, oth
 
 ## Cadence
 
-One telemetry request per auto-ping cycle, rotating over the selected companions (`nextTelemetryTarget`). The firmware keeps one pending telemetry tag (`clearPendingReqs` on every send), so two in flight would orphan a reply. The trace-pings to repeater targets are unchanged. The sweep stays trace-only: the answer needs a reader.
+One telemetry request per auto-ping cycle, rotating over the selected companions (`nextTelemetryTarget`). Its 22 bytes count toward the auto-discover duty floor (#381) once the companion acks the send: 304 ms on air at SF8. The firmware keeps one pending telemetry tag (`clearPendingReqs` on every send), so two in flight would orphan a reply. The trace-pings to repeater targets are unchanged. The sweep stays trace-only: the answer needs a reader.
 
 ## Attribution and storage
 
