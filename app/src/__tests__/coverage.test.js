@@ -4,6 +4,7 @@ import {
   rayStrength, rayStyle, ONE_WAY_OPACITY, DIM_OPACITY,
   starOrigin, coverageStars, coverageFeatures, RAY_ALT_M,
 } from '../coverage.js'
+import { estimateFor } from '../nodelayer.js'
 
 const A = 'aa'.repeat(32), B = 'bb'.repeat(32)
 
@@ -175,6 +176,62 @@ describe('coverageStars', () => {
     const pts = [{ lat: null, lon: null, rssi: -70, sender_id: A, sender_kind: 'relay' }, ...ring(A, 'relay', 1)]
     const stars = coverageStars(pts, { positionOf: () => ({ lat: 51, lon: 4 }) })
     expect(stars[0].points).toHaveLength(1)
+  })
+
+  // The estimate sorts a star's hearings and is most of a draw (#593 review:
+  // 2.1 ms a call on a 4559-hearing export), and the app draws once a second
+  // from a fresh read of the store. A cache the caller keeps between draws
+  // reuses a star's estimate while its hearings are the same ones.
+  describe('with a cache', () => {
+    const C = 'cc'.repeat(32)
+    const read = (pts) => pts.map((p) => ({ ...p }))   // the next tick's read: same values, new objects
+    const counted = () => {
+      const calls = []
+      return { calls, estimate: (pts) => { calls.push(pts.length); return estimateFor(pts) } }
+    }
+    const pts = [...ring(A, 'relay', 6), ...ring(B, 'relay', 4), ...ring(C, 'relay', 2)]
+    it('reuses every estimate while the hearings are unchanged, and hangs the stars from the new read', () => {
+      const cache = new Map(), { calls, estimate } = counted()
+      const first = coverageStars(pts, { estimate, cache })
+      expect(calls).toEqual([6, 4, 2])
+      const next = read(pts)
+      const second = coverageStars(next, { estimate, cache })
+      expect(calls).toEqual([6, 4, 2])
+      // C has too few hearings for an estimate: still no star, still not recomputed.
+      expect(second.map((s) => s.id)).toEqual([A, B])
+      expect(second.map((s) => s.origin)).toEqual(first.map((s) => s.origin))
+      expect(second[0].points[0]).toBe(next[0])
+    })
+    it('recomputes only the star whose hearings changed: one more, one fewer, or another RSSI on the same spot', () => {
+      const cache = new Map(), { calls, estimate } = counted()
+      const origins = (stars) => stars.map((s) => s.origin)
+      coverageStars(pts, { estimate, cache })
+      calls.length = 0
+      const more = [...read(pts), { ...pts[0], lat: 51.003 }]
+      expect(origins(coverageStars(more, { estimate, cache }))).toEqual(origins(coverageStars(more)))
+      expect(calls).toEqual([7])
+      calls.length = 0
+      // A's last hearing ages out of the window.
+      const fewer = read(pts).filter((p, i) => i !== 5)
+      const before = coverageStars(fewer, { estimate, cache })
+      expect(origins(before)).toEqual(origins(coverageStars(fewer)))
+      expect(calls).toEqual([5])
+      calls.length = 0
+      const louder = read(fewer)
+      const first = louder.findIndex((p) => p.sender_id === B)
+      louder[first] = { ...louder[first], rssi: -40 }
+      const fromCache = coverageStars(louder, { estimate, cache })
+      expect(calls).toEqual([4])
+      const b = (stars) => stars.find((s) => s.id === B).origin
+      expect(b(coverageStars(louder))).not.toEqual(b(before))
+      expect(b(fromCache)).toEqual(b(coverageStars(louder)))
+    })
+    it('keeps only the stars of the last read', () => {
+      const cache = new Map()
+      coverageStars(pts, { cache })
+      coverageStars(ring(A, 'relay', 6), { cache })
+      expect([...cache.keys()]).toEqual([A])
+    })
   })
 })
 

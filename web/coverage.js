@@ -138,7 +138,14 @@ export const RAY_ALT_M = 30
 // null; estimate(points) is the node layer's estimateFor unless a test says
 // otherwise. A star with no origin at all (no position, too few hearings for
 // an estimate) is left out: there is nothing to draw it from.
-export function coverageStars(points, { positionOf = () => null, estimate = estimateFor } = {}) {
+//
+// cache is a Map the caller keeps between draws. The estimate is most of a
+// call (1.9 of 2.1 ms on a 4559-hearing export, measured 2026-09-11), the app
+// draws once a second from a fresh read, and between two draws most stars
+// hear nothing new. So a star's estimate is reused while its hearings are the
+// same positions and RSSIs in the same order, and the cache keeps only the
+// stars of this call. The registry position is read every call.
+export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null } = {}) {
   const byId = new Map()
   for (const pt of points || []) {
     if (!isRepeaterHearing(pt) || pt.sender_id == null) continue
@@ -150,12 +157,21 @@ export function coverageStars(points, { positionOf = () => null, estimate = esti
   const out = []
   for (const [id, pts] of byId) {
     const advertised = positionOf(id) || null
-    const est = estimate(pts.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi })))
+    const est = cache ? cachedEstimate(cache, id, pts, estimate) : estimate(pts.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi })))
     const origin = starOrigin({ advertised, estimate: est })
     if (!origin) continue
     out.push({ id, origin, points: pts })
   }
+  if (cache) for (const id of cache.keys()) if (!byId.has(id)) cache.delete(id)
   return out
+}
+function cachedEstimate(cache, id, pts, estimate) {
+  const hit = cache.get(id)
+  if (hit && hit.hearings.length === pts.length * 3
+    && pts.every((p, i) => p.lat === hit.hearings[i * 3] && p.lon === hit.hearings[i * 3 + 1] && p.rssi === hit.hearings[i * 3 + 2])) return hit.est
+  const est = estimate(pts.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi })))
+  cache.set(id, { hearings: pts.flatMap((p) => [p.lat, p.lon, p.rssi]), est })
+  return est
 }
 
 // coverageFeatures: one LineString per hearing, hub to hearing, with the

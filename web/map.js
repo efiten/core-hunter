@@ -976,6 +976,8 @@ const coverageSel = new Set()
 // The colour a repeater got in the last draw, for the dots (#603: the point
 // takes the repeater's hue while the reach is on) and the ▲ markers.
 let coverageHue = new Map()
+// Each star's estimate, kept from one draw to the next (coverage.js).
+const starCache = new Map()
 function coverageOn() { return nodePosStop === 'reach' }
 function coverageSelected() {
   const ids = new Set(coverageSel)
@@ -998,6 +1000,7 @@ function clearCoverageLayer() {
   wm.setData('reach', null)
   wm.clearMarkers('reach')
   coverageHue = new Map()
+  starCache.clear()
 }
 // The receptions the stars are built from. With a target picked the view's
 // points are already narrowed to it, and the other stars have to stay up at a
@@ -1020,7 +1023,7 @@ function buildCoverage(points, registryNodes) {
   if (!coverageOn()) return null
   const byKey = new Map((registryNodes || []).map((n) => [String(n.pubkey).toLowerCase(), n]))
   const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
-  const stars = coverageStars(points, { positionOf })
+  const stars = coverageStars(points, { positionOf, cache: starCache })
   const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
   const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
   const selected = coverageSelected()

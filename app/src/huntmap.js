@@ -117,7 +117,8 @@ export function createHuntMap(containerId) {
   // draw, read by the dots and the ▲ markers. lastReachRows is the record set
   // the stars are built from when a target narrows the plotted set: the other
   // stars must stay up at a quarter, so app.js hands the sender-free rows.
-  const coverageSel = new Set()
+  // starCache keeps each star's estimate from tick to tick (coverage.js).
+  const coverageSel = new Set(), starCache = new Map()
   let coverageHue = new Map(), lastReachRows = null, hubMarkers = []
   const rays = createRayLayer('reach-3d', {
     toMerc: (lon, lat, alt) => maplibregl.MercatorCoordinate.fromLngLat([lon, lat], alt),
@@ -155,13 +156,13 @@ export function createHuntMap(containerId) {
   function drawCoverage(records) {
     hubMarkers.forEach((m) => m.remove()); hubMarkers = []
     if (!coverageOn() || !map.getSource('reach')) {
-      coverageHue = new Map()
+      coverageHue = new Map(); starCache.clear()
       if (map.getSource('reach')) { map.getSource('reach').setData(EMPTY); rays.setData([]) }
       return null
     }
     const byKey = new Map(nodePositions.map((n) => [String(n.pubkey).toLowerCase(), n]))
     const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
-    const stars = coverageStars(lastReachRows || records, { positionOf })
+    const stars = coverageStars(lastReachRows || records, { positionOf, cache: starCache })
     const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
     const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
     const selected = coverageSelected()
