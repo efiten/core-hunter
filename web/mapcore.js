@@ -155,11 +155,22 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark' } = {})
     map.on('mouseleave', layerId, () => { if (hover) hover.remove() })
   }
 
+  // A click goes to the topmost layer under the pointer that has a handler,
+  // and to none below it. MapLibre's own layer listener fires for every layer
+  // with a feature under the click, where Leaflet's stopped at the marker: in
+  // 'both' mode a click on a point also ran its hex cell's handler, which
+  // moved the ticker off the row the point had just focused.
+  const clickCbs = new Map()
+  map.on('click', (e) => {
+    const layers = [...clickCbs.keys()].filter((id) => map.getLayer(id))
+    // queryRenderedFeatures lists the topmost feature first.
+    const f = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : null
+    if (!f) return
+    for (const cb of clickCbs.get(f.layer.id)) cb(f.properties, e.lngLat, e)
+  })
   function onLayerClick(layerId, cb) {
-    map.on('click', layerId, (e) => {
-      const f = e.features && e.features[0]; if (!f) return
-      cb(f.properties, e.lngLat, e)
-    })
+    if (!clickCbs.has(layerId)) clickCbs.set(layerId, [])
+    clickCbs.get(layerId).push(cb)
     map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
   }
