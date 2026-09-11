@@ -1988,6 +1988,9 @@ let hunterRoster = []
 // The role the roster was fetched as; applyRole refetches when it moves (#463).
 let rosterRole = null
 let rosterLoaded = false
+// Generation token, same as nodePosGen: applyRole does not await the fetch, so
+// a login then a logout puts two in flight, and the older one can land last.
+let rosterGen = 0
 const hunterAdapter = {
   idOf: (h) => h.hunter_pubkey,
   rowParts: (h) => ({ primary: hunterOptionLabel(h), secondary: '', meta: [] }),
@@ -2032,8 +2035,12 @@ wirePopover({
 // picker's row labels and Top-section ranking both read it through the
 // hunterRoster closure above.
 async function loadHunterRoster() {
+  const gen = ++rosterGen
   try {
     const r = await fetch(`${API_BASE}/api/hunters`, { credentials: 'same-origin' }); const d = await r.json()
+    // Only the newest request writes: an older one answered as the previous
+    // role, and landing last it would put that role's names back on screen.
+    if (gen !== rosterGen) return
     hunterRoster = d.hunters || []
     // The shared/saved selection can only be applied once the roster exists
     // (it arrives async). Re-assert it and fire the same save/refresh/snap
