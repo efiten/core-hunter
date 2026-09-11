@@ -264,25 +264,19 @@ export class Queue {
     return (rows[0] && rows[0].rx_pubkey) || '';
   }
 
-  // How many receptions the drain still owes the broker. Counted rather than
-  // read from a list, so it is cheap on a backlog of thousands -- and it has to
-  // be, because it is read on the render tick.
-  //
-  // This is the number nobody could see on 2026-08-24. The app kept capturing
-  // and the MQTT dot stayed lit, while a stalled drain meant nothing reached
-  // the map for over an hour. A dot that only says "the socket is open" is not
-  // the same as "your receptions are getting through", and the difference is
-  // the whole hunt.
   // putNode merges what a node answered about itself into its row (#553):
   // a later telemetry reply updates the fields it carries and leaves the rest.
+  // The merge is written from the read's own success callback, where the spec
+  // keeps the transaction active. After an await it is active only while the
+  // continuation still runs inside that callback's dispatch.
   async putNode(pubkey, patch) {
     const pk = String(pubkey || '').trim().toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(pk)) throw new TypeError('putNode: pubkey must be 64 hex characters');
     const db = await openDB();
     const tx = db.transaction(NODES, 'readwrite');
     const store = tx.objectStore(NODES);
-    const prev = (await result(store.get(pk))) || {};
-    store.put({ ...prev, ...patch, pubkey: pk });
+    const read = store.get(pk);
+    read.onsuccess = () => store.put({ ...(read.result || {}), ...patch, pubkey: pk });
     return done(tx);
   }
 
@@ -293,6 +287,15 @@ export class Queue {
     return (await result(store.get(pk))) || null;
   }
 
+  // How many receptions the drain still owes the broker. Counted rather than
+  // read from a list, so it is cheap on a backlog of thousands -- and it has to
+  // be, because it is read on the render tick.
+  //
+  // This is the number nobody could see on 2026-08-24. The app kept capturing
+  // and the MQTT dot stayed lit, while a stalled drain meant nothing reached
+  // the map for over an hour. A dot that only says "the socket is open" is not
+  // the same as "your receptions are getting through", and the difference is
+  // the whole hunt.
   async unpublishedCount() {
     const watermark = await this.getWatermark();
     const db = await openDB();
