@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { FILTER_GROUPS, filterSheetMarkup, groupHeadings } from '../filtersheet.js'
 import { FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from '../filters.js'
+import { TIME_WINDOWS, windowMs } from '../timewindows.js'
 
 // #564: the two panels held different things, in a different order, under
 // different words. The order is the subject, so it is a value rather than a
@@ -43,5 +44,14 @@ describe('the filter sheet structure', () => {
     const h = html()
     for (const t of FILTER_PACKET_TYPES) expect(h, t.value).toContain(`data-type="${t.value}"`)
     for (const c of SENDER_ID_CLASSES) expect(h, c.value).toContain(`data-idclass="${c.value}"`)
+  })
+
+  it('offers the shared time windows, then All time', () => {
+    // #557 built "Plot last" from timewindows.js, so the app and the map name a
+    // duration the same way. The select moved here with the rest of the sheet,
+    // and a hand-typed list would bring the old four options back.
+    const select = html().match(/<select id="fs-window">([\s\S]*?)<\/select>/)[1]
+    const options = [...select.matchAll(/<option value="(\d+)">([^<]*)<\/option>/g)].map((m) => [Number(m[1]), m[2]])
+    expect(options).toEqual([...TIME_WINDOWS.map((w) => [windowMs(w.token), w.label]), [0, 'All time']])
   })
 })
