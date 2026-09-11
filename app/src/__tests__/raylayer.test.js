@@ -120,3 +120,63 @@ describe('mounting the ray layer', () => {
     expect(map.addLayer).toHaveBeenCalledTimes(2)
   })
 })
+
+// A GL context that keeps the state a draw can leave behind and answers
+// isEnabled and getParameter from it. Everything else the layer calls is a
+// no-op; drawElements records the state it was drawn with.
+function stateGl() {
+  const C = {
+    BLEND: 0x0be2, DEPTH_TEST: 0x0b71, DEPTH_FUNC: 0x0b74, DEPTH_WRITEMASK: 0x0b72,
+    BLEND_SRC_RGB: 0x80c9, BLEND_DST_RGB: 0x80c8, BLEND_SRC_ALPHA: 0x80cb, BLEND_DST_ALPHA: 0x80ca,
+    ZERO: 0, ONE: 1, SRC_ALPHA: 0x0302, ONE_MINUS_SRC_ALPHA: 0x0303, LESS: 0x0201, LEQUAL: 0x0203,
+    VERTEX_SHADER: 0x8b31, FRAGMENT_SHADER: 0x8b30, COMPILE_STATUS: 0x8b81, LINK_STATUS: 0x8b82,
+    ARRAY_BUFFER: 0x8892, ELEMENT_ARRAY_BUFFER: 0x8893, STATIC_DRAW: 0x88e4, FLOAT: 0x1406, TRIANGLES: 4, UNSIGNED_INT: 0x1405,
+  }
+  const on = new Set()
+  let blend = [C.ONE, C.ZERO, C.ONE, C.ZERO], depthFunc = C.LESS, depthMask = true
+  const noop = () => {}
+  const gl = {
+    ...C, drawingBufferWidth: 800, drawingBufferHeight: 600,
+    enable: (c) => on.add(c), disable: (c) => on.delete(c), isEnabled: (c) => on.has(c),
+    blendFunc: (s, d) => { blend = [s, d, s, d] }, blendFuncSeparate: (...f) => { blend = f },
+    depthFunc: (f) => { depthFunc = f }, depthMask: (m) => { depthMask = m },
+    getParameter: (p) => ({ [C.BLEND_SRC_RGB]: blend[0], [C.BLEND_DST_RGB]: blend[1], [C.BLEND_SRC_ALPHA]: blend[2],
+      [C.BLEND_DST_ALPHA]: blend[3], [C.DEPTH_FUNC]: depthFunc, [C.DEPTH_WRITEMASK]: depthMask })[p],
+    createShader: () => ({}), shaderSource: noop, compileShader: noop, getShaderParameter: () => true,
+    createProgram: () => ({}), attachShader: noop, linkProgram: noop, getProgramParameter: () => true,
+    getAttribLocation: () => 0, getUniformLocation: () => ({}), createBuffer: () => ({}), bindBuffer: noop, bufferData: noop,
+    useProgram: noop, uniformMatrix4fv: noop, uniform2f: noop, enableVertexAttribArray: noop, vertexAttribPointer: noop, disableVertexAttribArray: noop,
+    state: () => ({ blend: on.has(C.BLEND), depthTest: on.has(C.DEPTH_TEST), blendFunc: [...blend], depthFunc, depthMask }),
+    drawn: [],
+  }
+  gl.drawElements = () => gl.drawn.push(gl.state())
+  return gl
+}
+const drawOnce = (gl) => {
+  const rays = createRayLayer('reach-3d', { toMerc })
+  rays.onAdd({ triggerRepaint() {} }, gl)
+  rays.setData([ray([4, 51], [4.01, 51.01])])
+  rays.render(gl, new Float32Array(16))
+}
+
+describe('drawing the rays', () => {
+  it('blends premultiplied and tests depth without writing it while it draws', () => {
+    const gl = stateGl()
+    drawOnce(gl)
+    expect(gl.drawn).toEqual([{ blend: true, depthTest: true, blendFunc: [gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA], depthFunc: gl.LEQUAL, depthMask: false }])
+  })
+  // MapLibre resets what its own layers need after a custom layer, not what
+  // the next custom layer starts from (#593 review).
+  it('puts blending, the blend function and the depth state back as it found them', () => {
+    const off = stateGl()
+    off.blendFuncSeparate(off.SRC_ALPHA, off.ONE_MINUS_SRC_ALPHA, off.ONE, off.ZERO)
+    const on = stateGl()
+    on.enable(on.BLEND); on.enable(on.DEPTH_TEST); on.depthFunc(on.LESS); on.depthMask(false)
+    for (const gl of [off, on]) {
+      const before = gl.state()
+      drawOnce(gl)
+      expect(gl.drawn).toHaveLength(1)
+      expect(gl.state()).toEqual(before)
+    }
+  })
+})

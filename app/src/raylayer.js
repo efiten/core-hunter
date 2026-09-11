@@ -8,8 +8,8 @@
 // dependency either map carries for one layer (decided 2026-09-08, a spike).
 //
 // rayBuffers, parseColor and canDrawRays are pure and pinned in
-// raylayer.test.js, and so is when the layer mounts; the drawing itself is
-// glue, verified in the browser like huntmap.js.
+// raylayer.test.js, and so are when the layer mounts and the GL state a draw
+// leaves behind; what the shaders paint is verified in the browser.
 // Copied whole between app/src/ and web/ (parity.test.js, #238).
 
 // Per vertex: this end (x,y,z), the other end (x,y,z), side (+1/-1), colour
@@ -151,6 +151,11 @@ export function createRayLayer(id, { toMerc, elevation } = {}) {
     render(ctx, matrix) {
       if (!visible || !count || !program) return
       const g = ctx
+      // The state this draw changes, read first and put back after: MapLibre
+      // resets what its own layers need, not what the next custom layer finds.
+      const was = { blend: g.isEnabled(g.BLEND), depthTest: g.isEnabled(g.DEPTH_TEST),
+        blendFunc: [g.BLEND_SRC_RGB, g.BLEND_DST_RGB, g.BLEND_SRC_ALPHA, g.BLEND_DST_ALPHA].map((p) => g.getParameter(p)),
+        depthFunc: g.getParameter(g.DEPTH_FUNC), depthMask: g.getParameter(g.DEPTH_WRITEMASK) }
       g.useProgram(program)
       g.uniformMatrix4fv(loc.u_matrix, false, matrix)
       g.uniform2f(loc.u_viewport, g.drawingBufferWidth, g.drawingBufferHeight)
@@ -164,8 +169,11 @@ export function createRayLayer(id, { toMerc, elevation } = {}) {
       // of its own: two rays crossing must both paint.
       g.enable(g.DEPTH_TEST); g.depthFunc(g.LEQUAL); g.depthMask(false)
       g.drawElements(g.TRIANGLES, count, g.UNSIGNED_INT, 0)
-      g.depthMask(true)
       for (const a of ['a_pos', 'a_other', 'a_side', 'a_color', 'a_width']) g.disableVertexAttribArray(loc[a])
+      g.depthMask(was.depthMask); g.depthFunc(was.depthFunc)
+      g.blendFuncSeparate(...was.blendFunc)
+      if (!was.depthTest) g.disable(g.DEPTH_TEST)
+      if (!was.blend) g.disable(g.BLEND)
     },
     setData(features) { upload(features || []) },
     setVisible(v) { visible = !!v; if (map) map.triggerRepaint() },
