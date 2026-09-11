@@ -1,5 +1,5 @@
-// Terrain (#293, #394, #396): the DEM source, the exaggeration steps, and
-// what the map draws for a terrain state.
+// Terrain (#293, #394, #396): the DEM source, the exaggeration steps, what
+// the map draws for a terrain state, and the map's error listener.
 //
 // Decided 2026-08-21 (#394): terrain ships on the AWS Open Data terrarium
 // tiles, key-free, attribution required. The DEM is capped at z10, the
@@ -31,14 +31,29 @@ export function hillshadeFor(exaggeration) {
   return Math.min(1, Math.max(0.1, v))
 }
 
-// terrainPlan: what to draw for a terrain state. `on` is the surface's
-// switch: the 3D view itself on both the app and the map (Kasper,
-// 2026-09-06: 3D takes the terrain and the exaggeration along at once).
-// Hillshade follows it alone. The mesh (setTerrain) is what froze weak GPUs
-// in #247 and makes easeTo({pitch}) a no-op, so it waits for three things:
-// the switch, the DEM tiles having arrived (flat until then, Kasper
-// 2026-09-05), and a 3D view, the only one where displacement can be seen.
-export function terrainPlan({ on, ready, mode3D, exaggeration } = {}) {
+// terrainPlan: what to draw for a terrain state. The 3D view is the switch
+// on both the app and the map (Kasper, 2026-09-06: 3D takes the terrain and
+// the exaggeration along at once). Hillshade follows it alone. The mesh
+// (setTerrain) is what froze weak GPUs in #247 and makes easeTo({pitch}) a
+// no-op, so it also waits for the DEM tiles having arrived (flat until then,
+// Kasper 2026-09-05).
+export function terrainPlan({ mode3D, ready, exaggeration } = {}) {
   const x = EXAGGERATION_STEPS.includes(Number(exaggeration)) ? Number(exaggeration) : DEFAULT_EXAGGERATION
-  return { hillshade: !!on, mesh: !!on && !!ready && !!mode3D, exaggeration: x }
+  return { hillshade: !!mode3D, mesh: !!mode3D && !!ready, exaggeration: x }
+}
+
+// A DEM tile that fails to load is a tile that never arrives: the map stays
+// flat rather than stalled, so it is not worth a console line per tile.
+// MapLibre fires it with the tile, and the style adds the source id on the
+// way up to the map; the DEM source's own load failure carries no tile.
+export function isDemTileError(e) {
+  return e.sourceId === 'dem' && !!e.tile
+}
+
+// reportMapError is the map's 'error' listener. Registering any listener
+// takes away MapLibre's own console.error (Evented.fire logs only when
+// nothing listens), for style, basemap and source errors alike, so this
+// logs every error but a failed DEM tile the way MapLibre would.
+export function reportMapError(e) {
+  if (!isDemTileError(e)) console.error(e.error)
 }

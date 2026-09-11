@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION, DEM_MAX_ZOOM, hillshadeFor, terrainPlan } from './terrain.js'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION, DEM_MAX_ZOOM, hillshadeFor, terrainPlan, isDemTileError, reportMapError } from './terrain.js'
 
 // #394 (decided 2026-08-21): terrain ships on the AWS terrarium DEM with the
 // exaggeration at 7, deliberately high, because the relief this has to show
@@ -33,23 +33,55 @@ describe('hillshadeFor', () => {
   })
 })
 
-// What the map draws for a terrain state. The mesh (setTerrain) is the part
-// that froze weak GPUs in #247 and makes easeTo({pitch}) a no-op, so it is
-// gated three ways: the FAB is on, the DEM tiles have arrived (flat until
-// then, Kasper 2026-09-05), and the view is 3D, where displacement can be
-// seen at all. Hillshade is cheap and reads in 2D, so it follows the FAB alone.
+// What the map draws for a terrain state. The 3D view is the switch (Kasper,
+// 2026-09-06): a flat view has nothing to raise, so nothing is drawn. The
+// mesh (setTerrain) is the part that froze weak GPUs in #247 and makes
+// easeTo({pitch}) a no-op, so in 3D it also waits for the DEM tiles (flat
+// until then, Kasper 2026-09-05). Hillshade is cheap and comes with the view.
 describe('terrainPlan', () => {
-  it('draws nothing while the FAB is off', () => {
-    expect(terrainPlan({ on: false, ready: true, mode3D: true, exaggeration: 7 })).toEqual({ hillshade: false, mesh: false, exaggeration: 7 })
+  it('draws nothing in a flat view, tiles or not', () => {
+    expect(terrainPlan({ mode3D: false, ready: true, exaggeration: 4 })).toEqual({ hillshade: false, mesh: false, exaggeration: 4 })
   })
-  it('shades at once, and waits for the tiles before displacing', () => {
-    expect(terrainPlan({ on: true, ready: false, mode3D: true, exaggeration: 7 })).toEqual({ hillshade: true, mesh: false, exaggeration: 7 })
-    expect(terrainPlan({ on: true, ready: true, mode3D: true, exaggeration: 7 })).toEqual({ hillshade: true, mesh: true, exaggeration: 7 })
-  })
-  it('never displaces a flat view', () => {
-    expect(terrainPlan({ on: true, ready: true, mode3D: false, exaggeration: 4 })).toEqual({ hillshade: true, mesh: false, exaggeration: 4 })
+  it('shades as 3D starts, and waits for the tiles before displacing', () => {
+    expect(terrainPlan({ mode3D: true, ready: false, exaggeration: 7 })).toEqual({ hillshade: true, mesh: false, exaggeration: 7 })
+    expect(terrainPlan({ mode3D: true, ready: true, exaggeration: 7 })).toEqual({ hillshade: true, mesh: true, exaggeration: 7 })
   })
   it('falls back to the default exaggeration for a value off the steps', () => {
-    expect(terrainPlan({ on: true, ready: true, mode3D: true, exaggeration: 3 }).exaggeration).toBe(DEFAULT_EXAGGERATION)
+    expect(terrainPlan({ mode3D: true, ready: true, exaggeration: 3 }).exaggeration).toBe(DEFAULT_EXAGGERATION)
+  })
+})
+
+// The map's 'error' listener. A failed DEM tile never arrives and the map
+// stays flat, so it stays out of the console. Registering any listener takes
+// MapLibre's own console.error away (Evented.fire logs only when nothing
+// listens), so every other error is logged here instead. The events are
+// shaped as MapLibre 4.7 fires them: a failed tile carries `tile`, the
+// source's own load failure does not, and the style adds `sourceId` on the
+// way up to the map.
+describe('map errors', () => {
+  const error = new Error('boom')
+  const demTile = { type: 'error', error, tile: {}, sourceId: 'dem' }
+  const basemapTile = { type: 'error', error, tile: {}, sourceId: 'openmaptiles' }
+  const demSource = { type: 'error', error, sourceId: 'dem' }
+  const styleLoad = { type: 'error', error }
+  afterEach(() => { vi.restoreAllMocks() })
+
+  it('tells a failed DEM tile from every other error', () => {
+    expect(isDemTileError(demTile)).toBe(true)
+    expect(isDemTileError(basemapTile)).toBe(false)
+    expect(isDemTileError(demSource)).toBe(false)
+    expect(isDemTileError(styleLoad)).toBe(false)
+  })
+  it('keeps a failed DEM tile out of the console', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    reportMapError(demTile)
+    expect(log).not.toHaveBeenCalled()
+  })
+  it('logs every other error the way MapLibre does without a listener', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    reportMapError(styleLoad)
+    reportMapError(basemapTile)
+    reportMapError(demSource)
+    expect(log.mock.calls).toEqual([[error], [error], [error]])
   })
 })

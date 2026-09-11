@@ -128,3 +128,29 @@ test('3D carries the terrain: hillshade on in 3D at the Settings exaggeration, o
   await openSettings(page)
   await expect(page.locator('#ss-exag')).toHaveValue('4')
 })
+
+// The map's error listener (terrain.js reportMapError, as in the app). Any
+// listener takes MapLibre's own console line away, so the listener logs every
+// error but a failed DEM tile, which only leaves the map flat. The DEM tiles
+// answer 500 and so does the light basemap style, since MapLibre names the URL
+// in the error only for an HTTP failure. The style is asked for after a DEM
+// tile has failed, so its logged error comes after the DEM error went through.
+test('a basemap style that fails to load reaches the console, a failed DEM tile does not', async ({ page }) => {
+  const logged = []
+  page.on('console', (m) => {
+    if (m.type() === 'error' && m.args().length) logged.push(m.args()[0].evaluate((e) => String(e && e.message)))
+  })
+  const errorsFor = async (path) => (await Promise.all(logged)).filter((t) => t.includes(path))
+  let demAnswered
+  const demFailed = new Promise((resolve) => { demAnswered = resolve })
+  await page.route('**/elevation-tiles-prod/**', async (r) => { await r.fulfill({ status: 500, body: '' }); demAnswered() })
+  await page.route('**/tiles.openfreemap.org/styles/positron', (r) => r.fulfill({ status: 500, body: '' }))
+  await page.goto('/?view=3d')
+  await mounted(page)
+  await demFailed
+
+  await openSettings(page)
+  await page.click('#theme-toggle')
+  await expect.poll(async () => (await errorsFor('/styles/positron')).length).toBeGreaterThan(0)
+  expect(await errorsFor('/elevation-tiles-prod/')).toEqual([])
+})

@@ -19,7 +19,7 @@
 import { skyForHour, currentHour } from './sky.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
 import { EXTRUSION_LIGHT_INTENSITY } from './signal.js'
-import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan } from './terrain.js'
+import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 const STYLES = {
@@ -63,9 +63,9 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   map.on('sourcedata', (e) => {
     if (e.sourceId === 'dem' && e.isSourceLoaded && !demReady) { demReady = true; applyTerrain() }
   })
-  // A DEM tile that fails is a tile that never arrives: the map stays flat
-  // rather than stalled, and the console is spared one error per tile.
-  map.on('error', (e) => { if (e && e.sourceId === 'dem') e.preventDefault && e.preventDefault() })
+  // Every map error reaches the console except a failed DEM tile, which only
+  // leaves the map flat (terrain.js).
+  map.on('error', reportMapError)
   let overlaysReady = false, styleTimer = null
   const readyCbs = []
   // Pending data, applied once the layers exist: a caller that draws before
@@ -108,7 +108,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // Gated on the overlays being mounted, not on isStyleLoaded(), which
     // stays false while any tile is loading (the app's lesson, #396).
     if (!overlaysReady) return
-    const plan = terrainPlan({ on: is3D, ready: demReady, mode3D: is3D, exaggeration: terrainExag })
+    const plan = terrainPlan({ ready: demReady, mode3D: is3D, exaggeration: terrainExag })
     if (plan.hillshade) {
       ensureDem()
       map.setLayoutProperty('hillshade', 'visibility', 'visible')
