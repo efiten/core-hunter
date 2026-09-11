@@ -9,7 +9,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
 import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
-import { hexCellLabel, showHexLabels } from './hexlabels.js'
+import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
 import { skyForHour, currentHour } from './sky.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
@@ -446,14 +446,16 @@ export function createHuntMap(containerId) {
   // Who was heard in a cell, as id prefixes (hexlabels.js decides the text),
   // drawn as HTML markers like the node layer: the bare fallback style has no
   // glyphs, so a symbol layer would draw nothing there. Only from
-  // HEX_LABEL_MIN_ZOOM and only for cells in view, with a signature guard so a
-  // 1 Hz tick that changes nothing does not rebuild the markers.
-  let hexLabelMarkers = [], hexLabelSig = null
+  // HEX_LABEL_MIN_ZOOM and only for cells in view. One marker per cell id,
+  // kept while the cell stays in view: planHexLabels decides which markers a
+  // draw adds, relabels or removes, so a new reception in one cell touches
+  // that cell's marker and a tick that changes nothing touches none.
+  const hexLabelMarkers = new Map()   // cell id -> marker
   function clearHexLabels() {
-    hexLabelMarkers.forEach((m) => m.remove()); hexLabelMarkers = []; hexLabelSig = null
+    hexLabelMarkers.forEach((m) => m.remove()); hexLabelMarkers.clear()
   }
   function drawHexLabels(records, on) {
-    if (!on || !showHexLabels(map.getZoom())) { if (hexLabelMarkers.length) clearHexLabels(); return }
+    if (!on || !showHexLabels(map.getZoom())) { if (hexLabelMarkers.size) clearHexLabels(); return }
     const res = hexResForZoom(map.getZoom())
     const b = map.getBounds()
     const cells = new Map()
@@ -474,15 +476,15 @@ export function createHuntMap(containerId) {
       for (let i = 0; i < n; i++) { lat += ring[i][0]; lon += ring[i][1] }
       items.push({ id, label, lat: lat / n, lon: lon / n })
     }
-    const sig = res + '|' + items.map((it) => it.id + ':' + it.label).join(',')
-    if (sig === hexLabelSig) return
-    clearHexLabels()
-    hexLabelSig = sig
-    for (const it of items) {
+    const drawn = new Map([...hexLabelMarkers].map(([id, m]) => [id, m.getElement().textContent]))
+    const { add, relabel, remove } = planHexLabels(drawn, items)
+    for (const id of remove) { hexLabelMarkers.get(id).remove(); hexLabelMarkers.delete(id) }
+    for (const it of relabel) hexLabelMarkers.get(it.id).getElement().textContent = it.label
+    for (const it of add) {
       const el = document.createElement('div')
       el.className = 'hex-label'
       el.textContent = it.label
-      hexLabelMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([it.lon, it.lat]).addTo(map))
+      hexLabelMarkers.set(it.id, new maplibregl.Marker({ element: el }).setLngLat([it.lon, it.lat]).addTo(map))
     }
   }
 

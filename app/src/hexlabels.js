@@ -34,3 +34,19 @@ export function hexCellLabel(records) {
 export function showHexLabels(zoom) {
   return Number(zoom) >= HEX_LABEL_MIN_ZOOM
 }
+
+// planHexLabels: what the map changes when the labelled cells in view change.
+// `drawn` maps each cell id that has a marker to the text it shows; `items`
+// are the cells to label now, as { id, label, ... }. A cell keeps its marker
+// while it stays in view, so one reception in one cell relabels one marker
+// rather than rebuilding every label on screen. The id carries the hex
+// resolution ("res:q:r", hexgrid.js), so after a zoom that changes it every
+// cell is a new one, placed at its own centre.
+export function planHexLabels(drawn, items) {
+  const inView = new Set(items.map((it) => it.id))
+  return {
+    add: items.filter((it) => !drawn.has(it.id)),
+    relabel: items.filter((it) => drawn.has(it.id) && drawn.get(it.id) !== it.label),
+    remove: [...drawn.keys()].filter((id) => !inView.has(id)),
+  }
+}

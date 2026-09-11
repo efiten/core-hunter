@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { HEX_LABEL_MIN_ZOOM, HEX_LABEL_MAX, hexCellLabel, showHexLabels } from '../hexlabels.js'
+import { HEX_LABEL_MIN_ZOOM, HEX_LABEL_MAX, hexCellLabel, showHexLabels, planHexLabels } from '../hexlabels.js'
+import { hexCellAt } from '../hexgrid.js'
 
 const at = (s) => `2026-09-04T13:${s}:00Z`
 const rec = (id, kind, rx_at) => ({ sender_id: id, sender_kind: kind, rx_at })
@@ -38,5 +39,42 @@ describe('showHexLabels', () => {
     expect(HEX_LABEL_MIN_ZOOM).toBe(16)
     expect(showHexLabels(15.9)).toBe(false)
     expect(showHexLabels(16)).toBe(true)
+  })
+})
+
+describe('planHexLabels', () => {
+  // One marker per cell, kept while the cell stays in view. The map used to
+  // rebuild every label marker when any one text changed, so each reception
+  // at zoom 16 and up was a DOM rebuild of the whole set.
+  const cell = (lat, lon, res = 12) => hexCellAt(lat, lon, res)
+  const A = cell(51.84, 5.86), B = cell(51.845, 5.87), C = cell(51.85, 5.88)
+  const item = (id, label) => ({ id, label, lat: 0, lon: 0 })
+
+  it('relabels only the cell whose text changed, and leaves the others alone', () => {
+    const drawn = new Map([[A, '7e76'], [B, '4ac3'], [C, 'c3d4']])
+    const next = [item(A, '7e76'), item(B, '9f01 4ac3'), item(C, 'c3d4')]
+    expect(planHexLabels(drawn, next)).toEqual({ add: [], relabel: [next[1]], remove: [] })
+  })
+  it('adds a cell that came into view and removes one that left, without touching the rest', () => {
+    const drawn = new Map([[A, '7e76'], [B, '4ac3']])
+    const next = [item(B, '4ac3'), item(C, 'c3d4')]
+    expect(planHexLabels(drawn, next)).toEqual({ add: [next[1]], relabel: [], remove: [A] })
+  })
+  it('plans nothing for a tick that changes nothing', () => {
+    const drawn = new Map([[A, '7e76'], [B, '4ac3']])
+    expect(planHexLabels(drawn, [item(B, '4ac3'), item(A, '7e76')])).toEqual({ add: [], relabel: [], remove: [] })
+  })
+  // A marker's place comes from its cell. After a zoom that changes the hex
+  // resolution the same point sits in another cell with another centre, so
+  // the same text must not keep the old marker where the old cell was.
+  it('replaces a marker when the resolution changes, even with the same text', () => {
+    const coarse = cell(51.84, 5.86, 12), fine = cell(51.84, 5.86, 13)
+    const next = [item(fine, '7e76')]
+    expect(planHexLabels(new Map([[coarse, '7e76']]), next)).toEqual({ add: next, relabel: [], remove: [coarse] })
+  })
+  it('removes everything when no cell is labelled, and adds everything onto an empty map', () => {
+    expect(planHexLabels(new Map([[A, '7e76'], [B, '4ac3']]), [])).toEqual({ add: [], relabel: [], remove: [A, B] })
+    const next = [item(A, '7e76'), item(B, '4ac3')]
+    expect(planHexLabels(new Map(), next)).toEqual({ add: next, relabel: [], remove: [] })
   })
 })
