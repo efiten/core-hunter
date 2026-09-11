@@ -33,7 +33,7 @@ import { TIME_WINDOWS, windowMs } from './timewindows.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
-import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestore, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
+import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
@@ -1181,10 +1181,10 @@ function writeContact(frame) {
 const contactIo = { getContact, writeContact }
 
 // A session that died between an override and its restore left that contact
-// zero-hop on the companion; this puts it back, once per connect.
-async function maybeReplayPendingRestore() {
-  const restored = await replayPendingRestore(contactIo, state.rxPubkey)
-  if (restored === false) console.debug('[telemetry] replayed restore did not ack, kept for the next connect')
+// zero-hop on the companion; this puts every such contact back, once per connect.
+async function maybeReplayPendingRestores() {
+  const restored = await replayPendingRestores(contactIo, state.rxPubkey)
+  if (restored === false) console.debug('[telemetry] a replayed restore did not ack, kept for the next connect')
 }
 
 async function askTelemetry(pubkey) {
@@ -1422,7 +1422,7 @@ async function connectAll() {
     state.transport.onFrame(processFrame)
     state.transport.onFrame(onCompanionFrame)
     // A contact left zero-hop by a session that died mid-ask goes back first.
-    maybeReplayPendingRestore().catch(() => {})
+    maybeReplayPendingRestores().catch(() => {})
 
     setHuntingChrome(true)
     el('discover-btn').disabled = false

@@ -99,8 +99,16 @@ export function buildRestoreFrame(raw) {
 // stores this record before every override, makes no override when it cannot,
 // and clears it after a restore that acked: the original frame, which
 // companion it belongs to (our own pubkey) and which contact, so it is only
-// ever replayed against the same companion.
-export const RESTORE_STORAGE_KEY = 'core-hunter-contact-restore'
+// ever replayed against the same companion. Each companion and contact has its
+// own key: a later ask, to another contact or from another companion, must not
+// overwrite a restore that is still owed.
+const RESTORE_KEY_PREFIX = 'core-hunter-contact-restore:'
+
+const lower = (hexId) => String(hexId).trim().toLowerCase()
+
+function restoreKey(self, target) {
+  return `${RESTORE_KEY_PREFIX}${lower(self)}:${lower(target)}`
+}
 
 export function encodePendingRestore(selfPubkeyHex, targetPubkeyHex, raw) {
   return JSON.stringify({
@@ -142,7 +150,7 @@ export async function askAtZeroHop(io, self, target, ask) {
   // Without the record a dropped link would leave the contact zero-hop with
   // nothing to replay, so where storage refuses it the contact is not touched.
   try {
-    localStorage.setItem(RESTORE_STORAGE_KEY, encodePendingRestore(self, target, contact.raw))
+    localStorage.setItem(restoreKey(self, target), encodePendingRestore(self, target, contact.raw))
   } catch (_) {
     return { asked: false, skipped: 'the restore record could not be stored' }
   }
@@ -159,28 +167,36 @@ export async function askAtZeroHop(io, self, target, ask) {
   return out
 }
 
-// restoreContact puts the original contact frame back. The record is cleared
+// restoreContact puts the original contact frame back. Its record is cleared
 // only once the restore acked; otherwise the next connect to this same
 // companion replays it.
 async function restoreContact(io, self, target, raw) {
   if (!(await io.writeContact(buildRestoreFrame(raw)))) return false
-  try {
-    const rec = decodePendingRestore(localStorage.getItem(RESTORE_STORAGE_KEY) || '')
-    if (rec && rec.self === self && rec.target === target) localStorage.removeItem(RESTORE_STORAGE_KEY)
-  } catch (_) {}
+  try { localStorage.removeItem(restoreKey(self, target)) } catch (_) {}
   return true
 }
 
-// replayPendingRestore runs once per connect, before any ask: a session that
+// replayPendingRestores runs once per connect, before any ask: a session that
 // died between an override and its restore left that contact zero-hop on the
-// companion. Replayed only against the same companion the record names.
-// Resolves with the restore's ack, or null when there was nothing to replay.
-export async function replayPendingRestore(io, self) {
-  let stored = null
-  try { stored = localStorage.getItem(RESTORE_STORAGE_KEY) } catch (_) { return null }
-  if (!stored) return null
-  const rec = decodePendingRestore(stored)
-  if (!rec) { try { localStorage.removeItem(RESTORE_STORAGE_KEY) } catch (_) {} return null }
-  if (rec.self !== self) return null
-  return restoreContact(io, self, rec.target, rec.raw)
+// companion. Every record for the connected companion is replayed, and each is
+// cleared on its own ack. Resolves with whether every restore acked, or null
+// when none was owed.
+export async function replayPendingRestores(io, self) {
+  const stored = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key && key.startsWith(RESTORE_KEY_PREFIX)) stored.push([key, localStorage.getItem(key)])
+    }
+  } catch (_) { return null }
+  let owed = false
+  let allAcked = true
+  for (const [key, value] of stored) {
+    const rec = decodePendingRestore(value || '')
+    if (!rec) { try { localStorage.removeItem(key) } catch (_) {} continue }
+    if (rec.self !== lower(self)) continue
+    owed = true
+    if (!(await restoreContact(io, rec.self, rec.target, rec.raw))) allAcked = false
+  }
+  return owed ? allAcked : null
 }

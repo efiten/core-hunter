@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
   buildGetContactByKey, parseContactReply, needsPathOverride, buildOverrideFrame, buildRestoreFrame,
-  encodePendingRestore, decodePendingRestore, askAtZeroHop, replayPendingRestore,
+  encodePendingRestore, decodePendingRestore, askAtZeroHop, replayPendingRestores,
   CMD_GET_CONTACT_BY_KEY, CMD_ADD_UPDATE_CONTACT, RESP_CODE_CONTACT, RESP_CODE_ERR, ERR_CODE_NOT_FOUND, CONTACT_FRAME_LEN,
 } from '../contactpath.js'
 
@@ -153,7 +153,9 @@ function memoryStorage() {
 }
 
 const SELF = 'ee'.repeat(32)
+const OTHER = 'ff'.repeat(32)
 const A = 'ab'.repeat(32)
+const B = 'cd'.repeat(32)
 const found = (outPathLen, pkByte = 0xab) => parseContactReply(contactFrame(outPathLen, pkByte))
 const restoreNeverAcks = (frame) => frame[35] === 0
 
@@ -220,8 +222,51 @@ describe('the restore record', () => {
     expect(storage.items.size).toBe(1)
 
     const next = fakeCompanion()
-    expect(await replayPendingRestore(next.io, SELF)).toBe(true)
+    expect(await replayPendingRestores(next.io, SELF)).toBe(true)
     expect(next.log).toEqual(['restore ab'])
+    expect(storage.items.size).toBe(0)
+  })
+
+  // A restore that did not ack is owed until the next connect. The asks after
+  // it, to another contact or from another companion, must not overwrite it.
+  it('keeps a restore owed to one contact when another contact is asked', async () => {
+    const storage = memoryStorage()
+    vi.stubGlobal('localStorage', storage)
+    await askAtZeroHop(fakeCompanion({ contacts: { [A]: found(7) }, ack: restoreNeverAcks }).io, SELF, A, async () => {})
+    const r = await askAtZeroHop(fakeCompanion({ contacts: { [B]: found(3, 0xcd) } }).io, SELF, B, async () => {})
+    expect(r.restored).toBe(true)
+
+    const next = fakeCompanion()
+    expect(await replayPendingRestores(next.io, SELF)).toBe(true)
+    expect(next.log).toEqual(['restore ab'])
+    expect(storage.items.size).toBe(0)
+  })
+
+  it('keeps a restore owed to one companion when another companion asks', async () => {
+    const storage = memoryStorage()
+    vi.stubGlobal('localStorage', storage)
+    await askAtZeroHop(fakeCompanion({ contacts: { [A]: found(7) }, ack: restoreNeverAcks }).io, SELF, A, async () => {})
+    await askAtZeroHop(fakeCompanion({ contacts: { [B]: found(3, 0xcd) } }).io, OTHER, B, async () => {})
+
+    const back = fakeCompanion()
+    expect(await replayPendingRestores(back.io, SELF)).toBe(true)
+    expect(back.log).toEqual(['restore ab'])
+    expect(storage.items.size).toBe(0)
+  })
+
+  it('replays every restore owed to the companion, and clears each only on its own ack', async () => {
+    const storage = memoryStorage()
+    vi.stubGlobal('localStorage', storage)
+    await askAtZeroHop(fakeCompanion({ contacts: { [A]: found(7) }, ack: restoreNeverAcks }).io, SELF, A, async () => {})
+    await askAtZeroHop(fakeCompanion({ contacts: { [B]: found(3, 0xcd) }, ack: restoreNeverAcks }).io, SELF, B, async () => {})
+
+    // Only B's restore acks this time: A stays owed, B is done.
+    const next = fakeCompanion({ ack: (frame) => frame[1] === 0xcd })
+    expect(await replayPendingRestores(next.io, SELF)).toBe(false)
+    expect([...next.log].sort()).toEqual(['restore ab', 'restore cd'])
+    const again = fakeCompanion()
+    expect(await replayPendingRestores(again.io, SELF)).toBe(true)
+    expect(again.log).toEqual(['restore ab'])
     expect(storage.items.size).toBe(0)
   })
 
@@ -231,7 +276,7 @@ describe('the restore record', () => {
     await askAtZeroHop(fakeCompanion({ contacts: { [A]: found(7) }, ack: restoreNeverAcks }).io, SELF, A, async () => {})
 
     const other = fakeCompanion()
-    await replayPendingRestore(other.io, 'ff'.repeat(32))
+    await replayPendingRestores(other.io, OTHER)
     expect(other.log).toEqual([])
     expect(storage.items.size).toBe(1)
   })
