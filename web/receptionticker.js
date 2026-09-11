@@ -286,6 +286,12 @@ const ROW_H = 26
 // rxLineHeight parses the variable's value. A missing or unusable value falls
 // back rather than yielding 0: rxActiveIndex divides scrollTop by this, and a 0
 // would pin every row to the playhead lane.
+export function rxLineHeight(raw) {
+  const n = parseFloat(raw)
+  return Number.isFinite(n) && n > 0 ? n : ROW_H
+}
+export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js's fetch limit
+
 // senderCell, the app's rule (app/src/receptionlog.js, #451): once a name has
 // resolved the id stands beside it in its own column, cut to the same six
 // characters the target picker uses; a line without a name keeps the id in
@@ -298,12 +304,6 @@ export function senderCell(pt) {
   const resolved = !!id && name !== id
   return { id: resolved ? id.slice(0, ID_PREFIX_HEX_CHARS) : '', name }
 }
-
-export function rxLineHeight(raw) {
-  const n = parseFloat(raw)
-  return Number.isFinite(n) && n > 0 ? n : ROW_H
-}
-export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js's fetch limit
 
 // createReceptionTicker builds the log inside `rootId` and owns its own
 // polling loop (unlike app's createReceptionLog, which is fed by the app's
