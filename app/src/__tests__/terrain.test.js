@@ -33,24 +33,21 @@ describe('hillshadeFor', () => {
   })
 })
 
-// What the map draws for a terrain state. The mesh (setTerrain) is the part
-// that froze weak GPUs in #247 and makes easeTo({pitch}) a no-op, so it is
-// gated three ways: the FAB is on, the DEM tiles have arrived (flat until
-// then, Kasper 2026-09-05), and the view is 3D, where displacement can be
-// seen at all. Hillshade is cheap and reads in 2D, so it follows the FAB alone.
+// What the map draws for a terrain state. The 3D view is the switch (Kasper,
+// 2026-09-06): a flat view has nothing to raise, so nothing is drawn. The
+// mesh (setTerrain) is the part that froze weak GPUs in #247 and makes
+// easeTo({pitch}) a no-op, so in 3D it also waits for the DEM tiles (flat
+// until then, Kasper 2026-09-05). Hillshade is cheap and comes with the view.
 describe('terrainPlan', () => {
-  it('draws nothing while the FAB is off', () => {
-    expect(terrainPlan({ on: false, ready: true, mode3D: true, exaggeration: 7 })).toEqual({ hillshade: false, mesh: false, exaggeration: 7 })
+  it('draws nothing in a flat view, tiles or not', () => {
+    expect(terrainPlan({ mode3D: false, ready: true, exaggeration: 4 })).toEqual({ hillshade: false, mesh: false, exaggeration: 4 })
   })
-  it('shades at once, and waits for the tiles before displacing', () => {
-    expect(terrainPlan({ on: true, ready: false, mode3D: true, exaggeration: 7 })).toEqual({ hillshade: true, mesh: false, exaggeration: 7 })
-    expect(terrainPlan({ on: true, ready: true, mode3D: true, exaggeration: 7 })).toEqual({ hillshade: true, mesh: true, exaggeration: 7 })
-  })
-  it('never displaces a flat view', () => {
-    expect(terrainPlan({ on: true, ready: true, mode3D: false, exaggeration: 4 })).toEqual({ hillshade: true, mesh: false, exaggeration: 4 })
+  it('shades as 3D starts, and waits for the tiles before displacing', () => {
+    expect(terrainPlan({ mode3D: true, ready: false, exaggeration: 7 })).toEqual({ hillshade: true, mesh: false, exaggeration: 7 })
+    expect(terrainPlan({ mode3D: true, ready: true, exaggeration: 7 })).toEqual({ hillshade: true, mesh: true, exaggeration: 7 })
   })
   it('falls back to the default exaggeration for a value off the steps', () => {
-    expect(terrainPlan({ on: true, ready: true, mode3D: true, exaggeration: 3 }).exaggeration).toBe(DEFAULT_EXAGGERATION)
+    expect(terrainPlan({ mode3D: true, ready: true, exaggeration: 3 }).exaggeration).toBe(DEFAULT_EXAGGERATION)
   })
 })
 
