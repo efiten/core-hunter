@@ -671,6 +671,27 @@ describe('receptions ticker CSS parity (#322)', () => {
     }
   })
 
+  // #451: each module carries its own rule for what fills the id column, and
+  // the .rx-id declarations above say nothing about it. The two disagreed on a
+  // channel_name sender, whose id and label are one decrypted string: the app
+  // printed "Spamme" beside "Spammer", the map did not. Run both copies over a
+  // sender for every branch of the rule. No label here comes from the map's
+  // name cache, which the app does not read.
+  it('fills the id column by the same rule on both surfaces', () => {
+    webNames._resetNameCache()
+    const senders = [
+      { sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: 'repeater-3' },
+      { sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: '' },
+      { sender_kind: 'relay', sender_id: null, sender_label: null },
+      { sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer' },
+      { sender_kind: 'path_hash', sender_id: '77', sender_label: '77' },
+      { sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' },
+    ]
+    for (const s of senders) {
+      expect(webTicker.senderCell(s), JSON.stringify(s)).toEqual(appTicker.senderCell(s))
+    }
+  })
+
   it('scales the fixed columns with the type instead of pinning them to pixels', () => {
     // At 12px the shipped 26px/32px held "15m" and "-105" with a few px spare.
     // At 15px they do not, and the RSSI value collides with the sender beside
