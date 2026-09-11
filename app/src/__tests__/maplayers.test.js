@@ -200,3 +200,24 @@ describe('layerVisibility carries the hex labels', () => {
     expect(vis('hex', true)['hex-labels']).toBe(false)
   })
 })
+
+// The pulse (#556) rings on the reception that just arrived, so it follows the
+// flat point layer (Kasper, 2026-09-11): in hex mode no point is drawn for the
+// reception, and in 3D the flat ring would sit on the ground under its pillar.
+describe('layerVisibility carries the pulse', () => {
+  it('rings where the flat points are drawn', () => {
+    expect(vis('both', false).pulse).toBe(true)
+    expect(vis('points', false).pulse).toBe(true)
+  })
+  it('does not ring in hex mode, where no point is drawn', () => {
+    expect(vis('hex', false).pulse).toBe(false)
+  })
+  it('does not ring in 3D, under the pillars', () => {
+    for (const m of ['both', 'hex', 'points']) expect(vis(m, true).pulse).toBe(false)
+  })
+  it('never disagrees with the flat point layer', () => {
+    for (const m of ['both', 'hex', 'points', '']) {
+      for (const d of [true, false]) expect(vis(m, d).pulse).toBe(vis(m, d).points)
+    }
+  })
+})

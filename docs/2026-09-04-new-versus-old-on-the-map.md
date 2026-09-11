@@ -13,7 +13,7 @@ Four rules now, all in 2D; the 3D views keep their drawing:
 1. **"Old" is everything from before the current ride** (`app/src/rides.js`). A ride ends when there is a gap of more than 10 minutes between consecutive receptions. Everything before the last such gap is backlog, whatever the time window says; a hunt that keeps going across an app restart stays one ride.
 2. **Zoomed out, the backlog is coverage only.** Below zoom 15 a backlog reception has no point, only its hex cell. What lands now is a point on top of that coverage.
 3. **From zoom 15, the backlog comes back as outlines.** A backlog reception is an outline circle in its tier colour, no fill, a heavier stroke; a reception from this ride is drawn filled, as before. Colour and place stay, so the backlog is still a measurement; the fill says "this ride". Age fade rides on top of both.
-4. **The newest reception pulses.** One ring in its tier colour, 1.6 s, on the reception that just arrived, whatever the zoom, and only when the filter would draw it.
+4. **The newest reception pulses.** One ring in its tier colour, 1.6 s, on the reception that just arrived, whatever the zoom, and only when the filter would draw it. The ring follows the flat point layer (`layerVisibility`, Kasper, 2026-09-11): no ring in hex mode, where no point is drawn for the reception, and none in 3D, where it would sit on the ground under the reception's pillar.
 
 And a hex cell carries a label from zoom 16 (`app/src/hexlabels.js`): the 4-character prefixes of the nodes heard in it, newest first, three at most, then `+N`. A prefix comes only from a record with a node id; the hash kinds (`direct_hash`, `path_hash`) never contribute one, and a refused identity has none. Drawn as HTML markers like the node layer, since the bare fallback style has no glyphs for a symbol layer.
 
@@ -23,5 +23,5 @@ Four drawings of one drive were put side by side (design round R10): today's ren
 
 ## Left out
 
-- Rendering in 3D: a label on a pillar's top would float at ground level under it, and outline pillars have no meaning.
+- Rendering in 3D: a label on a pillar's top would float at ground level under it, the pulse's ring would sit on the ground under the pillar, and outline pillars have no meaning.
 - A count per cell, and anything about a cell's reach: #549.

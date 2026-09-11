@@ -325,8 +325,10 @@ export function createHuntMap(containerId) {
         'circle-stroke-width': ['case', ['==', ['get', 'backlog'], 1], 1.5, 1],
         'circle-stroke-opacity': ['get', 'op'] } })
     // The pulse (#556): one ring on the reception that just arrived, animated
-    // by pulse() below through the paint properties, above the points.
+    // by pulse() below through the paint properties, above the points and
+    // shown only where they are.
     if (!map.getLayer('pulse')) map.addLayer({ id: 'pulse', type: 'circle', source: 'pulse',
+      layout: { visibility: shown('pulse') },
       paint: { 'circle-radius': 8, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': ['get', 'color'],
         'circle-stroke-width': 2, 'circle-stroke-opacity': 0.9 } })
     // 3D twin of 'points' (#250): a fill-extrusion pillar per reception, same
@@ -486,12 +488,15 @@ export function createHuntMap(containerId) {
 
   // ---- pulse (#556) ----
   // One ring, about two seconds, on the reception that just arrived, in its
-  // tier colour, whatever the zoom. Driven by a timer rather than
-  // requestAnimationFrame so it also runs while the page is not painting.
+  // tier colour, whatever the zoom, and only where the flat points are drawn
+  // (layerVisibility): no ring in hex mode or in 3D, and no animation started
+  // for a hidden layer. Driven by a timer rather than requestAnimationFrame so
+  // it also runs while the page is not painting.
   const PULSE_MS = 1600, PULSE_STEP_MS = 40, PULSE_FROM_PX = 8, PULSE_TO_PX = 24
   let pulseTimer = null
   function pulse(rec) {
     if (!rec || rec.lat == null || rec.lon == null || !map.getSource('pulse') || !map.getLayer('pulse')) return
+    if (!layerVisibility({ mode, mode3D }).pulse) return
     if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null }
     const color = cssVar(tierColorVar(rssiTier(rec.rssi, currentOffset())))
     map.getSource('pulse').setData(fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [rec.lon, rec.lat] }, properties: { color } }]))
@@ -678,7 +683,7 @@ export function createHuntMap(containerId) {
   // drawn flat (under the pillars) or extruded (#266).
   function applyLayerVisibility() {
     const vis = layerVisibility({ mode, mode3D })
-    for (const id of ['hex', 'hex-3d', 'points', 'points-3d']) {
+    for (const id of ['hex', 'hex-3d', 'points', 'points-3d', 'pulse']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
     }
   }
