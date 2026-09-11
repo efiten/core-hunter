@@ -375,7 +375,7 @@ function refreshFilterState() {
     senderUnknown: state.filter.unnamed,
     types: state.filter.types,
     idClasses: state.filter.idClasses,
-    window: state.filter.windowMs !== DEFAULT_FILTER.windowMs,
+    plotWindow: state.filter.windowMs !== DEFAULT_FILTER.windowMs,
   })
   el('filter-pill').classList.toggle('active', isFilterActive(activeFilter()) || state.ignore.size > 0)
   const badge = el('filter-pill-count')

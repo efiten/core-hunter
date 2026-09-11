@@ -34,11 +34,11 @@ describe('activeFilterCount', () => {
 // so it is deliberately not here for either surface -- Clear has never reset it.
 describe('activeFilterCount, the app half', () => {
   it('counts the plot window as one dimension', () => {
-    expect(activeFilterCount({ window: true })).toBe(1)
-    expect(activeFilterCount({ window: false })).toBe(0)
+    expect(activeFilterCount({ plotWindow: true })).toBe(1)
+    expect(activeFilterCount({ plotWindow: false })).toBe(0)
   })
 
   it('adds up with the dimensions both surfaces share', () => {
-    expect(activeFilterCount({ window: true, directOnly: true, types: new Set(['advert']) })).toBe(3)
+    expect(activeFilterCount({ plotWindow: true, directOnly: true, types: new Set(['advert']) })).toBe(3)
   })
 })

@@ -30,10 +30,10 @@
 // so a dimension added on one surface and not the other fails the suite.
 // The union of both surfaces' dimensions since #564, so one function answers
 // for both panels. Each surface passes what it has and the rest default off:
-// `window` is the app's "Plot last" (the map's timeframe is a bar control and
-// travels in the URL, so Clear has never reset it either); the three overlay
-// flags are the map's alone.
-export function activeFilterCount({ directOnly = false, senderUnknown = false, types = null, idClasses = null, window = false, csAdverts = false, csRelays = false, nodePos = false } = {}) {
+// `plotWindow` is the app's "Plot last" (the map's timeframe is a bar control
+// and travels in the URL, so Clear has never reset it either); the three
+// overlay flags are the map's alone.
+export function activeFilterCount({ directOnly = false, senderUnknown = false, types = null, idClasses = null, plotWindow = false, csAdverts = false, csRelays = false, nodePos = false } = {}) {
   let n = 0
   if (directOnly) n++
   if (senderUnknown) n++
@@ -42,7 +42,7 @@ export function activeFilterCount({ directOnly = false, senderUnknown = false, t
   if (types && [...types].length > 0) n++
   // Same convention for the sender-id class dimension (#475).
   if (idClasses && [...idClasses].length > 0) n++
-  if (window) n++
+  if (plotWindow) n++
   if (csAdverts) n++
   if (csRelays) n++
   if (nodePos) n++
