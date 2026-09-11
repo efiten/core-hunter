@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { leafletZoom, mapZoomFromLeaflet, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, heatColor, imageCoordinates, latLonBounds } from './mapmodel.js'
+import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, heatColor, imageCoordinates, latLonBounds } from './mapmodel.js'
 
 // #465: the map moved from Leaflet to MapLibre, the app's map. These are the
 // parts of the move that are pure: the GeoJSON the layers read, the heat image
@@ -16,6 +16,19 @@ describe('zoom convention', () => {
     expect(leafletZoom(11.4)).toBe(12)
     expect(mapZoomFromLeaflet(12)).toBe(11)
     expect(mapZoomFromLeaflet(leafletZoom(7))).toBe(7)
+  })
+  // MapLibre's zoom is continuous where Leaflet's snapped to whole levels, so
+  // a link rounded to a level reopened a wheel-zoomed view up to half a level
+  // (1.4x) off the scale it was shared at.
+  it('keeps a fractional zoom in a shared link, so the link reopens at the same scale', () => {
+    for (const z of [0.5, 7.25, 11.4, 13.87]) {
+      expect(mapZoomFromLeaflet(zoomParam(z))).toBeCloseTo(z, 2)
+    }
+    expect(zoomParam(11.3749)).toBe('12.37')
+  })
+  it('writes a whole level as a whole number, so an old link reads as it did', () => {
+    expect(zoomParam(11)).toBe('12')
+    expect(mapZoomFromLeaflet('12')).toBe(11)
   })
 })
 

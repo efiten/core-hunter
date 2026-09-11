@@ -1,6 +1,6 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
-import { leafletZoom, mapZoomFromLeaflet, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds } from './mapmodel.js'
+import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds } from './mapmodel.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
@@ -37,13 +37,14 @@ document.documentElement.setAttribute('data-theme', theme)
 // start on a neutral world view -- not tied to any one region -- and let
 // snapToLatestPoints() below fit to today's actual data once it's fetched.
 const iLat = parseFloat(urlstate.initial('lat', '')), iLon = parseFloat(urlstate.initial('lon', ''))
-const iZoom = parseInt(urlstate.initial('z', ''), 10)
+const iZoom = parseFloat(urlstate.initial('z', ''))
 const hasSavedView = Number.isFinite(iLat) && Number.isFinite(iLon)
 // Zoom keeps its own independent fallback (a shared link can carry z= without
 // lat/lon, e.g. to set a default zoom level) -- only the center changes.
 // The map is MapLibre since #465, the app's map (mapcore.js). ?z= keeps
-// Leaflet's zoom numbers so every shared link lands where it did; the
-// conversion happens here and in leafletZoom() on the way out.
+// Leaflet's zoom numbers so every shared link lands where it did, with the
+// fraction a wheel zoom leaves; the conversion happens here and in
+// zoomParam() on the way out.
 const wm = createWebMap('map', {
   center: hasSavedView ? [iLat, iLon] : [20, 0],
   zoom: Number.isFinite(iZoom) ? mapZoomFromLeaflet(iZoom) : (hasSavedView ? 11 : 1),
@@ -521,7 +522,7 @@ themeBtn.addEventListener('click', () => {
 // One event: MapLibre's moveend follows a zoom as well as a pan.
 wm.on('moveend', () => { urlstate.save(); refresh() })
 window.__refresh = refresh
-window.__mapZoom = () => leafletZoom(wm.getZoom()) // test hook, in the URL's (Leaflet) zoom units
+window.__mapZoom = () => Number(zoomParam(wm.getZoom())) // test hook, in the URL's (Leaflet) zoom units
 window.__mapCenter = () => wm.getCenter() // test hook
 window.__mapProject = (lat, lon) => wm.project(lat, lon) // test hook
 // Canvas layers have no DOM to count; the tests read the sources instead.
@@ -1512,8 +1513,9 @@ urlstate.register({ key: 'mode', get: () => mode,
 // need the getters so pan/zoom lands in the URL and storage.
 urlstate.register({ key: 'lat', get: () => wm.getCenter().lat.toFixed(5), set: () => {} })
 urlstate.register({ key: 'lon', get: () => wm.getCenter().lng.toFixed(5), set: () => {} })
-// Leaflet's number, so every shared link keeps its meaning (mapmodel.js).
-urlstate.register({ key: 'z', get: () => String(leafletZoom(wm.getZoom())), set: () => {} })
+// Leaflet's number with its fraction: an old link keeps its meaning, and a
+// shared one reopens at the scale it was shared at (mapmodel.js).
+urlstate.register({ key: 'z', get: () => zoomParam(wm.getZoom()), set: () => {} })
 // The hunter selection is a Set, not a single input's .value (#196; the
 // picker itself since #290), so it can't use bindControl -- register
 // directly, mirroring 'types'.

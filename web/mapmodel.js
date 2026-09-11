@@ -10,9 +10,15 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // against 256 px, so the same scale is one level apart. The URL's ?z= and the
 // server's hex binning (hexResForZoom, z in the /api/points and /api/heatmap
 // queries) both grew up in Leaflet units; converting at the edge keeps every
-// shared link and every cell the size it was.
+// shared link and every cell the size it was. The server reads z as a whole
+// level, hence the rounding here.
 export function leafletZoom(mapZoom) { return Math.round(Number(mapZoom) + 1) }
 export function mapZoomFromLeaflet(z) { return Number(z) - 1 }
+// The zoom as it travels in a shared link: Leaflet units to the hundredth of a
+// level. MapLibre zooms between whole levels, so a whole number would reopen a
+// wheel-zoomed view at a different scale than the one shared. A whole level
+// still writes as a whole number, so an old link reads as it did.
+export function zoomParam(mapZoom) { return String(Math.round((Number(mapZoom) + 1) * 100) / 100) }
 
 // One reception, one circle: tier colour and the tier's opacity, plus the
 // index into the array it came from, which is how a click finds its point.

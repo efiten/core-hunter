@@ -46,6 +46,15 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
   expect(await page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(15)
 })
 
+// #465: MapLibre zooms between whole levels, so a link shared from a
+// wheel-zoomed view carries the fraction and reopens at that scale, both in
+// what the map shows and in the URL it writes back.
+test('a shared link with a fractional zoom reopens at that zoom and keeps it in the URL', async ({ page }) => {
+  await page.goto('/?lat=51&lon=4&z=12.4')
+  await expect.poll(() => page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(12.4)
+  await expect(page).toHaveURL(/[?&]z=12\.4(&|$)/)
+})
+
 test('settings survive a reload via localStorage (no URL params)', async ({ page }) => {
   await page.goto('/')
   await openSettings(page)
