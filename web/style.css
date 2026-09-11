@@ -282,10 +282,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   justify-content: center; pointer-events: auto; }
 .rx-fold { margin-left: auto; }
 .rx-close:hover, .rx-fold:hover { color: var(--ch-text); }
-/* One chevron for four stops (#424): full, three lanes, one, then the header
-   alone. It points down while there is further to shrink and up on the last
-   stop, where the next click is the way back to full. The old minus/plus said
-   only "open or shut", which is two states out of four.
+/* One chevron for three stops (#424): full, three lanes, one. It points down
+   while there is further to shrink and up on the last stop, where the next
+   click is the way back to full. The old minus/plus said only "open or shut",
+   which is two states out of three.
    Same button as the app's: same box, same drawn chevron, rather than a text
    glyph that sat on a different baseline and at a different weight. */
 .rx-fold[data-dir="up"] svg { transform: rotate(180deg); }

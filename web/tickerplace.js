@@ -66,7 +66,7 @@ export function coversTheMap(cardHeight, { vh, top = 0 }) {
 //
 // `saved` is what persisted from the last visit; a first visit has none. The
 // default is per-surface rather than remembered-or-guessed: full where there is
-// room, shrunk to the header where the card would take the map. A remembered
+// room, shrunk to one lane where the card would take the map. A remembered
 // choice always wins -- someone who shrank it on a desktop meant it.
 //
 // `size` here is the card at ten lanes, which on load is NOT what the element

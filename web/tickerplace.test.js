@@ -61,11 +61,10 @@ describe('initialPlacement', () => {
   })
 
   it('collapses by default on a phone and not on a desktop', () => {
-    // A phone starts at the last stop, the header alone, which is what the
-    // pre-#424 "collapsed" meant. A desktop starts full.
     // A phone starts at the smallest stop rather than away: the reason the
     // default is per-surface is that the card should not cover the map there,
-    // and a ticker nobody can see is a different thing from a small one.
+    // and a ticker nobody can see is a different thing from a small one. A
+    // desktop starts full.
     const phone = initialPlacement({ size: SIZE, viewport: PHONE, narrow: true })
     expect(phone.collapse).toBe(COLLAPSE_LEVELS - 1)
     expect(phone.hidden).toBe(false)
@@ -118,11 +117,9 @@ describe('serialise / parse', () => {
       .toEqual({ x: 12, y: 301, collapse: 0, hidden: true })
   })
 
-  // Links written before #424 carry 0 or 1 for expanded or folded. Folded meant
-  // the header alone, which is now the last stop, so an old link has to land
-  // there rather than on the three-lane stop the bare number would hit.
-  // '1' was how the ticker was put away before it had a cross, so it has to
-  // read as away rather than as a shrink stop.
+  // Links written before #424 carry 0 or 1 for expanded or folded. '1' was how
+  // the ticker was put away before it had a cross, so it reads as away rather
+  // than as a shrink stop.
   it('reads a pre-#424 link, and never writes one back', () => {
     expect(parse('10,20,0')).toEqual({ x: 10, y: 20, collapse: 0, hidden: false })
     expect(parse('10,20,1')).toEqual({ x: 10, y: 20, collapse: 0, hidden: true })

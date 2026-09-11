@@ -5,9 +5,9 @@ import { test, expect } from './fixtures.js'
 // away. It is now a placed box the user drags, and it folds.
 
 // Twelve, not one: since #424 the card's height follows how much it holds, so
-// a single reception is a one-lane card with only the header-alone stop left
-// to reach. Twelve is past the last step, which is what makes every stop
-// reachable and the placement measurements stable.
+// a single reception is a one-lane card with no stop left to reach. Twelve is
+// past the last step, which is what makes every stop reachable and the
+// placement measurements stable.
 const RX = Array.from({ length: 12 }, (_, i) => ({
   lat: 51, lon: 4, rssi: -70 - i, snr: -3, sender_id: 'aa'.repeat(32), sender_kind: 'advert_pubkey',
   sender_label: 'NODE-' + i, hunter_name: 'H', packet_type: 'Advert',
@@ -115,12 +115,11 @@ test('a shorter window pulls the ticker back into view', async ({ page }) => {
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
 })
 
-// One control, several stops since #424: full, three lanes, one, then the
-// header alone. How many of those exist depends on how much traffic the ticker
-// is holding, because a stop that would not make the card smaller is skipped
-// (it would swallow a click). So the test walks the cycle rather than assuming
-// its length: every click shrinks the card or hides the list, and one more
-// after that is back to where it started.
+// One control since #424: full, then three lanes, then one. Putting the card
+// away is the cross, not a further stop. A stop that would not make the card
+// smaller is skipped (it would swallow a click), so the twelve receptions
+// above are what make both stops reachable: each of two clicks shrinks the
+// card, and a third is back to full.
 test('shrinks a step at a time, and the cross puts it away', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
@@ -133,9 +132,6 @@ test('shrinks a step at a time, and the cross puts it away', async ({ page }) =>
   const full = await height()
   expect(full).toBeGreaterThan(0)
 
-  // How many stops exist depends on how much the ticker holds, because one
-  // that would not make the card smaller is skipped rather than swallowing a
-  // click. So walk it rather than assuming a length.
   let previous = full
   let clicks = 0
   while (clicks < 2) {
