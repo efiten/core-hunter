@@ -22,9 +22,16 @@
 // so the guard in barnarrow.test.js can check each slot really is inside the
 // container it claims: a slot that drifted out of both would move a control
 // somewhere nothing ever opens.
+//
+// `wrap`, where set, is the ancestor of `control` that moves. The hunter
+// picker's wrapper has no hook of its own, so it is reached from its toggle.
+// Not with `.ms-wrap:has(#hp-toggle)`: querySelector throws on a selector the
+// engine cannot parse rather than matching nothing. Where `:has()` is missing
+// that left the bar half moved, and because map.js applies this while it loads,
+// it stopped map.js at that line too, at every width.
 export const NARROW_SLOTS = [
   { control: '.tr-wrap', slot: 'bf-slot-time', group: 'bf-group-time', into: 'panel' },
-  { control: '.ms-wrap:has(#hp-toggle)', slot: 'bf-slot-hunters', group: 'bf-group-hunters', into: 'panel' },
+  { control: '#hp-toggle', wrap: '.ms-wrap', slot: 'bf-slot-hunters', group: 'bf-group-hunters', into: 'panel' },
   { control: '#rx-cta', slot: 'ss-slot-actions', group: 'ss-slot-actions', into: 'menu' },
   { control: '#auth-btn', slot: 'ss-slot-actions', group: 'ss-slot-actions', into: 'menu' },
 ]
@@ -44,7 +51,10 @@ export const NARROW_CONTAINERS = { panel: 'bar-filters', menu: 'settings-modal' 
 const home = new WeakMap()   // control -> its original parent
 const order = new WeakMap()  // parent -> its original children, as an array
 
-const find = (control) => document.querySelector(`#bar ${control}`) || document.querySelector(control)
+export function findControl({ control, wrap }, root = document) {
+  const el = root.querySelector(`#bar ${control}`) || root.querySelector(control)
+  return el && wrap ? el.closest(wrap) : el
+}
 
 // A popover open on a control that is about to move would be left anchored to
 // where the control used to be -- and moving into the filter panel takes it
@@ -68,8 +78,9 @@ function nextSiblingAtHome(parent, el) {
 
 export function applyNarrowBar(narrow) {
   if (!document.getElementById('bar')) return
-  for (const { control, slot, group } of NARROW_SLOTS) {
-    const el = find(control)
+  for (const entry of NARROW_SLOTS) {
+    const { slot, group } = entry
+    const el = findControl(entry)
     const target = document.getElementById(slot)
     const groupEl = document.getElementById(group)
     if (!el || !target || !groupEl) continue

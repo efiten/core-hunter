@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { NARROW_SLOTS, NARROW_CONTAINERS } from './barnarrow.js'
+import { NARROW_SLOTS, NARROW_CONTAINERS, findControl } from './barnarrow.js'
 
 // There is no jsdom in this suite (see focustrap.test.js), so the move itself is
 // driven in e2e/barlayout.spec.js by a real browser at a real width. What is
@@ -62,5 +62,64 @@ describe('the narrow-bar slot table', () => {
     const moved = NARROW_SLOTS.map((s) => s.control).join(' ')
     expect(moved).not.toContain('sp-toggle')
     expect(moved).not.toContain('filter-pill')
+  })
+})
+
+describe('finding the control a slot moves', () => {
+  // querySelector does not miss on a selector the engine cannot parse, it
+  // throws a SyntaxError. applyNarrowBar looks every control up in one loop,
+  // while map.js loads, so a single selector an engine cannot read stops the
+  // hand-off with the bar half moved, and map.js with it. `:has()` is one,
+  // before Firefox 121.
+  //
+  // This root reads only an id or a class, with at most one ancestor step, and
+  // throws like an engine on anything else. The group's two wrappers are in the
+  // opposite order to index.html, so the first `.ms-wrap` in the group is not
+  // the hunter picker's and cannot pass for it.
+  const parse = (sel) => {
+    const parts = sel.trim().split(/\s+/)
+    if (parts.length > 2 || !parts.every((p) => /^[#.][\w-]+$/.test(p))) {
+      throw new SyntaxError(`'${sel}' is not a valid selector`)
+    }
+    return parts
+  }
+  const is = (n, part) => (part[0] === '#' ? n.id === part.slice(1) : n.classes.includes(part.slice(1)))
+  const hasAncestor = (n, part) => {
+    for (let at = n.parentElement; at; at = at.parentElement) if (is(at, part)) return true
+    return false
+  }
+  const matches = (n, parts) => is(n, parts.at(-1)) && (parts.length === 1 || hasAncestor(n, parts[0]))
+  const inOrder = (n) => [n, ...n.children.flatMap(inOrder)]
+
+  function node(name, { id = '', classes = [] } = {}, children = []) {
+    const n = { name, id, classes, children, parentElement: null }
+    for (const c of children) c.parentElement = n
+    n.closest = (sel) => {
+      const parts = parse(sel)
+      for (let at = n; at; at = at.parentElement) if (matches(at, parts)) return at
+      return null
+    }
+    return n
+  }
+
+  const doc = node('document', {}, [
+    node('bar', { id: 'bar' }, [
+      node('group', { id: 'bar-controls' }, [
+        node('target picker', { classes: ['ms-wrap'] }, [node('target toggle', { id: 'sp-toggle' })]),
+        node('hunter picker', { classes: ['ms-wrap'] }, [node('hunter toggle', { id: 'hp-toggle' })]),
+        node('time range', { classes: ['tr-wrap'] }),
+      ]),
+      node('Start mapping', { id: 'rx-cta' }),
+      node('Log in', { id: 'auth-btn' }),
+    ]),
+  ])
+  doc.querySelector = (sel) => {
+    const parts = parse(sel)
+    return inOrder(doc).find((n) => matches(n, parts)) || null
+  }
+
+  it('finds every control without a selector only some engines parse', () => {
+    const found = NARROW_SLOTS.map((entry) => findControl(entry, doc)?.name)
+    expect(found).toEqual(['time range', 'hunter picker', 'Start mapping', 'Log in'])
   })
 })
