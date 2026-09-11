@@ -247,10 +247,12 @@ export function senderText(r) {
 // screen to check against. Once a name has resolved the id stands beside it,
 // cut with idPrefix like the target list and the HUD; a line without a name
 // keeps the id in the name cell and the column empty, so a prefix is never
-// printed twice, and a hash id is its # mark and nothing else.
+// printed twice, and a hash id is its # mark and nothing else. A label that is
+// the id is no name either: meshpacket.js gives a channel_name sender its
+// decrypted name as both. Same rule as web/receptionticker.js.
 export function senderCell(r) {
   const name = senderText(r)
-  const resolved = !isHashIdKind(r.sender_kind) && !!r.sender_label && !!r.sender_id
+  const resolved = !isHashIdKind(r.sender_kind) && !!r.sender_id && name !== String(r.sender_id)
   return { id: resolved ? idPrefix(r.sender_id) : '', name }
 }
 

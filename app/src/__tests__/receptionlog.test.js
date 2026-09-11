@@ -169,6 +169,12 @@ describe('senderCell — the id stays beside the name it resolved to', () => {
     expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: '' })).toEqual({ id: '', name: 'a1b2f3c4d5e6' })
     expect(senderCell({ sender_kind: 'relay', sender_id: null, sender_label: null })).toEqual({ id: '', name: '—' })
   })
+  // meshpacket.js gives a channel_name sender its decrypted name as both id
+  // and label. A label that is the id is not a name, so "Spamme" must not
+  // stand beside "Spammer". The map's copy has decided it this way from the start.
+  it('leaves the column empty when the label is the id itself', () => {
+    expect(senderCell({ sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer' })).toEqual({ id: '', name: 'Spammer' })
+  })
   it('gives a hash id no column: the # in the name cell is all it is', () => {
     expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
     expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
