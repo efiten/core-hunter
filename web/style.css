@@ -200,12 +200,15 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    Ported from app/src/styles/app.css for exact visual parity; parity.test.js
    pins the two copies together. Full-width centred layout and the
    --ch-rx-line-h geometry are #322 -- see app.css for the reasoning. */
-/* z-index 620: below #bar (630, so a wrapped/tall bar row can't steal its
-   clicks, see #224) and below #locate-info, #nodepos-stack and .lc-modal
-   (625/625/1000) -- an expanded Locate legend can grow to ~480px and overlap
-   this box's top-right corner at the real 1280x720 test viewport, and
-   floating info panels/modals should always win a stacking tie over a
-   background ticker. */
+/* z-index 620: below #bar (630), because the bar's popovers and the filter
+   panel are DOM children of #bar and paint at its level, and they hang down
+   over this box's rows, which take pointer events (#417, see #bar). The
+   opposite order was #224's, so a wrapped bar row could not steal the
+   ticker's clicks; #386/#388 removed that overlap. Also below #locate-info,
+   #nodepos-stack and .lc-modal (625/625/1000) -- an expanded Locate legend
+   can grow to ~480px and overlap this box's top-right corner at the real
+   1280x720 test viewport, and floating info panels/modals should always win
+   a stacking tie over a background ticker. */
 /* top: 52px is only the pre-JS fallback -- map.js's setMapTop() overrides it to
    the bar's actual offsetHeight + 4px on load and on resize, the same
    mechanism #map itself already used for a wrapped/taller bar. */
