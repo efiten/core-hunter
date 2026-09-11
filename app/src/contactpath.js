@@ -130,16 +130,34 @@ export function decodePendingRestore(json) {
   return { self: rec.self.toLowerCase(), target: rec.target.toLowerCase(), raw }
 }
 
+// The companion's replies to a contact read and a contact write carry no
+// correlator, so two exchanges on the link at once can take each other's
+// replies, and a dance that reads a contact the replay is about to put back
+// sends its ask over the route the replay restored. So every dance and every
+// replay takes its turn: each starts once the one before it has settled,
+// whether it resolved or threw.
+let linkTurn = Promise.resolve()
+
+function onLink(exchange) {
+  const run = linkTurn.then(exchange)
+  linkTurn = run.catch(() => {})
+  return run
+}
+
 // The dance itself. `io` is the companion link as app.js wires it:
 //   io.getContact(pubkey)  resolves with parseContactReply's reading of the
 //                          reply, or null when none came;
 //   io.writeContact(frame) resolves true on RESP_CODE_OK, false on
 //                          RESP_CODE_ERR, null when no reply came.
-// Neither reply carries a correlator, so the caller runs one dance at a time.
-// `ask` sends the one command the contact is held zero-hop for. The result is
-// { asked } and, when it did not ask, { skipped } saying why; `restored` says
-// whether the restore it wrote acked.
-export async function askAtZeroHop(io, self, target, ask) {
+// It waits for its turn on the link (onLink). `ask` sends the one command the
+// contact is held zero-hop for. The result is { asked } and, when it did not
+// ask, { skipped } saying why; `restored` says whether the restore it wrote
+// acked.
+export function askAtZeroHop(io, self, target, ask) {
+  return onLink(() => dance(io, self, target, ask))
+}
+
+async function dance(io, self, target, ask) {
   const contact = await io.getContact(target)
   // No answer says nothing about the stored route, and the unknown route is
   // the one the firmware floods, so no reading means no ask.
@@ -179,12 +197,16 @@ async function restoreContact(io, self, target, raw) {
   return true
 }
 
-// replayPendingRestores runs once per connect, before any ask: a session that
-// died between an override and its restore left that contact zero-hop on the
-// companion. Every record for the connected companion is replayed, and each is
-// cleared on its own ack. Resolves with whether every restore acked, or null
-// when none was owed.
-export async function replayPendingRestores(io, self) {
+// replayPendingRestores runs once per connect: a session that died between an
+// override and its restore left that contact zero-hop on the companion. Every
+// record for the connected companion is replayed, and each is cleared on its
+// own ack. It takes its turn on the link like a dance. Resolves with whether
+// every restore acked, or null when none was owed.
+export function replayPendingRestores(io, self) {
+  return onLink(() => replay(io, self))
+}
+
+async function replay(io, self) {
   const stored = []
   try {
     for (let i = 0; i < localStorage.length; i++) {

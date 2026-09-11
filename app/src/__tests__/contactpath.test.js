@@ -292,3 +292,69 @@ describe('the restore record', () => {
     expect(storage.items.size).toBe(1)
   })
 })
+
+// Neither reply carries a correlator, so the replay on connect and a dance
+// must not overlap on the link: one could take the other's reply, and a dance
+// could read a contact the replay is about to put back, then ask over the
+// route it restored. Every write below waits until the test answers it, so the
+// log shows what reached the companion while the other exchange was waiting.
+describe('the link', () => {
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
+  let held = []
+  const answer = async (ok) => { expect(held.length).toBe(1); held.shift()(ok); await tick() }
+  const heldCompanion = (contacts) => fakeCompanion({ contacts, ack: () => new Promise((resolve) => held.push(resolve)) })
+  const oweRestoreOfB = () => askAtZeroHop(fakeCompanion({ contacts: { [B]: found(3, 0xcd) }, ack: restoreNeverAcks }).io, SELF, B, async () => {})
+
+  afterEach(async () => {
+    for (let i = 0; i < 8 && held.length; i++) { held.shift()(false); await tick() }
+    held = []
+    vi.unstubAllGlobals()
+  })
+
+  it('holds a replay that starts during a dance until that dance has put its contact back', async () => {
+    const storage = memoryStorage()
+    vi.stubGlobal('localStorage', storage)
+    await oweRestoreOfB()
+    const c = heldCompanion({ [A]: found(7) })
+
+    const dance = askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    const replay = replayPendingRestores(c.io, SELF)
+    await tick()
+    expect(c.log).toEqual(['read ab', 'override ab'])
+    await answer(true)
+    expect(c.log).toEqual(['read ab', 'override ab', 'ask', 'restore ab'])
+    await answer(true)
+    expect(c.log).toEqual(['read ab', 'override ab', 'ask', 'restore ab', 'restore cd'])
+    await answer(true)
+    expect(await dance).toEqual({ asked: true, restored: true })
+    expect(await replay).toBe(true)
+    expect(storage.items.size).toBe(0)
+  })
+
+  it('holds a dance that starts during the replay until every owed restore is back', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    await oweRestoreOfB()
+    const c = heldCompanion({ [A]: found(7) })
+
+    const replay = replayPendingRestores(c.io, SELF)
+    const dance = askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    await tick()
+    expect(c.log).toEqual(['restore cd'])
+    await answer(true)
+    expect(c.log).toEqual(['restore cd', 'read ab', 'override ab'])
+    await answer(true)
+    await answer(true)
+    expect(await replay).toBe(true)
+    expect(await dance).toEqual({ asked: true, restored: true })
+    expect(c.log).toEqual(['restore cd', 'read ab', 'override ab', 'ask', 'restore ab'])
+  })
+
+  it('stays usable after an exchange that threw', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const broken = { getContact: async () => { throw new Error('link gone') }, writeContact: async () => true }
+    await expect(askAtZeroHop(broken, SELF, A, async () => {})).rejects.toThrow('link gone')
+    const c = fakeCompanion({ contacts: { [A]: found(0) } })
+    expect(await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })).toEqual({ asked: true })
+    expect(c.log).toEqual(['read ab', 'ask'])
+  })
+})

@@ -1142,7 +1142,8 @@ const FULL_PUBKEY = /^[0-9a-f]{64}$/
 // recognises, or null on a timeout or a send failure. Every reply the
 // companion gives to these commands carries no correlator, so the argument
 // is that nothing else in the app issues them concurrently: askTelemetry
-// runs one dance at a time (state.telemetry.busy).
+// runs one dance at a time (state.telemetry.busy), and a dance and the restore
+// replay take turns on the link (contactpath.js).
 function sendAndWait(frame, accept, timeoutMs) {
   const t = state.transport
   if (!t) return Promise.resolve(null)
@@ -1424,7 +1425,8 @@ async function connectAll() {
     // 5. Register frame handlers: the RX log, and the pushes the probe answers arrive on (#553)
     state.transport.onFrame(processFrame)
     state.transport.onFrame(onCompanionFrame)
-    // A contact left zero-hop by a session that died mid-ask goes back first.
+    // A contact left zero-hop by a session that died mid-ask goes back; an ask
+    // that starts meanwhile waits for it (contactpath.js).
     maybeReplayPendingRestores().catch(() => {})
 
     setHuntingChrome(true)
