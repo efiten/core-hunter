@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, setNodePos } from './fixtures.js'
+import { test, expect, mapSettled, setNodePos, openSettings } from './fixtures.js'
 
 // #603: the third stop of Node positions draws every repeater's reach at
 // once: one ray per hearing attributed to it, from the ▲ (or the ● estimate
@@ -119,4 +119,46 @@ test('the positions stop keeps the ▲ and drops the rays; off drops both', asyn
   await setNodePos(page, '')
   await expect(page.locator('.np-advert')).toHaveCount(0)
   await expect(page).not.toHaveURL(/[?&]nodepos=/)
+})
+
+// A WebGL1 context without 32-bit indices (#593 review): the ray layer stays
+// off the map rather than failing every drawElements, the flat rays still
+// draw, and the console says why once, not again on the next style load. The
+// canvas here refuses WebGL2 and hides the extension, and counts the WebGL2
+// asks: MapLibre's own, then one per mount of the overlays.
+test('without 32-bit indices the rays stay off the 3D map, and the console says so once', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__uintWarnings = 0
+    window.__webgl2Asks = 0
+    const warn = console.warn.bind(console)
+    console.warn = (...args) => { if (String(args[0]).includes('OES_element_index_uint')) window.__uintWarnings++; warn(...args) }
+    const getContext = HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.getContext = function (type, attrs) {
+      if (type === 'webgl2') { window.__webgl2Asks++; return null }
+      const ctx = getContext.call(this, type, attrs)
+      if (ctx && type === 'webgl' && !ctx.__noUint) {
+        const getExtension = ctx.getExtension.bind(ctx)
+        ctx.getExtension = (name) => (name === 'OES_element_index_uint' ? null : getExtension(name))
+        ctx.__noUint = true
+      }
+      return ctx
+    }
+  })
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  expect(await page.evaluate(() => window.__layerVisible('reach'))).toBe(true)
+  await expect.poll(() => page.evaluate(() => window.__uintWarnings)).toBe(1)
+  await page.click('#view-toggle')
+  await expect.poll(() => page.evaluate(() => window.__raysVisible())).toBe(true)
+  expect(await page.evaluate(() => window.__layerVisible('reach-3d'))).toBe(false)
+  expect(await page.evaluate(() => window.__rayCount())).toBe(0)
+  // A theme switch loads a style, and the overlays mount again.
+  const asked = await page.evaluate(() => window.__webgl2Asks)
+  await openSettings(page, 'settings')
+  await page.click('#theme-toggle')
+  await page.click('#ss-close')
+  await expect(page.locator('#settings-modal')).toBeHidden()
+  await expect.poll(() => page.evaluate(() => window.__webgl2Asks), { timeout: 10000 }).toBeGreaterThan(asked)
+  expect(await page.evaluate(() => window.__uintWarnings)).toBe(1)
+  expect(await page.evaluate(() => window.__layerVisible('reach-3d'))).toBe(false)
 })

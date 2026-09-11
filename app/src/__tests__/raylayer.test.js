@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { parseColor, rayBuffers, FLOATS_PER_VERTEX, VERTS_PER_RAY, INDICES_PER_RAY } from '../raylayer.js'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { parseColor, rayBuffers, canDrawRays, createRayLayer, FLOATS_PER_VERTEX, VERTS_PER_RAY, INDICES_PER_RAY } from '../raylayer.js'
 
 // #603: in 3D a ray leaves the mast, so it cannot be a MapLibre line layer
 // (those lie on the ground). The custom layer draws screen-space quads from
@@ -57,5 +57,66 @@ describe('rayBuffers', () => {
     const { indices, count } = rayBuffers([bad, ray([4, 51], [4.01, 51.01]), ray([5, 52], [5.01, 52.01])], toMerc)
     expect(count).toBe(2)
     expect(Array.from(indices)).toEqual([0, 1, 2, 2, 1, 3, 4, 5, 6, 6, 5, 7])
+  })
+})
+
+// The quads are indexed with 32-bit integers. WebGL2 has them; a WebGL1
+// context only through OES_element_index_uint, and without it every
+// drawElements fails, frame after frame, with nothing said (#593 review).
+const webgl1 = (uint) => ({ getExtension: vi.fn((name) => (uint && name === 'OES_element_index_uint' ? {} : null)) })
+// A map whose canvas already holds one context: getContext answers it for its
+// own type and null for the other, as a canvas does.
+const mapWith = ({ webgl2 = null, webgl = null } = {}) => {
+  const layers = new Map()
+  return {
+    layers,
+    getLayer: (id) => layers.get(id),
+    addLayer: vi.fn((l) => layers.set(l.id, l)),
+    getCanvas: () => ({ getContext: (type) => (type === 'webgl2' ? webgl2 : type === 'webgl' ? webgl : null) }),
+  }
+}
+
+describe('canDrawRays', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it('reads an engine without the WebGL2 global as WebGL1 rather than throwing', () => {
+    expect(typeof globalThis.WebGL2RenderingContext).toBe('undefined')
+    expect(canDrawRays(webgl1(true))).toBe(true)
+    expect(canDrawRays(webgl1(false))).toBe(false)
+  })
+  it('takes a WebGL2 context as it is, without asking for the extension', () => {
+    class WebGL2 { getExtension() { throw new Error('WebGL2 has 32-bit indices built in') } }
+    vi.stubGlobal('WebGL2RenderingContext', WebGL2)
+    expect(canDrawRays(new WebGL2())).toBe(true)
+  })
+})
+
+describe('mounting the ray layer', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+  it('mounts on a WebGL1 context with 32-bit indices, asking for the extension on the map\'s own context', () => {
+    const gl = webgl1(true), map = mapWith({ webgl: gl })
+    const rays = createRayLayer('reach-3d')
+    rays.addTo(map)
+    expect(map.addLayer).toHaveBeenCalledWith(rays)
+    expect(gl.getExtension).toHaveBeenCalledWith('OES_element_index_uint')
+  })
+  it('leaves a WebGL1 context without them unmounted, and says so once across style loads', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const map = mapWith({ webgl: webgl1(false) })
+    const rays = createRayLayer('reach-3d')
+    rays.addTo(map); rays.addTo(map); rays.addTo(map)
+    expect(map.addLayer).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toMatch(/OES_element_index_uint/)
+  })
+  it('mounts on a WebGL2 context, once, and again after a style load dropped it', () => {
+    class WebGL2 {}
+    vi.stubGlobal('WebGL2RenderingContext', WebGL2)
+    const map = mapWith({ webgl2: new WebGL2() })
+    const rays = createRayLayer('reach-3d')
+    rays.addTo(map); rays.addTo(map)
+    expect(map.addLayer).toHaveBeenCalledTimes(1)
+    map.layers.clear()
+    rays.addTo(map)
+    expect(map.addLayer).toHaveBeenCalledTimes(2)
   })
 })

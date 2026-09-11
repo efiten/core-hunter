@@ -221,7 +221,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // The ticker's playhead ring (#224): last, so it is never under a point.
     if (!map.getLayer('rxhighlight')) map.addLayer({ id: 'rxhighlight', type: 'circle', source: 'rxhighlight',
       paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 2 } })
-    if (!map.getLayer('reach-3d')) map.addLayer(rays)
+    rays.addTo(map)
     rays.setVisible(reachOn && is3D)
     // Terrain rides every style load like the sky: setStyle drops the source.
     demReady = false

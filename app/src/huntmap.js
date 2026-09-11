@@ -488,7 +488,7 @@ export function createHuntMap(containerId) {
       filter: ['==', ['get', 'style'], 'drift'],
       layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
-    if (!map.getLayer('reach-3d')) map.addLayer(rays)
+    rays.addTo(map)
     rays.setVisible(coverageOn() && mode3D)
     draw()
   }

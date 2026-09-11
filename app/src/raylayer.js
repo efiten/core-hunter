@@ -7,8 +7,9 @@
 // No library: deck.gl would do this in one layer, and would be the first
 // dependency either map carries for one layer (decided 2026-09-08, a spike).
 //
-// rayBuffers and parseColor are pure and pinned in raylayer.test.js; the GL
-// object (createRayLayer) is glue, verified in the browser like huntmap.js.
+// rayBuffers, parseColor and canDrawRays are pure and pinned in
+// raylayer.test.js, and so is when the layer mounts; the drawing itself is
+// glue, verified in the browser like huntmap.js.
 // Copied whole between app/src/ and web/ (parity.test.js, #238).
 
 // Per vertex: this end (x,y,z), the other end (x,y,z), side (+1/-1), colour
@@ -91,13 +92,23 @@ precision mediump float;
 varying vec4 v_color;
 void main() { gl_FragColor = v_color; }`
 
+// The quads are indexed with 32-bit integers: a busy view is tens of
+// thousands of rays, four vertices each, past what 16 bits address. WebGL2
+// has them; WebGL1 only through OES_element_index_uint, and asking for it is
+// what turns it on for that context. Without it every drawElements fails.
+// Not every engine defines the WebGL2 global, hence the typeof.
+export function canDrawRays(gl) {
+  if (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) return true
+  return !!gl.getExtension('OES_element_index_uint')
+}
+
 // createRayLayer(id, { toMerc, elevation }) returns a MapLibre custom layer
-// object. setData(features) rebuilds the buffers; setVisible(v) is what the
-// caller flips between 2D and 3D. The layer draws nothing while hidden or
-// empty, and is safe to add before any data.
+// object. addTo(map) mounts it; setData(features) rebuilds the buffers;
+// setVisible(v) is what the caller flips between 2D and 3D. The layer draws
+// nothing while hidden or empty, and is safe to add before any data.
 export function createRayLayer(id, { toMerc, elevation } = {}) {
   let gl = null, program = null, vbo = null, ibo = null, count = 0, visible = true, pending = null
-  let map = null
+  let map = null, warned = false
   const loc = {}
   function compile(type, src) {
     const sh = gl.createShader(type)
@@ -113,8 +124,19 @@ export function createRayLayer(id, { toMerc, elevation } = {}) {
     count = b.indices.length
     if (map) map.triggerRepaint()
   }
-  return {
+  const layer = {
     id, type: 'custom', renderingMode: '3d',
+    // Mounts the layer unless the map's context cannot draw it (canDrawRays),
+    // and then says so once rather than on every style load. The canvas
+    // answers getContext with the context the map already made for that
+    // type, and null for the other type, so this asks the map's own context.
+    addTo(m) {
+      if (m.getLayer(id)) return
+      const canvas = m.getCanvas()
+      if (canDrawRays(canvas.getContext('webgl2') || canvas.getContext('webgl'))) { m.addLayer(layer); return }
+      if (!warned) console.warn(`${id}: this WebGL1 context has no 32-bit indices (OES_element_index_uint), so the rays are not drawn in 3D`)
+      warned = true
+    },
     onAdd(m, ctx) {
       map = m; gl = ctx
       const v = compile(gl.VERTEX_SHADER, VERT), f = compile(gl.FRAGMENT_SHADER, FRAG)
@@ -123,10 +145,6 @@ export function createRayLayer(id, { toMerc, elevation } = {}) {
       for (const a of ['a_pos', 'a_other', 'a_side', 'a_color', 'a_width']) loc[a] = gl.getAttribLocation(program, a)
       for (const u of ['u_matrix', 'u_viewport']) loc[u] = gl.getUniformLocation(program, u)
       vbo = gl.createBuffer(); ibo = gl.createBuffer()
-      // 32-bit indices: a busy view is tens of thousands of rays, four
-      // vertices each, past a 16-bit index. WebGL2 has them; WebGL1 needs
-      // the extension, which every current browser exposes.
-      if (!(gl instanceof WebGL2RenderingContext)) gl.getExtension('OES_element_index_uint')
       if (pending) { const p = pending; pending = null; upload(p) }
     },
     onRemove() { if (gl) { gl.deleteBuffer(vbo); gl.deleteBuffer(ibo); gl.deleteProgram(program) } gl = null; map = null; count = 0 },
@@ -154,4 +172,5 @@ export function createRayLayer(id, { toMerc, elevation } = {}) {
     isVisible() { return visible },
     rayCount() { return count / INDICES_PER_RAY },
   }
+  return layer
 }
