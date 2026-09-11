@@ -24,7 +24,7 @@ So a selected companion gets the telemetry request where a selected repeater get
 
 ## No flood
 
-Kasper: "geen flood iig". The firmware floods a request when the contact's `out_path_len` is unknown (0xFF), and source-routes over a stored path otherwise, which may be stale. So the app runs the contact-path dance from coredrive-rx (`app/src/contactpath.js`): read the contact (`CMD_GET_CONTACT_BY_KEY`), force `out_path_len` to 0 for the ask (`CMD_ADD_UPDATE_CONTACT`, byte 35), send the request, put the contact back exactly as it was. An override that does not ack means no ask this cycle. A session that dies between the override and the restore leaves a record in localStorage, replayed on the next connect to the same companion.
+Kasper: "geen flood iig". The firmware floods a request when the contact's `out_path_len` is unknown (0xFF), and source-routes over a stored path otherwise, which may be stale. So the app runs the contact-path dance from coredrive-rx (`app/src/contactpath.js`): read the contact (`CMD_GET_CONTACT_BY_KEY`), force `out_path_len` to 0 for the ask (`CMD_ADD_UPDATE_CONTACT`, byte 35), send the request, put the contact back exactly as it was. An override that does not ack means no ask this cycle. A session that dies between the override and the restore leaves a record in localStorage, replayed on the next connect to the same companion. Where storage refuses that record (Safari with cookies blocked, a locked-down webview), there is no override and no ask: an override with no record has no way back.
 
 The reply's route is the target's choice: direct when it knows a path to us, otherwise it floods its answer. Either way we hear it zero-hop.
 

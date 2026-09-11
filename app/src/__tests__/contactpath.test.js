@@ -184,6 +184,19 @@ describe('askAtZeroHop', () => {
     expect(r.asked).toBe(false)
   })
 
+  // Where storage throws (Safari with cookies blocked, a locked-down webview),
+  // the record that brings the contact back after a dropped link cannot be
+  // kept. An override then has no way back, so the contact is not touched.
+  it('makes no override and asks nothing when the restore record cannot be stored', async () => {
+    const storage = memoryStorage()
+    storage.setItem = () => { throw new Error('SecurityError') }
+    vi.stubGlobal('localStorage', storage)
+    const c = fakeCompanion({ contacts: { [A]: found(7) } })
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    expect(c.log).toEqual(['read ab'])
+    expect(r.asked).toBe(false)
+  })
+
   // An override the companion refused leaves the contact as it was, so an ask
   // would flood; the restore still goes out, since the write may have landed.
   it('asks nothing when the override is refused, and still writes the original back', async () => {

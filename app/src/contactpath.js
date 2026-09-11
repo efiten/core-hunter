@@ -96,9 +96,10 @@ export function buildRestoreFrame(raw) {
 
 // Crash safety. If the app dies or BLE drops between the override write and
 // the restore, the contact is left zero-hop on the companion. askAtZeroHop
-// stores this record before every override and clears it after a restore that
-// acked: the original frame, which companion it belongs to (our own pubkey)
-// and which contact, so it is only ever replayed against the same companion.
+// stores this record before every override, makes no override when it cannot,
+// and clears it after a restore that acked: the original frame, which
+// companion it belongs to (our own pubkey) and which contact, so it is only
+// ever replayed against the same companion.
 export const RESTORE_STORAGE_KEY = 'core-hunter-contact-restore'
 
 export function encodePendingRestore(selfPubkeyHex, targetPubkeyHex, raw) {
@@ -138,7 +139,13 @@ export async function askAtZeroHop(io, self, target, ask) {
     await ask()
     return { asked: true }
   }
-  try { localStorage.setItem(RESTORE_STORAGE_KEY, encodePendingRestore(self, target, contact.raw)) } catch (_) {}
+  // Without the record a dropped link would leave the contact zero-hop with
+  // nothing to replay, so where storage refuses it the contact is not touched.
+  try {
+    localStorage.setItem(RESTORE_STORAGE_KEY, encodePendingRestore(self, target, contact.raw))
+  } catch (_) {
+    return { asked: false, skipped: 'the restore record could not be stored' }
+  }
   // No override, no ask: the firmware would flood it (#553, "geen flood").
   let out = { asked: false, skipped: 'the path override did not ack' }
   try {
