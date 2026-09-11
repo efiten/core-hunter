@@ -9,7 +9,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
 import { skyForHour, currentHour } from './sky.js'
-import { followAfter } from './rotation.js'
+import { followAfter, paddingAction } from './rotation.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -126,12 +126,24 @@ export function createHuntMap(containerId) {
   // Look-ahead (#403): the app decides when the map is oriented to travel and
   // hands the padding in; the map re-derives it from its own height on resize,
   // so a rotated phone keeps the position at the same fraction of the frame.
-  let lookAhead = null
-  function setLookAhead(paddingFor) {
-    lookAhead = paddingFor || null
-    map.setPadding(lookAhead ? lookAhead(map.getContainer().clientHeight) : { top: 0, bottom: 0, left: 0, right: 0 })
+  // Every write goes through paddingAction (rotation.js), because setPadding
+  // is a jumpTo and a jumpTo cancels a running gesture (#236). The switch-off
+  // arrives from the gesture handlers right above: a drag releases follow, a
+  // two-finger rotate clears the source. A held padding lands at moveend,
+  // when there is no gesture left to cut off.
+  const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 }
+  let lookAhead = null, padding = NO_PADDING, paddingHeld = false
+  function applyPadding() {
+    const next = lookAhead ? lookAhead(map.getContainer().clientHeight) : NO_PADDING
+    const action = paddingAction(padding, next, map.isMoving() || map.isZooming())
+    paddingHeld = action === 'hold'
+    if (action !== 'apply') return
+    padding = next
+    map.setPadding(next)
   }
-  map.on('resize', () => { if (lookAhead) map.setPadding(lookAhead(map.getContainer().clientHeight)) })
+  function setLookAhead(paddingFor) { lookAhead = paddingFor || null; applyPadding() }
+  map.on('resize', () => { if (lookAhead) applyPadding() })
+  map.on('moveend', () => { if (paddingHeld) applyPadding() })
   map.on('rotate', () => { if (rotateCb && !settingBearing) rotateCb(map.getBearing()) })
   // Hex resolution depends on zoom — rebuild once the zoom settles.
   map.on('zoomend', () => draw())
@@ -598,8 +610,10 @@ export function createHuntMap(containerId) {
   // Eases rather than jumps (#403): with padding in play a jump would land on
   // the offset position in one frame, and the ease is what tells the hand
   // where the map went. The follow callback runs before the ease: it sets the
-  // look-ahead padding (updateCompassIcon), and MapLibre's setPadding stops an
-  // ease that is already running, which left the camera where it was.
+  // look-ahead padding (updateCompassIcon), which the ease has to read. Set
+  // during the ease it stopped the ease dead (measured), and now that
+  // applyPadding holds a write while the map moves it would land at moveend,
+  // with the ease aiming at the un-offset centre.
   // Before the first fix there is nowhere to ease to; follow still comes on,
   // and setPosition centres the map on that fix when it lands.
   function recenter() { setFollow('follow'); if (lastPos) map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }) }

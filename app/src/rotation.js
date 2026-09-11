@@ -82,6 +82,23 @@ export function lookAheadPadding(viewportHeight, oriented) {
   return { top, bottom: 0, left: 0, right: 0 }
 }
 
+// paddingAction: what the map should do with a look-ahead padding it is asked
+// for. 'skip' when the map already has it, 'hold' while the map is moving,
+// 'apply' otherwise. MapLibre writes padding through jumpTo, and a jumpTo
+// cancels the gesture the hand is making (#236, the reason setPosition skips
+// its recentre while the map moves). The look-ahead switches off from inside
+// the gesture handlers themselves: a drag releases follow, a two-finger
+// rotate clears the rotation source. Writing it there would end the gesture
+// that asked for it, so it waits for moveend instead.
+export function paddingAction(current, next, moving) {
+  if (samePadding(current, next)) return 'skip'
+  return moving ? 'hold' : 'apply'
+}
+const PADDING_SIDES = ['top', 'bottom', 'left', 'right']
+function samePadding(a, b) {
+  return PADDING_SIDES.every((side) => (a[side] || 0) === (b[side] || 0))
+}
+
 // compassGlyph names the icon for a compass state: 'static' (not following),
 // 'following' (centred, north up), 'heading' (rotates with the device), or
 // 'driving' (rotates with GPS course-over-ground). The FAB previews the NEXT

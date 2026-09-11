@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, followAfter, resolveCourseHeading, COURSE_MIN_SPEED_MS, COURSE_RELEASE_SPEED_MS, autoSource, orientedToTravel, lookAheadPadding } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, followAfter, resolveCourseHeading, COURSE_MIN_SPEED_MS, COURSE_RELEASE_SPEED_MS, autoSource, orientedToTravel, lookAheadPadding, paddingAction } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -139,6 +139,30 @@ describe('look-ahead', () => {
     expect(lookAheadPadding(780, false)).toEqual({ top: 0, bottom: 0, left: 0, right: 0 })
     // The centre of the un-padded area: (260 + 780) / 2 = 520 = 2/3 of 780.
     expect((lookAheadPadding(780, true).top + 780) / 2 / 780).toBeCloseTo(2 / 3, 5)
+  })
+})
+
+// Writing that padding is a camera jump, and a camera jump cancels the gesture
+// the hand is making (#236). The state changes that switch the look-ahead off
+// come from gesture handlers themselves, so the write has to wait for them.
+describe('paddingAction', () => {
+  const centred = { top: 0, bottom: 0, left: 0, right: 0 }
+  const ahead = { top: 260, bottom: 0, left: 0, right: 0 }
+  it('writes a change while nothing is moving', () => {
+    expect(paddingAction(centred, ahead, false)).toBe('apply')
+    expect(paddingAction(ahead, centred, false)).toBe('apply')
+  })
+  it('holds a change until the gesture ends', () => {
+    // A drag releases follow and a two-finger rotate clears the rotation
+    // source, both reported from a map listener: writing the padding there
+    // would end the pan or the rotate after about one frame.
+    expect(paddingAction(ahead, centred, true)).toBe('hold')
+  })
+  it('skips padding the map already has, moving or not', () => {
+    // The common phone pan: following north up, where the look-ahead is
+    // already off, so releasing follow asks for the padding that is there.
+    expect(paddingAction(centred, { ...centred }, true)).toBe('skip')
+    expect(paddingAction(ahead, { ...ahead }, false)).toBe('skip')
   })
 })
 
