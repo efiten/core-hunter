@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Status:** decided (Kasper, 2026-09-05), implemented
-**Related:** #319 and `docs/2026-08-17-speed-adaptive-autoping.md` (the spike that found this), #479 (the sweep that makes a standing cycle five frames), #577 and #578 (frames that will join the count)
+**Related:** #319 and `docs/2026-08-17-speed-adaptive-autoping.md` (the spike that found this), #479 (the sweep that makes a standing cycle five frames), #577 (the self-advert, counted) and #578 (the telemetry request, which will join the count)
 
 ## What changed
 
