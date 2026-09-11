@@ -141,8 +141,11 @@ export function decodePendingRestore(json) {
 // whether the restore it wrote acked.
 export async function askAtZeroHop(io, self, target, ask) {
   const contact = await io.getContact(target)
+  // No answer says nothing about the stored route, and the unknown route is
+  // the one the firmware floods, so no reading means no ask.
+  if (!contact) return { asked: false, skipped: 'the contact read got no answer' }
   // Not a contact yet: our companion has not heard its advert, or has no slot.
-  if (contact && contact.found === false) return { asked: false, skipped: 'not a contact yet' }
+  if (!contact.found) return { asked: false, skipped: 'not a contact yet' }
   if (!needsPathOverride(contact)) {
     await ask()
     return { asked: true }

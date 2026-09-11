@@ -186,6 +186,17 @@ describe('askAtZeroHop', () => {
     expect(r.asked).toBe(false)
   })
 
+  // A contact read with no answer says nothing about the stored route, and a
+  // contact added from its advert starts with the unknown route the firmware
+  // floods (BaseChatMesh.cpp populateContactFromAdvert, sendRequest).
+  it('asks nothing when the contact read gets no answer', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const c = fakeCompanion()
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    expect(c.log).toEqual(['read ab'])
+    expect(r.asked).toBe(false)
+  })
+
   // Where storage throws (Safari with cookies blocked, a locked-down webview),
   // the record that brings the contact back after a dropped link cannot be
   // kept. An override then has no way back, so the contact is not touched.
