@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, resolveCourseHeading, COURSE_MIN_SPEED_MS, COURSE_RELEASE_SPEED_MS, autoSource, orientedToTravel, lookAheadPadding } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, followAfter, resolveCourseHeading, COURSE_MIN_SPEED_MS, COURSE_RELEASE_SPEED_MS, autoSource, orientedToTravel, lookAheadPadding } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -52,6 +52,25 @@ describe('nextCompassState', () => {
   it('heading mode taps to static, whichever sensor is driving it', () => {
     expect(nextCompassState({ follow: true, source: 'device' })).toEqual({ follow: false, source: null })
     expect(nextCompassState({ follow: true, source: 'course' })).toEqual({ follow: false, source: null })
+  })
+})
+
+// The map's follow flag, which the button's state mirrors. Heading mode is
+// reachable before the first GPS fix (the device compass needs none), so the
+// button's two ends of the cycle cannot wait for one: a tap the map refuses
+// leaves the button on a stop the map did not take.
+describe('followAfter', () => {
+  it('the compass button releases follow before the first fix', () => {
+    expect(followAfter(true, 'release', false)).toBe(false)
+  })
+  it('the compass button resumes follow before the first fix', () => {
+    expect(followAfter(false, 'follow', false)).toBe(true)
+  })
+  it('a look elsewhere releases follow once there is a position', () => {
+    expect(followAfter(true, 'look-away', true)).toBe(false)
+  })
+  it('a look elsewhere before the first fix leaves follow on, so that fix still centres the map', () => {
+    expect(followAfter(true, 'look-away', false)).toBe(true)
   })
 })
 

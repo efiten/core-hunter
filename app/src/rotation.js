@@ -41,6 +41,20 @@ export function nextCompassState({ follow, source }) {
   return { follow: false, source: null }
 }
 
+// followAfter: the map's follow flag after an input (huntmap.js holds the
+// flag, the button's state mirrors it through onFollowChange). 'follow' and
+// 'release' are the compass button's two ends of the cycle, and neither waits
+// for a GPS fix: heading mode is reachable before one, and follow before the
+// first fix means the map centres on that fix when it comes. 'look-away' is a
+// drag or a tapped ticker row (#309), which releases follow only once there is
+// a position (#1), so a drag before the first fix leaves follow on.
+export function followAfter(follow, input, hasFix) {
+  if (input === 'follow') return true
+  if (input === 'release') return false
+  if (input === 'look-away' && hasFix) return false
+  return follow
+}
+
 // The ring on the FAB shows the stop of the cycle, not the sensor: heading
 // and driving share a segment. Static is the off state, outside the ring.
 export const COMPASS_RING_STOPS = 2

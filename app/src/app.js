@@ -2622,9 +2622,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('sound-toggle').addEventListener('click', cycleSound)
   if (state.soundMode !== 'off') sound.setMode(state.soundMode)
 
-  // Compass button — always visible; cycles static → follow (north up) →
-  // follow + device heading → follow + GPS course/driving mode (#242). See
-  // the compass-mode section above.
+  // Compass button: always visible; cycles static → follow (north up) →
+  // follow + heading → static (#403). See the compass-mode section above.
   updateCompassIcon()
   el('recenter-btn').addEventListener('click', async () => {
     if (!state.map) return

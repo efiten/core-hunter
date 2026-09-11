@@ -9,6 +9,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
 import { skyForHour, currentHour } from './sky.js'
+import { followAfter } from './rotation.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -104,13 +105,24 @@ export function createHuntMap(containerId) {
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false
 
-  // Follow releases when the user drags; native bearing gesture reports back via
-  // onGestureRotate (guarded so our own setBearing calls don't count as user input).
-  // Any deliberate "look somewhere else" gesture releases follow, or the next
-  // GPS fix jumpTo's the camera straight back (setPosition). Shared by the drag
-  // handler and by focusReception (#309), which is the same intent by tap.
-  function releaseFollow() { if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) } }
-  map.on('dragstart', releaseFollow)
+  // Follow changes only through followAfter (rotation.js), which says per input
+  // whether it needs a position; onFollow hears every change, so the compass
+  // button's state never sits on a stop the map did not take.
+  function setFollow(input) {
+    const next = followAfter(follow, input, lastPos != null)
+    if (next === follow) return
+    follow = next
+    if (onFollow) onFollow(follow)
+  }
+  // Native bearing gesture reports back via onGestureRotate (guarded so our own
+  // setBearing calls don't count as user input). Any deliberate "look somewhere
+  // else" gesture releases follow, or the next GPS fix jumpTo's the camera
+  // straight back (setPosition). Shared by the drag handler and by
+  // focusReception (#309), which is the same intent by tap.
+  const lookAway = () => setFollow('look-away')
+  map.on('dragstart', lookAway)
+  // The compass button's release (#403), with or without a fix.
+  function releaseFollow() { setFollow('release') }
   // Look-ahead (#403): the app decides when the map is oriented to travel and
   // hands the padding in; the map re-derives it from its own height on resize,
   // so a rotated phone keeps the position at the same fraction of the frame.
@@ -588,7 +600,9 @@ export function createHuntMap(containerId) {
   // where the map went. The follow callback runs before the ease: it sets the
   // look-ahead padding (updateCompassIcon), and MapLibre's setPadding stops an
   // ease that is already running, which left the camera where it was.
-  function recenter() { if (!lastPos) return; follow = true; if (onFollow) onFollow(true); map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }) }
+  // Before the first fix there is nowhere to ease to; follow still comes on,
+  // and setPosition centres the map on that fix when it lands.
+  function recenter() { setFollow('follow'); if (lastPos) map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }) }
   function onFollowChange(cb) { onFollow = cb }
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
@@ -645,7 +659,7 @@ export function createHuntMap(containerId) {
   // on the map to pan to.
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
-    releaseFollow()
+    lookAway()
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
