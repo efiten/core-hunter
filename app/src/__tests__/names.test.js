@@ -85,6 +85,13 @@ describe('consensusName', () => {
   it('refuses two different names for one prefix', () => {
     expect(consensusName(['Repeater-Zuid', 'repeater_3_'])).toEqual({ name: '', refused: true })
   })
+  // Letter case counts (Kasper, 2026-09-11): two spellings are two answers.
+  it('refuses two names that differ only in letter case', () => {
+    expect(consensusName(['Repeater-Zuid', 'repeater-zuid'])).toEqual({ name: '', refused: true })
+  })
+  it('agrees on names that differ only in surrounding whitespace', () => {
+    expect(consensusName([' Repeater-Zuid', 'Repeater-Zuid '])).toEqual({ name: 'Repeater-Zuid', refused: false })
+  })
   it('is no name when nobody answered', () => {
     expect(consensusName([])).toEqual({ name: '', refused: false })
   })

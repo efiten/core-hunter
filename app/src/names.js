@@ -89,6 +89,11 @@ export function resolversFor(resolvers, companionSf) {
 // one may know the same prefix under another name. Unanimity is a name,
 // silence is no name, and disagreement is a refusal, which is evidence
 // against, exactly as mergePrefixGroups treats it (feed.js).
+// Names are compared exactly after trimming surrounding whitespace, so letter
+// case counts: `Repeater-Zuid` and `repeater-zuid` are a refusal (Kasper,
+// 2026-09-11). Folding case would make an agreement out of two different
+// answers, and a refusal costs only a name on an id the surfaces still show.
+// sameResolvedName in feed.js folds case to merge rows; that is not this rule.
 export function consensusName(names) {
   const distinct = [...new Set((names || []).map(n => String(n || '').trim()).filter(Boolean))];
   if (distinct.length === 1) return { name: distinct[0], refused: false };
