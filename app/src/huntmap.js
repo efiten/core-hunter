@@ -585,8 +585,10 @@ export function createHuntMap(containerId) {
   function centerOn(lat, lon) { map.easeTo({ center: [lon, lat], duration: 400 }) }
   // Eases rather than jumps (#403): with padding in play a jump would land on
   // the offset position in one frame, and the ease is what tells the hand
-  // where the map went.
-  function recenter() { if (!lastPos) return; follow = true; map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }); if (onFollow) onFollow(true) }
+  // where the map went. The follow callback runs before the ease: it sets the
+  // look-ahead padding (updateCompassIcon), and MapLibre's setPadding stops an
+  // ease that is already running, which left the camera where it was.
+  function recenter() { if (!lastPos) return; follow = true; if (onFollow) onFollow(true); map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }) }
   function onFollowChange(cb) { onFollow = cb }
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
