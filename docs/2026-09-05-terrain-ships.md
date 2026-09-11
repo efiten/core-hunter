@@ -1,4 +1,4 @@
-# Terrain ships on the AWS DEM, with a button and one setting (#394, #396)
+# Terrain ships on the AWS DEM, raised by the 3D view, with one setting (#394, #396)
 
 **Date:** 2026-09-05
 **Status:** decided (Kasper, 2026-08-21 for the source and the default; 2026-09-05 for the loading rule; 2026-09-06 for the switch), implemented
