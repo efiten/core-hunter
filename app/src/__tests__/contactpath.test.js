@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
   buildGetContactByKey, parseContactReply, needsPathOverride, buildOverrideFrame, buildRestoreFrame,
-  encodePendingRestore, decodePendingRestore,
+  encodePendingRestore, decodePendingRestore, askAtZeroHop, replayPendingRestore,
   CMD_GET_CONTACT_BY_KEY, CMD_ADD_UPDATE_CONTACT, RESP_CODE_CONTACT, RESP_CODE_ERR, ERR_CODE_NOT_FOUND, CONTACT_FRAME_LEN,
 } from '../contactpath.js'
 
@@ -10,10 +10,10 @@ const PK = 'ab'.repeat(32)
 // A RESP_CODE_CONTACT frame as writeContactRespFrame lays it out
 // (examples/companion_radio/MyMesh.cpp:166-187), every field a distinct
 // non-zero pattern so a byte diff tells touched from untouched.
-function contactFrame(outPathLen) {
+function contactFrame(outPathLen, pkByte = 0xab) {
   const b = new Uint8Array(CONTACT_FRAME_LEN)
   b[0] = RESP_CODE_CONTACT
-  for (let i = 0; i < 32; i++) b[1 + i] = 0xab
+  for (let i = 0; i < 32; i++) b[1 + i] = pkByte
   b[33] = 1  // type: ADV_TYPE_CHAT
   b[34] = 1  // flags
   b[35] = outPathLen
@@ -117,5 +117,109 @@ describe('encodePendingRestore / decodePendingRestore', () => {
     expect(decodePendingRestore(JSON.stringify({ self: 'aa'.repeat(32), target: 'bb'.repeat(32), raw: 'ab'.repeat(10) }))).toBeNull()
     expect(decodePendingRestore('42')).toBeNull()
     expect(decodePendingRestore('null')).toBeNull()
+  })
+})
+
+// The dance, against a companion that answers from a script: the contact read
+// with `contacts[pubkey]` (a missing key is no reply at all), every write with
+// `ack(frame)`. `log` keeps what reached the companion, in order, so a test
+// asserts the whole sequence rather than an endpoint.
+function fakeCompanion({ contacts = {}, ack = () => true } = {}) {
+  const log = []
+  const hex2 = (b) => b.toString(16).padStart(2, '0')
+  return {
+    log,
+    io: {
+      getContact: async (pk) => { log.push(`read ${pk.slice(0, 2)}`); return pk in contacts ? contacts[pk] : null },
+      writeContact: async (frame) => {
+        log.push(`${frame[35] === 0 ? 'override' : 'restore'} ${hex2(frame[1])}`)
+        return ack(frame)
+      },
+    },
+  }
+}
+
+// localStorage as the browser keeps it, in memory.
+function memoryStorage() {
+  const items = new Map()
+  return {
+    items,
+    get length() { return items.size },
+    key: (i) => [...items.keys()][i] ?? null,
+    getItem: (k) => (items.has(k) ? items.get(k) : null),
+    setItem: (k, v) => { items.set(k, String(v)) },
+    removeItem: (k) => { items.delete(k) },
+  }
+}
+
+const SELF = 'ee'.repeat(32)
+const A = 'ab'.repeat(32)
+const found = (outPathLen, pkByte = 0xab) => parseContactReply(contactFrame(outPathLen, pkByte))
+const restoreNeverAcks = (frame) => frame[35] === 0
+
+describe('askAtZeroHop', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('holds a contact with a stored path at zero hop for the ask, then writes it back', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const c = fakeCompanion({ contacts: { [A]: found(7) } })
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    expect(c.log).toEqual(['read ab', 'override ab', 'ask', 'restore ab'])
+    expect(r).toEqual({ asked: true, restored: true })
+  })
+
+  it('asks without writing anything when the contact is already zero-hop', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const c = fakeCompanion({ contacts: { [A]: found(0) } })
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    expect(c.log).toEqual(['read ab', 'ask'])
+    expect(r).toEqual({ asked: true })
+  })
+
+  it('asks nothing and writes nothing for a node that is not a contact', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const c = fakeCompanion({ contacts: { [A]: { found: false } } })
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    expect(c.log).toEqual(['read ab'])
+    expect(r.asked).toBe(false)
+  })
+
+  // An override the companion refused leaves the contact as it was, so an ask
+  // would flood; the restore still goes out, since the write may have landed.
+  it('asks nothing when the override is refused, and still writes the original back', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const c = fakeCompanion({ contacts: { [A]: found(7) }, ack: (frame) => frame[35] !== 0 })
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') })
+    expect(c.log).toEqual(['read ab', 'override ab', 'restore ab'])
+    expect(r.asked).toBe(false)
+    expect(r.restored).toBe(true)
+  })
+})
+
+describe('the restore record', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('stays until a restore acks, and the next connect to that companion replays it', async () => {
+    const storage = memoryStorage()
+    vi.stubGlobal('localStorage', storage)
+    const r = await askAtZeroHop(fakeCompanion({ contacts: { [A]: found(7) }, ack: restoreNeverAcks }).io, SELF, A, async () => {})
+    expect(r.restored).toBe(false)
+    expect(storage.items.size).toBe(1)
+
+    const next = fakeCompanion()
+    expect(await replayPendingRestore(next.io, SELF)).toBe(true)
+    expect(next.log).toEqual(['restore ab'])
+    expect(storage.items.size).toBe(0)
+  })
+
+  it('is replayed only against the companion it names', async () => {
+    const storage = memoryStorage()
+    vi.stubGlobal('localStorage', storage)
+    await askAtZeroHop(fakeCompanion({ contacts: { [A]: found(7) }, ack: restoreNeverAcks }).io, SELF, A, async () => {})
+
+    const other = fakeCompanion()
+    await replayPendingRestore(other.io, 'ff'.repeat(32))
+    expect(other.log).toEqual([])
+    expect(storage.items.size).toBe(1)
   })
 })

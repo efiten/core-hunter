@@ -33,7 +33,7 @@ import { TIME_WINDOWS, windowMs } from './timewindows.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
-import { buildGetContactByKey, parseContactReply, needsPathOverride, buildOverrideFrame, buildRestoreFrame, encodePendingRestore, decodePendingRestore, RESP_CODE_OK, RESP_CODE_ERR, RESTORE_STORAGE_KEY } from './contactpath.js'
+import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestore, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
@@ -1129,10 +1129,10 @@ function autoPingTick() {
 // The one directed probe a companion answers. Three things have to hold: our
 // companion has the target as a contact (else the firmware answers NOT_FOUND),
 // the target has us (Share my node name, #576), and the ask goes out zero-hop.
-// The last one is the contact-path dance from coredrive-rx: read the contact,
-// force its out_path_len to 0 for the ask, put it back right after, whether
-// the ask went out or not. Nothing here floods: an override that did not ack
-// means no ask this cycle.
+// The last one is the contact-path dance from coredrive-rx (contactpath.js):
+// read the contact, force its out_path_len to 0 for the ask, put it back right
+// after, whether the ask went out or not. Nothing here floods: an override that
+// did not ack means no ask this cycle.
 
 const CONTACT_TIMEOUT_MS = 4000
 const SENT_ACK_TIMEOUT_MS = 3000
@@ -1177,58 +1177,36 @@ function writeContact(frame) {
   return sendAndWait(frame, (bytes) => (bytes[0] === RESP_CODE_OK ? true : bytes[0] === RESP_CODE_ERR ? false : null), CONTACT_TIMEOUT_MS)
 }
 
-// restoreContact puts the original contact frame back. The crash-safety record
-// is cleared only once the restore acked; otherwise the next connect to this
-// same companion replays it (maybeReplayPendingRestore).
-async function restoreContact(pubkey, raw) {
-  const ok = await writeContact(buildRestoreFrame(raw))
-  if (!ok) { console.debug('[telemetry] restore did not ack, kept for the next connect:', idPrefix(pubkey)); return }
-  try {
-    const rec = decodePendingRestore(localStorage.getItem(RESTORE_STORAGE_KEY) || '')
-    if (rec && rec.self === state.rxPubkey && rec.target === pubkey) localStorage.removeItem(RESTORE_STORAGE_KEY)
-  } catch (_) {}
-}
+// The companion link the contact-path dance runs over.
+const contactIo = { getContact, writeContact }
 
-// maybeReplayPendingRestore runs once per connect, before any ask: a session
-// that died between an override and its restore left that contact zero-hop on
-// the companion. Replayed only against the same companion the record names.
+// A session that died between an override and its restore left that contact
+// zero-hop on the companion; this puts it back, once per connect.
 async function maybeReplayPendingRestore() {
-  let stored = null
-  try { stored = localStorage.getItem(RESTORE_STORAGE_KEY) } catch (_) { return }
-  if (!stored) return
-  const rec = decodePendingRestore(stored)
-  if (!rec) { try { localStorage.removeItem(RESTORE_STORAGE_KEY) } catch (_) {} return }
-  if (rec.self !== state.rxPubkey) return
-  await restoreContact(rec.target, rec.raw)
+  const restored = await replayPendingRestore(contactIo, state.rxPubkey)
+  if (restored === false) console.debug('[telemetry] replayed restore did not ack, kept for the next connect')
 }
 
 async function askTelemetry(pubkey) {
   if (!state.connected || !state.transport || state.telemetry.busy) return
   if (!FULL_PUBKEY.test(pubkey)) return   // the firmware looks the contact up by all 32 bytes
   state.telemetry.busy = true
-  let restore = null
   try {
-    const contact = await getContact(pubkey)
-    // Not a contact yet: our companion has not heard its advert, or has no
-    // slot. Nothing to ask through; the next advert fixes the first case.
-    if (contact && contact.found === false) { console.debug('[telemetry] not a contact yet:', idPrefix(pubkey)); return }
-    if (needsPathOverride(contact)) {
-      try { localStorage.setItem(RESTORE_STORAGE_KEY, encodePendingRestore(state.rxPubkey, pubkey, contact.raw)) } catch (_) {}
-      restore = contact.raw
-      const ok = await writeContact(buildOverrideFrame(contact.raw))
-      // No override, no ask: the firmware would flood it (#553, "geen flood").
-      if (!ok) { console.debug('[telemetry] path override did not ack, not asking:', idPrefix(pubkey)); return }
-    }
-    if (!state.connected || !state.transport) return
-    const ack = await sendAndWait(buildTelemetryRequest(pubkey), parseSentAck, SENT_ACK_TIMEOUT_MS)
-    if (!ack) return
-    // The frame went out: the same pulse and cue as every other transmission.
-    pulseDiscoverBtn()
-    sound.txBlip('trace')
-    if (ack.isFlood) { console.debug('[telemetry] asked over flood despite the override:', idPrefix(pubkey)); return }
-    state.telemetry.asks = rememberAsk(state.telemetry.asks, pubkey, Date.now())
+    const r = await askAtZeroHop(contactIo, state.rxPubkey, pubkey, async () => {
+      if (!state.connected || !state.transport) return
+      const ack = await sendAndWait(buildTelemetryRequest(pubkey), parseSentAck, SENT_ACK_TIMEOUT_MS)
+      if (!ack) return
+      // The frame went out: the same pulse and cue as every other transmission.
+      // The ask is remembered here, before the restore, so a reply that beats
+      // the restore's ack is still named after it.
+      pulseDiscoverBtn()
+      sound.txBlip('trace')
+      if (ack.isFlood) { console.debug('[telemetry] asked over flood despite the override:', idPrefix(pubkey)); return }
+      state.telemetry.asks = rememberAsk(state.telemetry.asks, pubkey, Date.now())
+    })
+    if (r.skipped) console.debug(`[telemetry] ${r.skipped}, not asking:`, idPrefix(pubkey))
+    if (r.restored === false) console.debug('[telemetry] restore did not ack, kept for the next connect:', idPrefix(pubkey))
   } finally {
-    if (restore) await restoreContact(pubkey, restore)
     state.telemetry.busy = false
   }
 }

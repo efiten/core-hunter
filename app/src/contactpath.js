@@ -95,8 +95,8 @@ export function buildRestoreFrame(raw) {
 }
 
 // Crash safety. If the app dies or BLE drops between the override write and
-// the restore, the contact is left zero-hop on the companion. app.js stores
-// this record before every override and clears it after a restore that
+// the restore, the contact is left zero-hop on the companion. askAtZeroHop
+// stores this record before every override and clears it after a restore that
 // acked: the original frame, which companion it belongs to (our own pubkey)
 // and which contact, so it is only ever replayed against the same companion.
 export const RESTORE_STORAGE_KEY = 'core-hunter-contact-restore'
@@ -119,4 +119,61 @@ export function decodePendingRestore(json) {
   const raw = new Uint8Array(CONTACT_FRAME_LEN)
   for (let i = 0; i < CONTACT_FRAME_LEN; i++) raw[i] = parseInt(rec.raw.substr(i * 2, 2), 16)
   return { self: rec.self.toLowerCase(), target: rec.target.toLowerCase(), raw }
+}
+
+// The dance itself. `io` is the companion link as app.js wires it:
+//   io.getContact(pubkey)  resolves with parseContactReply's reading of the
+//                          reply, or null when none came;
+//   io.writeContact(frame) resolves true on RESP_CODE_OK, false on
+//                          RESP_CODE_ERR, null when no reply came.
+// Neither reply carries a correlator, so the caller runs one dance at a time.
+// `ask` sends the one command the contact is held zero-hop for. The result is
+// { asked } and, when it did not ask, { skipped } saying why; `restored` says
+// whether the restore it wrote acked.
+export async function askAtZeroHop(io, self, target, ask) {
+  const contact = await io.getContact(target)
+  // Not a contact yet: our companion has not heard its advert, or has no slot.
+  if (contact && contact.found === false) return { asked: false, skipped: 'not a contact yet' }
+  if (!needsPathOverride(contact)) {
+    await ask()
+    return { asked: true }
+  }
+  try { localStorage.setItem(RESTORE_STORAGE_KEY, encodePendingRestore(self, target, contact.raw)) } catch (_) {}
+  // No override, no ask: the firmware would flood it (#553, "geen flood").
+  let out = { asked: false, skipped: 'the path override did not ack' }
+  try {
+    if (await io.writeContact(buildOverrideFrame(contact.raw))) {
+      await ask()
+      out = { asked: true }
+    }
+  } finally {
+    out.restored = await restoreContact(io, self, target, contact.raw)
+  }
+  return out
+}
+
+// restoreContact puts the original contact frame back. The record is cleared
+// only once the restore acked; otherwise the next connect to this same
+// companion replays it.
+async function restoreContact(io, self, target, raw) {
+  if (!(await io.writeContact(buildRestoreFrame(raw)))) return false
+  try {
+    const rec = decodePendingRestore(localStorage.getItem(RESTORE_STORAGE_KEY) || '')
+    if (rec && rec.self === self && rec.target === target) localStorage.removeItem(RESTORE_STORAGE_KEY)
+  } catch (_) {}
+  return true
+}
+
+// replayPendingRestore runs once per connect, before any ask: a session that
+// died between an override and its restore left that contact zero-hop on the
+// companion. Replayed only against the same companion the record names.
+// Resolves with the restore's ack, or null when there was nothing to replay.
+export async function replayPendingRestore(io, self) {
+  let stored = null
+  try { stored = localStorage.getItem(RESTORE_STORAGE_KEY) } catch (_) { return null }
+  if (!stored) return null
+  const rec = decodePendingRestore(stored)
+  if (!rec) { try { localStorage.removeItem(RESTORE_STORAGE_KEY) } catch (_) {} return null }
+  if (rec.self !== self) return null
+  return restoreContact(io, self, rec.target, rec.raw)
 }
