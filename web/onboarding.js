@@ -210,7 +210,7 @@ export function initOnboarding() {
   // each one reflows the bar and slides the controls the callouts point at. A
   // one-shot measurement is stale within a second of opening, so the tour
   // listens to the one bar watcher (#405, barwatch.js) while it is open; that
-  // covers a resize as well, since a narrower window rewraps the bar too.
+  // covers a resize as well, since the watcher listens to the window's too.
   let pending = 0
   const schedule = () => {
     if (pending) return

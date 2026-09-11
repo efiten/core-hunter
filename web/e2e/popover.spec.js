@@ -69,6 +69,23 @@ test('an open panel follows the toggle when a resize rewraps the bar', async ({ 
   expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
 })
 
+// #405: the bar watcher took over from the panels' window.resize listeners,
+// and a window that only changes height moves neither the bar nor a control
+// in it. The panel is placed against the viewport all the same, so it has to
+// be placed again. Measured without that: the phone's time picker kept its
+// 616px bottom edge in a 520px window.
+test('an open panel is placed again when only the window height changes', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 })
+  await page.goto('/')
+  // The status line lands late and moves the controls after it, which places
+  // the panel again by itself. Wait for it, so the height change is the only
+  // thing left that can.
+  await expect(page.locator('#status')).not.toBeEmpty()
+  await openPicker(page, '#tr-toggle', '#time-picker')
+  await page.setViewportSize({ width: 412, height: 520 })
+  await expect(async () => expectOnScreen(page, '#time-picker')).toPass({ timeout: 5000 })
+})
+
 // #bar carries backdrop-filter, which per Filter Effects 2 makes it the
 // containing block for its fixed-position descendants — the panels. Measured in
 // this Chromium, the rule is applied for backdrop-filter as well as for filter:

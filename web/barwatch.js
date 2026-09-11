@@ -16,6 +16,14 @@
 // writes attributes inside the bar, which the MutationObserver reports, but
 // a fixed-position panel is out of flow and moves no control.
 //
+// The window's size is part of that comparison, and its resize event is a
+// third trigger. The panels are placed against the viewport, and a window
+// that only changes height moves nothing in the bar: without it, an open
+// time picker on a phone kept its 616px bottom edge in a 520px window. The
+// event also gets a panel placed in the frame the resize lands in, as the
+// window.resize listeners this replaced did; a check the ResizeObserver asks
+// for runs a frame later.
+//
 // #map is deliberately NOT a listener. It follows the bar on window.resize
 // only (map.js setMapTop): invalidateSize moves the centre by half the size
 // change, so following every late arrival during load walks the neutral
@@ -28,11 +36,12 @@ const listeners = new Set()
 let scheduled = false
 let last = null
 
-// The bar's geometry as one string: its size, and each in-flow child's box.
-// The controls sit in those children; a panel is a fixed descendant and out
-// of flow, so it is not in the signature, which is the point (above).
-export function barSignature(bar) {
-  const parts = [bar.offsetWidth, bar.offsetHeight]
+// The geometry as one string: the window's size, the bar's, and each in-flow
+// child's box. The controls sit in those children; a panel is a fixed
+// descendant and out of flow, so it is not in the signature, which is the
+// point (above).
+export function barSignature(bar, win) {
+  const parts = [win.innerWidth, win.innerHeight, bar.offsetWidth, bar.offsetHeight]
   for (const c of bar.children) parts.push(c.offsetLeft, c.offsetTop, c.offsetWidth, c.offsetHeight)
   return parts.join(',')
 }
@@ -43,13 +52,14 @@ export function onBarChange(fn) {
   return () => listeners.delete(fn)
 }
 
-// startBarWatch attaches the two observers to the bar. The constructors and
-// requestAnimationFrame are parameters so the unit suite can drive it.
-export function startBarWatch(bar, { Resize = globalThis.ResizeObserver, Mutation = globalThis.MutationObserver, raf = (cb) => requestAnimationFrame(cb) } = {}) {
-  last = barSignature(bar)
+// startBarWatch attaches the two observers to the bar and a resize listener
+// to the window. The constructors, requestAnimationFrame and the window are
+// parameters so the unit suite can drive it.
+export function startBarWatch(bar, { Resize = globalThis.ResizeObserver, Mutation = globalThis.MutationObserver, raf = (cb) => requestAnimationFrame(cb), win = globalThis } = {}) {
+  last = barSignature(bar, win)
   const check = () => {
     scheduled = false
-    const sig = barSignature(bar)
+    const sig = barSignature(bar, win)
     if (sig === last) return
     last = sig
     for (const fn of listeners) fn()
@@ -59,7 +69,8 @@ export function startBarWatch(bar, { Resize = globalThis.ResizeObserver, Mutatio
   if (ro) ro.observe(bar)
   const mo = Mutation ? new Mutation(schedule) : null
   if (mo) mo.observe(bar, { childList: true, subtree: true, characterData: true, attributes: true })
-  return { stop() { if (ro) ro.disconnect(); if (mo) mo.disconnect() } }
+  win.addEventListener('resize', schedule)
+  return { stop() { if (ro) ro.disconnect(); if (mo) mo.disconnect(); win.removeEventListener('resize', schedule) } }
 }
 
 export function _resetForTests() { listeners.clear(); scheduled = false; last = null }
