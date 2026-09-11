@@ -122,6 +122,30 @@ describe('resolveName asks every resolver of the SF and refuses disagreement (#4
     answers({ 'nl.example': { ambiguous: true }, 'nl2.example': { name: 'Only-Here', ambiguous: false } })
     expect(await resolveName('2bed', 7)).toBe('Only-Here')
   })
+  it('takes the position from the first agreeing registry in resolver order that has one, whichever answers first', async () => {
+    const NL3 = { label: 'NL3', sf: 7, url: 'https://nl3.example/resolve' }
+    setConfig({ resolvers: [NL, NL2, NL3] })
+    const body = {
+      'nl.example': { name: 'Repeater-Zuid', ambiguous: false },
+      'nl2.example': { name: 'Repeater-Zuid', ambiguous: false, lat: 51.8, lon: 5.8 },
+      'nl3.example': { name: 'Repeater-Zuid', ambiguous: false, lat: 52.1, lon: 4.9 },
+    }
+    const release = {}
+    const arrived = []
+    vi.stubGlobal('fetch', vi.fn((url) => new Promise((resolve) => {
+      const host = new URL(url).host
+      release[host] = () => resolve({ ok: true, json: async () => { arrived.push(host); return body[host] } })
+    })))
+    const flush = () => new Promise((r) => setTimeout(r, 0))
+    const pending = resolveName('2be1', 7)
+    // The answers arrive in reverse resolver order.
+    release['nl3.example'](); await flush()
+    release['nl2.example'](); await flush()
+    release['nl.example']()
+    expect(await pending).toBe('Repeater-Zuid')
+    expect(arrived).toEqual(['nl3.example', 'nl2.example', 'nl.example'])
+    expect(cachedPosition('2be1')).toEqual({ lat: 51.8, lon: 5.8 })
+  })
   it('asks only the resolvers of the companion SF, and asks them all at once', async () => {
     setConfig({ resolvers: [BE, NL, NL2] })
     answers({ 'be.example': { name: 'Wrong-Mesh', ambiguous: false }, 'nl.example': { ambiguous: true }, 'nl2.example': { ambiguous: true } })

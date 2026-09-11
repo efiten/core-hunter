@@ -1,8 +1,9 @@
 // On-the-fly node-name resolution: per heard prefix/pubkey, requests are sent
-// to each configured CoreScope resolver in order. Resolvers are configured in
-// config.json as a `resolvers` array (each { label?, sf?, url }). A bare
-// `resolveUrl` is supported for back-compat (synthesized to a one-element
-// resolvers array by normalizeConfig). Cached in memory for the session, so
+// at once to every configured CoreScope resolver of the companion's SF
+// (resolversFor). Resolvers are configured in config.json as a `resolvers`
+// array (each { label?, sf?, url }). A bare `resolveUrl` is supported for
+// back-compat (synthesized to a one-element resolvers array by
+// normalizeConfig). Cached in memory for the session, so
 // each distinct node is fetched at most once. A name is returned only when
 // every registry of the companion's SF that knows the prefix agrees on it
 // (#452); ambiguous, not-found or disagreeing → '' (caller shows the prefix).
@@ -142,23 +143,27 @@ export async function resolveName(key, companionSf /* = undefined */) {
 
   const lookup = (async () => {
     let anyNetworkError = false;
-    const hits = [];
-    await Promise.all(asked.map(async (resolver) => {
+    // Promise.all keeps the order of `asked`, whatever order the answers
+    // arrive in, so `hits` is in resolver order, never in response order.
+    const answers = await Promise.all(asked.map(async (resolver) => {
       try {
         const r = await fetch(resolver.url + '?prefix=' + encodeURIComponent(k));
         // An HTTP error from this resolver is "no result" from it.
-        if (!r.ok) return;
+        if (!r.ok) return null;
         const j = await r.json();
-        if (j && !j.ambiguous && j.name) hits.push(j);
+        return j && !j.ambiguous && j.name ? j : null;
       } catch (e) {
         // Transient network error — mark so we don't cache '' at the end.
         anyNetworkError = true;
+        return null;
       }
     }));
+    const hits = answers.filter(Boolean);
     const { name, refused } = consensusName(hits.map(j => j.name));
     if (name) {
-      // Name and position are cached together (#197): the first hit that
-      // carries a position supplies it.
+      // Name and position are cached together (#197). The position comes from
+      // the first agreeing registry in resolver order that carries one, so
+      // the same answers give the same position on every run.
       const withPos = hits.find(j => positionOf(j));
       cache.set(k, { name, pos: withPos ? positionOf(withPos) : null });
       return name;
