@@ -634,10 +634,9 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
   }
 })
 
-// #465: a hex cell's hover line is a closeless popup that follows the pointer,
-// since MapLibre has no tooltip. Real pointer movement, because a synthetic
-// mousemove never reaches the WebGL canvas's handlers.
-test('hovering a hex cell shows its best RSSI, count and hunters', async ({ page }) => {
+// One hex cell around (51, 4) in hex mode, settled, for the hover and tap
+// tests below. Returns where (51, 4) is on the page.
+async function openOnOneCell(page) {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
@@ -647,14 +646,42 @@ test('hovering a hex cell shows its best RSSI, count and hunters', async ({ page
   ] } }))
   await page.goto('/?mode=hex&lat=51&lon=4&z=14')
   await mapSettled(page)
+  await expect.poll(() => page.evaluate(() => window.__featureCount('hex'))).toBe(1)
+  const box = await page.locator('#map').boundingBox()
+  const pt = await page.evaluate(() => window.__mapProject(51, 4))
+  return { x: box.x + pt.x, y: box.y + pt.y }
+}
+
+// #465: a hex cell's hover line is a closeless popup that follows the pointer,
+// since MapLibre has no tooltip. Real pointer movement, because a synthetic
+// mousemove never reaches the WebGL canvas's handlers.
+test('hovering a hex cell shows its best RSSI, count and hunters', async ({ page }) => {
+  const cell = await openOnOneCell(page)
   await expect(async () => {
-    const box = await page.locator('#map').boundingBox()
-    const pt = await page.evaluate(() => window.__mapProject(51, 4))
-    await page.mouse.move(box.x + pt.x + 2, box.y + pt.y + 2)
-    await page.mouse.move(box.x + pt.x, box.y + pt.y)
+    await page.mouse.move(cell.x + 2, cell.y + 2)
+    await page.mouse.move(cell.x, cell.y)
     await expect(page.locator('.ch-hover .maplibregl-popup-content')).toContainText('best RSSI -85 · 7 pts · 2 hunters', { timeout: 1000 })
   }).toPass()
   // Leaving the cell takes the line away.
   await page.mouse.move(5, 5)
   await expect(page.locator('.ch-hover')).toHaveCount(0)
+})
+
+// A phone has no hover, so the cell's line has to answer a tap, as Leaflet's
+// tooltip did (#465). It does because the browser follows a tap with a
+// compatibility mousemove; anything that suppresses those on the map (a
+// preventDefault on touchend, say) leaves a cell saying nothing on a phone.
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true })
+
+  test('tapping a hex cell shows the line hovering shows', async ({ page }) => {
+    const cell = await openOnOneCell(page)
+    await expect(async () => {
+      await page.touchscreen.tap(cell.x, cell.y)
+      await expect(page.locator('.ch-hover .maplibregl-popup-content')).toContainText('best RSSI -85 · 7 pts · 2 hunters', { timeout: 1000 })
+    }).toPass()
+    // A tap off the cell takes the line away.
+    await page.touchscreen.tap(cell.x + 150, cell.y + 150)
+    await expect(page.locator('.ch-hover')).toHaveCount(0)
+  })
 })
