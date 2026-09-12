@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode } from './fixtures.js'
+import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, fillSender } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -44,6 +44,15 @@ test('a shared URL reproduces the exact view (theme, layer mode, sender, zoom)',
   await expectMode(page, 'hex')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
   expect(await page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(15)
+})
+
+// #465: MapLibre zooms between whole levels, so a link shared from a
+// wheel-zoomed view carries the fraction and reopens at that scale, both in
+// what the map shows and in the URL it writes back.
+test('a shared link with a fractional zoom reopens at that zoom and keeps it in the URL', async ({ page }) => {
+  await page.goto('/?lat=51&lon=4&z=12.4')
+  await expect.poll(() => page.evaluate(() => window.__mapZoom && window.__mapZoom())).toBe(12.4)
+  await expect(page).toHaveURL(/[?&]z=12\.4(&|$)/)
 })
 
 test('settings survive a reload via localStorage (no URL params)', async ({ page }) => {
@@ -261,7 +270,7 @@ test('discover sender: prefix ID is resolved to a name via the API, popup shows 
   await expect(async () => {
     const box = await page.locator('#map').boundingBox()
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await expect(page.locator('.leaflet-popup-content')).toContainText('NEO7HI · Repeater', { timeout: 1000 })
+    await expect(page.locator('.maplibregl-popup-content')).toContainText('NEO7HI · Repeater', { timeout: 1000 })
   }).toPass()
 })
 
@@ -309,10 +318,10 @@ test('CoreScope relays checkbox (off by default) draws observer points with reso
 
   await mapSettled(page)
   await expect(async () => {
-    await page.locator('path.leaflet-interactive').first().click({ force: true })
-    await expect(page.locator('.leaflet-popup-content')).toContainText('relay BE-HSS-DinX', { timeout: 1000 })
+    await clickMapAt(page, 51, 4)
+    await expect(page.locator('.maplibregl-popup-content')).toContainText('relay BE-HSS-DinX', { timeout: 1000 })
   }).toPass()
-  await expect(page.locator('.leaflet-popup-content')).toContainText('Erwin Mobile')
+  await expect(page.locator('.maplibregl-popup-content')).toContainText('Erwin Mobile')
 })
 
 test('Locate from a CoreScope relay popup uses observer-points (heard_key) for that node', async ({ page }) => {
@@ -340,7 +349,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   const locateReq = page.waitForRequest((r) => r.url().includes('/observer-points') && r.url().includes('heard_key=1d6f'))
   await mapSettled(page)
   await expect(async () => {
-    await page.locator('path.leaflet-interactive').first().click({ force: true })
+    await clickMapAt(page, 51, 4)
     await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })
   }).toPass()
   await page.locator('.lc-locate').click()
@@ -367,14 +376,15 @@ test('unchecking a CS layer clears it even if a name-resolution redraw is in fli
   })
   await page.goto('/')
 
+  const relays = () => page.evaluate(() => window.__featureCount('observer-rxlog'))
   await setFilter(page, '#cs-relays')
-  await expect(page.locator('path.leaflet-interactive')).toHaveCount(1) // point drawn
+  await expect.poll(relays).toBe(1) // point drawn
   await setFilter(page, '#cs-relays', false)
-  await expect(page.locator('path.leaflet-interactive')).toHaveCount(0) // cleared now
+  await expect.poll(relays).toBe(0) // cleared now
   await expect(page).toHaveURL((u) => !u.searchParams.has('rel'))
   // Wait past the resolver delay: the pending redraw must NOT re-add the point.
   await page.waitForTimeout(700)
-  await expect(page.locator('path.leaflet-interactive')).toHaveCount(0)
+  expect(await relays()).toBe(0)
 })
 
 test('Clear button resets filters, drops CS layers, and leaves the URL clean', async ({ page }) => {
@@ -391,7 +401,10 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
   // The panel dimensions too (#539): Clear's label counts them, so it has to
   // clear them — before this it silently left every chip and checkbox standing.
   await expect(page.locator('#f-direct')).not.toBeChecked()
-  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(0)
+  // "Everything" is the All chip lit and nothing else since #564, so an empty
+  // active set would now be a different state, not the cleared one.
+  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(1)
+  await expect(page.locator('#f-types .f-chip.active')).toHaveAttribute('data-type', 'all')
   await expect(page.locator('#filter-pill-count')).toBeHidden()
   await closeFilters(page)
   await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv')
@@ -401,14 +414,14 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
 test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
   await page.goto('/')
-  await page.fill('#f-sender', '7b0e24700e0c0d3e')
+  await fillSender(page, '7b0e24700e0c0d3e', { close: false })
   await expect(page.locator('#f-sender')).toHaveAttribute('title', 'NEO7HI')
 })
 
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/?mode=points') // points requests — the cold default is hex (#141)
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))
-  await page.fill('#f-sender', '4a')
+  await fillSender(page, '4a')
   await req // only resolves if a points request carrying sender=4a was issued
 })
 
@@ -452,25 +465,28 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
   })
   await page.goto('/')
   await setFilter(page, '#cs-relays')
-  await expect(page.locator('path.leaflet-interactive')).toHaveCount(1, { timeout: 10000 })
+  await expect.poll(() => page.evaluate(() => window.__featureCount('observer-rxlog')), { timeout: 10000 }).toBe(1)
+  await mapSettled(page)
 
   // Open the popup while the lookup is still in flight. Pinned as "not yet
   // resolved", not merely "contains the id": the id line is present either
   // way, so on a slow machine the redraw could already have happened and every
   // later assertion would pass for the wrong reason.
-  await page.locator('path.leaflet-interactive').click()
-  await expect(page.locator('.leaflet-popup-content')).toContainText('relay 1d6f')
-  await expect(page.locator('.leaflet-popup-content')).not.toContainText('BE-HSS-DinX')
+  await expect(async () => {
+    await clickMapAt(page, 51, 4)
+    await expect(page.locator('.maplibregl-popup-content')).toContainText('relay 1d6f', { timeout: 1000 })
+  }).toPass()
+  await expect(page.locator('.maplibregl-popup-content')).not.toContainText('BE-HSS-DinX')
 
   // Past the resolver delay the popup is still there — this is the regression.
   await page.waitForTimeout(1200)
-  await expect(page.locator('.leaflet-popup-content')).toBeVisible()
+  await expect(page.locator('.maplibregl-popup-content')).toBeVisible()
 
   // ...and the held redraw runs on close, so the name is not lost either.
-  await page.locator('.leaflet-popup-close-button').click()
+  await page.locator('.maplibregl-popup-close-button').click()
   await expect(async () => {
-    await page.locator('path.leaflet-interactive').click()
-    await expect(page.locator('.leaflet-popup-content')).toContainText('BE-HSS-DinX', { timeout: 1000 })
+    await clickMapAt(page, 51, 4)
+    await expect(page.locator('.maplibregl-popup-content')).toContainText('BE-HSS-DinX', { timeout: 1000 })
   }).toPass({ timeout: 10000 })
 })
 
@@ -504,7 +520,7 @@ async function flipTheme(page) {
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', was)
 }
 
-test("Leaflet's own controls follow the theme instead of keeping their defaults", async ({ page }) => {
+test("the map's own controls follow the theme instead of keeping their defaults", async ({ page }) => {
   // #427: neither stylesheet had a rule for them, so the zoom buttons and the
   // attribution strip stayed Leaflet white (#fff / rgba(255,255,255,.8)) on an
   // #0b0e14 page -- the least important element on screen with the highest
@@ -519,8 +535,8 @@ test("Leaflet's own controls follow the theme instead of keeping their defaults"
   const read = () => page.evaluate(() => {
     const root = getComputedStyle(document.documentElement)
     const px = (v) => root.getPropertyValue(v).trim()
-    const zoom = getComputedStyle(document.querySelector('.leaflet-control-zoom a'))
-    const attr = getComputedStyle(document.querySelector('.leaflet-control-attribution'))
+    const zoom = getComputedStyle(document.querySelector('.maplibregl-ctrl-zoom-in'))
+    const attr = getComputedStyle(document.querySelector('.maplibregl-ctrl-attrib'))
     // Whitespace-stripped: the token ships as rgba(18,23,33,0.92) and
     // getComputedStyle normalises it to rgba(18, 23, 33, 0.92). Same colour,
     // different formatting.
@@ -535,7 +551,7 @@ test("Leaflet's own controls follow the theme instead of keeping their defaults"
     const v = await read()
     expect(v.zoomBg, `zoom background in ${v.theme}`).toBe(v.surface)
     expect(v.attrBg, `attribution background in ${v.theme}`).toBe(v.surface)
-    expect(v.zoomBg, `zoom must not be Leaflet white in ${v.theme}`).not.toBe('rgb(255,255,255)')
+    expect(v.zoomBg, `zoom must not be the library's white in ${v.theme}`).not.toBe('rgb(255,255,255)')
     await flipTheme(page)
   }
 })
@@ -562,12 +578,12 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
 
   const forceHover = async (on) => {
     const { root } = await cdp.send('DOM.getDocument')
-    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.leaflet-control-zoom a' })
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.maplibregl-ctrl-zoom-in' })
     await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: on ? ['hover'] : [] })
   }
 
   const swatch = () => page.evaluate(() => {
-    const el = document.querySelector('.leaflet-control-zoom a')
+    const el = document.querySelector('.maplibregl-ctrl-zoom-in')
     const cs = getComputedStyle(el)
     return { bg: cs.backgroundColor, fg: cs.color, page: getComputedStyle(document.body).backgroundColor,
       theme: document.documentElement.getAttribute('data-theme') || 'dark' }
@@ -609,14 +625,66 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
     // rule and the hover rule have equal specificity, so this is decided by
     // which is written last.
     await forceHover(false)
-    await page.evaluate(() => document.querySelector('.leaflet-control-zoom-in').classList.add('leaflet-disabled'))
+    await page.evaluate(() => { document.querySelector('.maplibregl-ctrl-zoom-in').disabled = true })
     const disabledRest = await swatch()
     await forceHover(true)
     const disabledHover = await swatch()
     expect(disabledHover.bg, `disabled hover in ${rest.theme}`).toBe(disabledRest.bg)
-    await page.evaluate(() => document.querySelector('.leaflet-control-zoom-in').classList.remove('leaflet-disabled'))
+    await page.evaluate(() => { document.querySelector('.maplibregl-ctrl-zoom-in').disabled = false })
 
     await forceHover(false)
     await flipTheme(page)
   }
+})
+
+// One hex cell around (51, 4) in hex mode, settled, for the hover and tap
+// tests below. Returns where (51, 4) is on the page.
+async function openOnOneCell(page) {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
+  const ring = [[3.99, 50.995], [4.01, 50.995], [4.015, 51], [4.01, 51.005], [3.99, 51.005], [3.985, 51], [3.99, 50.995]]
+  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { best_rssi: -85, count: 7, hunters: ['a', 'b'] } },
+  ] } }))
+  await page.goto('/?mode=hex&lat=51&lon=4&z=14')
+  await mapSettled(page)
+  await expect.poll(() => page.evaluate(() => window.__featureCount('hex'))).toBe(1)
+  const box = await page.locator('#map').boundingBox()
+  const pt = await page.evaluate(() => window.__mapProject(51, 4))
+  return { x: box.x + pt.x, y: box.y + pt.y }
+}
+
+// #465: a hex cell's hover line is a closeless popup that follows the pointer,
+// since MapLibre has no tooltip. Real pointer movement, because a synthetic
+// mousemove never reaches the WebGL canvas's handlers.
+test('hovering a hex cell shows its best RSSI, count and hunters', async ({ page }) => {
+  const cell = await openOnOneCell(page)
+  await expect(async () => {
+    await page.mouse.move(cell.x + 2, cell.y + 2)
+    await page.mouse.move(cell.x, cell.y)
+    await expect(page.locator('.ch-hover .maplibregl-popup-content')).toContainText('best RSSI -85 · 7 pts · 2 hunters', { timeout: 1000 })
+  }).toPass()
+  // Leaving the cell takes the line away.
+  await page.mouse.move(5, 5)
+  await expect(page.locator('.ch-hover')).toHaveCount(0)
+})
+
+// A phone has no hover, so the cell's line has to answer a tap, as Leaflet's
+// tooltip did (#465). It does because the browser follows a tap with a
+// compatibility mousemove; anything that suppresses those on the map (a
+// preventDefault on touchend, say) leaves a cell saying nothing on a phone.
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true })
+
+  test('tapping a hex cell shows the line hovering shows', async ({ page }) => {
+    const cell = await openOnOneCell(page)
+    await expect(async () => {
+      await page.touchscreen.tap(cell.x, cell.y)
+      await expect(page.locator('.ch-hover .maplibregl-popup-content')).toContainText('best RSSI -85 · 7 pts · 2 hunters', { timeout: 1000 })
+    }).toPass()
+    // A tap off the cell takes the line away.
+    await page.touchscreen.tap(cell.x + 150, cell.y + 150)
+    await expect(page.locator('.ch-hover')).toHaveCount(0)
+  })
 })

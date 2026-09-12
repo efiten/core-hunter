@@ -1,6 +1,7 @@
 import { SOUND_MODES } from './sound.js'
 import { VIEW_STATES, viewKey } from './maplayers.js'
 import { THEME_PREFS } from './theme.js'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 
 // readStored returns the raw stored value for key, or null when it is absent
 // or storage is unavailable. Reading localStorage throws SecurityError where
@@ -20,6 +21,13 @@ function readStored(key) {
 export function loadAttenuator() {
   const v = Number(readStored('core-hunter-attenuator'))
   return v === -10 || v === -20 || v === -30 ? v : 0
+}
+
+// Terrain exaggeration (#396), one of EXAGGERATION_STEPS; anything else is
+// the decided default (#394). Display-only, like the attenuator.
+export function loadExaggeration() {
+  const v = Number(readStored('core-hunter-exaggeration'))
+  return EXAGGERATION_STEPS.includes(v) ? v : DEFAULT_EXAGGERATION
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
@@ -43,6 +51,13 @@ export function loadSoundMode() {
 export function loadThemePref() {
   const v = readStored('core-hunter-theme')
   return THEME_PREFS.includes(v) ? v : 'system'
+}
+
+// Share my node name (#576): the first setting that puts the hunter's own
+// identity on air. Off unless the stored value says on, exactly: a missing or
+// malformed slot must never read as "share".
+export function loadShareName() {
+  return readStored('core-hunter-share-name') === '1'
 }
 
 // Index into VIEW_STATES for the persisted view (#258). No/corrupt stored
@@ -86,9 +101,13 @@ export function loadLegacyChangelogAck() {
 // button reads as noise, and the two mean the same thing to the person looking
 // at it — there is something behind this button you have not dealt with. What
 // it is, is one tap away, and the tab carries its own dot to say which.
-export function isSettingsActive({ attenuatorDb, unseenChangelog } = {}) {
+export function isSettingsActive({ attenuatorDb, unseenChangelog, shareName, exaggeration } = {}) {
   if (attenuatorDb) return true
   if (unseenChangelog) return true
+  // Sharing the node name is a non-default that transmits (#576), so it is
+  // exactly what the dot is for.
+  if (shareName === true) return true
+  if (exaggeration != null && exaggeration !== DEFAULT_EXAGGERATION) return true
   return false
 }
 

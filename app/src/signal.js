@@ -103,3 +103,40 @@ export function withAlpha(color, alpha) {
   const b = parseInt(h.slice(4, 6), 16)
   return `rgba(${r},${g},${b},${Number(a.toFixed(3))})`
 }
+
+// tintOver pre-mixes a colour over a background at an alpha, as the GPU
+// composites the flat layer's tier opacity over the basemap, and returns the
+// opaque result (#412). The 3D bars use it so a bar carries the same tint its
+// cell has, without translucency: a translucent extrusion compounds its own
+// faces and z-fights its neighbours' shared walls (#402), an opaque one does
+// not. Accepts the #rgb / #rrggbb the tokens resolve to; anything else is
+// returned unchanged rather than guessed at.
+export function tintOver(color, background, alpha) {
+  const a = Math.max(0, Math.min(1, Number(alpha)))
+  const parse = (c) => {
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c || '').trim())
+    if (!m) return null
+    const h = m[1].length === 3 ? m[1].split('').map((x) => x + x).join('') : m[1]
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+  }
+  const fg = parse(color), bg = parse(background)
+  if (!fg || !bg || !Number.isFinite(a)) return color
+  const hex = (v) => Math.round(v).toString(16).padStart(2, '0')
+  return '#' + fg.map((v, i) => hex(v * a + bg[i] * (1 - a))).join('')
+}
+
+// pillarTint: what a 3D bar of this tier is painted, opaque: the tier colour
+// at the tier's opacity over the theme background, which is what the flat
+// cell under it composites to. Measured 2026-09-05 (dark theme): a faint bar
+// used to stand at 85% solid purple on a 19% tint; with this it is within a
+// few levels of its cell at every tier.
+export function pillarTint(tier, tokenColor, background) {
+  return tintOver(tokenColor, background, fillOpacity(tier))
+}
+
+// The style light MapLibre shades every extrusion face with. Its default
+// (intensity 0.5) darkened a hot bar 7% against its cell; 0.15 measured 2%,
+// and buildings-3d keeps enough shading to read as shapes (#412, measured
+// 2026-09-05 in the browser at both). Set from addOverlays on every style
+// load, since setStyle drops it.
+export const EXTRUSION_LIGHT_INTENSITY = 0.15
