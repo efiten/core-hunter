@@ -1,4 +1,4 @@
-import { test, expect, openFilters, closeFilters, setFilter } from './fixtures.js'
+import { test, expect, openFilters, closeFilters, setNodePos } from './fixtures.js'
 
 // #423: web/style.css had no @media rule, so #bar wrapped ~20 controls into six
 // rows on a phone and took roughly 45% of the viewport before the map got any.
@@ -173,7 +173,7 @@ test('an open panel paints over the Locate readout and the node-position notice 
   await page.setViewportSize({ width: 375, height: 740 })
   await page.route('**/api/nodes/positions*', (r) => r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
   await page.goto('/?mode=points')
-  await setFilter(page, '#f-nodepos', true)
+  await setNodePos(page, '1')
   await expect(page.locator('#nodepos-key')).toContainText('Node registry unreachable', { timeout: 10000 })
   await page.waitForFunction(() => typeof window.__locateRender === 'function')
   await page.evaluate(() => window.__locateRender([
@@ -207,5 +207,5 @@ test('an open panel paints over the Locate readout and the node-position notice 
   await openFilters(page)
   await foot.scrollIntoViewIfNeeded()
   await page.click('#clear-filters', { timeout: 3000 })
-  await expect(page.locator('#f-nodepos')).not.toBeChecked()
+  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true')
 })
