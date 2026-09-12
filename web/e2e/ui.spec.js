@@ -391,7 +391,10 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
   // The panel dimensions too (#539): Clear's label counts them, so it has to
   // clear them — before this it silently left every chip and checkbox standing.
   await expect(page.locator('#f-direct')).not.toBeChecked()
-  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(0)
+  // "Everything" is the All chip lit and nothing else since #564, so an empty
+  // active set would now be a different state, not the cleared one.
+  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(1)
+  await expect(page.locator('#f-types .f-chip.active')).toHaveAttribute('data-type', 'all')
   await expect(page.locator('#filter-pill-count')).toBeHidden()
   await closeFilters(page)
   await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv')
