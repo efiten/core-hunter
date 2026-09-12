@@ -14,6 +14,10 @@ const BLOCKED = [
   '**/*.basemaps.cartocdn.com/**',
   '**/basemaps.cartocdn.com/**',
   '**/corsproxy.on8ar.eu/**',
+  // The DEM host (#595): terrain tiles would otherwise be fetched for real
+  // in every 3D test. Blocked, the map stays flat and the hillshade layer is
+  // still mounted, which is what the specs read.
+  '**/s3.amazonaws.com/elevation-tiles-prod/**',
 ]
 
 // Leaflet is the one third-party request that must still resolve — `L` is
@@ -27,7 +31,7 @@ const BLOCKED = [
 // promise (not the body) is cached so concurrent tests share the one fetch,
 // and a failure is not cached — the next test retries rather than inheriting
 // a permanent empty Leaflet.
-const CDN = ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css']
+const CDN = ['https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js', 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css']
 const cdnCache = new Map()
 function cdnBody(url) {
   if (!cdnCache.has(url)) {
@@ -49,6 +53,12 @@ export const test = base.extend({
       try { localStorage.setItem('ch-onboarding-seen', '1') } catch (_) {}
     })
     for (const pattern of BLOCKED) await page.route(pattern, (r) => r.abort())
+    // The hosted basemap style (#465): answered here with a bare background
+    // style, so the map's 'load' fires at once and offline, instead of the
+    // 12 s fallback timer deciding when the data layers may mount. Tiles,
+    // glyphs and sprites are never asked for, since the bare style has none.
+    await page.route('**/tiles.openfreemap.org/**', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#111' } }] }) }))
     for (const url of CDN) {
       const contentType = url.endsWith('.css') ? 'text/css' : 'application/javascript'
       await page.route(url, async (route) => {
@@ -63,6 +73,15 @@ export const test = base.extend({
     await use(page)
   },
 })
+
+// Click the map at a coordinate. Points and cells are drawn on a canvas since
+// #465 (as they were on Leaflet's canvas renderer), so there is no element to
+// click; the page's __mapProject hook says where the coordinate is.
+export async function clickMapAt(page, lat, lon) {
+  const box = await page.locator('#map').boundingBox()
+  const pt = await page.evaluate(([la, lo]) => window.__mapProject(la, lo), [lat, lon])
+  await page.mouse.click(box.x + pt.x, box.y + pt.y)
+}
 
 // Wait until the map stops moving. Several specs click a map feature by pixel
 // position (canvas points have no DOM node to target), which silently misses
@@ -165,10 +184,34 @@ export async function closeFilters(page) {
   await page.keyboard.press('Escape')
 }
 
+// The typed prefix search moved off the bar into the panel's Sender id group
+// (#561), so a test drives it the way a reader does: open Filters, type, close.
+// `close` is opt-out for the specs that go on to read the field back.
+export async function fillSender(page, value, { close = true } = {}) {
+  await openFilters(page)
+  await page.fill('#f-sender', value)
+  if (close) await closeFilters(page)
+}
+
+// Same move for the ignore picker (#561/#564): the bar carried it, the panel
+// owns it now. Returns with the picker open and the panel behind it.
+export async function openIgnorePicker(page) {
+  await openFilters(page)
+  await openPicker(page, '#ig-toggle', '#ignore-picker')
+}
+
 // Clicks one of the panel's chips (type or id-class) by its data attribute.
 export async function clickPanelChip(page, selector) {
   await openFilters(page)
   await page.click(selector)
+  await closeFilters(page)
+}
+
+// Sets the Node positions stop (#603): '' off, '1' positions, 'reach'
+// positions + reach. A segmented control in the panel, like the layer mode.
+export async function setNodePos(page, stop) {
+  await openFilters(page)
+  await page.click(`#nodepos-seg button[data-nodepos="${stop}"]`)
   await closeFilters(page)
 }
 
