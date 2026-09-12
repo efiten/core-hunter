@@ -550,7 +550,7 @@ describe('receptions ticker CSS parity (#322)', () => {
       expect(found, `${selector} exists`).toBeTruthy()
       return found
     }
-    for (const selector of ['.rx-hd', '.rx-list', '.rx-ln', '.rx-tm', '.rx-rs', '.rx-gt']) {
+    for (const selector of ['.rx-hd', '.rx-list', '.rx-ln', '.rx-tm', '.rx-rs', '.rx-gt', '.rx-id']) {
       expect(decls(web, selector), selector).toEqual(decls(app, selector))
     }
     // The fold button's box, which the app declares alongside its close button.
@@ -669,6 +669,27 @@ describe('receptions ticker CSS parity (#322)', () => {
     expect(webTicker.RX_COLLAPSE_STOPS).toEqual(appTicker.RX_COLLAPSE_STOPS)
     for (let count = 0; count <= 60; count++) {
       expect(webTicker.collapseLevels(count), `${count} receptions`).toEqual(appTicker.collapseLevels(count))
+    }
+  })
+
+  // #451: each module carries its own rule for what fills the id column, and
+  // the .rx-id declarations above say nothing about it. The two disagreed on a
+  // channel_name sender, whose id and label are one decrypted string: the app
+  // printed "Spamme" beside "Spammer", the map did not. Run both copies over a
+  // sender for every branch of the rule. No label here comes from the map's
+  // name cache, which the app does not read.
+  it('fills the id column by the same rule on both surfaces', () => {
+    webNames._resetNameCache()
+    const senders = [
+      { sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: 'repeater-3' },
+      { sender_kind: 'relay', sender_id: 'a1b2f3c4d5e6', sender_label: '' },
+      { sender_kind: 'relay', sender_id: null, sender_label: null },
+      { sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer' },
+      { sender_kind: 'path_hash', sender_id: '77', sender_label: '77' },
+      { sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' },
+    ]
+    for (const s of senders) {
+      expect(webTicker.senderCell(s), JSON.stringify(s)).toEqual(appTicker.senderCell(s))
     }
   })
 
