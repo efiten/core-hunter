@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.22.0](https://github.com/efiten/core-hunter/compare/web-v1.21.0...web-v1.22.0) (2026-09-12)
+
+
+### Features
+
+* **app,web,server:** drop Sender unknown, the Unnamed chip already selects the same receptions ([#582](https://github.com/efiten/core-hunter/issues/582)) ([f297d9c](https://github.com/efiten/core-hunter/commit/f297d9c993fdf3cf273177b86b0662efcf259a2c))
+* **app,web:** every repeater's reach at once, in its own hue, as the third stop of Node positions ([#593](https://github.com/efiten/core-hunter/issues/593)) ([e7dded6](https://github.com/efiten/core-hunter/commit/e7dded615150ef87bb7493fd1075e8e1b410fcb7))
+* **app,web:** make the two filter panels one panel ([#573](https://github.com/efiten/core-hunter/issues/573)) ([488b4e2](https://github.com/efiten/core-hunter/commit/488b4e2d93d6f99f0affbf41d6183018807f1069))
+* **app,web:** show the id beside a resolved name in the receptions ticker ([#584](https://github.com/efiten/core-hunter/issues/584)) ([f397b09](https://github.com/efiten/core-hunter/commit/f397b094ddff4601855dc9697ac172311b7f131d))
+* **app:** add Share my node name, off by default, sending a zero-hop advert each cycle a companion is the target ([#577](https://github.com/efiten/core-hunter/issues/577)) ([2acbdad](https://github.com/efiten/core-hunter/commit/2acbdadadca3d158b44c313d09f2701e53dfd37d))
+* **app:** ask a selected companion for its telemetry each cycle, zero-hop, and keep what it answers per node ([#578](https://github.com/efiten/core-hunter/issues/578)) ([cfcc130](https://github.com/efiten/core-hunter/commit/cfcc130937dc84b0e654788a948edeaddbea4e4c))
+* **app:** draw earlier rides as coverage and outlines, pulse the newest reception, and name the nodes in a hex cell ([#579](https://github.com/efiten/core-hunter/issues/579)) ([e348c4c](https://github.com/efiten/core-hunter/commit/e348c4cd872a9c9ef3a5b5de65af4b008d8fba7c))
+* **app:** let the HUD follow the ticker's stand, act on the shown sender, and float it over other apps ([#575](https://github.com/efiten/core-hunter/issues/575)) ([ec9c9ed](https://github.com/efiten/core-hunter/commit/ec9c9ed0b8dc7a9a6cb185d4156a3a72eb440feb))
+* **app:** look ahead while the map turns with you, and give the compass button three stops ([#585](https://github.com/efiten/core-hunter/issues/585)) ([a7b0f99](https://github.com/efiten/core-hunter/commit/a7b0f99893dc66e410bbd29a00e2a8f60819afef))
+* **app:** make the HUD the ticker's playhead, so a name that resolves later reaches it ([#583](https://github.com/efiten/core-hunter/issues/583)) ([0205138](https://github.com/efiten/core-hunter/commit/020513899c28651c3d3a1bb6bd41487b0a0ccf57))
+* **app:** name a short id only when the registries of the SF agree, and mark it as a guess ([#587](https://github.com/efiten/core-hunter/issues/587)) ([1a8798a](https://github.com/efiten/core-hunter/commit/1a8798a7d7c01c582bd30cdee7719a60430e923a))
+* **app:** ship terrain on the AWS DEM, raised by the 3D view, with an exaggeration setting ([#586](https://github.com/efiten/core-hunter/issues/586)) ([2aad6e4](https://github.com/efiten/core-hunter/commit/2aad6e47e2963f35e1f21fab37df3ccbd79b6a15))
+* **app:** size the receptions card to what it holds, in steps ([#570](https://github.com/efiten/core-hunter/issues/570)) ([2ab97cb](https://github.com/efiten/core-hunter/commit/2ab97cb31f57605f40631a582691daba235c8b02))
+* **web:** bring the app's 3D to the map: view button, bars, pillars, buildings, terrain and rotation ([#596](https://github.com/efiten/core-hunter/issues/596)) ([b0f3054](https://github.com/efiten/core-hunter/commit/b0f30542bc43393cb0b463823c6b4dc781a890e7))
+* **web:** bring the map's receptions ticker onto the app's card model ([#571](https://github.com/efiten/core-hunter/issues/571)) ([7da4ca9](https://github.com/efiten/core-hunter/commit/7da4ca90057536f8ab6a9cae4531a00384b6f551))
+* **web:** make the map's bar one row that names the product, at every width ([#572](https://github.com/efiten/core-hunter/issues/572)) ([efb3eeb](https://github.com/efiten/core-hunter/commit/efb3eeb96c542d7e21b73947fe2dffc2f5cbea5a))
+* **web:** move the map from Leaflet to MapLibre, the app's map, at 2D parity ([#592](https://github.com/efiten/core-hunter/issues/592)) ([8def27e](https://github.com/efiten/core-hunter/commit/8def27eb97e307eef5cb83372300d494c29a49e5))
+
+
+### Bug Fixes
+
+* **app:** paint a 3D bar the tint of its own cell, and lower the style light ([#588](https://github.com/efiten/core-hunter/issues/588)) ([39172e1](https://github.com/efiten/core-hunter/commit/39172e1b4520e92b17b83480760f7f2a16a394ec))
+* **web:** fetch the hunter roster per role, so a login shows real names and a logout drops them ([#598](https://github.com/efiten/core-hunter/issues/598)) ([4b28ee9](https://github.com/efiten/core-hunter/commit/4b28ee90bf432de1e408312e6b466e86a7e4b699))
+* **web:** paint the open filter panel over the Locate readout and the node-position notice ([#597](https://github.com/efiten/core-hunter/issues/597)) ([aa8a304](https://github.com/efiten/core-hunter/commit/aa8a30447bfa8859f1d92439b2c1c937b4848680))
+
+
+### Code Refactoring
+
+* **web:** one watcher on #bar, and the open panels follow its growth ([#600](https://github.com/efiten/core-hunter/issues/600)) ([0cb6a51](https://github.com/efiten/core-hunter/commit/0cb6a5158f17d3d7170a0d863a1ee90a2e887303))
+
+
+### Tests
+
+* **app,web:** guard the picker block and the shared tokens against drift, and give the web the app's palette ([#601](https://github.com/efiten/core-hunter/issues/601)) ([88fc3de](https://github.com/efiten/core-hunter/commit/88fc3deef43525d286fb40b302f4b08190c2af6d))
+* **web:** read Clear's effect off the newest request, not every request since a mark ([#614](https://github.com/efiten/core-hunter/issues/614)) ([c06da92](https://github.com/efiten/core-hunter/commit/c06da9241a5823586471741558bda8f12cafeb00))
+
 ## [1.21.0](https://github.com/efiten/core-hunter/compare/web-v1.20.0...web-v1.21.0) (2026-09-08)
 
 
