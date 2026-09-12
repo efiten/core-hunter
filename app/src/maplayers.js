@@ -77,7 +77,9 @@ export function layerVisibility({ mode, mode3D } = {}) {
   const showPoints = m !== 'hex'
 
   if (!mode3D) {
-    return { hex: showHex, 'hex-3d': false, points: showPoints, 'points-3d': false }
+    // The hex labels (#556) ride the flat hex layer, in 2D only; the pulse
+    // rings where the flat points are drawn.
+    return { hex: showHex, 'hex-3d': false, points: showPoints, 'points-3d': false, 'hex-labels': showHex, pulse: showPoints }
   }
   return {
     // Flat when pillars share the scene, extruded when they don't.
@@ -85,5 +87,9 @@ export function layerVisibility({ mode, mode3D } = {}) {
     'hex-3d': showHex && !showPoints,
     points: false,
     'points-3d': showPoints,
+    // A label on a pillar's top would float at ground level under it, and the
+    // pulse's flat ring would sit on the ground under the reception's pillar.
+    'hex-labels': false,
+    pulse: false,
   }
 }

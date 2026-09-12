@@ -10,6 +10,8 @@ import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from '
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
+import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
+import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
 import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 
@@ -63,7 +65,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayer() {}, setExaggeration() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -203,14 +205,29 @@ export function createHuntMap(containerId) {
   map.on('zoomend', () => draw())
 
   // ---- feature builders (GeoJSON sources are updated via setData) ----
+  // The current ride's first reception (#556): everything before it is
+  // backlog. Cached on the records, since splitting sorts them.
+  const rideCache = lastValueCache()
+  function rideStartFor(records) {
+    const sig = recordsKey(records)
+    return rideCache.get(sig, () => currentRideStart(records))
+  }
   function buildPointsFC(records, nowMs) {
     const feats = []
+    // Backlog (#556): below BACKLOG_OUTLINE_ZOOM a reception from an earlier
+    // ride is coverage only, its hex cell; from that zoom it comes back as an
+    // outline, in its tier colour, no fill. The ride itself is drawn filled,
+    // as before. Age fade rides on top of both.
+    const rideStart = rideStartFor(records)
+    const outlines = showBacklogPoints(map.getZoom())
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
+      const backlog = isBacklog(r, rideStart)
+      if (backlog && !outlines) continue
       const tier = rssiTier(r.rssi, currentOffset())
       const fade = ageFade(r.rx_at, nowMs, timeWindowMs)   // age-fade within the window (#149)
       feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
-        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade } })
+        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade, backlog: backlog ? 1 : 0 } })
     }
     return fc(feats)
   }
@@ -392,7 +409,7 @@ export function createHuntMap(containerId) {
     // darkened a bar against its own cell (#412). Re-applied here like the
     // sky, since setStyle drops it. Guarded for an older MapLibre.
     if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
-    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach']) {
+    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -447,8 +464,20 @@ export function createHuntMap(containerId) {
       paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': ['get', 'op'] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
       layout: { visibility: shown('points') },
-      paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'fop'],
-        'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1, 'circle-stroke-opacity': ['get', 'op'] } })
+      // A backlog reception (#556) has no fill and a heavier stroke: colour and
+      // place stay, the fill says "this ride".
+      paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'],
+        'circle-opacity': ['case', ['==', ['get', 'backlog'], 1], 0, ['get', 'fop']],
+        'circle-stroke-color': ['get', 'color'],
+        'circle-stroke-width': ['case', ['==', ['get', 'backlog'], 1], 1.5, 1],
+        'circle-stroke-opacity': ['get', 'op'] } })
+    // The pulse (#556): one ring on the reception that just arrived, animated
+    // by pulse() below through the paint properties, above the points and
+    // shown only where they are.
+    if (!map.getLayer('pulse')) map.addLayer({ id: 'pulse', type: 'circle', source: 'pulse',
+      layout: { visibility: shown('pulse') },
+      paint: { 'circle-radius': 8, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': ['get', 'color'],
+        'circle-stroke-width': 2, 'circle-stroke-opacity': 0.9 } })
     // 3D twin of 'points' (#250): a fill-extrusion pillar per reception, same
     // tier colour/height as hex-3d — reads clearly at pitch instead of a flat
     // circle disappearing under the hex bars/buildings. Separate source (its
@@ -567,6 +596,79 @@ export function createHuntMap(containerId) {
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
     drawNodeLayer(records, cov)
+    drawHexLabels(records, vis['hex-labels'])
+  }
+
+  // ---- hex labels (#556) ----
+  // Who was heard in a cell, as id prefixes (hexlabels.js decides the text),
+  // drawn as HTML markers like the node layer: the bare fallback style has no
+  // glyphs, so a symbol layer would draw nothing there. Only from
+  // HEX_LABEL_MIN_ZOOM and only for cells in view. One marker per cell id,
+  // kept while the cell stays in view: planHexLabels decides which markers a
+  // draw adds, relabels or removes, so a new reception in one cell touches
+  // that cell's marker and a tick that changes nothing touches none.
+  const hexLabelMarkers = new Map()   // cell id -> marker
+  function clearHexLabels() {
+    hexLabelMarkers.forEach((m) => m.remove()); hexLabelMarkers.clear()
+  }
+  function drawHexLabels(records, on) {
+    if (!on || !showHexLabels(map.getZoom())) { if (hexLabelMarkers.size) clearHexLabels(); return }
+    const res = hexResForZoom(map.getZoom())
+    const b = map.getBounds()
+    const cells = new Map()
+    for (const r of records) {
+      if (r.lat == null || r.lon == null) continue
+      if (r.lat < b.getSouth() || r.lat > b.getNorth() || r.lon < b.getWest() || r.lon > b.getEast()) continue
+      const id = hexCellAt(r.lat, r.lon, res)
+      const cur = cells.get(id) || []
+      cur.push(r); cells.set(id, cur)
+    }
+    const items = []
+    for (const [id, rows] of cells) {
+      const label = hexCellLabel(rows)
+      if (!label) continue
+      const ring = hexBoundary(id); if (!ring) continue
+      let lat = 0, lon = 0
+      const n = ring.length - 1   // closed ring: the last vertex repeats the first
+      for (let i = 0; i < n; i++) { lat += ring[i][0]; lon += ring[i][1] }
+      items.push({ id, label, lat: lat / n, lon: lon / n })
+    }
+    const drawn = new Map([...hexLabelMarkers].map(([id, m]) => [id, m.getElement().textContent]))
+    const { add, relabel, remove } = planHexLabels(drawn, items)
+    for (const id of remove) { hexLabelMarkers.get(id).remove(); hexLabelMarkers.delete(id) }
+    for (const it of relabel) hexLabelMarkers.get(it.id).getElement().textContent = it.label
+    for (const it of add) {
+      const el = document.createElement('div')
+      el.className = 'hex-label'
+      el.textContent = it.label
+      hexLabelMarkers.set(it.id, new maplibregl.Marker({ element: el }).setLngLat([it.lon, it.lat]).addTo(map))
+    }
+  }
+
+  // ---- pulse (#556) ----
+  // One ring, about two seconds, on the reception that just arrived, in its
+  // tier colour, whatever the zoom, and only where the flat points are drawn
+  // (layerVisibility): no ring in hex mode or in 3D, and no animation started
+  // for a hidden layer. Driven by a timer rather than requestAnimationFrame so
+  // it also runs while the page is not painting.
+  const PULSE_MS = 1600, PULSE_STEP_MS = 40, PULSE_FROM_PX = 8, PULSE_TO_PX = 24
+  let pulseTimer = null
+  function pulse(rec) {
+    if (!rec || rec.lat == null || rec.lon == null || !map.getSource('pulse') || !map.getLayer('pulse')) return
+    if (!layerVisibility({ mode, mode3D }).pulse) return
+    if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null }
+    const color = cssVar(tierColorVar(rssiTier(rec.rssi, currentOffset())))
+    map.getSource('pulse').setData(fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [rec.lon, rec.lat] }, properties: { color } }]))
+    const started = Date.now()
+    const step = () => {
+      const t = Math.min(1, (Date.now() - started) / PULSE_MS)
+      if (!map.getLayer('pulse')) { clearInterval(pulseTimer); pulseTimer = null; return }
+      map.setPaintProperty('pulse', 'circle-radius', PULSE_FROM_PX + (PULSE_TO_PX - PULSE_FROM_PX) * t)
+      map.setPaintProperty('pulse', 'circle-stroke-opacity', 0.9 * (1 - t))
+      if (t >= 1) { clearInterval(pulseTimer); pulseTimer = null; map.getSource('pulse').setData(EMPTY) }
+    }
+    step()
+    pulseTimer = setInterval(step, PULSE_STEP_MS)
   }
 
   // ---- node-position layer (#197) ----
@@ -755,7 +857,7 @@ export function createHuntMap(containerId) {
   // drawn flat (under the pillars) or extruded (#266).
   function applyLayerVisibility() {
     const vis = layerVisibility({ mode, mode3D })
-    for (const id of ['hex', 'hex-3d', 'points', 'points-3d']) {
+    for (const id of ['hex', 'hex-3d', 'points', 'points-3d', 'pulse']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
     }
   }
@@ -818,8 +920,8 @@ export function createHuntMap(containerId) {
     releaseFollow()
     centerOn(rec.lat, rec.lon)
   }
-  function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayer, setExaggeration, destroy }
+  function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); if (pulseTimer) clearInterval(pulseTimer); clearHexLabels(); map.remove() }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayer, setExaggeration, pulse, destroy }
 }
 
 function popupHtml(r, selectedIds) {
