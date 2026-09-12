@@ -29,6 +29,16 @@ import { wireNarrowBar } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 
 let currentRole = 'guest'
+// 'guest' above is what the page renders from until /api/auth/me answers, not
+// an answer. For the point layer that difference is a request rather than a
+// label: it is a member layer (#493), ?mode= is restored from the URL at
+// module-eval time, and refresh()'s 250 ms debounce beats a slow
+// /api/auth/me -- so drawPoints() sent the layer's bbox query for exactly the
+// visitor the gate exists to keep off it. applyPointLayerGate() cannot catch
+// that one, because it runs from applyRole(), which is already too late. The
+// layer waits for the role instead, and applyRole() ends in its own refresh(),
+// so a member draws as soon as the answer is in.
+let roleKnown = false
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -481,6 +491,7 @@ function announceRoleRise(role) {
 
 function applyRole(me) {
   currentRole = me.role || 'guest'
+  roleKnown = true
   announceRoleRise(currentRole)
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
@@ -539,7 +550,7 @@ export function refresh() {
     // The else branches take a ticket as well as clearing: a draw started
     // under the previous mode is obsolete the moment the toggle empties its
     // layer, and would otherwise still be the newest and repaint it.
-    if (mode === 'points' || mode === 'both') drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
+    if (roleKnown && (mode === 'points' || mode === 'both')) drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
     if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); currentHexRings = []; wm.setData('hex', null) }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
