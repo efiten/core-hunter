@@ -1114,3 +1114,44 @@ describe('--ch-building matches the app in both themes (#595)', () => {
     })
   }
 })
+
+// The two filter panels hold the same groups in the same order (#564). Before
+// this the app opened with two checkboxes and reached the chips third while the
+// map opened with the chips and reached the checkboxes third, and one said
+// "Types" where the other said "Traffic types".
+//
+// The map adds Overlays and View after the shared five, and Hunters and Time
+// carry the controls the bar hands over below 640px (#561). Those are the
+// deliberate difference: analysis is map-only, because the map is the superset.
+describe('the filter panels are one panel (#564)', () => {
+  const MAP_ONLY = ['Overlays', 'View', 'Hunters']
+
+  const mapGroups = () => {
+    const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
+    const panel = html.slice(html.indexOf('id="bar-filters"'), html.indexOf('class="bf-foot"'))
+    return [...panel.matchAll(/<div class="bf-group-head"[^>]*>([\s\S]*?)<\/div>/g)]
+      .map((m) => m[1].replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '').replace(/<[^>]+>/g, '').trim())
+  }
+
+  it('names the same groups in the same order', () => {
+    const shared = mapGroups().filter((g) => !MAP_ONLY.includes(g))
+    expect(shared, 'the map, minus what is map-only').toEqual(appFilterGroups)
+  })
+
+  it('agrees with the markup each surface actually renders', () => {
+    // Not just the two lists: the app's list is checked against its own markup
+    // in app/src/__tests__/filtersheet.test.js, and the map's comes from
+    // index.html above, so neither can claim an order it does not render.
+    expect(appGroupHeadings(appFilterSheetMarkup({ types: appTypes, idClasses: appClasses })))
+      .toEqual(appFilterGroups)
+  })
+
+  it('keeps Overlays and View after the shared groups, not among them', () => {
+    const groups = mapGroups()
+    const lastShared = Math.max(...groups.map((g, i) => (MAP_ONLY.includes(g) ? -1 : i)))
+    for (const name of ['Overlays', 'View']) {
+      expect(groups.indexOf(name), `${name} comes after the shared groups`).toBeGreaterThan(lastShared - 1)
+    }
+    expect(groups.indexOf('Overlays')).toBeGreaterThan(groups.indexOf('Ignored senders'))
+  })
+})
