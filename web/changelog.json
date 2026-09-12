@@ -7,6 +7,13 @@
     "body": "Node positions gets a third stop: every repeater's reach in its own colour, stronger hearings brighter and wider. Tap a repeater to keep its star and fade the rest."
   },
   {
+    "id": "2026-09-06-hunter-names-after-login",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "Hunter names follow your login",
+    "body": "Logging in on the map used to leave the hunter list on the guest pseudonyms until a reload. It now reloads with your role, and again when you log out."
+  },
+  {
     "id": "2026-09-06-panel-over-the-cards",
     "date": "2026-09-06",
     "where": "map",
