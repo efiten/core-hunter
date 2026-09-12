@@ -33,7 +33,7 @@ import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
 import { filterSheetMarkup } from './filtersheet.js'
 import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
@@ -56,6 +56,7 @@ import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotic
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
@@ -86,6 +87,13 @@ function saveIgnore(set) {
 // Loader lives in settings.js (guarded + unit-tested, #338).
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
+}
+
+// Terrain exaggeration (#396), persisted like the attenuator; loader in
+// settings.js. Terrain itself has no switch of its own: the 3D view raises
+// it (Kasper, 2026-09-06), so there is nothing else to persist.
+function saveExaggeration(x) {
+  try { localStorage.setItem('core-hunter-exaggeration', String(x)) } catch (_) {}
 }
 
 // Share my node name (#576). Stored as '1' or removed, so loadShareName's
@@ -183,6 +191,7 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  exaggeration: loadExaggeration(),
   // Share my node name (#576): off by default, the hunter's own decision.
   shareName: loadShareName(),
   soundMode: loadSoundMode(),
@@ -1907,6 +1916,11 @@ function buildSettingsSheet() {
             <option value="-30">−30 dB</option>
           </select>
         </label>
+        <label class="ss-radio-row" id="ss-row-exag">
+          <span>Terrain exaggeration</span>
+          <select id="ss-exag">${EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')}</select>
+        </label>
+        <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The 3D view raises the ground.</p>
       </div>
       <div class="ss-radio-section">
         <h3>Identity</h3>
@@ -2037,6 +2051,17 @@ function buildSettingsSheet() {
   atten.value = String(state.attenuatorDb)
   const syncAttenRow = () => el('ss-row-atten').classList.toggle('active', (Number(atten.value) || 0) !== 0)
   syncAttenRow()
+  const exag = el('ss-exag')
+  exag.value = String(state.exaggeration)
+  const syncExagRow = () => el('ss-row-exag').classList.toggle('active', Number(exag.value) !== DEFAULT_EXAGGERATION)
+  syncExagRow()
+  exag.addEventListener('change', () => {
+    state.exaggeration = Number(exag.value) || DEFAULT_EXAGGERATION
+    saveExaggeration(state.exaggeration)
+    applyExaggeration()
+    syncExagRow()
+    refreshSettingsIndicator()
+  })
   atten.addEventListener('change', () => {
     state.attenuatorDb = Number(atten.value) || 0
     saveAttenuator(state.attenuatorDb)
@@ -2486,6 +2511,13 @@ function applyNodePosNotices({ glanceExpired = false } = {}) {
   keyEl.hidden = !key
 }
 
+// Terrain (#396): the 3D view raises it, at this exaggeration. The map draws
+// hillshade and the relief mesh in 3D once the DEM tiles are in (terrain.js);
+// in 2D there is nothing to raise, so nothing is drawn.
+function applyExaggeration() {
+  if (state.map) state.map.setExaggeration(state.exaggeration)
+}
+
 async function toggleNodePositions() {
   nodePosOn = !nodePosOn
   const btn = el('nodepos-toggle')
@@ -2804,6 +2836,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Initialise map
   state.map = createHuntMap('map')
   state.map.setAttenuator(state.attenuatorDb)
+  applyExaggeration()
   state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise the receptions log (#130) — replaces the Messages panel. The
