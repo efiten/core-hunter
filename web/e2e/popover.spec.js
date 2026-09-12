@@ -97,6 +97,29 @@ test('an open panel follows its toggle when a resize moves it', async ({ page })
   expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
 })
 
+// #405: the bar watcher took over from the panels' window.resize listeners,
+// and a window that only changes height moves neither the bar nor a control
+// in it. The panel is placed against the viewport all the same, so it has to
+// be placed again. Measured without that: the phone's time picker kept its
+// 616px bottom edge in a 520px window.
+test('an open panel is placed again when only the window height changes', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 915 })
+  await page.goto('/')
+  // The status line lands late and moves the controls after it, which places
+  // the panel again whatever the window did. Wait for it before opening.
+  // The resize still moves the map, and the refresh that follows rewrites
+  // #status without moving a control. That mutation asks for a check too, so
+  // what this test pins is the window's size in the compared signature. That
+  // the window's resize event asks for a check is pinned in barwatch.test.js.
+  await expect(page.locator('#status')).not.toBeEmpty()
+  // #tr-toggle is in the filter panel at this width (#561), and hidden until
+  // the panel is open, so the picker is reached through Filters first.
+  await openFilters(page)
+  await openPicker(page, '#tr-toggle', '#time-picker')
+  await page.setViewportSize({ width: 412, height: 520 })
+  await expect(async () => expectOnScreen(page, '#time-picker')).toPass({ timeout: 5000 })
+})
+
 // #bar carries backdrop-filter, which per Filter Effects 2 makes it the
 // containing block for its fixed-position descendants — the panels. Measured in
 // this Chromium, the rule is applied for backdrop-filter as well as for filter:
@@ -135,3 +158,41 @@ test('#bar is the containing block for the panels, and its frame coincides with 
   expect(m.border, '#bar has no border to offset its padding box').toEqual(['0px', '0px'])
   expect(m.transform, '#bar is untransformed').toBe('none')
 })
+
+// #405: window.resize never fires for content that grows the bar after load
+// (the node counts, the version), so a panel opened before that landed stayed
+// where its toggle had been. The one bar watcher sees the growth.
+//
+// Simulated by inserting a block at the bar's start, which pushes every
+// control after it along the row. It used to be a full-width block pushing
+// them onto a new row, which #572 made impossible: the bar is one row with
+// flex-wrap: nowrap, and that is load-bearing (a bar that grows after #map's
+// top is measured hides the map under it). What remains is the same fault in
+// the direction the bar can still move in, and it is what the real arrivals
+// do: measured at 1280 as a guest, the controls settle 145px sideways between
+// first paint and the last arrival, and at 768 the bar's own height goes from
+// 49 to 68px.
+for (const [toggle, panel] of [['#tr-toggle', '#time-picker'], ['#hp-toggle', '#hunter-picker']]) {
+  test(`an open ${panel} follows its toggle when late content grows the bar (#405)`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/')
+    await openPicker(page, toggle, panel)
+    const before = await page.locator(toggle).boundingBox()
+    await page.evaluate(() => {
+      const grow = document.createElement('div')
+      grow.id = 'e2e-grow'; grow.style.cssText = 'flex:0 0 420px;height:40px'
+      document.getElementById('bar').prepend(grow)
+    })
+    // The toggle moved along the row: the panel has to hang off where it is
+    // now. Only the vertical relation is pinned, as before -- placePopover
+    // clamps a panel wider than the room to its right, so its left edge is
+    // not the toggle's once the toggle is near the far side (#372, #385).
+    await expect.poll(async () => (await page.locator(toggle).boundingBox()).x).toBeGreaterThan(before.x + 300)
+    await expect.poll(async () => {
+      const p = await page.locator(panel).boundingBox()
+      const t = await page.locator(toggle).boundingBox()
+      return p.y >= t.y + t.height
+    }, { message: 'panel below its moved toggle' }).toBe(true)
+    await expectOnScreen(page, panel)
+  })
+}

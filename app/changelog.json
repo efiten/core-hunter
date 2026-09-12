@@ -7,6 +7,13 @@
     "body": "Node positions gets a third stop: every repeater's reach in its own colour, stronger hearings brighter and wider. Tap a repeater to keep its star and fade the rest."
   },
   {
+    "id": "2026-09-06-panels-follow-the-bar",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "Open panels follow the bar",
+    "body": "A panel opened from the bar now moves with it when the bar grows after loading, instead of staying where its button used to be."
+  },
+  {
     "id": "2026-09-06-one-palette",
     "date": "2026-09-06",
     "where": "map",
