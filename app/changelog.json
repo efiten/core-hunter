@@ -7,6 +7,13 @@
     "body": "Node positions gets a third stop: every repeater's reach in its own colour, stronger hearings brighter and wider. Tap a repeater to keep its star and fade the rest."
   },
   {
+    "id": "2026-09-06-panel-over-the-cards",
+    "date": "2026-09-06",
+    "where": "map",
+    "title": "The filter panel stays on top",
+    "body": "On a phone the Locate readout and the node-position notice were painted over the open filter panel. The panel now covers them."
+  },
+  {
     "id": "2026-09-06-map-in-3d",
     "date": "2026-09-06",
     "where": "map",
