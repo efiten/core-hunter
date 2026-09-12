@@ -201,10 +201,12 @@ func TestUnreadableFrameGetsAnEmptyIDRatherThanNull(t *testing.T) {
 	}
 }
 
-func TestNoSenderKeepsWhatNothingCouldBeAttributedTo(t *testing.T) {
-	// The coarse handle. A flood using 1-byte path hashes leaves no sender at
-	// all, and on the real hunt that was 2,756 of 3,078 receptions -- the exact
-	// set the hunter wanted, with no way to ask for it.
+func TestTheUnnamedClassKeepsWhatNothingCouldBeAttributedTo(t *testing.T) {
+	// A flood using 1-byte path hashes leaves no sender at all, and on the real
+	// hunt that was 2,756 of 3,078 receptions. NoSender used to be the handle
+	// for that set; since #535 the unnamed sender-id class is the only one,
+	// and it has to keep composing with the origin rule, which is the
+	// combination that answers "where is this flood coming from".
 	st := floodStore(t)
 	defer st.Close()
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -213,7 +215,7 @@ func TestNoSenderKeepsWhatNothingCouldBeAttributedTo(t *testing.T) {
 		SenderID: "aabb", SenderKind: "relay", PacketType: "TextMessage", Lat: 52.36, Lon: 4.83}); err != nil {
 		t.Fatal(err)
 	}
-	f := Filter{NoSender: true, Limit: 100}
+	f := Filter{SenderClasses: []string{"unnamed"}, Limit: 100}
 	pts, _, err := st.QueryPoints(f)
 	if err != nil {
 		t.Fatal(err)
@@ -226,9 +228,7 @@ func TestNoSenderKeepsWhatNothingCouldBeAttributedTo(t *testing.T) {
 			t.Fatalf("a row with a sender leaked in: %q", p.SenderID)
 		}
 	}
-	// And it composes with the origin rule, which is the combination that
-	// actually answers "where is this flood coming from".
-	got := ids(t, st, Filter{NoSender: true, OriginOnly: true})
+	got := ids(t, st, Filter{SenderClasses: []string{"unnamed"}, OriginOnly: true})
 	if len(got) != 1 || got[0] != 4 {
 		t.Fatalf("unattributable origin copies: got %v", got)
 	}
