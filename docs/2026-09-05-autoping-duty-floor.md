@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-05
 **Status:** decided (Kasper, 2026-09-05), implemented
-**Related:** #319 and `docs/2026-08-17-speed-adaptive-autoping.md` (the spike that found this), #479 (the sweep that makes a standing cycle five frames), #577 and #578 (frames that will join the count)
+**Related:** #319 and `docs/2026-08-17-speed-adaptive-autoping.md` (the spike that found this), #479 (the sweep that makes a standing cycle five frames), #577 (the self-advert, counted) and #578 (the telemetry request, which will join the count)
 
 ## What changed
 
@@ -17,7 +17,7 @@ All firmware facts, per AGENTS.md §7; the module header of `app/src/airtime.js`
 - **Preset.** Default build flags: 869.618 MHz, BW 62.5 kHz, SF8, CR 4/5. The app reads the SF back from `PACKET_SELF_INFO` byte 56 and assumes the rest; an unknown SF reads as 8.
 - **Preamble.** 32 symbols at SF ≤ 8, 16 above (`RadioLibWrappers.h`).
 - **Formula.** RadioLib's `getTimeOnAir`, the function the firmware's `getEstAirtimeFor` calls, ported in the same integer arithmetic.
-- **Frames.** Discover 8 bytes, trace-ping 12 (`Packet.cpp` `getRawLength`, `Mesh.cpp` `createTrace`).
+- **Frames.** Discover 8 bytes, trace-ping 12 (`Packet.cpp` `getRawLength`, `Mesh.cpp` `createTrace`). The self-advert (#577) is 103 to 134 (`Mesh.cpp` `createAdvert`, app data capped at `MAX_ADVERT_DATA_SIZE` 32). It is counted for its name, with the 8 location bytes always. `SELF_INFO` carries the location policy only from companion firmware v1.7.1, and firmware before it carries a position whenever the node has one, so counting the bytes always is the conservative reading: the floor comes out long, never short.
 - **Budget.** 869.618 MHz sits in the 869.400 to 869.650 MHz sub-band, 10% duty cycle under ERC 70-03. The 1% in the old header is the figure for a different sub-band.
 
 | preset | Discover | trace-ping | standing sweep of 4 | floor at 10% |
