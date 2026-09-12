@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { frameAirtimeMs, cycleAirtimeMs, minPeriodMs, preambleSymbols, DEFAULT_SF, DISCOVER_BYTES, TRACE_BYTES } from '../airtime.js'
+import { frameAirtimeMs, cycleAirtimeMs, minPeriodMs, preambleSymbols, advertBytes, DEFAULT_SF, DISCOVER_BYTES, TRACE_BYTES } from '../airtime.js'
 import { INTERVAL_MS } from '../autoping.js'
 
 // Worked example, by hand, from RadioLib's getTimeOnAir (the function the
@@ -49,5 +49,31 @@ describe('minPeriodMs', () => {
 
   it('is nothing for a cycle that sent nothing', () => {
     expect(minPeriodMs([], 8)).toBe(0)
+  })
+})
+
+// The self-advert (#577) is the one frame whose size is not fixed. By hand from
+// the firmware: header and path_len (zero-hop, so no path bytes), then Mesh.cpp
+// createAdvert's pubkey 32, timestamp 4 and signature 64, then the app data
+// AdvertDataHelpers.cpp encodeTo builds: flags 1, lat/lon 8, and the name, all
+// capped at MAX_ADVERT_DATA_SIZE 32. So 2 + 100 + 32 = 134 at most.
+describe('advertBytes', () => {
+  it('reaches the largest advert the firmware builds once the name fills the app data', () => {
+    expect(advertBytes('x'.repeat(23))).toBe(134)
+    expect(advertBytes('x'.repeat(22))).toBe(133)
+  })
+
+  it('stops counting the name where the firmware stops copying it', () => {
+    expect(advertBytes('x'.repeat(31))).toBe(134)
+  })
+
+  it('counts the name in UTF-8 bytes, which is what goes on air', () => {
+    expect(advertBytes('Zoë')).toBe(advertBytes('Zoe') + 1)
+  })
+
+  // The location policy is not read, so its 8 bytes always count: a floor
+  // that assumes them can come out long, never short.
+  it('counts the location bytes for a companion that may not send them', () => {
+    expect(advertBytes('')).toBe(2 + 100 + 1 + 8)
   })
 })
