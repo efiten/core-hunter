@@ -217,7 +217,10 @@ test('what does not fit on a phone moves, rather than being hidden or copied', a
   expect(await where('#tr-toggle')).toBe('bar-filters')
   expect(await where('#hp-toggle')).toBe('bar-filters')
   expect(await where('#ig-toggle')).toBe('bar-filters')
-  expect(await where('#f-sender')).toBe('bar-filters')
+  // The prefix field is inside the sender picker since #498, so it stays with
+  // Select target rather than moving: one control for targets means one place
+  // to reach it, at every width.
+  expect(await where('#f-sender')).toBe('bar-controls')
   expect(await where('#rx-cta')).toBe('settings-modal')
   expect(await where('#auth-btn')).toBe('settings-modal')
   // Moved, not duplicated: one element each, whatever the width.
