@@ -186,3 +186,38 @@ describe('pitchTransition — which FAB taps move the camera', () => {
     expect(moved.map(viewKey)).toEqual(['points2d', 'hex3d'])
   })
 })
+
+// The hex labels (#556) ride the flat hex layer only: a label on a pillar's
+// top would float at ground level under the pillar, so 3D keeps its drawing.
+describe('layerVisibility carries the hex labels', () => {
+  it('shows them exactly when the flat hex layer is on, in 2D', () => {
+    expect(vis('both', false)['hex-labels']).toBe(true)
+    expect(vis('hex', false)['hex-labels']).toBe(true)
+    expect(vis('points', false)['hex-labels']).toBe(false)
+  })
+  it('never shows them in 3D', () => {
+    expect(vis('both', true)['hex-labels']).toBe(false)
+    expect(vis('hex', true)['hex-labels']).toBe(false)
+  })
+})
+
+// The pulse (#556) rings on the reception that just arrived, so it follows the
+// flat point layer (Kasper, 2026-09-11): in hex mode no point is drawn for the
+// reception, and in 3D the flat ring would sit on the ground under its pillar.
+describe('layerVisibility carries the pulse', () => {
+  it('rings where the flat points are drawn', () => {
+    expect(vis('both', false).pulse).toBe(true)
+    expect(vis('points', false).pulse).toBe(true)
+  })
+  it('does not ring in hex mode, where no point is drawn', () => {
+    expect(vis('hex', false).pulse).toBe(false)
+  })
+  it('does not ring in 3D, under the pillars', () => {
+    for (const m of ['both', 'hex', 'points']) expect(vis(m, true).pulse).toBe(false)
+  })
+  it('never disagrees with the flat point layer', () => {
+    for (const m of ['both', 'hex', 'points', '']) {
+      for (const d of [true, false]) expect(vis(m, d).pulse).toBe(vis(m, d).points)
+    }
+  })
+})

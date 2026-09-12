@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading, COURSE_MIN_SPEED_MS } from '../rotation.js'
+import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, followAfter, resolveCourseHeading, COURSE_MIN_SPEED_MS, COURSE_RELEASE_SPEED_MS, autoSource, orientedToTravel, lookAheadPadding, paddingAction } from '../rotation.js'
 
 describe('compassHeading', () => {
   it('prefers iOS webkitCompassHeading when present', () => {
@@ -38,23 +38,39 @@ describe('bearingForHeading', () => {
 })
 
 describe('nextCompassState', () => {
-  // Google-Maps-style cycle: static -> follow (north up) -> follow + device
-  // heading -> follow + GPS course ("driving mode", #242) -> back to follow
-  // (north up). Panning drops to static elsewhere. `source` is null (north
-  // up) | 'device' (magnetometer) | 'course' (GPS course-over-ground).
+  // The cycle since #403: static -> follow (north up) -> follow + heading
+  // (device compass, GPS course by itself once driving) -> static. Driving
+  // is no longer a stop of its own, and the button releases follow, where it
+  // used to take a pan.
   it('static taps to following, north up', () => {
     expect(nextCompassState({ follow: false, source: null })).toEqual({ follow: true, source: null })
     expect(nextCompassState({ follow: false, source: 'device' })).toEqual({ follow: true, source: null })
-    expect(nextCompassState({ follow: false, source: 'course' })).toEqual({ follow: true, source: null })
   })
-  it('following (north up) taps to device-heading mode', () => {
+  it('following (north up) taps to heading mode', () => {
     expect(nextCompassState({ follow: true, source: null })).toEqual({ follow: true, source: 'device' })
   })
-  it('device-heading mode taps to GPS course (driving) mode', () => {
-    expect(nextCompassState({ follow: true, source: 'device' })).toEqual({ follow: true, source: 'course' })
+  it('heading mode taps to static, whichever sensor is driving it', () => {
+    expect(nextCompassState({ follow: true, source: 'device' })).toEqual({ follow: false, source: null })
+    expect(nextCompassState({ follow: true, source: 'course' })).toEqual({ follow: false, source: null })
   })
-  it('GPS course mode taps back to following, north up', () => {
-    expect(nextCompassState({ follow: true, source: 'course' })).toEqual({ follow: true, source: null })
+})
+
+// The map's follow flag, which the button's state mirrors. Heading mode is
+// reachable before the first GPS fix (the device compass needs none), so the
+// button's two ends of the cycle cannot wait for one: a tap the map refuses
+// leaves the button on a stop the map did not take.
+describe('followAfter', () => {
+  it('the compass button releases follow before the first fix', () => {
+    expect(followAfter(true, 'release', false)).toBe(false)
+  })
+  it('the compass button resumes follow before the first fix', () => {
+    expect(followAfter(false, 'follow', false)).toBe(true)
+  })
+  it('a look elsewhere releases follow once there is a position', () => {
+    expect(followAfter(true, 'look-away', true)).toBe(false)
+  })
+  it('a look elsewhere before the first fix leaves follow on, so that fix still centres the map', () => {
+    expect(followAfter(true, 'look-away', false)).toBe(true)
   })
 })
 
@@ -65,12 +81,88 @@ describe('compassGlyph', () => {
     expect(compassGlyph({ follow: true, source: 'device' })).toBe('heading')
     expect(compassGlyph({ follow: true, source: 'course' })).toBe('driving')
   })
-  it('the previewed (next-state) glyph is what a tap produces, never static', () => {
-    // The FAB icon previews the NEXT state, not the current one.
-    expect(compassGlyph(nextCompassState({ follow: false, source: null }))).toBe('following') // panned → tap recenters
-    expect(compassGlyph(nextCompassState({ follow: true, source: null }))).toBe('heading')     // centered → tap enables device heading
-    expect(compassGlyph(nextCompassState({ follow: true, source: 'device' }))).toBe('driving') // device heading → tap enables GPS course
-    expect(compassGlyph(nextCompassState({ follow: true, source: 'course' }))).toBe('following') // GPS course → tap back to north-up
+  it('the previewed (next-state) glyph is what a tap produces', () => {
+    expect(compassGlyph(nextCompassState({ follow: false, source: null }))).toBe('following')
+    expect(compassGlyph(nextCompassState({ follow: true, source: null }))).toBe('heading')
+    expect(compassGlyph(nextCompassState({ follow: true, source: 'device' }))).toBe('static')
+    expect(compassGlyph(nextCompassState({ follow: true, source: 'course' }))).toBe('static')
+  })
+  // Heading and driving are one stop of the cycle; the ring says which stop,
+  // not which sensor. Static is the off state, outside the ring.
+  it('puts heading and driving on the same ring segment', () => {
+    expect(compassRingIndex({ follow: true, source: null })).toBe(0)
+    expect(compassRingIndex({ follow: true, source: 'device' })).toBe(1)
+    expect(compassRingIndex({ follow: true, source: 'course' })).toBe(1)
+    expect(compassRingIndex({ follow: false, source: null })).toBe(-1)
+    expect(COMPASS_RING_STOPS).toBe(2)
+  })
+})
+
+// #403: in heading mode the sensor follows the speed. Above the driving
+// threshold the GPS course is the steadier reading; back below a release
+// speed the compass takes over again, so a crawl at the threshold does not
+// swap sensors at every fix. A correction (a two-finger rotate) clears the
+// source, and this only ever acts on a live one, so after a correction
+// nothing switches until the mode is cycled back.
+describe('autoSource', () => {
+  it('engages the GPS course at the driving threshold', () => {
+    expect(autoSource('device', COURSE_MIN_SPEED_MS)).toBe('course')
+    expect(autoSource('device', COURSE_MIN_SPEED_MS - 0.1)).toBe('device')
+  })
+  it('returns to the compass only below the release speed', () => {
+    expect(COURSE_RELEASE_SPEED_MS).toBeLessThan(COURSE_MIN_SPEED_MS)
+    expect(autoSource('course', COURSE_RELEASE_SPEED_MS)).toBe('course')
+    expect(autoSource('course', COURSE_RELEASE_SPEED_MS - 0.1)).toBe('device')
+    expect(autoSource('course', (COURSE_MIN_SPEED_MS + COURSE_RELEASE_SPEED_MS) / 2)).toBe('course')
+  })
+  it('holds the sensor while the speed is unknown', () => {
+    expect(autoSource('device', null)).toBe('device')
+    expect(autoSource('course', NaN)).toBe('course')
+  })
+  it('never arms a cleared source', () => {
+    expect(autoSource(null, 30)).toBeNull()
+  })
+})
+
+// #403: the position sits low in the frame while the map is oriented to
+// travel, so the half that can say where the signal is going gets the room.
+// Centred otherwise: north-up "ahead" is not a direction.
+describe('look-ahead', () => {
+  it('is on only while following with a rotation source', () => {
+    expect(orientedToTravel({ follow: true, source: 'device' })).toBe(true)
+    expect(orientedToTravel({ follow: true, source: 'course' })).toBe(true)
+    expect(orientedToTravel({ follow: true, source: null })).toBe(false)
+    expect(orientedToTravel({ follow: false, source: 'device' })).toBe(false)
+  })
+  it('pads the top by a third of the viewport, which puts the centre two thirds down', () => {
+    expect(lookAheadPadding(780, true)).toEqual({ top: 260, bottom: 0, left: 0, right: 0 })
+    expect(lookAheadPadding(780, false)).toEqual({ top: 0, bottom: 0, left: 0, right: 0 })
+    // The centre of the un-padded area: (260 + 780) / 2 = 520 = 2/3 of 780.
+    expect((lookAheadPadding(780, true).top + 780) / 2 / 780).toBeCloseTo(2 / 3, 5)
+  })
+})
+
+// Writing that padding is a camera jump, and a camera jump cancels the gesture
+// the hand is making (#236). The state changes that switch the look-ahead off
+// come from gesture handlers themselves, so the write has to wait for them.
+describe('paddingAction', () => {
+  const centred = { top: 0, bottom: 0, left: 0, right: 0 }
+  const ahead = { top: 260, bottom: 0, left: 0, right: 0 }
+  it('writes a change while nothing is moving', () => {
+    expect(paddingAction(centred, ahead, false)).toBe('apply')
+    expect(paddingAction(ahead, centred, false)).toBe('apply')
+  })
+  it('holds a change until the gesture ends', () => {
+    // A drag releases follow and a two-finger rotate clears the rotation
+    // source, both reported from a map listener: writing the padding there
+    // would end the pan or the rotate after about one frame.
+    expect(paddingAction(ahead, centred, true)).toBe('hold')
+  })
+  it('skips padding the map already has, moving or not', () => {
+    // The common phone pan: following north up, where the look-ahead is
+    // already off, so releasing follow asks for the padding that is there.
+    expect(paddingAction(centred, { ...centred }, true)).toBe('skip')
+    expect(paddingAction(ahead, { ...ahead }, false)).toBe('skip')
   })
 })
 

@@ -109,11 +109,16 @@ test('Clear also clears the hunter selection', async ({ page }) => {
   await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
   await expect.poll(() => urls.some((u) => hunterOf(u) === 'abc123def456')).toBe(true)
 
-  urls.length = 0
   await page.keyboard.press('Escape')
   await expect(page.locator('#hunter-picker')).toBeHidden()
+  // Mark where the log stands as Clear is pressed, and judge only what comes
+  // after it. Emptying the array instead was a race: closing the picker and
+  // opening the panel can both leave a refresh in flight, and a request issued
+  // before Clear still carries the hunter it was issued with. Under parallel
+  // load that landed in the window and failed a button that had worked.
+  const mark = urls.length
   await clickClearFilters(page) // Clear lives in the filter panel (#539)
-  await expect.poll(() => urls.length > 0 && urls.every((u) => !hunterOf(u))).toBe(true)
+  await expect.poll(() => urls.length > mark && urls.slice(mark).every((u) => !hunterOf(u))).toBe(true)
   await expect(page).not.toHaveURL(/hunter=/)
 })
 
@@ -176,4 +181,106 @@ test('hunters past the first page are reachable on a tall viewport (#290)', asyn
 
   await list.evaluate((el) => { el.scrollTop = el.scrollHeight })
   await expect(page.locator('#hp-list .tl-row')).toHaveCount(24, { timeout: 10000 })
+})
+
+// #463: /api/hunters answers as the role the server sees, and it was fetched
+// once, before /api/auth/me had answered, so a login kept the guest's
+// pseudonyms on screen and a logout kept the real names.
+test('the roster follows the role: pseudonyms as a guest, names after login, pseudonyms again after logout, and a pick that the new roster does not name is dropped (#463)', async ({ page }) => {
+  const G1 = { hunter_pubkey: 'h1', hunter_name: 'Hunter 1', count: 42 }
+  const G2 = { hunter_pubkey: 'h2', hunter_name: 'Hunter 2', count: 7 }
+  let member = false
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: member ? [H1, H2] : [G1, G2] } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: member ? { role: 'member', username: 'alice' } : { role: 'guest' } }))
+  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { ok: true } }))
+  await page.route('**/api/auth/logout', (r) => r.fulfill({ status: 204 }))
+  await page.goto('/?mode=hex')
+
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('Hunter 1 (42)')
+  await page.locator('#hp-list .tl-row', { hasText: 'Hunter 1' }).click()
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters (1) ▾')
+  await expect(page).toHaveURL(/hunter=h1/)
+  await page.keyboard.press('Escape')
+
+  // Log in without a reload. The pick was a pseudonym token the member roster
+  // does not name, so it goes with the roster; the label and the URL follow.
+  member = true
+  await page.click('#auth-btn')
+  await page.fill('#login-user', 'alice')
+  await page.fill('#login-pass', 'correcthorse')
+  await page.click('#login-submit')
+  await expect(page.locator('#auth-btn')).toHaveText(/alice/i)
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters ▾')
+  await expect(page).not.toHaveURL(/hunter=/)
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('ON8AR (42)')
+  await expect(page.locator('#hp-list')).not.toContainText('Hunter 1')
+  await page.locator('#hp-list .tl-row', { hasText: 'ON8AR' }).click()
+  await expect(page).toHaveURL(/hunter=abc123def456/)
+  await page.keyboard.press('Escape')
+
+  // And back: a logged-out page must not keep the names it is no longer
+  // allowed to see, nor a pubkey filter a guest cannot send.
+  member = false
+  await page.click('#auth-btn')
+  await expect(page.locator('#auth-btn')).toHaveText(/log in/i)
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters ▾')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('Hunter 1 (42)')
+  await expect(page.locator('#hp-list')).not.toContainText('ON8AR')
+})
+
+// #463: applyRole starts the roster fetch without awaiting it, so a login and
+// then a logout put two in flight. When the member roster is the slower one it
+// lands after the guest roster the logout asked for, and a logged-out page
+// shows real names again. The member response is held open so the order is
+// the one a slow network produces, not parallel-load luck.
+test('a member roster that lands after the logout does not bring the names back (#463)', async ({ page }) => {
+  let member = false
+  let guestCount = 42
+  let release, asked, served
+  const held = new Promise((res) => { release = res })
+  const memberAsked = new Promise((res) => { asked = res })
+  const memberServed = new Promise((res) => { served = res })
+  await page.route('**/api/hunters*', async (r) => {
+    if (!member) return r.fulfill({ json: { hunters: [{ hunter_pubkey: 'h1', hunter_name: 'Hunter 1', count: guestCount }] } })
+    asked()
+    await held
+    await r.fulfill({ json: { hunters: [H1, H2] } })
+    served()
+  })
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: member ? { role: 'member', username: 'alice' } : { role: 'guest' } }))
+  await page.route('**/api/auth/login', (r) => r.fulfill({ json: { ok: true } }))
+  await page.route('**/api/auth/logout', (r) => r.fulfill({ status: 204 }))
+  await page.goto('/?mode=hex')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('Hunter 1 (42)')
+  await page.keyboard.press('Escape')
+
+  member = true
+  await page.click('#auth-btn')
+  await page.fill('#login-user', 'alice')
+  await page.fill('#login-pass', 'correcthorse')
+  await page.click('#login-submit')
+  await expect(page.locator('#auth-btn')).toHaveText(/alice/i)
+  await memberAsked
+
+  // Log out while the member roster is still in flight. The count moved, so
+  // the guest roster the logout asked for is told apart from the boot one.
+  member = false
+  guestCount = 43
+  await page.click('#auth-btn')
+  await expect(page.locator('#auth-btn')).toHaveText(/log in/i)
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  await expect(page.locator('#hp-list')).toContainText('Hunter 1 (43)')
+
+  release()
+  await memberServed
+  await page.waitForTimeout(600)
+  const list = await page.locator('#hp-list').textContent()
+  expect(list, 'the newest roster stays').toContain('Hunter 1 (43)')
+  expect(list, 'a logged-out page shows no real names').not.toContain('ON8AR')
 })
