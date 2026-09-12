@@ -530,15 +530,43 @@ describe('receptions ticker CSS parity (#322)', () => {
   })
 
   it('derives the list geometry from the variable rather than restating it', () => {
+    // The invariant is the pitch: both surfaces multiply the row-height
+    // variable instead of baking a pixel number, so changing the row height
+    // moves the whole card. What differs since #560 is where the multiplier
+    // comes from. The map still writes the full-card literals; the app
+    // publishes a lane count per render, because its card is one lane, three
+    // or full. #424 brings the map onto the same model, and the assertions
+    // below keep the two agreeing on the full card in the meantime.
+    const fromLinePitch = (v) => /var\(--ch-rx-line-h\)/.test(v) && !/\d+px/.test(v)
     for (const [name, block] of [['app', app], ['web', web]]) {
       const height = decl(block, '.rx-list', 'height')
       const padTop = decl(block, '.rx-list', 'scroll-padding-top')
-      expect(height, name + ': .rx-list height').toMatch(/calc\(\s*10\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
-      expect(padTop, name + ': .rx-list scroll-padding-top').toMatch(/calc\(\s*6\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+      expect(fromLinePitch(height), name + ': .rx-list height is a multiple of the row pitch').toBe(true)
+      expect(fromLinePitch(padTop), name + ': .rx-list scroll-padding-top is a multiple of the row pitch').toBe(true)
       // 6 lanes above the playhead and 3 below is what rxFade's divisors
       // encode; the padding is the same geometry expressed in CSS.
       expect(decl(block, '.rx-ln', 'height')).toBe('var(--ch-rx-line-h)')
     }
+    // The map's multipliers, still literal.
+    expect(decl(web, '.rx-list', 'height')).toMatch(/calc\(\s*10\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+    expect(decl(web, '.rx-list', 'scroll-padding-top')).toMatch(/calc\(\s*6\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
+    // The app's, in both the places that carry them: the CSS fallback used
+    // before the first render, and the module that publishes them after. A
+    // full app card is still the map's ten lanes.
+    expect(decl(app, '.rx-list', 'height')).toMatch(/var\(--rx-lanes,\s*10\)/)
+    expect(decl(app, '.rx-list', 'scroll-padding-top')).toMatch(/var\(--rx-playhead,\s*6\)/)
+    expect(appTicker.RX_FULL_LANES, 'app full card matches the map').toBe(10)
+    // Both surfaces keep #130's playhead six lanes down with three below it, so
+    // lines still roll through it. Where they part company since #560 is the
+    // padding under the last row: the map still reserves three lanes there, so
+    // a ten-lane card ends in three blank ones, and the app reserves none, so
+    // the browser clamps the follow-scroll and parks the newest reception on
+    // the bottom lane instead. #424 is where the map follows; until it does,
+    // this pins the difference rather than letting it drift unnoticed.
+    expect(appTicker.rxPlayhead(appTicker.RX_FULL_LANES), 'app keeps the roll-through lane').toBe(6)
+    expect(appTicker.rxBelow(appTicker.RX_FULL_LANES), 'app keeps lanes for newer receptions').toBe(3)
+    expect(appTicker.rxPadBottom(appTicker.RX_FULL_LANES), 'app pads nothing under the last row').toBe(0)
+    expect(decl(web, '.rx-list', 'padding')).toMatch(/calc\(\s*3\s*\*\s*var\(--ch-rx-line-h\)\s*\)/)
   })
 
   it('scales the fixed columns with the type instead of pinning them to pixels', () => {
