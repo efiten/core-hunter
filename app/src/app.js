@@ -29,21 +29,26 @@ import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
 import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
-import { TIME_WINDOWS, windowMs } from './timewindows.js'
+import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
+import { filterSheetMarkup } from './filtersheet.js'
+import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
+import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
+import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
+import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
-import { createReceptionLog } from './receptionlog.js'
+import { createReceptionLog, tickerState, tickerStored } from './receptionlog.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
+import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
 import { shouldAutoFire, staggerTargets, autoPingCadenceText } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
-import { minPeriodMs, DISCOVER_BYTES, TRACE_BYTES } from './airtime.js'
+import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES, TELEMETRY_REQ_BYTES } from './airtime.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
@@ -51,6 +56,7 @@ import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotic
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
+import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, resolveCourseHeading } from './rotation.js'
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
@@ -81,6 +87,22 @@ function saveIgnore(set) {
 // Loader lives in settings.js (guarded + unit-tested, #338).
 function saveAttenuator(db) {
   try { localStorage.setItem('core-hunter-attenuator', String(db)) } catch (_) {}
+}
+
+// Terrain exaggeration (#396), persisted like the attenuator; loader in
+// settings.js. Terrain itself has no switch of its own: the 3D view raises
+// it (Kasper, 2026-09-06), so there is nothing else to persist.
+function saveExaggeration(x) {
+  try { localStorage.setItem('core-hunter-exaggeration', String(x)) } catch (_) {}
+}
+
+// Share my node name (#576). Stored as '1' or removed, so loadShareName's
+// exact-match read has one on-value and everything else is off.
+function saveShareName(on) {
+  try {
+    if (on) localStorage.setItem('core-hunter-share-name', '1')
+    else localStorage.removeItem('core-hunter-share-name')
+  } catch (_) {}
 }
 
 // Sound mode (#145): off / rxtx / full, cycled by the sound FAB. Persisted
@@ -157,6 +179,8 @@ const state = {
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
   map: null,
   rxLog: null,
+  tickerVisible: true,
+  tickerCollapse: 0,
   targetList: null,
   connected: false,
   wakeLock: null,
@@ -167,6 +191,9 @@ const state = {
   published: new Set(),
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
+  exaggeration: loadExaggeration(),
+  // Share my node name (#576): off by default, the hunter's own decision.
+  shareName: loadShareName(),
   soundMode: loadSoundMode(),
   themePref: loadThemePref(),
   // Unread release notes (#421). Lives on state so the settings button's dot
@@ -226,6 +253,10 @@ const state = {
   // Trace-pings we sent and may still get an answer to (#481). The tag on the
   // reply is what names the target it came back from; tracetag.js holds the rule.
   tracePings: [],
+  // Telemetry asks to selected companions (#553): the asks that may still be
+  // answered (telemetryreq.js names the reply), the rotation cursor, and
+  // whether a contact-path dance is in flight, since it holds the BLE link.
+  telemetry: { asks: [], cursor: 0, busy: false },
   // Sweep state (#479): who we asked when, how many asks went unheard, and when
   // each node was last heard at all. sweep.js turns those three into "who next".
   sweep: { cursor: 0, attempts: new Map(), lastAskedAt: new Map(), heardAt: new Map() },
@@ -362,8 +393,23 @@ function stopBatteryPoll() {
 // Light the filter pill's badge when the view is narrowed — either the filter
 // differs from the default or the ignore-list (also a display filter) is
 // non-empty. Called wherever state.filter or state.ignore changes.
+// The pill says THAT and HOW MUCH is narrowed; the sheet says what (#564). The
+// map has carried a count since #539 and the app carried nothing, so a filter
+// left on was invisible until you opened the sheet.
 function refreshFilterState() {
+  const n = activeFilterCount({
+    directOnly: state.filter.directOnly,
+    types: state.filter.types,
+    idClasses: state.filter.idClasses,
+    plotWindow: state.filter.windowMs !== DEFAULT_FILTER.windowMs,
+  })
   el('filter-pill').classList.toggle('active', isFilterActive(activeFilter()) || state.ignore.size > 0)
+  const badge = el('filter-pill-count')
+  if (badge) { badge.hidden = n === 0; badge.textContent = String(n) }
+  const head = el('fs-count')
+  if (head) { head.hidden = n === 0; head.textContent = n === 1 ? '1 filter' : `${n} filters` }
+  const clear = el('fs-clear')
+  if (clear) clear.textContent = n === 0 ? 'Clear filters' : `Clear ${n} filter${n === 1 ? '' : 's'}`
 }
 
 // Reflect the topbar popovers' open state on their triggers (aria-expanded
@@ -381,18 +427,71 @@ function refreshSettingsIndicator() {
   el('settings-btn').classList.toggle('active', isSettingsActive(state))
 }
 
-// Ticker visibility (#539). The ticker is a fixed card that can be put away
-// with its ✕; the topbar list button brings it back and lights accent while
-// traffic arrives unseen. Persisted like the view and sound FABs — Discover
-// is the deliberate exception (see state.autoPing).
-function loadTickerVisible() {
-  try { return localStorage.getItem('core-hunter-ticker') !== 'closed' } catch (_) { return true }
+// Ticker state (#539, resized in #560). The card can be put away with its ✕,
+// collapsed to three lanes with its chevron, or left full; the topbar list
+// button brings a hidden one back and lights accent while traffic arrives
+// unseen. All three live in one stored value, because they are one question:
+// how much of the ticker is on screen. Persisted like the view and sound FABs;
+// Discover is the deliberate exception (see state.autoPing).
+function loadTickerState() {
+  try { return tickerState(localStorage.getItem('core-hunter-ticker')) } catch (_) { return tickerState(null) }
 }
-function setTickerVisible(v) {
-  el('rx-log').hidden = !v
-  el('ticker-btn').hidden = v
-  if (v) el('ticker-btn').classList.remove('active')
-  try { localStorage.setItem('core-hunter-ticker', v ? 'open' : 'closed') } catch (_) {}
+
+// Closing travels towards the button that brings it back (#560): the card
+// vanishing on the spot left nothing connecting it to a control in the top
+// bar. Measured per close rather than assumed, because #ticker-btn is only
+// laid out once it is un-hidden, and the card's own position depends on the
+// viewport.
+function playTickerExit(done) {
+  const card = el('rx-log')
+  const btn = el('ticker-btn')
+  const from = card.getBoundingClientRect()
+  btn.hidden = false
+  const to = btn.getBoundingClientRect()
+  if (!from.width || !to.width) { done(); return }
+  card.style.setProperty('--rx-exit-x', Math.round((to.left + to.width / 2) - (from.left + from.width / 2)) + 'px')
+  card.style.setProperty('--rx-exit-y', Math.round((to.top + to.height / 2) - (from.top + from.height / 2)) + 'px')
+  let settled = false
+  const finish = () => {
+    if (settled) return
+    settled = true
+    card.classList.remove('rx-leaving')
+    card.style.removeProperty('--rx-exit-x')
+    card.style.removeProperty('--rx-exit-y')
+    done()
+  }
+  // transitionend can be missed (a background tab never runs the transition,
+  // and prefers-reduced-motion swaps which property animates), so the timer is
+  // the one that guarantees the card is actually hidden.
+  card.addEventListener('transitionend', finish, { once: true })
+  setTimeout(finish, 400)
+  // Added straight away rather than inside requestAnimationFrame: the card has
+  // been on screen, so its from-state is already committed, and a hidden tab
+  // never runs rAF at all (the trap behind #539's walkthrough measurements).
+  card.classList.add('rx-leaving')
+}
+
+function setTickerVisible(v, { animate = false } = {}) {
+  state.tickerVisible = v
+  const apply = () => {
+    el('rx-log').hidden = !v
+    el('ticker-btn').hidden = v
+    if (v) el('ticker-btn').classList.remove('active')
+  }
+  if (!v && animate) playTickerExit(apply)
+  else apply()
+  saveTickerState()
+}
+
+function setTickerCollapse(level) {
+  state.tickerCollapse = level
+  if (state.rxLog) state.rxLog.setCollapse(level)
+  saveTickerState()
+}
+
+function saveTickerState() {
+  const stored = tickerStored({ visible: state.tickerVisible, collapse: state.tickerCollapse })
+  try { localStorage.setItem('core-hunter-ticker', stored) } catch (_) {}
 }
 function noteTickerTraffic() {
   if (el('rx-log').hidden) el('ticker-btn').classList.add('active')
@@ -738,6 +837,14 @@ async function processFrame(dv) {
       cls = { ...cls, sender: { kind: 'trace_reply', id: target, label: null, role: null }, heardUsSnr: heardUsSnr(decoded) }
     }
   }
+  // A companion's answer to our telemetry request is a RESPONSE datagram
+  // carrying only the 1-byte source hash (#553). Like a trace reply, it is
+  // named after the node we asked, while that ask is live and unambiguous;
+  // the 0x8B push that follows settles the identity on six bytes.
+  if (decodedOk && cls.packetType === 'Response' && cls.sender.kind === 'direct_hash') {
+    const target = matchTelemetryTarget(state.telemetry.asks, cls.sender.id, Date.now())
+    if (target) cls = { ...cls, sender: { kind: 'telemetry_reply', id: target, label: null, role: null } }
+  }
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
     // The only reason left to refuse is the fix, and that is the one worth
@@ -1018,7 +1125,7 @@ function selectedRepeaterTargets() {
 function updateDiscoverBtnVisual() {
   const btn = el('discover-btn')
   if (!btn) return
-  const targeting = state.autoPing.enabled && selectedRepeaterTargets().length > 0
+  const targeting = state.autoPing.enabled && (selectedRepeaterTargets().length > 0 || selectedCompanionTargets().length > 0)
   btn.classList.toggle('auto-on', state.autoPing.enabled)
   btn.classList.toggle('auto-target', targeting)
   btn.setAttribute('aria-label', !state.autoPing.enabled ? 'Auto-discover: off'
@@ -1054,6 +1161,15 @@ function autoPingTick() {
   renderAutoPingCadence()
   pulseDiscoverBtn()
   sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
+  // With Share my node name on, a cycle that has a companion as target also
+  // carries our advert (#576): that is the node that has to hear us before it
+  // can answer, and one advert at switch-on could be sent while it is out of
+  // range. Zero-hop, so it costs the mesh nothing beyond this one airtime, and
+  // that airtime joins the floor's count like the other frames' (#381).
+  if (announceThisCycle({ shareName: state.shareName, connected: state.connected, companionTargets: selectedCompanionTargets().length }) && sendSelfAdvert()) {
+    state.autoPing.sentBytes.push(advertBytes(state.name))
+    renderAutoPingCadence()
+  }
   // Each staggered trace-ping is also a real transmission — pulse the FAB and
   // sound the cue for it too, but only if the ping actually succeeds (#254).
   // The tx cue follows the same rule as the pulse: it must mean "a frame went
@@ -1076,6 +1192,123 @@ function autoPingTick() {
     }, delayMs)
     state.autoPing.pendingPings.push(handle)
   }
+  // A selected companion cannot be trace-pinged; it gets the telemetry request
+  // (#553), one per cycle, rotating: the firmware keeps one pending telemetry
+  // tag, so two in flight would orphan a reply. Only with a target selected,
+  // never in the sweep: the answer needs a reader.
+  const companions = selectedCompanionTargets()
+  if (companions.length) {
+    const next = nextTelemetryTarget(companions, state.telemetry.cursor)
+    state.telemetry.cursor = next.cursor
+    askTelemetry(next.id).catch(() => {})
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry request to a companion (#553)
+// ---------------------------------------------------------------------------
+// The one directed probe a companion answers. Three things have to hold: our
+// companion has the target as a contact (else the firmware answers NOT_FOUND),
+// the target has us (Share my node name, #576), and the ask goes out zero-hop.
+// The last one is the contact-path dance from coredrive-rx (contactpath.js):
+// read the contact, force its out_path_len to 0 for the ask, put it back right
+// after, whether the ask went out or not. Nothing here floods: an override that
+// did not ack means no ask this cycle.
+
+const CONTACT_TIMEOUT_MS = 4000
+const SENT_ACK_TIMEOUT_MS = 3000
+const FULL_PUBKEY = /^[0-9a-f]{64}$/
+
+// sendAndWait sends one command and resolves with the first reply `accept`
+// recognises, or null on a timeout or a send failure. Every reply the
+// companion gives to these commands carries no correlator, so the argument
+// is that nothing else in the app issues them concurrently: askTelemetry
+// runs one dance at a time (state.telemetry.busy), and a dance and the restore
+// replay take turns on the link (contactpath.js).
+function sendAndWait(frame, accept, timeoutMs) {
+  const t = state.transport
+  if (!t) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const onFrame = (dv) => {
+      const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+      const r = accept(bytes)
+      if (r == null) return
+      cleanup()
+      resolve(r)
+    }
+    const timer = setTimeout(() => { cleanup(); resolve(null) }, timeoutMs)
+    function cleanup() { clearTimeout(timer); if (state.transport) state.transport.offFrame(onFrame) }
+    t.onFrame(onFrame)
+    t.send(frame).catch(() => { cleanup(); resolve(null) })
+  })
+}
+
+// getContact reads one contact. A found reply is matched on its echoed pubkey;
+// a NOT_FOUND reply carries none, and in this window can only be ours.
+function getContact(pubkey) {
+  return sendAndWait(buildGetContactByKey(pubkey), (bytes) => {
+    const parsed = parseContactReply(bytes)
+    if (!parsed) return null
+    if (parsed.found && parsed.pubkey !== pubkey) return null
+    return parsed
+  }, CONTACT_TIMEOUT_MS)
+}
+
+// writeContact sends an override or a restore and waits for OK or ERR.
+function writeContact(frame) {
+  return sendAndWait(frame, (bytes) => (bytes[0] === RESP_CODE_OK ? true : bytes[0] === RESP_CODE_ERR ? false : null), CONTACT_TIMEOUT_MS)
+}
+
+// The companion link the contact-path dance runs over.
+const contactIo = { getContact, writeContact }
+
+// A session that died between an override and its restore left that contact
+// zero-hop on the companion; this puts every such contact back, once per connect.
+async function maybeReplayPendingRestores() {
+  const restored = await replayPendingRestores(contactIo, state.rxPubkey)
+  if (restored === false) console.debug('[telemetry] a replayed restore did not ack, kept for the next connect')
+}
+
+async function askTelemetry(pubkey) {
+  if (!state.connected || !state.transport || state.telemetry.busy) return
+  if (!FULL_PUBKEY.test(pubkey)) return   // the firmware looks the contact up by all 32 bytes
+  state.telemetry.busy = true
+  try {
+    const r = await askAtZeroHop(contactIo, state.rxPubkey, pubkey, async () => {
+      if (!state.connected || !state.transport) return
+      const ack = await sendAndWait(buildTelemetryRequest(pubkey), parseSentAck, SENT_ACK_TIMEOUT_MS)
+      if (!ack) return
+      // The frame went out: the same pulse and cue as every other transmission,
+      // and its airtime joins the floor's count (#381). The ask is remembered
+      // here, before the restore, so a reply that beats the restore's ack is
+      // still named after it.
+      state.autoPing.sentBytes.push(TELEMETRY_REQ_BYTES)
+      renderAutoPingCadence()
+      pulseDiscoverBtn()
+      sound.txBlip('trace')
+      if (ack.isFlood) { console.debug('[telemetry] asked over flood despite the override:', idPrefix(pubkey)); return }
+      state.telemetry.asks = rememberAsk(state.telemetry.asks, pubkey, Date.now())
+    })
+    if (r.skipped) console.debug(`[telemetry] ${r.skipped}, not asking:`, idPrefix(pubkey))
+    if (r.restored === false) console.debug('[telemetry] restore did not ack, kept for the next connect:', idPrefix(pubkey))
+  } finally {
+    state.telemetry.busy = false
+  }
+}
+
+// onCompanionFrame reads the pushes the probe answers arrive on. The telemetry
+// response names the responder by a 6-byte prefix; the node it belongs to is
+// the ask or the selected target that starts with it. What it said is kept
+// per node (queue.putNode), apart from the receptions: it describes the node,
+// not one hearing of it.
+function onCompanionFrame(dv) {
+  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+  const r = parseTelemetryResponse(bytes)
+  if (!r) return
+  const known = [...state.telemetry.asks.map((a) => a.pubkey), ...selectedCompanionTargets()]
+  const pubkey = known.find((id) => id.startsWith(r.prefix))
+  if (!pubkey) return
+  state.queue.putNode(pubkey, { ...r.telemetry, telemetry_at: new Date().toISOString() }).catch(() => {})
 }
 
 // Who this cycle probes. With a target selected it is those targets and nothing
@@ -1099,6 +1332,7 @@ function stopAutoPing() {
   if (state.autoPing.timer) { clearInterval(state.autoPing.timer); state.autoPing.timer = null }
   for (const handle of state.autoPing.pendingPings) clearTimeout(handle)
   state.autoPing.pendingPings = []
+  state.telemetry.asks = []
   updateDiscoverBtnVisual()
   renderAutoPingCadence()
 }
@@ -1114,6 +1348,25 @@ function toggleAutoPing() {
   autoPingTick()
   updateDiscoverBtnVisual()
   renderAutoPingCadence()
+}
+
+// The selected targets a trace-ping cannot reach (#576): companions, which
+// answer only a sender they have as a contact.
+function selectedCompanionTargets() {
+  const selected = selectedSet()
+  if (!selected) return []
+  return selectedCompanionIds(state.lastRows, selected)
+}
+
+// sendSelfAdvert asks the companion for one zero-hop advert. A real frame
+// going out, so it gets the FAB pulse and the tx cue like every other one, and
+// it returns whether it went, as sendDiscover does.
+function sendSelfAdvert() {
+  if (!state.connected || !state.transport) return false
+  state.transport.send(buildSelfAdvertFrame()).catch(() => {})
+  pulseDiscoverBtn()
+  sound.txBlip('discover')
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -1250,8 +1503,12 @@ async function connectAll() {
     // publisher state.
     connectMqtt()
 
-    // 5. Register frame handler
+    // 5. Register frame handlers: the RX log, and the pushes the probe answers arrive on (#553)
     state.transport.onFrame(processFrame)
+    state.transport.onFrame(onCompanionFrame)
+    // A contact left zero-hop by a session that died mid-ask goes back; an ask
+    // that starts meanwhile waits for it (contactpath.js).
+    maybeReplayPendingRestores().catch(() => {})
 
     setHuntingChrome(true)
     el('discover-btn').disabled = false
@@ -1385,70 +1642,24 @@ async function disconnectAll(nextPhase = 'idle') {
 
 function buildFilterSheet() {
   const sheet = el('filter-sheet')
-  sheet.innerHTML = `
-    <div class="filter-sheet-inner">
-      <div class="sheet-head">
-        <h2>Filters</h2>
-        <button class="sheet-close" id="fs-close" aria-label="Close">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
-          </svg>
-        </button>
-      </div>
-      <label class="fs-row" id="fs-row-direct" title="Only receptions carrying no path at all. The path is written by the sender, so this is what the packet claims, not a measurement of distance.">
-        <input type="checkbox" id="fs-direct-only" />
-        <span>No path</span>
-      </label>
-      <label class="fs-row" id="fs-row-unnamed" title="Only receptions nothing could be attributed to. A flood sent with 1-byte path hashes leaves no sender at all, and this is the handle it has.">
-        <input type="checkbox" id="fs-unnamed" />
-        <span>Sender unknown</span>
-      </label>
-      <label class="fs-row" id="fs-row-window">
-        <span>Plot last:</span>
-        <select id="fs-window">
-          ${TIME_WINDOWS.map(w => `<option value="${windowMs(w.token)}">${w.label}</option>`).join('')}
-          <option value="0">All time</option>
-        </select>
-      </label>
-      <div class="fs-type-row">
-        <span class="fs-type-label">Types</span>
-        <div id="fs-type-chips" class="fs-type-chips">
-          <button class="fs-chip active" data-type="all">All</button>
-          ${FILTER_PACKET_TYPES.map(t => `<button class="fs-chip" data-type="${t.value}">${t.label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="fs-type-row" title="How far the sender can be identified: one byte is a 1-in-256 guess, a pubkey is unique.">
-        <span class="fs-type-label">Sender id</span>
-        <div id="fs-idclass-chips" class="fs-type-chips">
-          <button class="fs-chip active" data-idclass="all">All</button>
-          ${SENDER_ID_CLASSES.map(c => `<button class="fs-chip" data-idclass="${c.value}">${c.label}</button>`).join('')}
-        </div>
-      </div>
-      <div class="ss-ignore-section">
-        <h3>Ignored senders</h3>
-        <div id="ss-ignore-list"></div>
-        <button id="ss-ignore-clear">Clear ignore-list</button>
-      </div>
-    </div>`
+  // The structure lives in filtersheet.js (#564), so the group order and the
+  // words are a value web/parity.test.js can read against the map's panel.
+  sheet.innerHTML = filterSheetMarkup({ types: FILTER_PACKET_TYPES, idClasses: SENDER_ID_CLASSES })
 
   const chk = el('fs-direct-only')
-  const unnamedChk = el('fs-unnamed')
   const sel = el('fs-window')
 
   chk.checked = state.filter.directOnly
-  unnamedChk.checked = state.filter.unnamed
   sel.value = String(state.filter.windowMs)
 
   // Mark each row active when its own value differs from DEFAULT_FILTER,
   // mirroring the existing .fs-chip.active / .ss-manfix-active pattern —
   // the filter-button badge shows *something* differs, these show *what*.
   const syncDirectRow = () => el('fs-row-direct').classList.toggle('active', chk.checked !== DEFAULT_FILTER.directOnly)
-  const syncUnnamedRow = () => el('fs-row-unnamed').classList.toggle('active', unnamedChk.checked !== DEFAULT_FILTER.unnamed)
   const syncWindowRow = () => el('fs-row-window').classList.toggle('active', (Number(sel.value) || null) !== DEFAULT_FILTER.windowMs)
-  syncDirectRow(); syncUnnamedRow(); syncWindowRow()
+  syncDirectRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
-  unnamedChk.addEventListener('change', () => { state.filter.unnamed = unnamedChk.checked; syncUnnamedRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
     if (state.map) state.map.setTimeWindow(state.filter.windowMs)
@@ -1457,34 +1668,58 @@ function buildFilterSheet() {
 
   // Chip rows — the "All" chip (default) means no filter on that dimension.
   // Picking a specific chip turns All off; clearing the last specific one turns
-  // All back on. Both rows behave that way, so the rule is written once (#475).
+  // All back on. The rule itself is `nextChipSelection` (#475, shared with the
+  // map since #564): this is only the DOM half of it, so the two surfaces
+  // cannot answer the same press differently.
+  const chipsOf = (hostId) => [...el(hostId).querySelectorAll('.fs-chip')].filter((c) => c.dataset.type !== 'all' && c.dataset.idclass !== 'all')
+  const paintChipRow = (hostId, attr, selected) => {
+    const chips = el(hostId)
+    for (const c of chips.querySelectorAll('.fs-chip')) {
+      const v = c.dataset[attr]
+      c.classList.toggle('active', v === ALL ? selected.size === 0 : selected.has(v))
+    }
+  }
   const wireChipRow = (hostId, attr, apply) => {
     const chips = el(hostId)
     chips.addEventListener('click', (e) => {
       const chip = e.target.closest('.fs-chip')
       if (!chip) return
-      const allChip = chips.querySelector(`.fs-chip[data-${attr}="all"]`)
-
-      if (chip === allChip) {
-        if (allChip.classList.contains('active')) return // already showing all — no-op
-        allChip.classList.add('active')
-        chips.querySelectorAll(`.fs-chip:not([data-${attr}="all"]).active`).forEach(c => c.classList.remove('active'))
-      } else {
-        chip.classList.toggle('active')
-        allChip.classList.remove('active')
-      }
-
-      const selected = [...chips.querySelectorAll('.fs-chip.active')]
-        .map(c => c.dataset[attr])
-        .filter(v => v !== 'all')
-      // nothing specific → fall back to All
-      if (selected.length === 0) allChip.classList.add('active')
-      apply(selected.length === 0 ? null : new Set(selected))
+      const before = new Set([...chips.querySelectorAll('.fs-chip.active')]
+        .map((c) => c.dataset[attr]).filter((v) => v !== ALL))
+      const after = nextChipSelection(before, chip.dataset[attr])
+      paintChipRow(hostId, attr, after)
+      apply(after.size === 0 ? null : after)
       refreshFilterState()
+      syncTypeOverflow()
     })
   }
   wireChipRow('fs-type-chips', 'type', (v) => { state.filter.types = v })
   wireChipRow('fs-idclass-chips', 'idclass', (v) => { state.filter.idClasses = v })
+
+  // "+N more" (#564). Fifteen 44px chips are four rows on a phone and push the
+  // rest of the sheet under the fold — the rule the map has had since #423,
+  // brought here, where every screen is below the breakpoint. The count is
+  // computed rather than measured, so it is right before layout too.
+  const typeValues = FILTER_PACKET_TYPES.map((t) => t.value)
+  function syncTypeOverflow() {
+    const selected = new Set(state.filter.types || [])
+    const hidden = hiddenChipCount(typeValues, selected, CHIP_CAP)
+    const more = el('fs-types-more')
+    const expanded = sheet.classList.contains('fs-types-all')
+    more.hidden = hidden === 0 && !expanded
+    more.textContent = expanded ? 'Show fewer' : `+${hidden} more`
+    const count = el('fs-types-count')
+    count.hidden = selected.size === 0
+    count.textContent = `${selected.size} of ${typeValues.length}`
+  }
+  el('fs-types-more').addEventListener('click', () => {
+    sheet.classList.toggle('fs-types-all')
+    syncTypeOverflow()
+  })
+  syncTypeOverflow()
+  // Every chip past the cap that is not active is hidden by CSS; this marks
+  // which ones those are, since :nth-child would count the All chip too.
+  chipsOf('fs-type-chips').forEach((c, i) => { c.dataset.overflow = i >= CHIP_CAP ? '1' : '' })
 
   renderIgnoreList(el('ss-ignore-list'))
   el('ss-ignore-clear').addEventListener('click', () => {
@@ -1492,6 +1727,25 @@ function buildFilterSheet() {
     saveIgnore(state.ignore)
     renderIgnoreList(el('ss-ignore-list'))
     refreshFilterState()
+    drawOnce()
+  })
+
+  // Clear, which the map has had since #539 and the app had nowhere. Resets
+  // every dimension the count counts, and nothing else: the ignore list has its
+  // own button, because forgetting who you silenced is not "clear the filters".
+  el('fs-clear').addEventListener('click', () => {
+    state.filter.types = null
+    state.filter.idClasses = null
+    state.filter.directOnly = DEFAULT_FILTER.directOnly
+    state.filter.windowMs = DEFAULT_FILTER.windowMs
+    chk.checked = state.filter.directOnly
+    sel.value = String(state.filter.windowMs)
+    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
+    paintChipRow('fs-type-chips', 'type', new Set())
+    paintChipRow('fs-idclass-chips', 'idclass', new Set())
+    syncDirectRow(); syncWindowRow()
+    refreshFilterState()
+    syncTypeOverflow()
     drawOnce()
   })
 
@@ -1662,6 +1916,19 @@ function buildSettingsSheet() {
             <option value="-30">−30 dB</option>
           </select>
         </label>
+        <label class="ss-radio-row" id="ss-row-exag">
+          <span>Terrain exaggeration</span>
+          <select id="ss-exag">${EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')}</select>
+        </label>
+        <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The 3D view raises the ground.</p>
+      </div>
+      <div class="ss-radio-section">
+        <h3>Identity</h3>
+        <label class="ss-check-row" id="ss-row-share-name">
+          <input type="checkbox" id="ss-share-name" />
+          <span>Share my node name</span>
+        </label>
+        <p class="ss-hint">Shares your companion's name and key with nodes in direct range, once per auto-discover cycle while a companion is your target. Off: the app never transmits who you are.</p>
       </div>
       <div class="ss-theme-row">
         <span>Theme</span>
@@ -1767,10 +2034,34 @@ function buildSettingsSheet() {
   })
   refreshConnState()
 
+  // Share my node name (#576): a checkbox, saved on change, and the row and
+  // the settings dot both say when it is on.
+  const share = el('ss-share-name')
+  share.checked = state.shareName
+  const syncShareRow = () => el('ss-row-share-name').classList.toggle('active', state.shareName)
+  syncShareRow()
+  share.addEventListener('change', () => {
+    state.shareName = share.checked
+    saveShareName(state.shareName)
+    syncShareRow()
+    refreshSettingsIndicator()
+  })
+
   const atten = el('ss-atten')
   atten.value = String(state.attenuatorDb)
   const syncAttenRow = () => el('ss-row-atten').classList.toggle('active', (Number(atten.value) || 0) !== 0)
   syncAttenRow()
+  const exag = el('ss-exag')
+  exag.value = String(state.exaggeration)
+  const syncExagRow = () => el('ss-row-exag').classList.toggle('active', Number(exag.value) !== DEFAULT_EXAGGERATION)
+  syncExagRow()
+  exag.addEventListener('change', () => {
+    state.exaggeration = Number(exag.value) || DEFAULT_EXAGGERATION
+    saveExaggeration(state.exaggeration)
+    applyExaggeration()
+    syncExagRow()
+    refreshSettingsIndicator()
+  })
   atten.addEventListener('change', () => {
     state.attenuatorDb = Number(atten.value) || 0
     saveAttenuator(state.attenuatorDb)
@@ -2220,6 +2511,13 @@ function applyNodePosNotices({ glanceExpired = false } = {}) {
   keyEl.hidden = !key
 }
 
+// Terrain (#396): the 3D view raises it, at this exaggeration. The map draws
+// hillshade and the relief mesh in 3D once the DEM tiles are in (terrain.js);
+// in 2D there is nothing to raise, so nothing is drawn.
+function applyExaggeration() {
+  if (state.map) state.map.setExaggeration(state.exaggeration)
+}
+
 async function toggleNodePositions() {
   nodePosOn = !nodePosOn
   const btn = el('nodepos-toggle')
@@ -2538,6 +2836,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Initialise map
   state.map = createHuntMap('map')
   state.map.setAttenuator(state.attenuatorDb)
+  applyExaggeration()
   state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise the receptions log (#130) — replaces the Messages panel. The
@@ -2549,11 +2848,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     // highlight ring was drawn at coordinates that could be off-screen, so the
     // tap looked like it did nothing.
     onRowActivate: (rec) => { if (state.map) state.map.focusReception(rec) },
-    onClose: () => setTickerVisible(false),
+    onClose: () => setTickerVisible(false, { animate: true }),
+    onCollapse: (level) => setTickerCollapse(level),
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
   el('ticker-btn').addEventListener('click', () => setTickerVisible(true))
-  setTickerVisible(loadTickerVisible())
+  const ticker = loadTickerState()
+  state.tickerCollapse = ticker.collapse
+  state.rxLog.setCollapse(ticker.collapse)
+  setTickerVisible(ticker.visible)
 
   // Build sheets (static HTML injected once)
   buildFilterSheet()

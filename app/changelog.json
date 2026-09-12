@@ -7,6 +7,34 @@
     "body": "Same basemap and colours as the RX webapp, smoother with many points. Shared links keep their zoom."
   },
   {
+    "id": "2026-09-05-3d-bars-match-their-cell",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "3D bars now show the same colour as their cell",
+    "body": "A weak signal was a solid dark bar on a pale cell. The bar is painted the cell's tint, and the map's light no longer darkens it."
+  },
+  {
+    "id": "2026-09-05-terrain",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "Terrain is back, raised in 3D",
+    "body": "The 3D view now raises the ground on shaded relief. Settings has the exaggeration, 7× by default so the Low Countries show any relief at all."
+  },
+  {
+    "id": "2026-09-05-one-unnamed-control",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "Sender unknown is gone; the Unnamed chip does the same",
+    "body": "The checkbox and the chip selected the same receptions. A shared map link that still carries the checkbox is ignored."
+  },
+  {
+    "id": "2026-09-05-ticker-name-and-id",
+    "date": "2026-09-05",
+    "where": "both",
+    "title": "The receptions ticker shows the id next to a resolved name",
+    "body": "Six characters in their own column, so you can see which node a name came from. A line without a name is unchanged."
+  },
+  {
     "id": "2026-09-05-links-that-leave-the-app",
     "date": "2026-09-05",
     "where": "both",
@@ -28,11 +56,53 @@
     "body": "Both About tabs link the FAQ, and every question there has its own address to share."
   },
   {
+    "id": "2026-09-04-companion-target-ping",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "A companion target gets pinged too",
+    "body": "Select a companion and auto-discover asks it for its telemetry each cycle, zero-hop. Its answer is a reception from where it stands, and its battery and temperature are kept per node."
+  },
+  {
+    "id": "2026-09-04-share-my-node-name",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "Share my node name, off unless you turn it on",
+    "body": "A new setting shares your companion's name and key with nodes in direct range, each auto-discover cycle while a companion is your target. Off, the app never transmits who you are."
+  },
+  {
     "id": "2026-09-04-time-window-presets",
     "date": "2026-09-04",
     "where": "app",
     "title": "The time window has the map's presets",
     "body": "Five minutes to seven days, in the same steps and words as the map. Between one hour and all time there was nothing."
+  },
+  {
+    "id": "2026-09-01-one-filter-panel",
+    "date": "2026-09-01",
+    "where": "both",
+    "title": "The filter panel is the same panel in the app and on the map",
+    "body": "Same groups, same order, same words. The app gains named groups, a count and a Clear button; an empty chip row now says All."
+  },
+  {
+    "id": "2026-09-01-map-bar-one-row",
+    "date": "2026-09-01",
+    "where": "map",
+    "title": "The map's bar is one row, and says which map you are on",
+    "body": "On a phone it was seven rows over a quarter of the screen, hiding the zoom buttons. What no longer fits is behind Filters or the menu."
+  },
+  {
+    "id": "2026-08-31-map-ticker-card",
+    "date": "2026-08-31",
+    "where": "map",
+    "title": "The receptions ticker is a card, and only as tall as it needs",
+    "body": "It sits on its own plate instead of on the tiles, and grows with what it holds. Its button in the bar is a pulse now, not a second hamburger."
+  },
+  {
+    "id": "2026-08-31-ticker-sizes-itself",
+    "date": "2026-08-31",
+    "where": "app",
+    "title": "The receptions card is only as tall as it has to be",
+    "body": "It grows with what it holds: one line, three, five, then ten. The chevron steps a full card back to three, then one, then out again."
   },
   {
     "id": "2026-08-31-quiet-in-your-pocket",
