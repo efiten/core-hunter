@@ -944,3 +944,31 @@ func TestFilterFromIgnoresRepeatedParam(t *testing.T) {
 		t.Fatalf("empty ignores values must be dropped: %q", f.Ignore)
 	}
 }
+
+// ?unnamed=1 was the coarse handle for a flood with no sender before the
+// sender-id classes (#475) gave the same rows a chip. It is not a parameter
+// any more (#535): a shared link still carrying it narrows nothing.
+func TestPointsIgnoreTheOldUnnamedParam(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	// Two different frames: the store is idempotent on the raw bytes, so one
+	// frame inserted twice would be one row.
+	rows := []struct{ raw, id string }{
+		{"0886c0000008150c287e99644c9a5107765f7144c2bbc36cc7e8f19af9b8", ""},
+		{"0822480000040426a364fc64fd478be84632b802c7498e0db5334d2910e2", "aabb"},
+	}
+	for _, r := range rows {
+		st.Insert(store.Reception{HunterPubkey: "aaaa", RxAt: now, Raw: r.raw, Hops: 1,
+			SenderID: r.id, SenderKind: "relay", RSSI: -90, PacketType: "TextMessage", Lat: 52.36, Lon: 4.83})
+	}
+	member := Auth{Role: "member", UserID: 1, Username: "m"}
+	out := doPointsQ(t, st, member, "?unnamed=1")
+	pts, _ := out["points"].([]any)
+	if len(pts) != 2 {
+		t.Fatalf("unnamed=1 must be ignored: got %d rows, want 2", len(pts))
+	}
+}

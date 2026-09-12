@@ -182,13 +182,16 @@ settings sheet and persisted in localStorage.
 
 ## Name resolution
 
-Resolvers in `config.json` are tried in config order; the first unambiguous
-hit wins. Providing multiple resolvers (e.g. one per region/spreading-factor)
-allows coverage across different network segments. Resolvers whose `sf` matches
-the companion's own spreading factor are tried first: the SF is read from the
+Providing multiple resolvers (e.g. one per region/spreading-factor) allows
+coverage across different network segments. Every resolver whose `sf` matches
+the companion's own spreading factor is asked at once: the SF is read from the
 `PACKET_SELF_INFO` reply (byte 56, firmware-confirmed, see AGENTS.md §7), and
-config order is the fallback when it is unavailable or nothing matches. The
-resolver region label is not shown next to the resolved name.
+all resolvers are asked when it is unavailable or nothing matches. A name is
+used only when the resolvers that know the id agree on it; two different names,
+even ones that differ only in letter case, give no name. Config order decides
+only which agreeing resolver supplies the node's position: the first that has
+one. See `docs/2026-09-05-names-agree-or-nothing.md`. The resolver region label
+is not shown next to the resolved name.
 
 ## Resilience
 

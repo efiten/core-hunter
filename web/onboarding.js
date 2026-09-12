@@ -40,9 +40,14 @@ export const ONBOARDING_CALLOUTS = [
   // the pill, so the box that used to point at six inline controls points at
   // the row that ends in the pill. Two separate boxes (row + pill) cannot
   // both sit below targets this close together without overlapping.
+  // #f-sender is no longer among them (#561): the typed prefix search moved
+  // into the panel, where a closed panel gives it a 0x0 rect that the filter
+  // below drops anyway. That same filter is what makes this list right at 375px
+  // as well, where Hunters and the time range are in the panel too and the
+  // union narrows to Select target and the pill.
   {
     id: 'wb-co-filters',
-    targets: ['hp-toggle', 'f-sender', 'sp-toggle', 'tr-toggle', 'filter-pill'],
+    targets: ['hp-toggle', 'sp-toggle', 'tr-toggle', 'filter-pill'],
     side: 'below',
     align: 'left',
     text: 'Choose hunters, a sender and a time range. Everything else — packet types, sender classes, zero-hop only, the overlays, the points/hex view, and (for members) Locate — lives behind Filters. Filtering changes what you see, not what is kept.',
