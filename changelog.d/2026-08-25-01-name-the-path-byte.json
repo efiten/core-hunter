@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-25-name-the-path-byte",
+  "date": "2026-08-25",
+  "where": "both",
+  "title": "A reception with no sender now shows the byte we heard",
+  "body": "A one-byte route mark now reads as #64, not a dash. A hint, not an identity: 256 nodes share each value, and it no longer counts as Sender unknown."
+}

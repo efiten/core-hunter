@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-26-sender-id-class-chips",
+  "date": "2026-08-26",
+  "where": "both",
+  "title": "Filter by how well the sender can be identified",
+  "body": "A new chip row filters by how far the sender can be identified. One byte is a guess between 256 nodes, and it is what isolates a flood."
+}

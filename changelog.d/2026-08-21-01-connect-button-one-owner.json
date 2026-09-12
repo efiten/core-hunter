@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-21-connect-button-one-owner",
+  "date": "2026-08-21",
+  "where": "app",
+  "title": "The connect button always offers a way back",
+  "body": "The connect button now matches the real state, so a dropped link offers a way back."
+}

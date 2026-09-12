@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-19-node-positions",
+  "date": "2026-08-19",
+  "where": "map",
+  "title": "Advertised node positions on the map",
+  "body": "An optional layer draws where nodes say they are. Self-reported, not measured."
+}

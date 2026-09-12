@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-25-target-button-names-the-node",
+  "date": "2026-08-25",
+  "where": "map",
+  "title": "The target button names the node you picked",
+  "body": "Picking a target from the list left no trace once the panel closed: the button beside the sender box was a bare arrow, so a filtered map looked exactly like an unfiltered one. It now reads the node's name, or the number of targets when you pick several, and lights up while a pick is active."
+}

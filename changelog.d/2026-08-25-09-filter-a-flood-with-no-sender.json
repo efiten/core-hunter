@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-25-filter-a-flood-with-no-sender",
+  "date": "2026-08-25",
+  "where": "both",
+  "title": "You can now filter a flood that has no sender",
+  "body": "You can now filter on traffic with no sender. Direct only is called No path now."
+}

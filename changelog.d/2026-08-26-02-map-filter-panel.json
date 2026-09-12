@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-26-map-filter-panel",
+  "date": "2026-08-26",
+  "where": "map",
+  "title": "All filters in one panel",
+  "body": "The filters live in one panel behind the Filters button, which now counts what is narrowed. The layer choice became three buttons and Clear says what it clears."
+}

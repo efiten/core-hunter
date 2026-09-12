@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-22-capture-everything-heard",
+  "date": "2026-08-22",
+  "where": "app",
+  "title": "The map shows everything the radio hears",
+  "body": "Receptions we cannot pin to a sender are now kept and drawn, roughly three times as many points."
+}

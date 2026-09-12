@@ -1,0 +1,47 @@
+# Rebuilds the two shipped changelog copies from changelog.d/ (#509).
+#
+# A PR adds one file under changelog.d/ and touches neither app/changelog.json
+# nor web/changelog.json, which is what stops two release notes from ever
+# conflicting. Something still has to write those two, because neither deploy
+# can: the app image builds with app/ as its Docker context and the website is
+# copied to the nginx box as a flat file list, so both need the generated file
+# committed. That is this job.
+#
+# On a PR nothing runs here: web/parity.test.js already fails if a copy is not
+# what the source produces, so a hand-edit is caught by the suite that PR runs.
+#
+# The push this makes retriggers the workflow once; the second run finds both
+# copies already current and commits nothing, so it stops there.
+name: changelog
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Rebuild from changelog.d
+        run: node scripts/build-changelog.mjs
+
+      - name: Commit if the copies moved
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- app/changelog.json web/changelog.json; then
+            echo "both copies already match changelog.d/"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/changelog.json web/changelog.json
+          git commit -m "chore: rebuild the changelog copies from changelog.d"
+          git push

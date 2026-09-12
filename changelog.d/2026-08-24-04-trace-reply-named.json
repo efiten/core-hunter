@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-24-trace-reply-named",
+  "date": "2026-08-24",
+  "where": "app",
+  "title": "A repeater's answer to your ping counts for the node you picked",
+  "body": "When you have a target selected, the app pings it and the repeater answers. That answer was drawn on the map as an unnamed reception, so it never counted towards where the app thinks your target is. It is now tied to the node you asked, because the app recognises the marker it put in its own ping. Traffic you merely overhear is unchanged: it stays unnamed."
+}

@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-22-leaflet-controls-theme",
+  "date": "2026-08-22",
+  "where": "map",
+  "title": "Zoom and attribution follow the theme",
+  "body": "The map's zoom buttons and attribution now follow the theme."
+}

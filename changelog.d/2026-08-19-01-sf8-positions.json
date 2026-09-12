@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-19-sf8-positions",
+  "date": "2026-08-19",
+  "where": "both",
+  "title": "SF8 nodes on the position layer",
+  "body": "SF8 nodes are now drawn on the advertised-position layer, which only showed SF7."
+}
