@@ -1,10 +1,13 @@
-import { test, expect, openPicker } from './fixtures.js'
+import { test, expect, openPicker, openFilters } from './fixtures.js'
 
-// #372: on a phone #bar wraps, #tr-toggle starts its own row, and the
+// #372: on a phone #bar wrapped, #tr-toggle started its own row, and the
 // right-anchored time-range panel grew off the left edge — what showed was its
 // own padding, so the control read as an empty dark box. These assert the
 // contents are reachable, not merely that the panel element is visible, which
 // was true the whole time it was broken.
+// The bar stopped wrapping in #561 and these controls moved into the filter
+// panel at phone width, so the popovers now open from inside a sheet. That is a
+// different box to overflow, and the same assertion still has to hold.
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -14,21 +17,39 @@ test.beforeEach(async ({ page }) => {
 })
 
 // Every part of a popover has to be inside the viewport, not just its box.
+// Polled, not read once: a panel is re-placed in the page's resize handler,
+// and under a parallel run that can land after setViewportSize has resolved,
+// so a single read saw the old placement (1 in ~3 full runs, 0 in 10 alone).
+// Every edge still has to end up inside; the poll only decides when to look.
 async function expectOnScreen(page, selector) {
   const vp = page.viewportSize()
-  const box = await page.locator(selector).boundingBox()
-  expect(box, `${selector} has a box`).not.toBeNull()
-  expect(box.x, `${selector} left edge`).toBeGreaterThanOrEqual(0)
-  expect(box.y, `${selector} top edge`).toBeGreaterThanOrEqual(0)
-  expect(box.x + box.width, `${selector} right edge`).toBeLessThanOrEqual(vp.width)
-  expect(box.y + box.height, `${selector} bottom edge`).toBeLessThanOrEqual(vp.height)
+  await expect.poll(async () => {
+    const box = await page.locator(selector).boundingBox()
+    if (!box) return 'no box'
+    if (box.x < 0) return `left edge at ${box.x}`
+    if (box.y < 0) return `top edge at ${box.y}`
+    if (box.x + box.width > vp.width) return `right edge at ${box.x + box.width}, viewport ${vp.width}`
+    if (box.y + box.height > vp.height) return `bottom edge at ${box.y + box.height}, viewport ${vp.height}`
+    return 'on screen'
+  }, { message: `${selector} on screen` }).toBe('on screen')
+}
+
+// Below 640px the time range and the hunter picker are reached through Filters
+// (#561): the bar's group keeps Select target and the pill at that width, and
+// the other two live in the panel. Which is where the popovers have to open
+// fully on screen from now -- the constraint #372 named has not changed, only
+// the box it is measured from.
+const reach = async (page, toggle, panel, narrow) => {
+  if (narrow && ['#tr-toggle', '#hp-toggle'].includes(toggle)) await openFilters(page)
+  await openPicker(page, toggle, panel)
 }
 
 for (const [label, width, height] of [['a phone', 412, 915], ['a desktop', 1280, 720]]) {
+  const narrow = width <= 640
   test(`the time-range picker opens fully on screen on ${label}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.goto('/')
-    await openPicker(page, '#tr-toggle', '#time-picker')
+    await reach(page, '#tr-toggle', '#time-picker', narrow)
     // The panel itself, then each thing #372 says you cannot reach.
     await expectOnScreen(page, '#time-picker')
     for (const sel of ['#tr-from', '#tr-to', '#tr-apply', '#tr-copy', '#tr-quick']) {
@@ -46,7 +67,7 @@ for (const [label, width, height] of [['a phone', 412, 915], ['a desktop', 1280,
     await page.setViewportSize({ width, height })
     await page.goto('/')
     for (const [toggle, panel] of [['#hp-toggle', '#hunter-picker'], ['#sp-toggle', '#sender-picker']]) {
-      await openPicker(page, toggle, panel)
+      await reach(page, toggle, panel, narrow)
       await expectOnScreen(page, panel)
       await page.keyboard.press('Escape')
       await expect(page.locator(panel)).toBeHidden()
@@ -54,24 +75,26 @@ for (const [label, width, height] of [['a phone', 412, 915], ['a desktop', 1280,
   })
 }
 
-test('an open panel follows the toggle when a resize rewraps the bar', async ({ page }) => {
-  // The bar rewraps on resize, so the toggle moves to another row. A one-shot
-  // placement leaves the panel behind, pointing at nothing.
+test('an open panel follows its toggle when a resize moves it', async ({ page }) => {
+  // The bar no longer rewraps (#561), so the toggle does not change rows. What
+  // it does at 640px is move house: #tr-wrap leaves the bar's group for the
+  // filter panel. An open popover cannot follow it there -- the panel is shut,
+  // and a popover inside a shut panel is a control that has silently vanished
+  // while its toggle still claims to be expanded. It closes instead.
   await page.setViewportSize({ width: 1280, height: 720 })
   await page.goto('/')
   await openPicker(page, '#tr-toggle', '#time-picker')
   await page.setViewportSize({ width: 412, height: 915 })
-  await expect(page.locator('#time-picker')).toBeVisible()
-  // setViewportSize resolves before the page renders the new size, and the
-  // panel is placed in that rendering update, so a single read can still see
-  // it where the wide bar put it. Poll for the settled position, same bounds.
-  await expect(async () => {
-    await expectOnScreen(page, '#time-picker')
-    await expectOnScreen(page, '#tr-quick')
-    const panel = await page.locator('#time-picker').boundingBox()
-    const toggle = await page.locator('#tr-toggle').boundingBox()
-    expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
-  }).toPass({ timeout: 5000 })
+  await expect(page.locator('#time-picker')).toBeHidden()
+  await expect(page.locator('#tr-toggle')).toHaveAttribute('aria-expanded', 'false')
+  // And it is reachable again where it now lives, still fully on screen.
+  await openFilters(page)
+  await openPicker(page, '#tr-toggle', '#time-picker')
+  await expectOnScreen(page, '#time-picker')
+  await expectOnScreen(page, '#tr-quick')
+  const panel = await page.locator('#time-picker').boundingBox()
+  const toggle = await page.locator('#tr-toggle').boundingBox()
+  expect(panel.y, 'panel still hangs off its toggle').toBeGreaterThanOrEqual(toggle.y + toggle.height)
 })
 
 // #405: the bar watcher took over from the panels' window.resize listeners,

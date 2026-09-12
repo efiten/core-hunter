@@ -476,7 +476,26 @@ Resolved (firmware-confirmed):
 - Companion spreading-factor readback — `PACKET_SELF_INFO` (0x05) byte 56 is the LoRa spreading
   factor, per the upstream MeshCore firmware's own `docs/companion_protocol.md` and the
   `out_frame` construction in `examples/companion_radio/MyMesh.cpp` (`CMD_APP_START` handler).
-  No longer gated; used for SF-ordered resolver selection (see §8).
+  No longer gated; used to select the resolvers to ask (see §8).
+
+### One design system across the three surfaces
+
+`docs/design-system.md` is the register. A UI pattern is defined once and applied everywhere it
+fits; a difference between surfaces is allowed only when it is functional, and is then written
+down there as a rule about the **surface** rather than as an exception for one component.
+
+Two consequences worth stating, because both were learned the expensive way:
+
+- **Building a component is applying an existing pattern, not designing one.** Check the register
+  first. Where the pattern exists, matching it is the default and deviating is what needs an
+  argument.
+- **A surface rule reaches everything on that surface.** A floating panel over the map is
+  draggable, closable and collapsible, so the next one added to `web/` is too. Introducing a
+  deviation means writing that sentence, not carving out one component.
+
+Verify against the other surface, not only against the issue text: put the two CSS blocks or the
+two screens side by side. Where a shared rule can be asserted, pin it in `web/parity.test.js` so
+it is mechanical instead of remembered.
 
 ### Prefix attribution: the app refuses, the website may merge
 
@@ -618,9 +637,10 @@ the full picture. Key changes under review or decided for iteration 2:
   (no purge). Ignore is a display/query filter, not a capture filter. Matching is on the full
   pubkey (always available at zero-hop). Backend ignore-list is global across all hunters.
 - **Multiple regional name resolvers.** `config.json` accepts a `resolvers` array, each entry
-  with a `label`, `sf`, and `url`. Resolvers matching the companion's spreading factor (read from
-  `PACKET_SELF_INFO`, see §7) are tried first, config order otherwise; the first unambiguous hit
-  wins.
+  with a `label`, `sf`, and `url`. Every resolver matching the companion's spreading factor (read
+  from `PACKET_SELF_INFO`, see §7) is asked at once, all of them when the SF is unknown or matches
+  none. A name only when those that know the id agree on it, and the position from the first
+  agreeing one in config order that has one (#452, `docs/2026-09-05-names-agree-or-nothing.md`).
   The legacy single `resolveUrl` field remains supported.
 
 Iteration 1 code that will change in iteration 2 (after proposals are ratified):

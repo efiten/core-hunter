@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js'
+import { test, expect, clickMapAt, mapSettled } from './fixtures.js'
 
 // Reception ticker (#224) — parity with app's Receptions log (#130).
 
@@ -65,6 +65,33 @@ test('clicking a map marker scrolls the ticker to that specific line (marker -> 
     await page.mouse.click(box.x + x, box.y + y)
     await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NEO7HI', { timeout: 1000 })
   }).toPass()
+})
+
+// In 'both' mode a point is drawn over its hex cell, and the cell's click
+// focuses the newest reception inside it. MapLibre runs the click listener of
+// every layer under the pointer, so a click on an older point in a cell landed
+// the ticker on the cell's newest row instead of the point's (#465). NEAR is
+// that newest row: inside the cell, newer, and not under the click.
+test('clicking a point inside a hex cell in both mode keeps the ticker on that point', async ({ page }) => {
+  const NEAR = { ...POINT2, lat: 51.002, lon: 4.002 }
+  const ring = [[3.99, 50.995], [4.01, 50.995], [4.015, 51], [4.01, 51.005], [3.99, 51.005], [3.985, 51], [3.99, 50.995]]
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [POINT, NEAR] } }))
+  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { best_rssi: -85, count: 2, hunters: ['h1'] } },
+  ] } }))
+  await page.goto('/?mode=both&lat=51&lon=4&z=14')
+  await expect(page.locator('#rx-log .rx-ln')).toHaveCount(2, { timeout: 10000 })
+  await expect(page.locator('#rx-log .rx-ln.act')).toContainText('OTHER')
+  await expect.poll(() => page.evaluate(() => window.__featureCount('hex'))).toBe(1)
+  await mapSettled(page)
+
+  // The point's own popup proves the click landed on the point; the ticker
+  // then has to be on that point's row, not the cell's newest.
+  await expect(async () => {
+    await clickMapAt(page, 51, 4)
+    await expect(page.locator('.maplibregl-popup:not(.ch-hover) .maplibregl-popup-content')).toContainText('NEO7HI', { timeout: 1000 })
+  }).toPass()
+  await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NEO7HI')
 })
 
 test('clicking a ticker line highlights the map at that specific reception\'s position (ticker -> marker)', async ({ page }) => {
