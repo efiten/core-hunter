@@ -38,6 +38,8 @@ import * as webTicker from './receptionticker.js'
 import * as webLabels from './nodelabels.js'
 import * as appLabels from '../app/src/nodelabels.js'
 import * as appTicker from '../app/src/receptionlog.js'
+import * as webSky from './sky.js'
+import * as appSky from '../app/src/sky.js'
 
 // ~15 m and ~70 m north of the origin point: the first collapses under the
 // 10 m default dedupe cell only if that default is still 10 m-ish, the second
@@ -1040,6 +1042,21 @@ describe('external links in About and What\'s new (#536)', () => {
       const built = [...src.matchAll(/className = '(wn-feedback|wn-more)'[\s\S]{0,160}?\.target = '_blank'/g)]
       expect(built.length, name + ' builds its What\'s new links with target=_blank').toBeGreaterThanOrEqual(2)
     }
+  })
+})
+
+// #465: the map's sky is the app's sky, copied whole (the deploy paths cannot
+// share a file, the #238 rule). Pinned export for export and value for value
+// at the palette's stops, so a change to one copy shows up here.
+describe('sky.js — parity between the app and web copies', () => {
+  it('exports the same set', () => {
+    expect(Object.keys(webSky).sort()).toEqual(Object.keys(appSky).sort())
+  })
+  it('paints the same sky for the same hour and theme', () => {
+    for (const hour of [0, 5, 6.5, 8, 12, 18.5, 20, 23]) for (const theme of ['dark', 'light']) {
+      expect(webSky.skyForHour(hour, theme)).toEqual(appSky.skyForHour(hour, theme))
+    }
+    expect(webSky.SKY_STOPS).toEqual(appSky.SKY_STOPS)
   })
 })
 

@@ -163,9 +163,9 @@ test('member deep-link ?adv=1 draws the CS advert layer on load', async ({ page 
   ] } }))
   await page.goto('/?adv=1')
   await expect(page.locator('#cs-adverts')).toBeChecked()
-  // mode defaults to 'hex' with an empty heatmap and no points, so any rendered
-  // path marker on the map can only be the CS advert layer's circleMarker.
-  await expect(page.locator('path.leaflet-interactive')).toHaveCount(1)
+  // mode defaults to 'hex' with an empty heatmap and no points; the advert
+  // layer's own source is what carries the one point (#465: canvas, no DOM).
+  await expect.poll(() => page.evaluate(() => window.__featureCount && window.__featureCount('observer-advert'))).toBe(1)
 })
 
 // Was "guest popup has no Locate button": a guest cannot reach a point popup at
@@ -179,7 +179,7 @@ test('a guest has no point popup to put a Locate button in', async ({ page }) =>
   await page.goto('/?mode=points')
   const box = await page.locator('#map').boundingBox()
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-  await expect(page.locator('.leaflet-popup')).toHaveCount(0)
+  await expect(page.locator('.maplibregl-popup')).toHaveCount(0)
   await expect(page.locator('.lc-locate')).toHaveCount(0)
 })
 
@@ -194,7 +194,7 @@ test('a member point popup still offers Locate', async ({ page }) => {
   await expect(async () => {
     const box = await page.locator('#map').boundingBox()
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
-    await expect(page.locator('.leaflet-popup')).toBeVisible({ timeout: 1000 })
+    await expect(page.locator('.maplibregl-popup')).toBeVisible({ timeout: 1000 })
   }).toPass()
   await expect(page.locator('.lc-locate')).toHaveCount(1)
 })

@@ -178,13 +178,13 @@ for (const [w, h, label] of [[375, 812, 'a phone'], [768, 1024, 'a tablet'], [12
         return top ? (top.closest('[id]')?.id || top.tagName) : null
       }
       return {
-        in: at(document.querySelector('.leaflet-control-zoom-in')),
-        out: at(document.querySelector('.leaflet-control-zoom-out')),
+        in: at(document.querySelector('.maplibregl-ctrl-zoom-in')),
+        out: at(document.querySelector('.maplibregl-ctrl-zoom-out')),
       }
     })
     // The map itself, or the control -- anything but the chrome on top of it.
     for (const [name, hit] of Object.entries(hits)) {
-      expect(hit, `zoom ${name} is not covered (got ${hit})`).toMatch(/^(map|leaflet|A|SPAN)/i)
+      expect(hit, `zoom ${name} is not covered (got ${hit})`).toMatch(/^(map|maplibregl|BUTTON|SPAN)/i)
     }
   })
 }
