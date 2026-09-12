@@ -112,6 +112,9 @@ test('an open panel is placed again when only the window height changes', async 
   // what this test pins is the window's size in the compared signature. That
   // the window's resize event asks for a check is pinned in barwatch.test.js.
   await expect(page.locator('#status')).not.toBeEmpty()
+  // #tr-toggle is in the filter panel at this width (#561), and hidden until
+  // the panel is open, so the picker is reached through Filters first.
+  await openFilters(page)
   await openPicker(page, '#tr-toggle', '#time-picker')
   await page.setViewportSize({ width: 412, height: 520 })
   await expect(async () => expectOnScreen(page, '#time-picker')).toPass({ timeout: 5000 })
@@ -157,10 +160,18 @@ test('#bar is the containing block for the panels, and its frame coincides with 
 })
 
 // #405: window.resize never fires for content that grows the bar after load
-// (the role notice, the node counts, the version), so a panel opened before
-// that landed stayed where its toggle had been. The one bar watcher sees the
-// growth. Simulated by inserting a full-width block at the bar's start, which
-// pushes every control down a row; the real arrivals do the same thing later.
+// (the node counts, the version), so a panel opened before that landed stayed
+// where its toggle had been. The one bar watcher sees the growth.
+//
+// Simulated by inserting a block at the bar's start, which pushes every
+// control after it along the row. It used to be a full-width block pushing
+// them onto a new row, which #572 made impossible: the bar is one row with
+// flex-wrap: nowrap, and that is load-bearing (a bar that grows after #map's
+// top is measured hides the map under it). What remains is the same fault in
+// the direction the bar can still move in, and it is what the real arrivals
+// do: measured at 1280 as a guest, the controls settle 145px sideways between
+// first paint and the last arrival, and at 768 the bar's own height goes from
+// 49 to 68px.
 for (const [toggle, panel] of [['#tr-toggle', '#time-picker'], ['#hp-toggle', '#hunter-picker']]) {
   test(`an open ${panel} follows its toggle when late content grows the bar (#405)`, async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 })
@@ -169,11 +180,14 @@ for (const [toggle, panel] of [['#tr-toggle', '#time-picker'], ['#hp-toggle', '#
     const before = await page.locator(toggle).boundingBox()
     await page.evaluate(() => {
       const grow = document.createElement('div')
-      grow.id = 'e2e-grow'; grow.style.cssText = 'flex-basis:100%;height:40px'
+      grow.id = 'e2e-grow'; grow.style.cssText = 'flex:0 0 420px;height:40px'
       document.getElementById('bar').prepend(grow)
     })
-    // The toggle moved down: the panel has to hang off where it is now.
-    await expect.poll(async () => (await page.locator(toggle).boundingBox()).y).toBeGreaterThan(before.y + 30)
+    // The toggle moved along the row: the panel has to hang off where it is
+    // now. Only the vertical relation is pinned, as before -- placePopover
+    // clamps a panel wider than the room to its right, so its left edge is
+    // not the toggle's once the toggle is near the far side (#372, #385).
+    await expect.poll(async () => (await page.locator(toggle).boundingBox()).x).toBeGreaterThan(before.x + 300)
     await expect.poll(async () => {
       const p = await page.locator(panel).boundingBox()
       const t = await page.locator(toggle).boundingBox()

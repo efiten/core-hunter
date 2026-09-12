@@ -111,14 +111,18 @@ test('Clear also clears the hunter selection', async ({ page }) => {
 
   await page.keyboard.press('Escape')
   await expect(page.locator('#hunter-picker')).toBeHidden()
-  // Mark where the log stands as Clear is pressed, and judge only what comes
-  // after it. Emptying the array instead was a race: closing the picker and
-  // opening the panel can both leave a refresh in flight, and a request issued
-  // before Clear still carries the hunter it was issued with. Under parallel
-  // load that landed in the window and failed a button that had worked.
+  // What Clear has to produce is a map that no longer asks for the hunter, so
+  // this reads the newest request, not every request since a mark. "None of
+  // them carries it" cannot be made true: a refresh issued a moment before the
+  // press is recorded after it and still carries the filter it was issued
+  // with, and one such entry makes every() false for the rest of the run.
+  // Opening the panel is one source of those (Clear lives in it since #539),
+  // and it was measured 4 times in 6 at 4 workers; moving the mark past the
+  // panel left 1 in 4, since the app can refresh at any moment before the
+  // press. The newest request settles instead of accumulating.
   const mark = urls.length
   await clickClearFilters(page) // Clear lives in the filter panel (#539)
-  await expect.poll(() => urls.length > mark && urls.slice(mark).every((u) => !hunterOf(u))).toBe(true)
+  await expect.poll(() => urls.length > mark && !hunterOf(urls[urls.length - 1])).toBe(true)
   await expect(page).not.toHaveURL(/hunter=/)
 })
 

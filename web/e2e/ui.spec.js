@@ -1,4 +1,4 @@
-import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, fillSender } from './fixtures.js'
+import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, typeSenderPrefix } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -295,9 +295,47 @@ test('point popup "Locate this sender" fills the filter and starts a locate', as
   }).toPass()
   await page.locator('.lc-locate').click()
 
+  // The id goes into the prefix field, so the view narrows with ?sender=, the
+  // leading-prefix search, rather than an exact ?senders= pick.
   await expect(page.locator('#f-sender')).toHaveValue(SID)
+  await expect(page).toHaveURL((u) => u.searchParams.get('sender') === SID && !u.searchParams.has('senders'))
   await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
   await expect(page.locator('#locate-info')).toBeVisible()
+})
+
+// Ids outrank a typed prefix in senderParams, so a field filled behind an
+// active pick would leave Locate on the picked node. Filling it has to drop
+// the pick, the way typing does (#299).
+test('"Locate this sender" drops an active pick and locates the node clicked', async ({ page }) => {
+  const SID = 'db11db11f7808b97'
+  const PICKED = 'aa11bb22'
+  const urls = []
+  await page.route('**/api/points*', (r) => {
+    urls.push(r.request().url())
+    return r.fulfill({ json: { points: [{
+      lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: SID, sender_label: '',
+      sender_role: 'Repeater', hunter_name: 'X', packet_type: 'Control', rx_at: '2026-06-30T15:40:51Z',
+    }] } })
+  })
+  await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: '', ambiguous: false } }))
+  await page.goto('/?mode=points&senders=' + encodeURIComponent(JSON.stringify([PICKED])))
+  await expect.poll(() => page.evaluate(() => window.selectedSenderIds())).toEqual([PICKED])
+
+  await mapSettled(page)
+  await expect(async () => {
+    const box = await page.locator('#map').boundingBox()
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    await expect(page.locator('.lc-locate')).toBeVisible({ timeout: 1000 })
+  }).toPass()
+  urls.length = 0
+  await page.locator('.lc-locate').click()
+
+  await expect(page.locator('#f-sender')).toHaveValue(SID)
+  await expect.poll(() => page.evaluate(() => window.selectedSenderIds())).toEqual([])
+  await expect(page.locator('#sp-toggle')).toHaveText(`⌖ ${SID}… ▾`)
+  // Locate's own fetch names the clicked node, not the pick it replaced.
+  await expect.poll(() => urls.some((u) => new URL(u).searchParams.get('sender') === SID)).toBe(true)
+  expect(urls.some((u) => new URL(u).searchParams.get('sender') === PICKED)).toBe(false)
 })
 
 test('CoreScope relays checkbox (off by default) draws observer points with resolved name', async ({ page }) => {
@@ -354,7 +392,11 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   }).toPass()
   await page.locator('.lc-locate').click()
 
+  // A heard_key can be a short relay prefix. As ?sender= it still matches
+  // the longer ids that start with it; as an exact ?senders= pick it would
+  // narrow the view to rows carrying just those bytes.
   await expect(page.locator('#f-sender')).toHaveValue(HK)
+  await expect(page).toHaveURL((u) => u.searchParams.get('sender') === HK && !u.searchParams.has('senders'))
   await expect(page.locator('#locate-toggle')).toHaveClass(/on/)
   await locateReq // Locate pulled this relay's CoreScope sightings by heard_key
   await expect(page.locator('#locate-info')).toBeVisible()
@@ -414,14 +456,14 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
 test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
   await page.goto('/')
-  await fillSender(page, '7b0e24700e0c0d3e', { close: false })
+  await typeSenderPrefix(page, '7b0e24700e0c0d3e')
   await expect(page.locator('#f-sender')).toHaveAttribute('title', 'NEO7HI')
 })
 
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/?mode=points') // points requests — the cold default is hex (#141)
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))
-  await fillSender(page, '4a')
+  await typeSenderPrefix(page, '4a')
   await req // only resolves if a points request carrying sender=4a was issued
 })
 
