@@ -1,8 +1,13 @@
 // Share my node name (#576): the one frame that puts the hunter's own identity
 // on air. The companion sends its self-advert: its public key and name, plus a
-// position only if its owner set the location policy in the MeshCore app; this
-// module adds nothing to it. Off by default, and it rides the auto-ping cycle
-// only while a selected target is a companion, the node that has to hear us.
+// position, which its own firmware decides. From companion firmware v1.7.1
+// (29 June 2025) it carries one only when the owner set the advert location
+// policy, which defaults to none (MyMesh.cpp:1252, firmware 9df3c8c6). Older
+// firmware has no such policy: it carries the node's own position whenever one
+// is set, since AdvertDataHelpers.cpp encodeTo wrote lat/lon unless both were
+// zero. This module adds nothing to the frame either way. Off by default, and
+// it rides the auto-ping cycle only while a selected target is a companion,
+// the node that has to hear us.
 //
 // Why it exists: MeshCore firmware answers a request only from a sender it can
 // look up in its contact list (src/Mesh.cpp:150-156, the shared secret comes
