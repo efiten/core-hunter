@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/efiten/core-hunter/compare/server-v1.8.0...server-v1.9.0) (2026-09-12)
+
+
+### Features
+
+* **app,web,server:** drop Sender unknown, the Unnamed chip already selects the same receptions ([#582](https://github.com/efiten/core-hunter/issues/582)) ([f297d9c](https://github.com/efiten/core-hunter/commit/f297d9c993fdf3cf273177b86b0662efcf259a2c))
+
 ## [1.8.0](https://github.com/efiten/core-hunter/compare/server-v1.7.0...server-v1.8.0) (2026-08-26)
 
 
