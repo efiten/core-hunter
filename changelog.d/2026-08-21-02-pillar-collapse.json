@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-21-pillar-collapse",
+  "date": "2026-08-21",
+  "where": "app",
+  "title": "Readings from one spot draw one bar",
+  "body": "Readings within ten metres now draw one bar instead of a flickering stack."
+}

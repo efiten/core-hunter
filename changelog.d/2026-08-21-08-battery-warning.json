@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-21-battery-warning",
+  "date": "2026-08-21",
+  "where": "app",
+  "title": "Low-battery warning matches the radio",
+  "body": "The low-battery warning now fires when the firmware does."
+}

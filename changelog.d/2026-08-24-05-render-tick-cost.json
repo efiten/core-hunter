@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-24-render-tick-cost",
+  "date": "2026-08-24",
+  "where": "app",
+  "title": "The map keeps up when the log is large",
+  "body": "The map redraws only what changed, so a large log no longer makes it lag."
+}

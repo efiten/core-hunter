@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-24-sweep-what-you-hear",
+  "date": "2026-08-24",
+  "where": "app",
+  "title": "Auto-ping now works the map when you have no target",
+  "body": "With a target selected nothing changes: auto-ping pings that target. With no target selected it now also pings the repeaters around you, a few per round, taking turns so everything in earshot gets asked. Each ping makes that repeater transmit once, and that transmission is another measurement on your map. A repeater that stays silent is asked less often until you hear it again."
+}

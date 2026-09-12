@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-21-3d-pillars",
+  "date": "2026-08-21",
+  "where": "app",
+  "title": "3D view reads correctly again",
+  "body": "Pillars at the same spot collapse into one, and a bar's colour matches the flat map."
+}

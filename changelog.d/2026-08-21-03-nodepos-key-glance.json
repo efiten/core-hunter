@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-21-nodepos-key-glance",
+  "date": "2026-08-21",
+  "where": "app",
+  "title": "The marker key stops covering the receptions list",
+  "body": "The marker key now shows on activation and fades, instead of covering the ticker."
+}

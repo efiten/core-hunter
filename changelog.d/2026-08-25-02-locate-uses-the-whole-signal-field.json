@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-25-locate-uses-the-whole-signal-field",
+  "date": "2026-08-25",
+  "where": "both",
+  "title": "Locate reads the whole signal field",
+  "body": "Locate now weighs every reading, not only the strongest. Against nine measured repeaters the average miss went from 680 metres to 210. Still an estimate, not a fix."
+}

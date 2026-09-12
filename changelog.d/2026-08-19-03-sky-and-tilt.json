@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-19-sky-and-tilt",
+  "date": "2026-08-19",
+  "where": "app",
+  "title": "3D camera can look along the ground",
+  "body": "The 3D camera now tilts to 85 degrees, with a sky behind it."
+}

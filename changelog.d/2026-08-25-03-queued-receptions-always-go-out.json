@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-25-queued-receptions-always-go-out",
+  "date": "2026-08-25",
+  "where": "app",
+  "title": "Waiting receptions always get sent",
+  "body": "Receptions waiting to be sent now go out with the radio unplugged too."
+}

@@ -30,6 +30,10 @@ import { initialSettingsTab as webInitialTab } from './settingssheet.js'
 import { initialSettingsTab as appInitialTab } from '../app/src/settings.js'
 import { setConfig } from '../app/src/config.js'
 import { readFileSync } from 'node:fs'
+// The changelog generator lives at the repo root, outside both surfaces, because
+// it is the one thing that writes the two copies rather than being shipped by
+// either (#509). Tests already reach across the boundary; deploys never do.
+import { buildChangelog, readEntryFiles } from '../scripts/build-changelog.mjs'
 import * as webLayer from './nodelayer.js'
 import * as appLayer from '../app/src/nodelayer.js'
 import * as webNotice from './nodeposnotice.js'
@@ -442,6 +446,25 @@ describe('changelog — parity between the app and web copies', () => {
     for (const e of app) expect(e.id.slice(0, 10), JSON.stringify(e)).toBe(e.date)
     const dates = app.map((e) => e.date)
     expect([...dates].sort().reverse()).toEqual(dates)
+  })
+
+  // Both shipped files are generated from `changelog.d/` (#509). A PR adds one
+  // file there and touches neither copy, which is what stops two release notes
+  // from conflicting: they never write the same line. The generator is then the
+  // only thing allowed to produce these two, so what is committed has to be
+  // exactly what it builds — a hand-edit of either copy, an entry file that
+  // never reached them, or a stale copy after a merge fails here instead of
+  // shipping a set the other surface does not have.
+  it('ships exactly what the generator builds from changelog.d', () => {
+    const built = buildChangelog(readEntryFiles(new URL('../changelog.d/', import.meta.url)))
+    const appRaw = readFileSync(new URL('../app/changelog.json', import.meta.url), 'utf8')
+    const webRaw = readFileSync(new URL('./changelog.json', import.meta.url), 'utf8')
+    expect(JSON.parse(appRaw)).toEqual(built)
+    expect(JSON.parse(webRaw)).toEqual(built)
+    // Byte-identical, not merely equal: AGENTS.md §6 says the two copies are
+    // the same file twice, and one generator writing both is what makes that
+    // true rather than hoped for.
+    expect(webRaw).toBe(appRaw)
   })
 })
 

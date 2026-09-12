@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-26-picker-shows-resolved-names",
+  "date": "2026-08-26",
+  "where": "both",
+  "title": "The target list shows repeater names again",
+  "body": "The target list shows repeater names again. An id too short or too ambiguous to trust is still shown as an id, not guessed at."
+}

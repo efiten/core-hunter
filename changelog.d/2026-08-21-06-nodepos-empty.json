@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-21-nodepos-empty",
+  "date": "2026-08-21",
+  "where": "map",
+  "title": "The position layer says why it is empty",
+  "body": "The position layer now says why it is empty instead of just showing nothing."
+}

@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-24-all-time-coverage-date",
+  "date": "2026-08-24",
+  "where": "map",
+  "title": "The map says how far back it goes",
+  "body": "When the map cannot fit everything in view, it now names the date it reaches back to instead of just saying capped."
+}

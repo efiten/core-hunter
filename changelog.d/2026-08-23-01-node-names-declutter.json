@@ -1,0 +1,7 @@
+{
+  "id": "2026-08-23-node-names-declutter",
+  "date": "2026-08-23",
+  "where": "map",
+  "title": "Node names stop printing over each other",
+  "body": "Node names that would overlap are left off. Tap the marker for the name."
+}
