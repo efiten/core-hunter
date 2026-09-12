@@ -246,6 +246,14 @@
     </span>
     <span id="status"></span>
     <span id="sf-counts"></span>
+    <!-- Brings the receptions ticker back after its cross (#424). Same control
+         in the same place as the app's, which is what makes the cross mean the
+         same thing on both surfaces. Hidden while the ticker is on screen. -->
+    <button id="ticker-btn" type="button" title="Show the receptions ticker" aria-label="Show receptions" hidden>
+      <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <path d="M2 11h3l2-5 3 9 2-6 1.5 2H18"/>
+      </svg>
+    </button>
     <button id="settings-btn" type="button" title="Settings, release notes and about" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settings-modal">
       <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
         <line x1="3" y1="6" x2="17" y2="6"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="14" x2="17" y2="14"/>

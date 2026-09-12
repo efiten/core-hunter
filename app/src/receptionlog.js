@@ -113,7 +113,7 @@ export function rxLanes(count, collapse) {
     if (n >= step.from) { lanes = step.lanes; break }
   }
   const cap = RX_COLLAPSE_STOPS[(collapse | 0) - 1]
-  return cap ? Math.min(lanes, cap) : lanes
+  return cap === undefined ? lanes : Math.min(lanes, cap)
 }
 
 // Whether the chevron has anywhere to go at all. Below the smallest stop it

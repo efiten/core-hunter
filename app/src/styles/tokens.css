@@ -59,3 +59,7 @@
    playhead offset and bottom padding are all derived from it in app.css, and
    web/parity.test.js pins this value against web/style.css's copy. */
 :root { --ch-rx-line-h: 26px; }
+/* The ticker header's height. Declared beside the row pitch because the two
+   together are the card's geometry; the map computes the full card from them
+   before the card exists. Pinned equal by web/parity.test.js. */
+:root { --ch-rx-head-h: 36px; }
