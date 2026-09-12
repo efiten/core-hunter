@@ -1060,6 +1060,22 @@ describe('sky.js — parity between the app and web copies', () => {
   })
 })
 
+// #595: 3D on the map is the app's 3D, and the modules that decide it are the
+// app's files whole, not a subset: which layers a view shows (maplayers.js),
+// the pillar footprint (pointmarker.js), the terrain plan (terrain.js), and
+// signal.js, which the web copy used to carry only half of. Byte for byte,
+// since the deploy paths cannot share a file (#238) and a hand-kept copy is
+// what drifts.
+describe('files copied whole from the app (#595)', () => {
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js']) {
+    it(`web/${name} is app/src/${name}`, () => {
+      const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
+      const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
+      expect(web).toBe(app)
+    })
+  }
+})
+
 // chiprow.js and barfilters.js are byte-identical copies (#564), not merely
 // equivalent ones: the rule for what a chip row does and the count of narrowed
 // dimensions have to be one thing, or the two panels start answering the same
@@ -1074,6 +1090,27 @@ describe('the filter modules are one file on both surfaces (#564)', () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
       expect(app, `app/src/${name} has drifted from web/${name}`).toBe(web)
+    })
+  }
+})
+
+// #595: the buildings take --ch-building, the app's token. Undefined here it
+// was '', which MapLibre rejects as a paint value and then skips the whole
+// layer without throwing: a 3D view with no buildings and nothing in the
+// console. Pinned per theme, since the two blocks are edited separately.
+describe('--ch-building matches the app in both themes (#595)', () => {
+  const stripComments = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const block = (css, light) => {
+    const c = stripComments(css)
+    const start = c.indexOf(light ? '[data-theme="light"]' : ':root')
+    return c.slice(start, c.indexOf('}', start))
+  }
+  const value = (b) => { const m = /--ch-building\s*:\s*([^;]+);/.exec(b); return m ? m[1].trim() : undefined }
+  for (const light of [false, true]) {
+    it(`${light ? 'light' : 'dark'}`, () => {
+      const app = value(block(APP_TOKENS, light)), web = value(block(WEB_CSS, light))
+      expect(app).toBeDefined()
+      expect(web).toBe(app)
     })
   }
 })
