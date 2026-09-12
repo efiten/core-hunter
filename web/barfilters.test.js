@@ -14,12 +14,17 @@ describe('activeFilterCount', () => {
     expect(activeFilterCount({ idClasses: ['pubkey', '1byte'] })).toBe(1)
   })
   it('adds the checkboxes and layers up dimension by dimension', () => {
-    expect(activeFilterCount({ directOnly: true, senderUnknown: true })).toBe(2)
+    expect(activeFilterCount({ directOnly: true, nodePos: true })).toBe(2)
     expect(activeFilterCount({
-      directOnly: true, senderUnknown: true,
+      directOnly: true,
       types: new Set(['advert']), idClasses: new Set(['pubkey']),
       csAdverts: true, csRelays: true, nodePos: true,
-    })).toBe(7)
+    })).toBe(6)
+  })
+  // #535: Sender unknown was the Unnamed chip under another name, so it is
+  // not a dimension any more; a caller still passing it counts nothing.
+  it('does not count a Sender-unknown flag', () => {
+    expect(activeFilterCount({ directOnly: true, senderUnknown: true })).toBe(1)
   })
   // The layer mode is a view choice, not a filter: Clear never resets it, so
   // a count that included it would promise a clear that does not happen.

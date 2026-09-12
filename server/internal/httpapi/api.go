@@ -37,9 +37,8 @@ func filterFrom(r *http.Request, baseIgnore []string) store.Filter {
 	// hunt (2026-08-24).
 	f.Message = strings.TrimSpace(q.Get("message"))
 	f.OriginOnly = q.Get("origin") == "1"
-	// ?unnamed=1 is the coarse version of the same handle: everything the
-	// classifier could not attribute, without needing to pick a message first.
-	f.NoSender = q.Get("unnamed") == "1"
+	// ?unnamed=1 used to be the coarse version of the same handle; it is
+	// ?idclass=unnamed now (#535), and an old link carrying it narrows nothing.
 	// Two distinct sender filters on two distinct params (#223):
 	//   ?senders=  repeated, the target-list picker's exact multi-id selection (SQL IN)
 	//   ?sender=   the free-text leading-prefix search
