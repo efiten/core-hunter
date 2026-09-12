@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/efiten/core-hunter/compare/web-v1.22.0...web-v1.22.1) (2026-09-12)
+
+
+### Miscellaneous Chores
+
+* build the release notes from one file per entry ([#642](https://github.com/efiten/core-hunter/issues/642)) ([9c053c0](https://github.com/efiten/core-hunter/commit/9c053c033d5a91a15dc7ed1c5779cc29e292a9b9))
+
 ## [1.22.0](https://github.com/efiten/core-hunter/compare/web-v1.21.0...web-v1.22.0) (2026-09-12)
 
 
