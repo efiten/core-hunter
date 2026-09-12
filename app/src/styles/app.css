@@ -96,6 +96,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
 .np-muted { color: var(--ch-muted); }
 .np-caveat { font-size: 11px; }
+/* The coverage (#603): a selected ▲ carries its name in a pill in its own
+   hue; the others dim with their stars. .rc-hub is the ● of a star with no
+   registry position, in the repeater's hue (inline). */
+.np-advert.np-selected .np-label { font-size: 12px; font-weight: 600; padding: 2px 8px; border: 1.5px solid currentColor; border-radius: 999px; background: var(--ch-surface); color: inherit; }
+.np-dim { opacity: 0.35; }
+.rc-hub { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg); background: var(--ch-muted); cursor: pointer; position: relative; }
+.rc-hub::after { content: ''; position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
 
 /* AGENTS.md §7: the layer implies node locations, so what the glyphs mean is
    shown when it is switched on and stays reachable in the marker popups

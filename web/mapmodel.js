@@ -24,13 +24,15 @@ export function zoomParam(mapZoom) { return String(Math.round((Number(mapZoom) +
 
 // One reception, one circle: tier colour and the tier's opacity, plus the
 // index into the array it came from, which is how a click finds its point.
-export function pointFeatures(points, colorOf) {
+// colorFor(pt) may answer a colour of its own for a point (#603: the hue of
+// the repeater it belongs to while the reach is on); null keeps the tier.
+export function pointFeatures(points, colorOf, { colorFor = () => null } = {}) {
   const out = []
   points.forEach((pt, i) => {
     if (pt.lat == null || pt.lon == null) return
     const tier = rssiTier(pt.rssi)
     out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [pt.lon, pt.lat] },
-      properties: { i, color: colorOf(tier), op: fillOpacity(tier) } })
+      properties: { i, color: colorFor(pt) || colorOf(tier), op: fillOpacity(tier) } })
   })
   return fc(out)
 }
@@ -156,3 +158,4 @@ export function latLonBounds(latLons) {
   }
   return [[minLon, minLat], [maxLon, maxLat]]
 }
+

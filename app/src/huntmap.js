@@ -6,6 +6,8 @@ import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from './coverage.js'
+import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { recordsKey, lastValueCache } from './rendercache.js'
 import { skyForHour, currentHour } from './sky.js'
@@ -61,7 +63,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayerVisible() {}, setExaggeration() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayer() {}, setExaggeration() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -107,7 +109,78 @@ export function createHuntMap(containerId) {
   map.on('error', reportMapError)
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
-  let nodePositions = [], nodeLayerOn = false, nodeMarkers = []
+  let nodePositions = [], nodeLayerMode = 'off', nodeMarkers = []
+  const nodeLayerOn = () => nodeLayerMode !== 'off'
+  // The coverage (#603): every repeater's reach in the layer's third stop.
+  // coverageSel is the marker-tap selection; a picked target counts too
+  // (lastSelected). coverageHue is the hue each repeater got in the last
+  // draw, read by the dots and the ▲ markers. lastReachRows is the record set
+  // the stars are built from when a target narrows the plotted set: the other
+  // stars must stay up at a quarter, so app.js hands the sender-free rows.
+  // starCache keeps each star's estimate from tick to tick (coverage.js).
+  const coverageSel = new Set(), starCache = new Map()
+  let coverageHue = new Map(), lastReachRows = null, hubMarkers = []
+  const rays = createRayLayer('reach-3d', {
+    toMerc: (lon, lat, alt) => maplibregl.MercatorCoordinate.fromLngLat([lon, lat], alt),
+    elevation: (lon, lat) => (typeof map.queryTerrainElevation === 'function' && map.getTerrain && map.getTerrain() ? (map.queryTerrainElevation([lon, lat]) || 0) : 0),
+  })
+  const coverageOn = () => nodeLayerMode === 'reach'
+  function applyReachVisibility() {
+    if (map.getLayer('reach')) map.setLayoutProperty('reach', 'visibility', coverageOn() && !mode3D ? 'visible' : 'none')
+    rays.setVisible(coverageOn() && mode3D)
+  }
+  function coverageSelected() {
+    const ids = new Set(coverageSel)
+    for (const id of lastSelected || []) ids.add(String(id).toLowerCase())
+    return ids
+  }
+  function toggleCoverageSelection(id) {
+    const key = String(id).toLowerCase()
+    if (coverageSel.has(key)) coverageSel.delete(key); else coverageSel.add(key)
+    nodePosSig = null
+    draw()
+  }
+  function clearCoverageSelection() {
+    if (!coverageSel.size) return
+    coverageSel.clear(); nodePosSig = null; draw()
+  }
+  // The dots of the points layer take the repeater's hue while the reach is
+  // on (#603), the tier colour otherwise; the pillars keep the tier.
+  function pointHue(r) {
+    if (!coverageHue.size || !isRepeaterHearing(r) || r.sender_id == null) return null
+    return coverageHue.get(String(r.sender_id).toLowerCase()) || null
+  }
+  // Builds the stars for this tick, puts the rays up (one setData feeds the
+  // 2D line source and the 3D ray layer), a ● hub for a star with no registry
+  // position, and remembers the hues. Returns the selection for the markers.
+  function drawCoverage(records) {
+    hubMarkers.forEach((m) => m.remove()); hubMarkers = []
+    if (!coverageOn() || !map.getSource('reach')) {
+      coverageHue = new Map(); starCache.clear()
+      if (map.getSource('reach')) { map.getSource('reach').setData(EMPTY); rays.setData([]) }
+      return null
+    }
+    const byKey = new Map(nodePositions.map((n) => [String(n.pubkey).toLowerCase(), n]))
+    const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
+    const stars = coverageStars(lastReachRows || records, { positionOf, cache: starCache })
+    const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
+    const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
+    const selected = coverageSelected()
+    const fcRays = coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected })
+    coverageHue = new Map([...hues].map(([id, slot]) => [id, colorOf(slot)]))
+    map.getSource('reach').setData(fcRays)
+    rays.setData(fcRays.features)
+    for (const st of stars) {
+      if (st.origin.kind !== 'estimate') continue   // the ▲ of the node layer is the hub
+      const el = document.createElement('div')
+      el.className = 'rc-hub' + (selected.size && !selected.has(st.id) ? ' np-dim' : '')
+      el.style.background = coverageHue.get(st.id)
+      el.title = `${st.id.slice(0, 8)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where you drove; unmeasured is not unreachable.`
+      el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
+      hubMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([st.origin.lon, st.origin.lat]).addTo(map))
+    }
+    return { selected, count: fcRays.features.length }
+  }
   // One probe per map for the label declutter (#539/#425): widths are
   // measured inside the map container, where .np-label's font actually
   // applies (a body probe reads the page's font and measures wrong).
@@ -137,7 +210,7 @@ export function createHuntMap(containerId) {
       const tier = rssiTier(r.rssi, currentOffset())
       const fade = ageFade(r.rx_at, nowMs, timeWindowMs)   // age-fade within the window (#149)
       feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
-        properties: { id: String(r.id), color: cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade } })
+        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade } })
     }
     return fc(feats)
   }
@@ -319,7 +392,7 @@ export function createHuntMap(containerId) {
     // darkened a bar against its own cell (#412). Re-applied here like the
     // sky, since setStyle drops it. Guarded for an older MapLibre.
     if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
-    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle']) {
+    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -367,6 +440,11 @@ export function createHuntMap(containerId) {
           'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 3],
           'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0], 'fill-extrusion-opacity': 0.75 } })
     }
+    // The coverage rays (#603), under the dots so the hearings stay readable
+    // at the hub; the 3D twin is the custom ray layer mounted last.
+    if (!map.getLayer('reach')) map.addLayer({ id: 'reach', type: 'line', source: 'reach',
+      layout: { visibility: coverageOn() && !mode3D ? 'visible' : 'none' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': ['get', 'op'] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points',
       layout: { visibility: shown('points') },
       paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'fop'],
@@ -397,7 +475,7 @@ export function createHuntMap(containerId) {
     // is dashed for a trusted search radius and dotted for the drift fallback,
     // so the two read differently without needing a label.
     if (!map.getLayer('nodedrift')) map.addLayer({ id: 'nodedrift', type: 'line', source: 'nodedrift',
-      layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
+      layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.5, 'line-opacity': 0.9 } })
     // Two layers over one source, split by dash pattern: line-dasharray is not
     // a data-driven property in MapLibre (a `case` expression there fails style
@@ -405,12 +483,14 @@ export function createHuntMap(containerId) {
     // layer with a constant value and a filter.
     if (!map.getLayer('nodecircle-search')) map.addLayer({ id: 'nodecircle-search', type: 'line', source: 'nodecircle',
       filter: ['==', ['get', 'style'], 'search'],
-      layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
+      layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [4, 4] } })
     if (!map.getLayer('nodecircle-drift')) map.addLayer({ id: 'nodecircle-drift', type: 'line', source: 'nodecircle',
       filter: ['==', ['get', 'style'], 'drift'],
-      layout: { visibility: nodeLayerOn ? 'visible' : 'none' },
+      layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
+    rays.addTo(map)
+    rays.setVisible(coverageOn() && mode3D)
     draw()
   }
   // Initial style: 'load' fires once when the first style is ready. A theme
@@ -441,6 +521,13 @@ export function createHuntMap(containerId) {
       .setLngLat([r.lon, r.lat]).setHTML(popupHtml(r, lastSelected)).addTo(map)
     wireIsolate(popup, r); wireIgnore(popup, r)
   }
+  // A tap on bare map clears the coverage selection (#603); marker taps stop
+  // their own propagation and never land here.
+  map.on('click', (e) => {
+    if (!coverageSel.size) return
+    const layers = ['points', 'points-3d', 'hex', 'hex-3d'].filter((id) => map.getLayer(id))
+    if (!map.queryRenderedFeatures(e.point, { layers }).length) clearCoverageSelection()
+  })
   for (const layerId of ['points', 'points-3d']) {
     map.on('click', layerId, onPointClick)
     map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
@@ -472,13 +559,14 @@ export function createHuntMap(containerId) {
     // GPU for a layer set to visibility:none. hex and hex-3d share one source,
     // so it is built when either is on.
     const vis = layerVisibility({ mode, mode3D })
+    const cov = drawCoverage(records)
     map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records) : EMPTY)
     map.getSource('points').setData(vis.points ? buildPointsFC(records, nowMs) : EMPTY)
     map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, nowMs) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
-    drawNodeLayer(records)
+    drawNodeLayer(records, cov)
   }
 
   // ---- node-position layer (#197) ----
@@ -505,19 +593,26 @@ export function createHuntMap(containerId) {
 
   // A Marker built from a custom element does not toggle its popup on tap by
   // itself, so wire the click explicitly.
-  function addNodeMarker(cls, glyph, lngLat, popup, label) {
+  // With the reach on, a repeater's ▲ takes the hue of its star, a selected
+  // one carries its name in a pill, the others dim with their stars, and a
+  // tap selects (#603); the popup still opens.
+  function addNodeMarker(cls, glyph, lngLat, popup, label, { color = null, selected = false, dim = false, onTap = null } = {}) {
     const el = nodeMarkerEl(cls, glyph, label)
+    const inner = el.firstElementChild
+    if (color) inner.style.color = color
+    if (selected) inner.classList.add('np-selected')
+    if (dim) inner.classList.add('np-dim')
     const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
-    el.addEventListener('click', (e) => { e.stopPropagation(); marker.togglePopup() })
+    el.addEventListener('click', (e) => { e.stopPropagation(); if (onTap) onTap(); marker.togglePopup() })
     nodeMarkers.push(marker)
   }
 
   // Recomputed per tick: the visible node set follows the viewport, and each
   // node's estimate follows whatever receptions are currently plotted.
   // Signature guards (like web/map.js) prevent popup flicker on every 1Hz render.
-  function drawNodeLayer(records) {
+  function drawNodeLayer(records, cov) {
     if (!map.getSource('nodedrift')) return
-    if (!nodeLayerOn) {
+    if (!nodeLayerOn()) {
       map.getSource('nodedrift').setData(EMPTY)
       map.getSource('nodecircle').setData(EMPTY)
       nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
@@ -570,6 +665,8 @@ export function createHuntMap(containerId) {
       // changes no node still changes which names fit (#539). Without it in
       // the signature the early return would freeze the previous zoom's set.
       + '#' + [...labelled].join(',')
+      // The hues and the selection are part of what the markers show (#603).
+      + (cov ? '#reach:' + cov.count + ':' + [...cov.selected].join(',') + ':' + [...coverageHue].map(([k, v]) => k.slice(0, 8) + v).join(',') : '')
     if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
     nodePosSig = sig
 
@@ -581,7 +678,11 @@ export function createHuntMap(containerId) {
       // Only the ▲ is labelled — the ● belongs to the same node, so naming
       // both would just double the text for one target — and only where the
       // declutter kept the name (#539).
-      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null)
+      const key = String(n.pubkey).toLowerCase()
+      const hue = coverageHue.get(key) || null
+      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
+        { color: hue, selected: !!(cov && cov.selected.has(key)), dim: !!(cov && cov.selected.size && !cov.selected.has(key) && hue),
+          onTap: hue ? () => toggleCoverageSelection(key) : null })
       if (!est || !est.centroid) continue
       addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], nodePopup(n, p, est))
       lines.push({ type: 'Feature', properties: { color },
@@ -623,7 +724,9 @@ export function createHuntMap(containerId) {
   }
 
   // ---- public API (unchanged from the Leaflet version) ----
-  function render(records, selectedIds) { lastRecords = records || []; lastSelected = selectedIds || null; draw() }
+  // reachRows (#603): the sender-free rows the stars are built from while a
+  // target narrows the plotted set; null means the plotted set is the set.
+  function render(records, selectedIds, reachRows = null) { lastRecords = records || []; lastSelected = selectedIds || null; lastReachRows = reachRows; draw() }
   function setHighlight(id) { highlightId = id == null ? null : id; if (map.getSource('highlight')) map.getSource('highlight').setData(buildHighlightFC()) }
   function onMarkerFocus(cb) { onMarkerFocusCb = cb }
   function setPosition(lat, lon) {
@@ -685,15 +788,20 @@ export function createHuntMap(containerId) {
     // so revealing it without repopulating shows nothing until the next 1 Hz tick.
     draw()
     if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', mode3D ? 'visible' : 'none')
+    applyReachVisibility()
   }
   // Node-position layer (#197): the registry set is fetched once by app.js and
   // handed over whole; bounds filtering happens here per tick.
   function setNodePositions(nodes) { nodePositions = Array.isArray(nodes) ? nodes : []; draw() }
-  function setNodeLayerVisible(v) {
-    nodeLayerOn = !!v
+  // The layer's stop (nodeposmode.js): off, positions, or positions + reach.
+  function setNodeLayer(m) {
+    nodeLayerMode = m === 'reach' || m === 'positions' ? m : 'off'
+    if (!coverageOn()) coverageSel.clear()
     for (const id of ['nodedrift', 'nodecircle-search', 'nodecircle-drift']) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', nodeLayerOn ? 'visible' : 'none')
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', nodeLayerOn() ? 'visible' : 'none')
     }
+    applyReachVisibility()
+    nodePosSig = null
     draw()
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
@@ -711,7 +819,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayerVisible, setExaggeration, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayer, setExaggeration, destroy }
 }
 
 function popupHtml(r, selectedIds) {

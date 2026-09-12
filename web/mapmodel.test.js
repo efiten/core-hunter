@@ -167,3 +167,4 @@ describe('latLonBounds', () => {
     expect(latLonBounds([])).toBeNull()
   })
 })
+

@@ -207,6 +207,14 @@ export async function clickPanelChip(page, selector) {
   await closeFilters(page)
 }
 
+// Sets the Node positions stop (#603): '' off, '1' positions, 'reach'
+// positions + reach. A segmented control in the panel, like the layer mode.
+export async function setNodePos(page, stop) {
+  await openFilters(page)
+  await page.click(`#nodepos-seg button[data-nodepos="${stop}"]`)
+  await closeFilters(page)
+}
+
 // Sets the layer mode via the segmented control in the panel.
 export async function setLayerMode(page, mode) {
   await openFilters(page)

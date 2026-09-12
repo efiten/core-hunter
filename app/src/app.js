@@ -53,6 +53,7 @@ import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
 import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { NODEPOS_MODES, NODEPOS_LABELS, nextNodePosMode, parseNodePosMode } from './nodeposmode.js'
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
@@ -953,7 +954,15 @@ async function drawOnce() {
     const filteredRows = windowRows.filter((r) => fn(r, now))
     const selected = selectedSet()
     if (state.map) {
-      state.map.render(filteredRows, selected)
+      // With a target picked the plotted set is narrowed to it, and the
+      // coverage (#603) still draws the other stars at a quarter: the stars
+      // come from the same window without the sender filter.
+      let reachRows = null
+      if (nodePosMode === 'reach' && selected && selected.size) {
+        const all = makeFilter({ ...activeFilter(), sender: null, ignore: state.ignore })
+        reachRows = windowRows.filter((r) => all(r, now))
+      }
+      state.map.render(filteredRows, selected, reachRows)
     }
     // Receptions log (#130): filtered = the plotted set (one-to-one with the
     // map); all = every captured reception. The toggle is log-only.
@@ -2420,7 +2429,15 @@ function cycleView() {
 // Two registry shapes answer this: our nameresolver's /positions, and — for a
 // CoreScope resolver, which has no such route — its paged /api/nodes (#418).
 // A resolver that answers neither just contributes nothing.
-let nodePosOn = false, nodePosLoaded = false, nodePosAttempted = false, nodePosCount = 0
+// Three stops since #603 (nodeposmode.js): off / positions / positions +
+// reach, persisted like the sound mode so the layer a hunter drives with
+// comes back with the next session.
+let nodePosMode = 'off', nodePosLoaded = false, nodePosAttempted = false, nodePosCount = 0
+try { nodePosMode = parseNodePosMode(localStorage.getItem('core-hunter-nodepos')) } catch (_) {}
+function saveNodePosMode(m) {
+  try { localStorage.setItem('core-hunter-nodepos', m) } catch (_) {}
+}
+const nodePosOn = () => nodePosMode !== 'off'
 
 // Single-flight: toggling the layer off and on during a slow fetch used to
 // start a second concurrent load, and a failing second pass would clobber a
@@ -2502,7 +2519,7 @@ function applyNodePosNotices({ glanceExpired = false } = {}) {
   // registryEmpty reaches nodePosNotice too, not only the text: that line is the
   // one thing here that does not fade, because it explains why the map is blank
   // rather than labelling glyphs that are on it (#413).
-  const { note, key } = nodePosNotice({ on: nodePosOn, glanceExpired, registryEmpty })
+  const { note, key } = nodePosNotice({ on: nodePosOn(), glanceExpired, registryEmpty })
   const noteEl = el('nodepos-note')
   const keyEl = el('nodepos-key')
   noteEl.textContent = SPLASH_DISCLAIMER
@@ -2518,28 +2535,46 @@ function applyExaggeration() {
   if (state.map) state.map.setExaggeration(state.exaggeration)
 }
 
-async function toggleNodePositions() {
-  nodePosOn = !nodePosOn
+// The FAB's icon stays; the ring shows the stop (#259), like the sound FAB,
+// with off as the one state that fills nothing (#373).
+const NODEPOS_ICON = el('nodepos-toggle') ? el('nodepos-toggle').innerHTML : ''
+function updateNodePosIcon() {
   const btn = el('nodepos-toggle')
-  btn.classList.toggle('on', nodePosOn)
-  btn.setAttribute('aria-pressed', String(nodePosOn))
+  const idx = NODEPOS_MODES.indexOf(nodePosMode)
+  btn.innerHTML = fabRingSvg(idx, NODEPOS_MODES.length, { offIndex: NODEPOS_MODES.indexOf('off') }) + NODEPOS_ICON
+  btn.setAttribute('aria-label', NODEPOS_LABELS[nodePosMode])
+  btn.setAttribute('aria-pressed', String(nodePosOn()))
+  btn.classList.toggle('on', nodePosOn())
+}
+
+// Applies the mode: the notices, the registry fetch on the first on-stop,
+// and the map's layer. `fromTap` starts the glance; a restored mode at
+// start-up draws without the prose, as the web's restore does (#426).
+async function applyNodePosMode({ fromTap = false } = {}) {
+  updateNodePosIcon()
   // Cleared on every entry, so rapid toggling can't have a stale timer hide
   // the glance two seconds into a later activation.
   if (nodePosFadeTimer) { clearTimeout(nodePosFadeTimer); nodePosFadeTimer = null }
-  applyNodePosNotices()
-  if (nodePosOn) {
+  applyNodePosNotices({ glanceExpired: !fromTap })
+  if (nodePosOn() && fromTap) {
     nodePosFadeTimer = setTimeout(() => {
       nodePosFadeTimer = null
       applyNodePosNotices({ glanceExpired: true })
     }, NODEPOS_GLANCE_MS)
   }
-  if (nodePosOn) {
+  if (state.map) state.map.setNodeLayer(nodePosMode)
+  if (nodePosOn()) {
     await loadNodePositions()
     // The count is only known after the fetch, so the key is re-applied here:
     // "no registry data" and "worked, nothing in view" must not look alike.
     applyNodePosNotices({ glanceExpired: nodePosFadeTimer === null })
   }
-  if (state.map) state.map.setNodeLayerVisible(nodePosOn)
+}
+
+async function cycleNodePositions() {
+  nodePosMode = nextNodePosMode(nodePosMode)
+  saveNodePosMode(nodePosMode)
+  await applyNodePosMode({ fromTap: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -2892,7 +2927,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('layer-toggle').addEventListener('click', cycleView)
   const restoredView = VIEW_STATES[viewIdx]
   state.map.setView(restoredView.mode, restoredView.mode3D)
-  el('nodepos-toggle').addEventListener('click', () => { toggleNodePositions().catch(() => {}) })
+  el('nodepos-toggle').addEventListener('click', () => { cycleNodePositions().catch(() => {}) })
+  applyNodePosMode().catch(() => {})
 
   // Sound FAB (#145). A persisted non-off mode is restored here; the engine
   // resumes its (autoplay-suspended) context on the first tap anywhere.

@@ -53,6 +53,8 @@ function resetFilters() {
     const el = document.getElementById(id)
     if (el && el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })) }
   }
+  // Node positions is a three-stop control since #603, owned by map.js.
+  if (window.setNodePos) window.setNodePos('')
 }
 
 // All DOM wiring below is guarded so this module can be imported under Vitest
