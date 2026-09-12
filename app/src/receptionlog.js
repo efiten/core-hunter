@@ -19,6 +19,14 @@ import { isHashIdKind, displayName } from './names.js'
 // captured reception), sorts ascending by rx_at so the newest is last, and
 // caps to the most recent `cap` — the log is bounded to a recent window rather
 // than rendering the whole store.
+// nextRxMode is the filtered/all switch. One stand, shared with the HUD
+// (#555): with a filter set you look at the filtered set on both surfaces,
+// and flipping it in either place flips both. Anything unknown lands on
+// filtered, the stand the app opens in.
+export function nextRxMode(mode) {
+  return mode === 'filtered' ? 'all' : 'filtered'
+}
+
 export function rxView(filtered, all, mode, cap = 200) {
   const src = mode === 'all' ? (all || []) : (filtered || [])
   const sorted = src.slice().sort((a, b) => Date.parse(a.rx_at) - Date.parse(b.rx_at))
@@ -33,6 +41,20 @@ export function rxActiveIndex(scrollTop, lineH, count) {
   if (i < 0) i = 0
   if (i > count - 1) i = count - 1
   return i
+}
+
+// rxStepIndex moves the playhead one row back or forward (#555): the float
+// readout's previous/next buttons scrub the same list the ticker shows. Clamped
+// to the list, and a stale index (rows dropped by the cap since the last paint)
+// lands on the nearest real row. -1 on an empty list, like rxActiveIndex.
+export function rxStepIndex(active, delta, count) {
+  if (count <= 0) return -1
+  const cur = Number(active)
+  const clamp = (i) => Math.min(Math.max(i, 0), count - 1)
+  // Off the list means the position was stale: land on the nearest row
+  // first, without stepping past it.
+  if (!(cur >= 0 && cur < count)) return clamp(cur || 0)
+  return clamp(cur + (delta < 0 ? -1 : 1))
 }
 
 // ---------------------------------------------------------------------------
@@ -257,9 +279,9 @@ export function senderCell(r) {
   return { id: resolved ? idPrefix(r.sender_id) : '', name }
 }
 
-export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse } = {}) {
+export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse, onModeChange } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { render() {}, focusRecord() {} }
+  if (!root) return { render() {}, focusRecord() {}, setCollapse() {}, setMode() {}, step() {}, active() { return null }, following() { return true } }
   // The ✕ hides the whole ticker (#539); the collapse chevron beside it moves
   // between full and three lanes (#560). One chevron that swaps direction, not
   // a pair of buttons. The app (onClose / onCollapse) owns both states and the
@@ -384,7 +406,15 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     if (onRowActivate && view[idx]) onRowActivate(view[idx])
   })
   list.addEventListener('scroll', () => { follow = atBottom(); paint() })
-  const toggle = () => { mode = mode === 'filtered' ? 'all' : 'filtered'; follow = true; rebuild() }
+  // The header toggle asks the app to flip the shared stand; the app answers
+  // through setMode, so the ticker and the HUD never disagree about it.
+  const toggle = () => { if (onModeChange) onModeChange(nextRxMode(mode)); else setMode(nextRxMode(mode)) }
+  function setMode(next) {
+    if (next === mode) return
+    mode = next
+    follow = true
+    rebuild()
+  }
   tgEl.addEventListener('click', toggle)
   tgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
 
@@ -402,6 +432,24 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     if (idx >= 0) toLane(idx)
   }
 
+  // step moves the playhead one row (#555): the float readout's previous/next
+  // buttons scrub through the ticker's own list. Stepping onto the newest row
+  // is what makes the ticker follow again, the same as scrolling to the bottom.
+  function step(delta) {
+    const idx = rxStepIndex(rxActiveIndex(list.scrollTop, LINE_H, view.length), delta, view.length)
+    if (idx >= 0) toLane(idx)
+  }
+
+  // active is the reception on the playhead, or null with nothing to show.
+  function active() {
+    const i = rxActiveIndex(list.scrollTop, LINE_H, view.length)
+    return i >= 0 ? view[i] : null
+  }
+
+  // following: the playhead sits on the newest row, so what the float readout
+  // shows is the HUD's own reception rather than a scrubbed one.
+  function following() { return follow }
+
   // setCollapse comes from the app, not from the click handler, so the stored
   // state and what is on screen cannot disagree: the click reports upwards and
   // the app hands the new level back down.
@@ -413,5 +461,5 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     rebuild()
   }
 
-  return { render, focusRecord, setCollapse }
+  return { render, focusRecord, setCollapse, setMode, step, active, following }
 }

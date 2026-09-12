@@ -105,6 +105,20 @@
     "body": "Both About tabs link the FAQ, and every question there has its own address to share."
   },
   {
+    "id": "2026-09-04-float-readout",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "A floating readout for when another app is in front",
+    "body": "Float puts the HUD full screen; leave the app and Android keeps it as a small window on top. Previous and next step through the receptions."
+  },
+  {
+    "id": "2026-09-04-hud-follows-the-filter",
+    "date": "2026-09-04",
+    "where": "app",
+    "title": "The HUD follows your filter, and acts on what it shows",
+    "body": "It shows the last reception your filter let through, and a closed eye marks what it kept out. Target and Ignore act on the shown sender."
+  },
+  {
     "id": "2026-09-04-new-versus-old-on-the-map",
     "date": "2026-09-04",
     "where": "app",
