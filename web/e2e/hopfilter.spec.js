@@ -9,16 +9,16 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
 })
-test('Sender unknown narrows on the tick, not on the next rolling refresh', async ({ page }) => {
-  // The coarse handle for a flood with no sender. The request has to carry it,
-  // because the narrowing happens in SQL -- a client-side filter would page
-  // through the wrong 25,000 rows.
+test('a panel checkbox narrows on the tick, not on the next rolling refresh', async ({ page }) => {
+  // No path, the checkbox the panel keeps (#535 dropped its neighbour). The
+  // request has to carry it, because the narrowing happens in SQL -- a
+  // client-side filter would page through the wrong 25,000 rows.
   //
   // The range is absolute on purpose, and that is the whole test. A relative
   // range keeps updateTimeRangeTimer (map.js) refreshing every 10s, and that
   // refresh carries whatever currentFilters() returns -- including a param no
   // control ever asked to apply. Written against the default range, this passes
-  // with #f-unnamed wired to nothing at all, which is how it shipped.
+  // with the checkbox wired to nothing at all, which is how #f-unnamed shipped.
   const urls = []
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: flood } }) })
   await page.goto('/?mode=points&from=2026-08-24T00:00:00Z&to=2026-08-25T00:00:00Z')
@@ -28,9 +28,9 @@ test('Sender unknown narrows on the tick, not on the next rolling refresh', asyn
   // param a few hundred ms later, which looks exactly like the control working.
   await expect.poll(() => { const n = urls.length; return new Promise((r) => setTimeout(() => r(n === urls.length), 1500)) }).toBe(true)
   const settled = urls.length
-  await setFilter(page, '#f-unnamed') // lives in the filter panel (#539)
-  await expect.poll(() => urls.slice(settled).some((u) => new URL(u).searchParams.get('unnamed') === '1'), { timeout: 3000 }).toBe(true)
-  await expect(page).toHaveURL(/unnamed=1/)
+  await setFilter(page, '#f-direct') // lives in the filter panel (#539)
+  await expect.poll(() => urls.slice(settled).some((u) => new URL(u).searchParams.get('hops') === '0'), { timeout: 3000 }).toBe(true)
+  await expect(page).toHaveURL(/direct=1/)
 })
 
 test('the control says what it filters on, not what someone hoped it meant', async ({ page }) => {

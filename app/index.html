@@ -60,6 +60,9 @@
             <polygon points="2,3 18,3 12,11 12,18 8,16 8,11"/>
           </svg>
           <span class="filter-pill-label">Filters</span>
+          <!-- The count the map's pill has carried since #539 (#564). The bar
+               says THAT and HOW MUCH is narrowed; the sheet says what. -->
+          <span id="filter-pill-count" class="fp-count" hidden></span>
           <svg class="filter-pill-caret" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M6 8l4 4 4-4"/>
           </svg>
@@ -69,7 +72,7 @@
     <div id="topbar-right">
       <button id="ticker-btn" class="topbar-btn" aria-label="Show receptions" hidden>
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-          <path d="M3 6h14M3 10h10M3 14h6"/>
+          <path d="M2 11h3l2-5 3 9 2-6 1.5 2H18"/>
         </svg>
       </button>
       <button id="settings-btn" class="topbar-btn" aria-label="Menu, connection status">

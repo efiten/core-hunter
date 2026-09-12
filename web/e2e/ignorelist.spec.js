@@ -1,4 +1,4 @@
-import { test, expect, openPicker } from './fixtures.js'
+import { test, expect, openPicker, openFilters, openIgnorePicker } from './fixtures.js'
 
 // The map's ignore-list (#494): the app has had one since it shipped, the map
 // had none, and the API already accepted the filter.
@@ -70,7 +70,7 @@ test('the settings list holds the ignored node, and Remove brings it back', asyn
   await openPointPopup(page)
   await page.locator('.pp-ignore').first().click()
 
-  await page.locator('#settings-btn').click()
+  await openFilters(page)
   await expect(page.locator('#ss-ignore-list .ss-ignore-row')).toHaveCount(1)
   // Never the full id in the visible text; the id is in the title instead.
   const row = page.locator('#ss-ignore-list .ss-ignore-row .ss-ignore-key')
@@ -99,21 +99,22 @@ test('the list survives a reload, and Clear empties it', async ({ page }) => {
   await expect(page.locator('#status')).toContainText('1 ignored')
   expect(new URL(page.url()).searchParams.has('ignores')).toBe(false)
 
-  await page.locator('#settings-btn').click()
+  await openFilters(page)
   await page.locator('#ss-ignore-clear').click()
   await expect(page.locator('#ss-ignore-list')).toContainText('No ignored senders')
   await expect(page.locator('#status')).not.toContainText('ignored')
 })
 
-// The map's own ignore control (#494). The app reaches its list through
-// Settings only; on the map the list is a picker like the other two, so a node
-// can be silenced and brought back from the bar.
+// The map's own ignore control (#494). Both halves live in the filter panel
+// since #561/#564 -- the picker that silences a node and the list that brings
+// it back -- because ignoring is filtering, and the bar could not carry four
+// separate filter controls at 375px.
 test('the ignore picker checks a node, and unchecks it again', async ({ page }) => {
   const urls = await setup(page)
   await page.goto('/?mode=points')
   await expect(page.locator('#ig-toggle')).toHaveText('Ignored ▾')
 
-  await openPicker(page, '#ig-toggle', '#ignore-picker')
+  await openIgnorePicker(page)
   await expect(page.locator('#ig-list .tl-row')).toHaveCount(2, { timeout: 10000 })
   await page.locator('#ig-list .tl-row', { hasText: 'NEO7HI' }).click()
 
@@ -128,7 +129,7 @@ test('the ignore picker checks a node, and unchecks it again', async ({ page }) 
   await expect(page.locator('#ignore-picker')).toBeHidden()
   expect(await page.locator('#ig-toggle').evaluate((el) => getComputedStyle(el).color))
     .toBe(`rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`)
-  await openPicker(page, '#ig-toggle', '#ignore-picker')
+  await openIgnorePicker(page)
   await expect.poll(() => urls.some((u) => u.includes('/api/points') && ignoresOf(u).includes('aa11bb22'))).toBe(true)
 
   // The candidate query for THIS picker drops the ignore-list, so the node it
@@ -153,10 +154,10 @@ test('ignoring from the popup checks the row in the picker', async ({ page }) =>
 
   // One list, three ways in (popup, picker, Settings): they cannot disagree.
   await expect(page.locator('#ig-toggle')).toHaveText('Ignored (1) ▾')
-  await openPicker(page, '#ig-toggle', '#ignore-picker')
+  await openIgnorePicker(page)
   await expect(page.locator('#ig-list .tl-row[aria-pressed="true"]')).toHaveCount(1, { timeout: 10000 })
 
-  await page.locator('#settings-btn').click()
+  await openFilters(page)
   await expect(page.locator('#ss-ignore-list .ss-ignore-row')).toHaveCount(1)
   // Named, not a bare hex prefix: the node was heard under a label in this
   // session, and a prefix names nothing to the person reading the list.

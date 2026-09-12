@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import 'fake-indexeddb/auto'
-import { IDBFactory } from 'fake-indexeddb'
+import { IDBFactory, IDBTransaction } from 'fake-indexeddb'
 import { Queue, RETENTION_MS, shouldContinueDraining, DRAIN_BUDGET_MS, watermarkAfter, nextWatermark, DRAIN_STALL_LIMIT } from '../queue.js'
 
 // A reception as buildRecord() writes it (capture.js) — only the fields the
@@ -396,5 +396,67 @@ describe('pendingPubkey', () => {
     expect(await q.pendingPubkey()).toBe('')
     await q.add({ rx_at: '2026-08-24T20:11:00Z', raw: '01' })
     expect(await q.pendingPubkey()).toBe('')
+  })
+})
+
+// Per-node facts (#553): what a node told us about itself when asked, kept
+// apart from the receptions because it describes the node, not one hearing.
+describe('nodes store — what a node answered about itself', () => {
+  it('stores telemetry under the pubkey and reads it back', async () => {
+    const q = new Queue()
+    await q.putNode('ab'.repeat(32), { voltage_v: 3.97, temp_c: 25, telemetry_at: iso(0) })
+    const n = await q.getNode('AB'.repeat(32))
+    expect(n.pubkey).toBe('ab'.repeat(32))
+    expect(n.voltage_v).toBe(3.97)
+    expect(n.temp_c).toBe(25)
+  })
+  it('merges a later answer into the row rather than replacing it', async () => {
+    const q = new Queue()
+    await q.putNode('ab'.repeat(32), { voltage_v: 3.97, telemetry_at: iso(60_000) })
+    await q.putNode('ab'.repeat(32), { temp_c: 21 })
+    const n = await q.getNode('ab'.repeat(32))
+    expect(n.voltage_v).toBe(3.97)
+    expect(n.temp_c).toBe(21)
+  })
+  // The spec deactivates a transaction once a request's success event has been
+  // dispatched; a promise continuation runs inside that dispatch only because
+  // current engines check microtasks there. fake-indexeddb keeps the
+  // transaction active until its next task instead, so this applies the
+  // spec's step by hand: a write queued from a continuation after the read
+  // then meets an inactive transaction, as it would the moment anything lands
+  // between the read and the write.
+  it('writes the merge from the read itself, not from a continuation after it', async () => {
+    const q = new Queue()
+    await q.putNode('ab'.repeat(32), { voltage_v: 3.97 })
+    const start = IDBTransaction.prototype._start
+    expect(typeof start).toBe('function')
+    IDBTransaction.prototype._start = function () {
+      start.call(this)
+      if (this._state === 'active') this._state = 'inactive'
+    }
+    try {
+      await q.putNode('ab'.repeat(32), { temp_c: 21 })
+    } finally {
+      IDBTransaction.prototype._start = start
+    }
+    const n = await q.getNode('ab'.repeat(32))
+    expect(n.voltage_v).toBe(3.97)
+    expect(n.temp_c).toBe(21)
+  })
+  it('is null for a node never asked, and refuses a key that is not a full pubkey', async () => {
+    const q = new Queue()
+    expect(await q.getNode('cd'.repeat(32))).toBeNull()
+    await expect(q.putNode('cd', { temp_c: 1 })).rejects.toThrow(TypeError)
+  })
+  // The store arrives with schema v3. An install already on v2 keeps every
+  // reception it holds; only the new store is added.
+  it('upgrading from v2 keeps the receptions and adds the store', async () => {
+    const q = new Queue()
+    await q.add(rec(iso(1000)))
+    await q.add(rec(iso(500)))
+    expect(await q.count()).toBe(2)
+    await q.putNode('ab'.repeat(32), { voltage_v: 4 })
+    expect(await q.count()).toBe(2)
+    expect((await q.getNode('ab'.repeat(32))).voltage_v).toBe(4)
   })
 })
