@@ -17,8 +17,14 @@ describe('senderText — an id is never dressed as a name', () => {
   it('ignores a hash-kind label even when it looks like a real name', () => {
     expect(senderText({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toBe('#4a')
   })
-  it('prints a resolved name for every other kind', () => {
-    expect(senderText({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: 'repeater-3' })).toBe('repeater-3')
+  it('prints a resolved name for every other kind, marked when the id is a short prefix (#452)', () => {
+    expect(senderText({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: 'repeater-3' })).toBe('~repeater-3')
+    expect(senderText({ sender_kind: 'discover_pubkey', sender_id: '7b0e24700e0c0d3e', sender_label: 'repeater-3' })).toBe('repeater-3')
+  })
+  // #452: a name on a 2-byte hash is a guess, and the line says so.
+  it('marks a name resolved for a short prefix as a guess', () => {
+    expect(senderText({ sender_kind: 'relay', sender_id: '2beb', sender_label: 'repeater_3_' })).toBe('~repeater_3_')
+    expect(senderText({ sender_kind: 'advert_pubkey', sender_id: 'ab'.repeat(32), sender_label: 'alpha' })).toBe('alpha')
   })
   it('falls back to the id, then to a dash', () => {
     expect(senderText({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: '' })).toBe('a1b2f3')
