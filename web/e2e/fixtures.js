@@ -165,6 +165,22 @@ export async function closeFilters(page) {
   await page.keyboard.press('Escape')
 }
 
+// The typed prefix search moved off the bar into the panel's Sender id group
+// (#561), so a test drives it the way a reader does: open Filters, type, close.
+// `close` is opt-out for the specs that go on to read the field back.
+export async function fillSender(page, value, { close = true } = {}) {
+  await openFilters(page)
+  await page.fill('#f-sender', value)
+  if (close) await closeFilters(page)
+}
+
+// Same move for the ignore picker (#561/#564): the bar carried it, the panel
+// owns it now. Returns with the picker open and the panel behind it.
+export async function openIgnorePicker(page) {
+  await openFilters(page)
+  await openPicker(page, '#ig-toggle', '#ignore-picker')
+}
+
 // Clicks one of the panel's chips (type or id-class) by its data attribute.
 export async function clickPanelChip(page, selector) {
   await openFilters(page)
