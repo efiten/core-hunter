@@ -29,6 +29,16 @@ import { wireNarrowBar } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 
 let currentRole = 'guest'
+// 'guest' above is what the page renders from until /api/auth/me answers, not
+// an answer. For the point layer that difference is a request rather than a
+// label: it is a member layer (#493), ?mode= is restored from the URL at
+// module-eval time, and refresh()'s 250 ms debounce beats a slow
+// /api/auth/me -- so drawPoints() sent the layer's bbox query for exactly the
+// visitor the gate exists to keep off it. applyPointLayerGate() cannot catch
+// that one, because it runs from applyRole(), which is already too late. The
+// layer waits for the role instead, and applyRole() ends in its own refresh(),
+// so a member draws as soon as the answer is in.
+let roleKnown = false
 
 const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
 
@@ -481,6 +491,7 @@ function announceRoleRise(role) {
 
 function applyRole(me) {
   currentRole = me.role || 'guest'
+  roleKnown = true
   announceRoleRise(currentRole)
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
@@ -539,7 +550,7 @@ export function refresh() {
     // The else branches take a ticket as well as clearing: a draw started
     // under the previous mode is obsolete the moment the toggle empties its
     // layer, and would otherwise still be the newest and repaint it.
-    if (mode === 'points' || mode === 'both') drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
+    if (roleKnown && (mode === 'points' || mode === 'both')) drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
     if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); currentHexRings = []; wm.setData('hex', null) }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
@@ -946,12 +957,19 @@ function deactivateLocate() {
 }
 locateBtn.addEventListener('click', () => (locateActive ? deactivateLocate() : activateLocate()))
 
-// "Locate this sender" button inside a point popup: set the sender filter to the
-// clicked node's ID and start (or refresh) a Locate for it.
+// "Locate this sender" button inside a popup: set the sender filter to the
+// clicked node's id and start (or refresh) a Locate for it. The filter is the
+// field's leading-prefix search (?sender=), not an exact pick: the CoreScope
+// observer popup passes a heard_key, which can be a short relay prefix, and
+// it has to keep matching the longer ids that start with it. The input event
+// is the one typing sends, so an active pick is dropped (#299), the URL
+// follows and the picker button traces the prefix (#498).
 document.addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('.lc-locate')
   if (!btn) return
-  document.getElementById('f-sender').value = btn.dataset.sender
+  const field = document.getElementById('f-sender')
+  field.value = btn.dataset.sender
+  field.dispatchEvent(new Event('input', { bubbles: true }))
   wm.closePopup()
   activateLocate()
 })
@@ -2229,7 +2247,7 @@ wirePopover({
 renderIgnoreList()
 syncIgnoreToggleLabel()
 
-// Target-list picker (#223): a small dropdown beside #f-sender, a "toggle
+// Target-list picker (#223): a small dropdown, a "toggle
 // button reveals a panel" shape rather than app's full sheet -- web's top bar
 // keeps every control inline (#225 decision), so this stays a compact
 // popover, not a sheet. The hunter picker below (#290) shares the same shape.
@@ -2251,6 +2269,9 @@ function syncTargetToggleLabel() {
   const { text, title, count } = targetChipLabel(ids, {
     rows: ids.length ? senderList(cachedCandidatePoints) : [],
     nameOf: (id) => cachedName(id) || '',
+    // The typed prefix is inside the panel since #498, so the button is its
+    // only trace once the panel closes.
+    prefix: document.getElementById('f-sender').value,
   })
   spToggle.textContent = `${text} ▾`
   spToggle.title = title || 'Pick from heard senders'
@@ -2273,12 +2294,12 @@ window.selectedSenderIds = () => targetPicker.getSelected()
 // nothing said why (#299). Typing is an explicit act, so let it win — the same
 // direction the pick already has when it clears the field.
 document.getElementById('f-sender').addEventListener('input', (e) => {
-  if (!e.target.value.trim()) return
-  if (!targetPicker.getSelected().length) return
-  targetPicker.setSelected([])
-  syncTargetToggleLabel()
-  urlstate.save()
-  refresh()
+  if (e.target.value.trim() && targetPicker.getSelected().length) {
+    targetPicker.setSelected([])
+    urlstate.save()
+    refresh()
+  }
+  syncTargetToggleLabel() // the button traces the prefix as well as a pick (#498)
 })
 
 // Selection persists as JSON: a sender_id is arbitrary operator text, so the

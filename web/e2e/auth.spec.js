@@ -7,6 +7,19 @@ async function mockRole(page, me) {
   await page.route('**/api/hunters*', r => r.fulfill({ json: { hunters: [] } }))
 }
 
+// Answers /api/auth/me after the 250 ms redraw debounce instead of before it.
+// Registered after mockRole so it is the handler that wins. The two layer-gate
+// tests below are about what happens in that window, and both directions are
+// asserted: nothing for a role that is not known yet, the layer for a member
+// once it is.
+const ME_DELAY_MS = 600
+async function slowMe(page, me) {
+  await page.route('**/api/auth/me', async (r) => {
+    await new Promise((resolve) => setTimeout(resolve, ME_DELAY_MS))
+    await r.fulfill({ json: me })
+  })
+}
+
 test('guest sees a Log in button and can log in', async ({ page }) => {
   await mockRole(page, { role: 'guest' })
   await page.goto('/')
@@ -244,6 +257,14 @@ test('a ?mode=points deep link holds a guest on hex', async ({ page }) => {
   await mockRole(page, { role: 'guest' })
   await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
   await page.route('**/api/heatmap*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { features: [] } }) })
+  // Held back on purpose, because the order is the whole assertion. ?mode= is
+  // restored at module-eval time and refresh() is debounced 250 ms, so with
+  // /api/auth/me answering at once the draw and the role land in whichever
+  // order the machine picks: under full-suite load this leaked one point-layer
+  // request in 2 of 4 runs, and 5 of 5 alone showed nothing. 600 ms puts the
+  // debounce first every time, so what is measured is the gate and not the
+  // scheduler.
+  await slowMe(page, { role: 'guest' })
   await page.goto('/?mode=points')
 
   // The mode is restored before /api/auth/me resolves, so the gate has to be
@@ -259,10 +280,19 @@ test('a ?mode=points deep link holds a guest on hex', async ({ page }) => {
 })
 
 test('a member still gets all three layers', async ({ page }) => {
+  const urls = []
   await mockRole(page, { role: 'member' })
-  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
+  // The same hold as the guest deep link, for the other half of the gate: the
+  // point layer waits for the role, and waiting is all it may do. A member on
+  // ?mode=points still gets the layer's bbox query, after the answer rather
+  // than before it. Without this the gate could be "passed" by never drawing.
+  await slowMe(page, { role: 'member', username: 'm' })
   await page.goto('/?mode=points')
+  await expect
+    .poll(() => urls.filter((u) => u.includes('/api/points') && new URL(u).searchParams.has('z')).length)
+    .toBeGreaterThan(0)
   await openFilters(page)
   await expect(page.locator('#lm-points')).toBeEnabled()
   await expect(page.locator('#lm-both')).toBeEnabled()
