@@ -84,6 +84,13 @@
     "body": "Six characters in their own column, so you can see which node a name came from. A line without a name is unchanged."
   },
   {
+    "id": "2026-09-05-hud-is-the-playhead",
+    "date": "2026-09-05",
+    "where": "app",
+    "title": "The HUD shows the reception the ticker points at",
+    "body": "Tap or scrub a row and the readout follows it. A name that resolves later now reaches the HUD too."
+  },
+  {
     "id": "2026-09-05-links-that-leave-the-app",
     "date": "2026-09-05",
     "where": "both",
