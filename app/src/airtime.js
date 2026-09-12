@@ -36,10 +36,11 @@ export const DISCOVER_BYTES = 8
 export const TRACE_BYTES = 12
 
 // On-air bytes of the companion's self-advert (#577), for the name it
-// advertises. The location bytes always count: SELF_INFO carries the location
-// policy only from companion firmware v1.7.1, and earlier firmware sends 0 in
-// that byte while its advert still carries the location. A floor that assumes
-// them comes out long, never short.
+// advertises. The location bytes always count, which is the conservative
+// reading rather than the exact one: SELF_INFO carries the location policy
+// only from companion firmware v1.7.1, and earlier firmware sends 0 in that
+// byte while its advert carries a position whenever the node has one (none at
+// lat 0, lon 0). A floor that assumes the bytes comes out long, never short.
 export function advertBytes(name) {
   const nameBytes = new TextEncoder().encode(String(name || '')).length
   return 2 + 32 + 4 + 64 + Math.min(1 + 8 + nameBytes, 32)
