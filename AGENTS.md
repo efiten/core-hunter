@@ -478,6 +478,25 @@ Resolved (firmware-confirmed):
   `out_frame` construction in `examples/companion_radio/MyMesh.cpp` (`CMD_APP_START` handler).
   No longer gated; used for SF-ordered resolver selection (see §8).
 
+### One design system across the three surfaces
+
+`docs/design-system.md` is the register. A UI pattern is defined once and applied everywhere it
+fits; a difference between surfaces is allowed only when it is functional, and is then written
+down there as a rule about the **surface** rather than as an exception for one component.
+
+Two consequences worth stating, because both were learned the expensive way:
+
+- **Building a component is applying an existing pattern, not designing one.** Check the register
+  first. Where the pattern exists, matching it is the default and deviating is what needs an
+  argument.
+- **A surface rule reaches everything on that surface.** A floating panel over the map is
+  draggable, closable and collapsible, so the next one added to `web/` is too. Introducing a
+  deviation means writing that sentence, not carving out one component.
+
+Verify against the other surface, not only against the issue text: put the two CSS blocks or the
+two screens side by side. Where a shared rule can be asserted, pin it in `web/parity.test.js` so
+it is mechanical instead of remembered.
+
 ### Prefix attribution: the app refuses, the website may merge
 
 One physical node is named by several different-length ids in the same pubkey namespace — the full

@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode } from './fixtures.js'
+import { test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, fillSender } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -391,7 +391,10 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
   // The panel dimensions too (#539): Clear's label counts them, so it has to
   // clear them — before this it silently left every chip and checkbox standing.
   await expect(page.locator('#f-direct')).not.toBeChecked()
-  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(0)
+  // "Everything" is the All chip lit and nothing else since #564, so an empty
+  // active set would now be a different state, not the cleared one.
+  await expect(page.locator('#f-types .f-chip.active')).toHaveCount(1)
+  await expect(page.locator('#f-types .f-chip.active')).toHaveAttribute('data-type', 'all')
   await expect(page.locator('#filter-pill-count')).toBeHidden()
   await closeFilters(page)
   await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv')
@@ -401,14 +404,14 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
 test('hovering the sender box shows the resolved node name via the input tooltip', async ({ page }) => {
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'NEO7HI', ambiguous: false } }))
   await page.goto('/')
-  await page.fill('#f-sender', '7b0e24700e0c0d3e')
+  await fillSender(page, '7b0e24700e0c0d3e', { close: false })
   await expect(page.locator('#f-sender')).toHaveAttribute('title', 'NEO7HI')
 })
 
 test('sender filter reaches the /api/points query', async ({ page }) => {
   await page.goto('/?mode=points') // points requests — the cold default is hex (#141)
   const req = page.waitForRequest((r) => r.url().includes('/api/points') && r.url().includes('sender=4a'))
-  await page.fill('#f-sender', '4a')
+  await fillSender(page, '4a')
   await req // only resolves if a points request carrying sender=4a was issued
 })
 
