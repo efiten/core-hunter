@@ -43,8 +43,8 @@ export function floatSupported(win) {
 }
 
 // Canvas size. 4:3, so the PiP window Android cuts from it is squarer than a
-// film frame and holds four lines; fullscreen letterboxes on black, which on a
-// dark readout reads as intended.
+// film frame and holds four lines; fullscreen letterboxes, and app.css paints
+// those bars with --ch-bg, the same ground this canvas fills below.
 const W = 800, H = 600
 
 // createFloatReadout owns the canvas, the video and the drawing. `colors`

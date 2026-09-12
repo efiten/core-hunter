@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { floatModel, floatSupported } from '../floatreadout.js'
 
 const rec = { sender_kind: 'advert_pubkey', sender_id: 'ab12cd34ef56', sender_label: 'alpha', rssi: -85, snr: 8.5 }
@@ -71,5 +72,28 @@ describe('floatSupported', () => {
   })
   it('is false with no window at all', () => {
     expect(floatSupported(undefined)).toBe(false)
+  })
+})
+
+// The canvas is 4:3 and a phone screen is not, so fullscreen leaves bars above
+// and below the reading. Those bars are the video element's own background, and
+// they are as much a component colour as the reading itself: with a fixed value
+// the light theme gets a dark frame around a light readout. app.css therefore
+// declares the rule with --ch-bg, like every other colour in the file
+// (AGENTS.md §7). The rule is CSS glue no unit test reaches, so it is pinned
+// against the file, the way splash.test.js pins the FAB offsets.
+describe('the fullscreen letterbox follows the theme (#555)', () => {
+  const css = readFileSync(new URL('../styles/app.css', import.meta.url), 'utf8')
+  const rule = css.split('}')
+    .map((b) => b.split('{'))
+    .find(([sel]) => sel?.includes('#float-video:fullscreen'))
+
+  it('paints the bars with --ch-bg', () => {
+    expect(rule, 'app.css declares #float-video:fullscreen').toBeTruthy()
+    expect(rule[1]).toMatch(/background:\s*var\(--ch-bg\)/)
+  })
+
+  it('names no colour of its own', () => {
+    expect(rule[1]).not.toMatch(/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i)
   })
 })

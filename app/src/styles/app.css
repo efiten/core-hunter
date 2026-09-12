@@ -199,10 +199,12 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #hud-float.active { border-color: var(--ch-accent-2); color: var(--ch-accent-2); background: transparent; }
 #hud-float[hidden] { display: none; }
 /* The float readout's source and player. The video is a 1px dot until it goes
-   fullscreen, where it fills the screen on black; the canvas is never shown. */
+   fullscreen, where it fills the screen on --ch-bg: the canvas is 4:3 and a
+   phone screen is not, so the bars above and below it are the page's own
+   ground in either theme. The canvas itself is never shown. */
 #float-canvas { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #float-video { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-#float-video:fullscreen { opacity: 1; width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: auto; }
+#float-video:fullscreen { opacity: 1; width: 100%; height: 100%; object-fit: contain; background: var(--ch-bg); pointer-events: auto; }
 #hud-mode.all { border-color: var(--ch-muted); color: var(--ch-text); font-weight: 400; }
 /* The closed eye: something went by that the filter kept off the HUD. Amber,
    the alert colour, because it is the one thing in the row asking for a look. */
