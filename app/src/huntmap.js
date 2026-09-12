@@ -14,6 +14,7 @@ import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
 import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
 import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
+import { followAfter, paddingAction } from './rotation.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -65,7 +66,7 @@ const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -193,13 +194,45 @@ export function createHuntMap(containerId) {
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false
 
-  // Follow releases when the user drags; native bearing gesture reports back via
-  // onGestureRotate (guarded so our own setBearing calls don't count as user input).
-  // Any deliberate "look somewhere else" gesture releases follow, or the next
-  // GPS fix jumpTo's the camera straight back (setPosition). Shared by the drag
-  // handler and by focusReception (#309), which is the same intent by tap.
-  function releaseFollow() { if (follow && lastPos) { follow = false; if (onFollow) onFollow(false) } }
-  map.on('dragstart', releaseFollow)
+  // Follow changes only through followAfter (rotation.js), which says per input
+  // whether it needs a position; onFollow hears every change, so the compass
+  // button's state never sits on a stop the map did not take.
+  function setFollow(input) {
+    const next = followAfter(follow, input, lastPos != null)
+    if (next === follow) return
+    follow = next
+    if (onFollow) onFollow(follow)
+  }
+  // Native bearing gesture reports back via onGestureRotate (guarded so our own
+  // setBearing calls don't count as user input). Any deliberate "look somewhere
+  // else" gesture releases follow, or the next GPS fix jumpTo's the camera
+  // straight back (setPosition). Shared by the drag handler and by
+  // focusReception (#309), which is the same intent by tap.
+  const lookAway = () => setFollow('look-away')
+  map.on('dragstart', lookAway)
+  // The compass button's release (#403), with or without a fix.
+  function releaseFollow() { setFollow('release') }
+  // Look-ahead (#403): the app decides when the map is oriented to travel and
+  // hands the padding in; the map re-derives it from its own height on resize,
+  // so a rotated phone keeps the position at the same fraction of the frame.
+  // Every write goes through paddingAction (rotation.js), because setPadding
+  // is a jumpTo and a jumpTo cancels a running gesture (#236). The switch-off
+  // arrives from the gesture handlers right above: a drag releases follow, a
+  // two-finger rotate clears the source. A held padding lands at moveend,
+  // when there is no gesture left to cut off.
+  const NO_PADDING = { top: 0, bottom: 0, left: 0, right: 0 }
+  let lookAhead = null, padding = NO_PADDING, paddingHeld = false
+  function applyPadding() {
+    const next = lookAhead ? lookAhead(map.getContainer().clientHeight) : NO_PADDING
+    const action = paddingAction(padding, next, map.isMoving() || map.isZooming())
+    paddingHeld = action === 'hold'
+    if (action !== 'apply') return
+    padding = next
+    map.setPadding(next)
+  }
+  function setLookAhead(paddingFor) { lookAhead = paddingFor || null; applyPadding() }
+  map.on('resize', () => { if (lookAhead) applyPadding() })
+  map.on('moveend', () => { if (paddingHeld) applyPadding() })
   map.on('rotate', () => { if (rotateCb && !settingBearing) rotateCb(map.getBearing()) })
   // Hex resolution depends on zoom — rebuild once the zoom settles.
   map.on('zoomend', () => draw())
@@ -848,7 +881,16 @@ export function createHuntMap(containerId) {
     }
   }
   function centerOn(lat, lon) { map.easeTo({ center: [lon, lat], duration: 400 }) }
-  function recenter() { if (!lastPos) return; follow = true; map.jumpTo({ center: [lastPos[1], lastPos[0]] }); if (onFollow) onFollow(true) }
+  // Eases rather than jumps (#403): with padding in play a jump would land on
+  // the offset position in one frame, and the ease is what tells the hand
+  // where the map went. The follow callback runs before the ease: it sets the
+  // look-ahead padding (updateCompassIcon), which the ease has to read. Set
+  // during the ease it stopped the ease dead (measured), and now that
+  // applyPadding holds a write while the map moves it would land at moveend,
+  // with the ease aiming at the un-offset centre.
+  // Before the first fix there is nowhere to ease to; follow still comes on,
+  // and setPosition centres the map on that fix when it lands.
+  function recenter() { setFollow('follow'); if (lastPos) map.easeTo({ center: [lastPos[1], lastPos[0]], duration: 400 }) }
   function onFollowChange(cb) { onFollow = cb }
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
@@ -917,11 +959,11 @@ export function createHuntMap(containerId) {
   // on the map to pan to.
   function focusReception(rec) {
     if (!rec || rec.lat == null || rec.lon == null) return
-    releaseFollow()
+    lookAway()
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); if (pulseTimer) clearInterval(pulseTimer); clearHexLabels(); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, setNodeLayer, setExaggeration, pulse, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, releaseFollow, setLookAhead, setNodeLayer, setExaggeration, pulse, destroy }
 }
 
 function popupHtml(r, selectedIds) {
