@@ -18,8 +18,18 @@ describe('activeFilterCount', () => {
     expect(activeFilterCount({
       directOnly: true,
       types: new Set(['advert']), idClasses: new Set(['pubkey']),
-      csAdverts: true, csRelays: true, nodePos: true,
-    })).toBe(6)
+      nodePos: true,
+    })).toBe(4)
+  })
+
+  // #629: CS adverts and CS relays were two more toggles for the question the
+  // node-position layer already answers, so they are the layer's sources now
+  // rather than dimensions of their own. A caller still passing them — an old
+  // shared link, a stale copy of the panel — counts nothing extra, the same way
+  // a Sender-unknown flag does since #535.
+  it('does not count the CoreScope overlays, which the layer owns now', () => {
+    expect(activeFilterCount({ csAdverts: true, csRelays: true })).toBe(0)
+    expect(activeFilterCount({ nodePos: true, csAdverts: true, csRelays: true })).toBe(1)
   })
   // #535: Sender unknown was the Unnamed chip under another name, so it is
   // not a dimension any more; a caller still passing it counts nothing.

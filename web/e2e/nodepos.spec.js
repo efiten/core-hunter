@@ -156,7 +156,7 @@ test('a one-sided estimate does not claim a search radius', async ({ page }) => 
   await expect(page.locator('.maplibregl-popup-content')).toContainText('radius not trusted')
 })
 
-test('the layer is hidden from a guest, whose resolve responses carry no position', async ({ page }) => {
+test('the layer is refused to a guest, whose resolve responses carry no position', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
   // Mirrors the server stripping lat/lon below member (httpapi/resolve.go).
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: ring(51, 4, 250, 8) } }))
@@ -165,8 +165,13 @@ test('the layer is hidden from a guest, whose resolve responses carry no positio
   }))
   await page.goto('/')
   await openFilters(page) // asserted with the panel open, or hidden is vacuous
-  await expect(page.locator('.np-layer-toggle')).toBeHidden()
+  // #629: the control stays and is disabled with a reason, where it used to be
+  // hidden outright. Refusing it visibly is what tells a guest it exists.
+  await expect(page.locator('.np-layer-toggle')).toBeVisible()
+  await expect(page.locator('#np-pos')).toBeDisabled()
+  await expect(page.locator('#nodepos-gate-note')).toContainText(/account/i)
   await closeFilters(page)
+  // What the gate is for is unchanged: nothing is drawn.
   await expect(page.locator('.np-advert')).toHaveCount(0)
 })
 
