@@ -236,6 +236,30 @@ export function rxCountLabel(total, truncated = false) {
   return n.toLocaleString('en') + (truncated ? '+' : '') + ' rx'
 }
 
+// outsideWindow is the gap between what the list shows and what the map draws
+// (#646). The list is row-bounded — the newest CAP receptions, however old they
+// are — while the map draws the chosen time window, so on a quiet mesh the list
+// reaches back past the window's edge and the map has nothing for those rows.
+// Returns how many fall outside and how old the oldest of them is, which is
+// what decides the window a tap would widen to.
+//
+// A row whose timestamp cannot be read counts as neither. It is not evidence
+// that anything is missing, and it must not drag the offered window wider.
+export function outsideWindow(rows, windowMs, nowMs) {
+  let count = 0
+  let oldestAgeMs = 0
+  if (windowMs == null) return { count, oldestAgeMs }
+  for (const r of rows || []) {
+    const at = Date.parse(r && r.rx_at)
+    if (Number.isNaN(at)) continue
+    const age = nowMs - at
+    if (age <= windowMs) continue
+    count++
+    if (age > oldestAgeMs) oldestAgeMs = age
+  }
+  return { count, oldestAgeMs }
+}
+
 // How much of the ticker is on screen, as one stored value. A boolean plus a
 // size would let a reload land on "closed and expanded", which is not a state.
 // 'open' and 'closed' are what pre-#560 builds wrote, so every existing install
@@ -338,7 +362,7 @@ export function senderCell(r) {
   return { id: resolved ? idPrefix(r.sender_id) : '', name }
 }
 
-export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse, onModeChange } = {}) {
+export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse, onModeChange, onWiden } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { render() {}, focusRecord() {}, setCollapse() {}, setMode() {}, step() {}, follow() {}, active() { return null }, following() { return true } }
   // The ✕ hides the whole ticker (#539); the collapse chevron beside it moves
@@ -351,8 +375,17 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     + '</button>'
     + '<button type="button" class="rx-close" aria-label="Hide receptions">'
     + '<svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>'
-    + '</button></div><div class="rx-list" id="rx-list"></div>'
+    + '</button></div>'
+    // The window note (#646) sits between the header and the list, never in
+    // it: paint() walks list.children index-parallel with `view`, active()
+    // feeds the HUD from view[ai], and the card's height comes from counting
+    // lanes. A row here that is not a reception would take a lane, could land
+    // under the marker, and would reach the HUD as "the reception you are
+    // looking at".
+    + '<div class="rx-note" hidden role="button" tabindex="0"></div>'
+    + '<div class="rx-list" id="rx-list"></div>'
   const countEl = root.querySelector('.rx-count')
+  const noteEl = root.querySelector('.rx-note')
   const tgEl = root.querySelector('.rx-tg')
   const foldEl = root.querySelector('.rx-fold')
   const list = root.querySelector('.rx-list')
@@ -366,6 +399,9 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
   let all = []
   let view = []
   let counts = { filtered: 0, all: 0 }
+  // What the list shows and the map cannot draw (#646): { count, label }, where
+  // label names the window a tap would widen to. null when nothing is outside.
+  let outside = null
   let nowMs = Date.now()
   let activeId = null
   // The row under the marker, when one was named deliberately: a tap, a scrub,
@@ -411,8 +447,8 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     foldEl.setAttribute('aria-expanded', String(collapse === 0))
     foldEl.setAttribute('aria-label', atLast ? 'Expand receptions' : 'Collapse receptions')
     root.classList.toggle('rx-collapsed', collapse > 0)
-    const filteredIds = new Set(filtered.map((r) => r.id))
     countEl.textContent = rxCountLabel(mode === 'all' ? counts.all : counts.filtered)
+    paintNote()
     tgEl.innerHTML = mode === 'filtered'
       ? '<b>filtered</b><span class="rx-off"> · all</span>'
       : '<span class="rx-off">filtered · </span><b>all</b>'
@@ -420,10 +456,6 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     for (let i = 0; i < view.length; i++) {
       const r = view[i]
       const color = cssVar(tierColorVar(rssiTier(r.rssi)))
-      // "outside filter", not "no marker" (#539): the tag means the reception
-      // is outside the current filter so the map draws nothing for it — it
-      // says nothing about whether the sender is identified.
-      const nm = mode === 'all' && !filteredIds.has(r.id) ? ' <span class="rx-nm" title="Outside your current filter, so it has no marker on the map.">outside filter</span>' : ''
       const cell = senderCell(r)
       h += '<div class="rx-ln" data-idx="' + i + '" data-id="' + esc(r.id) + '">'
         + '<span class="rx-gt"></span>'
@@ -431,7 +463,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
         + '<span class="rx-rs" style="color:' + color + '">' + esc(r.rssi ?? '—') + '</span>'
         + '<span class="rx-id">' + esc(cell.id) + '</span>'
         + '<span class="rx-sn">' + esc(cell.name) + ' '
-        + '<span class="rx-me">' + esc(lineMeta(r)) + '</span>' + nm + '</span></div>'
+        + '<span class="rx-me">' + esc(lineMeta(r)) + '</span></span></div>'
     }
     list.innerHTML = h
     if (follow) {
@@ -443,6 +475,24 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     }
     paint()
   }
+
+  // paintNote writes the window note (#646): the rows on show that the map
+  // cannot draw, said once above the list instead of once per row. Hidden when
+  // nothing is outside, which is the ordinary case — a line that is always
+  // there stops being read.
+  function paintNote() {
+    const n = outside && outside.count > 0 ? outside.count : 0
+    noteEl.hidden = !n
+    if (!n) return
+    const step = outside.label ? ' · show ' + esc(outside.label) : ''
+    noteEl.innerHTML = '<b>' + n + '</b> outside the map\'s window' + step
+    noteEl.setAttribute('aria-label', n + ' of these receptions are older than the window the map draws'
+      + (outside.label ? '. Show ' + outside.label + '.' : ''))
+  }
+
+  const widen = () => { if (onWiden) onWiden() }
+  noteEl.addEventListener('click', widen)
+  noteEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); widen() } })
 
   // markerIndex is the row under the marker. A row named deliberately wins;
   // with none named the scroll position answers, the way it always did.
@@ -519,14 +569,21 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
   tgEl.addEventListener('click', toggle)
   tgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
 
-  // `totals` is how many receptions each stand actually has (#638), which the
-  // caller knows and the component cannot: the rows it is handed are already a
-  // capped read. Without it the header falls back to counting what it was
-  // given, which is what it always did.
-  function render(filteredRecords, allRecords, now, totals) {
+  // `opts.totals` is how many receptions each stand actually has (#638), which
+  // the caller knows and the component cannot: the rows it is handed are
+  // already a capped read. Without it the header falls back to counting what
+  // it was given, which is what it always did.
+  //
+  // `opts.outside` is the window note (#646): { count, label } for the rows on
+  // show that fall outside the window the map draws, with the window a tap
+  // would widen to. The caller owns the window, so it names the step; the card
+  // only says how many and offers it.
+  function render(filteredRecords, allRecords, now, opts) {
+    const o = opts || {}
     filtered = filteredRecords || []
     all = allRecords || []
-    counts = totals || { filtered: filtered.length, all: all.length }
+    counts = o.totals || { filtered: filtered.length, all: all.length }
+    outside = o.outside || null
     nowMs = now ?? Date.now()
     rebuild()
   }

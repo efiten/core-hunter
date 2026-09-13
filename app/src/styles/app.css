@@ -785,7 +785,16 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .rx-id { width: 6ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
-.rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
+/* The window note (#646): one line between the header and the list saying how
+   many of the receptions on show fall outside the window the map draws, and
+   offering the first window that would take them. It is a sibling of the list,
+   not a row in it — the lane maths counts rows, and a line that is not a
+   reception must not take a lane or land under the marker. */
+.rx-note { padding: 4px 12px; border-bottom: 1px solid var(--ch-border);
+  font-size: 12px; color: var(--ch-muted); cursor: pointer; pointer-events: auto;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rx-note:hover { color: var(--ch-text); }
+.rx-note b { color: var(--ch-accent); font-weight: 700; }
 /* Closing travels towards #ticker-btn (#560). Before this the card simply
    vanished and the control now holding it sits in the top bar with nothing
    connecting the two, so the first close read as "the ticker is gone". The

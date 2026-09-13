@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex, rxLanes, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane, rxCountLabel } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex, rxLanes, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane, rxCountLabel, outsideWindow } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -219,6 +219,42 @@ describe('senderCell — the id stays beside the name it resolved to', () => {
   it('gives a hash id no column: the # in the name cell is all it is', () => {
     expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
     expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
+  })
+})
+
+// #646: the list is row-bounded and the map is window-bounded, so the newest
+// 200 rows can reach further back than the window the map draws. That gap used
+// to be marked per row as "outside filter", which was true about the map and
+// read as false about the list — in the one stand that promises to leave
+// nothing out. The card now says it once: how many of the rows on show fall
+// outside the window, and how far back you would have to look to include them.
+describe('outsideWindow — the rows the list shows and the map cannot', () => {
+  const at = (agoMs) => ({ rx_at: new Date(1_000_000_000_000 - agoMs).toISOString() })
+  const NOW = 1_000_000_000_000
+  const MIN = 60_000
+
+  it('counts only the rows older than the window', () => {
+    const rows = [at(50 * MIN), at(40 * MIN), at(10 * MIN), at(1 * MIN)]
+    expect(outsideWindow(rows, 30 * MIN, NOW).count).toBe(2)
+  })
+  it('reports the oldest age among them, which is what a wider window has to cover', () => {
+    const rows = [at(50 * MIN), at(40 * MIN), at(10 * MIN)]
+    expect(outsideWindow(rows, 30 * MIN, NOW).oldestAgeMs).toBe(50 * MIN)
+  })
+  // All time has no outside: the map already draws everything retained.
+  it('finds nothing outside when there is no window', () => {
+    expect(outsideWindow([at(50 * MIN), at(9 * 24 * 60 * MIN)], null, NOW)).toEqual({ count: 0, oldestAgeMs: 0 })
+  })
+  it('finds nothing when every row is inside', () => {
+    expect(outsideWindow([at(1 * MIN), at(2 * MIN)], 30 * MIN, NOW)).toEqual({ count: 0, oldestAgeMs: 0 })
+  })
+  // A row whose timestamp cannot be read is not evidence of anything, and must
+  // not push the window wider on its own.
+  it('ignores a row with an unreadable timestamp rather than counting it', () => {
+    expect(outsideWindow([{ rx_at: 'not a date' }, at(40 * MIN)], 30 * MIN, NOW).count).toBe(1)
+  })
+  it('handles an empty list', () => {
+    expect(outsideWindow([], 30 * MIN, NOW)).toEqual({ count: 0, oldestAgeMs: 0 })
   })
 })
 

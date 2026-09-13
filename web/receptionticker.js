@@ -374,7 +374,7 @@ export function senderCell(pt) {
 // change refresh) always run regardless.
 // onActiveChange(point|null) fires whenever the reception on the playhead
 // changes (map.js wires this to the map highlight).
-export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldPoll, onActiveChange } = {}) {
+export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldPoll, onActiveChange, onModeChange } = {}) {
   const root = document.getElementById(rootId)
   if (!root) return { refetch() {}, focusRecord() {}, records: () => [], destroy() {} }
   // .rx-grab is the drag frame (#424): two edge strips, top and left, that fade
@@ -487,7 +487,6 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     _lastSig = sig
 
     applyGeometry()
-    const filteredIds = new Set(filtered.map(key))
     countEl.textContent = rxCountLabel(view.length, mode === 'all' ? more.all : more.filtered)
     tgEl.innerHTML = mode === 'filtered'
       ? '<b>filtered</b><span class="rx-off"> · all</span>'
@@ -496,10 +495,6 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     for (let i = 0; i < view.length; i++) {
       const r = view[i]
       const color = cssVar(tierColorVar(rssiTier(r.rssi)))
-      // "outside filter", not "no marker" (#539): the tag means the reception
-      // is outside the current filter so the map draws nothing for it — it
-      // says nothing about whether the sender is identified.
-      const nm = mode === 'all' && !filteredIds.has(key(r)) ? ' <span class="rx-nm" title="Outside your current filter, so it has no marker on the map.">outside filter</span>' : ''
       const cell = senderCell(r)
       h += '<div class="rx-ln" data-idx="' + i + '" data-key="' + esc(key(r)) + '">'
         + '<span class="rx-gt"></span>'
@@ -507,7 +502,7 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
         + '<span class="rx-rs" style="color:' + color + '">' + esc(r.rssi ?? '—') + '</span>'
         + '<span class="rx-id">' + esc(cell.id) + '</span>'
         + '<span class="rx-sn">' + esc(cell.name) + ' '
-        + '<span class="rx-me">' + esc(lineMeta(r)) + '</span>' + nm + '</span></div>'
+        + '<span class="rx-me">' + esc(lineMeta(r)) + '</span></span></div>'
     }
     list.innerHTML = h
     if (follow) {
@@ -599,7 +594,15 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     rebuild()
   }
 
-  const toggle = () => { mode = mode === 'filtered' ? 'all' : 'filtered'; follow = true; fetchAndRebuild() }
+  // The stand drives the map too (#646), and map.js owns the map: the toggle
+  // reports upwards so the layers redraw against the same stand the list is
+  // on, instead of the list saying "raw reception" over a narrowed map.
+  const toggle = () => {
+    mode = mode === 'filtered' ? 'all' : 'filtered'
+    follow = true
+    if (onModeChange) onModeChange(mode)
+    fetchAndRebuild()
+  }
   tgEl.addEventListener('click', toggle)
   tgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
 

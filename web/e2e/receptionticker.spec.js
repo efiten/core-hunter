@@ -46,9 +46,10 @@ test('filtered/all toggle switches the mode label and refetches without sender/t
   await page.click('#rx-log .rx-tg')
   await expect(page.locator('#rx-log .rx-tg b')).toHaveText('all')
   // Every fetchAndRebuild() re-fetches BOTH filtered and (in 'all' mode) all --
-  // filtered is still needed to annotate "no marker" rows -- so two requests
-  // land after the toggle. Assert at least one omits sender=, not that the
-  // first one does; which of the two resolves/logs first isn't guaranteed.
+  // filtered is the other stand's source, kept current so flipping back does
+  // not show a stale list -- so two requests land after the toggle. Assert at
+  // least one omits sender=, not that the first one does; which of the two
+  // resolves/logs first isn't guaranteed.
   await expect.poll(() => urls.slice(before).some((u) => u.includes('limit=200') && !u.includes('sender='))).toBe(true)
 })
 
@@ -92,6 +93,25 @@ test('clicking a point inside a hex cell in both mode keeps the ticker on that p
     await expect(page.locator('.maplibregl-popup:not(.ch-hover) .maplibregl-popup-content')).toContainText('NEO7HI', { timeout: 1000 })
   }).toPass()
   await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NEO7HI')
+})
+
+// #646: the stand was log-only. Flipping to ALL said you were looking at raw
+// reception while the map kept drawing the narrowed set, so the rows it left
+// out were tagged as outside a filter the stand had supposedly lifted. The map
+// follows the stand now: its own layers re-query without the narrowing. The
+// map's requests carry a bbox (viewportParams); the ticker's page does not.
+test('the map drops the sender narrowing too when the list is flipped to all', async ({ page }) => {
+  const urls = []
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [POINT] } }) })
+  await page.goto('/?mode=points&sender=aa11')
+  await expect(page.locator('#rx-log .rx-tg b')).toHaveText('filtered')
+  // Every map request so far carries the narrowing the user chose.
+  await expect.poll(() => urls.some((u) => u.includes('bbox=') && u.includes('sender='))).toBe(true)
+
+  const before = urls.length
+  await page.click('#rx-log .rx-tg')
+  await expect(page.locator('#rx-log .rx-tg b')).toHaveText('all')
+  await expect.poll(() => urls.slice(before).some((u) => u.includes('bbox=') && !u.includes('sender='))).toBe(true)
 })
 
 // #638: the header printed the length of the list, which stops at 200, so it
