@@ -1,4 +1,4 @@
-import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, setNodePos, typeSenderPrefix } from './fixtures.js'
+import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setLayerMode, setNodePos, typeSenderPrefix } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
