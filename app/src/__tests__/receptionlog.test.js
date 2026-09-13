@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex, rxLanes, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex, rxLanes, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane, rxCountLabel } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -219,6 +219,33 @@ describe('senderCell — the id stays beside the name it resolved to', () => {
   it('gives a hash id no column: the # in the name cell is all it is', () => {
     expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
     expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
+  })
+})
+
+// #638: the header printed `view.length + ' rx'`, and the view is capped at
+// 200 rows, so every session that heard more than that read `200 RX` for the
+// rest of its life — the size of a window, standing where a count belongs.
+// Every screenshot from the 12 September drive shows exactly that.
+//
+// It now says the real total for the stand you are on. The app can count its
+// own store; the map has no store to count, so it says what the server told
+// it — a full page with more rows behind it is a lower bound, not a total.
+describe('rxCountLabel — the header says how many there are, not how many fit', () => {
+  it('prints the total for the stand', () => {
+    expect(rxCountLabel(7)).toBe('7 rx')
+    expect(rxCountLabel(0)).toBe('0 rx')
+  })
+  // The backlog pill already groups thousands (app/src/backlog.js); a count
+  // that reaches four digits on a long drive reads the same way here.
+  it('groups thousands, as the backlog pill does', () => {
+    expect(rxCountLabel(1483)).toBe('1,483 rx')
+  })
+  it('marks a total that is only a lower bound', () => {
+    expect(rxCountLabel(200, true)).toBe('200+ rx')
+    expect(rxCountLabel(1483, true)).toBe('1,483+ rx')
+  })
+  it('leaves a complete total unmarked', () => {
+    expect(rxCountLabel(200, false)).toBe('200 rx')
   })
 })
 

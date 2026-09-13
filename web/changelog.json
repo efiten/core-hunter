@@ -7,6 +7,13 @@
     "body": "The marker now reaches the last lines of the receptions list, so the readout follows the newest reception."
   },
   {
+    "id": "2026-09-13-receptions-counter",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "The receptions counter counts again",
+    "body": "The ticker header says how many receptions you have heard, not the 200 its list can hold."
+  },
+  {
     "id": "2026-09-08-coverage-overview",
     "date": "2026-09-08",
     "where": "both",

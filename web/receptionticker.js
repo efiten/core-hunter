@@ -218,6 +218,19 @@ export function rxMarkerLane(index, count, lanes) {
   return rxPlayhead(lanes) + (i - rxScrollLane(i, count, lanes))
 }
 
+// rxCountLabel is the header's count (#638), the app's rule
+// (app/src/receptionlog.js). It used to print the length of the view, which is
+// capped at CAP rows, so a busy filter read "200 rx" whatever was behind it.
+//
+// `truncated` is a total that is only a lower bound, and on this surface it is
+// the normal case: the map has no local store to count and knows only what
+// /api/points returned, which fetches one row past the limit precisely so it
+// can say whether more exist (server/internal/store/query.go).
+export function rxCountLabel(total, truncated = false) {
+  const n = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0
+  return n.toLocaleString('en') + (truncated ? '+' : '') + ' rx'
+}
+
 export function relTime(rxAt, nowMs) {
   if (rxAt == null || Number.isNaN(Date.parse(rxAt))) return '—'
   const s = Math.max(0, Math.round((nowMs - Date.parse(rxAt)) / 1000))
@@ -352,7 +365,10 @@ export function senderCell(pt) {
 // already-running 1s render tick — web has no local store to read on a
 // tick, so the ticker fetches over HTTP itself).
 //
-// fetchFiltered/fetchAll: () => Promise<Point[]>, the two source queries.
+// fetchFiltered/fetchAll: () => Promise<{points, truncated}>, the two source
+// queries. `truncated` is the server saying more rows exist behind the page it
+// returned, which is what lets the header say "200+" rather than claim a total
+// this surface cannot know (#638).
 // shouldPoll: () => boolean, gates only the recurring 5s re-fetch (#224) —
 // the initial fetch and every refetch() call (wired to map.js's own filter-
 // change refresh) always run regardless.
@@ -396,6 +412,9 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   let filtered = []
   let all = []
   let view = []
+  // Whether each source had more rows behind the page we fetched (#638), so
+  // the header can say "200+" instead of claiming a total it cannot know.
+  let more = { filtered: false, all: false }
   let nowMs = Date.now()
   let activeId = null
   // The row under the marker, when one was named deliberately: a click, a
@@ -469,7 +488,7 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
 
     applyGeometry()
     const filteredIds = new Set(filtered.map(key))
-    countEl.textContent = view.length + ' rx'
+    countEl.textContent = rxCountLabel(view.length, mode === 'all' ? more.all : more.filtered)
     tgEl.innerHTML = mode === 'filtered'
       ? '<b>filtered</b><span class="rx-off"> · all</span>'
       : '<span class="rx-off">filtered · </span><b>all</b>'
@@ -566,8 +585,14 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   async function fetchAndRebuild() {
     nowMs = Date.now()
     try {
-      filtered = (await fetchFiltered()) || []
-      if (mode === 'all') all = (await fetchAll()) || []
+      const f = await fetchFiltered()
+      filtered = f.points || []
+      more.filtered = !!f.truncated
+      if (mode === 'all') {
+        const a = await fetchAll()
+        all = a.points || []
+        more.all = !!a.truncated
+      }
     } catch (_) {
       return // keep the last good view; retried on the next trigger
     }

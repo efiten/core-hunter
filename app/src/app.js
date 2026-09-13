@@ -1148,7 +1148,19 @@ async function drawOnce() {
     }
     // Receptions log (#130): filtered = the plotted set (one-to-one with the
     // map); all = every captured reception. The toggle is log-only.
-    if (state.rxLog) { state.rxLog.render(filteredRows, rows, now); syncHudToPlayhead() }
+    // The ticker's header says how many receptions there are, not how many fit
+    // in its 200-row window (#638). filteredRows is the whole windowed match,
+    // so it counts itself; "all" is the retained store, which only the store
+    // can count — `rows` above is a capped read like the window it feeds.
+    //
+    // Guarded on its own: the count is the header's, and a store that cannot
+    // answer it must not take the rows down with it. Without totals the header
+    // counts what it was handed, which is what it did before this.
+    let totals = null
+    try {
+      totals = { filtered: filteredRows.length, all: await state.queue.count() }
+    } catch (_) { /* header falls back; the list still renders */ }
+    if (state.rxLog) { state.rxLog.render(filteredRows, rows, now, totals); syncHudToPlayhead() }
     if (state.targetList) state.targetList.render(rows, state.ignore, now, selected)
     updateDiscoverBtnVisual()
   } catch (_) {

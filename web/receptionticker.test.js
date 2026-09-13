@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels, senderCell, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane } from './receptionticker.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels, senderCell, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane, rxCountLabel } from './receptionticker.js'
 
 // rxView/rxActiveIndex/rxFade are ported verbatim from app/src/receptionlog.js
 // (#238 explicitly excludes this file from the shared-core extraction, since
@@ -264,6 +264,27 @@ describe('the map\'s collapse stops', () => {
     expect(collapseLevels(1)).toEqual([0])
     expect(collapseLevels(3)).toEqual([0, 2])
     expect(collapseLevels(50)).toEqual([0, 1, 2])
+  })
+})
+
+// #638, the app's rule in the map's copy: the header used to print the length
+// of the view, which is capped at CAP rows, so it stopped counting at 200. On
+// this surface the total is almost always a lower bound, since the map counts
+// only the page it fetched and the server says whether more exist behind it.
+describe('rxCountLabel — the header says how many there are, not how many fit', () => {
+  it('prints the total for the stand', () => {
+    expect(rxCountLabel(7)).toBe('7 rx')
+    expect(rxCountLabel(0)).toBe('0 rx')
+  })
+  it('groups thousands', () => {
+    expect(rxCountLabel(1483)).toBe('1,483 rx')
+  })
+  it('marks a total that is only a lower bound', () => {
+    expect(rxCountLabel(200, true)).toBe('200+ rx')
+    expect(rxCountLabel(1483, true)).toBe('1,483+ rx')
+  })
+  it('leaves a complete total unmarked', () => {
+    expect(rxCountLabel(200, false)).toBe('200 rx')
   })
 })
 

@@ -222,6 +222,20 @@ export function rxMarkerLane(index, count, lanes) {
   return rxPlayhead(lanes) + (i - rxScrollLane(i, count, lanes))
 }
 
+// rxCountLabel is the header's count (#638). It used to print the length of
+// the view, which is capped at CAP rows, so a session that heard more than
+// that read "200 rx" for the rest of its life: the size of a window, standing
+// where a count belongs. It now takes the total for the stand on show.
+//
+// `truncated` is for a total that is only a lower bound. The app counts its
+// own store and never needs it; the map has no store to count and knows only
+// what the server returned, so a full page with more rows behind it says so
+// rather than claiming a total it cannot know.
+export function rxCountLabel(total, truncated = false) {
+  const n = Number.isFinite(total) && total > 0 ? Math.floor(total) : 0
+  return n.toLocaleString('en') + (truncated ? '+' : '') + ' rx'
+}
+
 // How much of the ticker is on screen, as one stored value. A boolean plus a
 // size would let a reload land on "closed and expanded", which is not a state.
 // 'open' and 'closed' are what pre-#560 builds wrote, so every existing install
@@ -351,6 +365,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
   let filtered = []
   let all = []
   let view = []
+  let counts = { filtered: 0, all: 0 }
   let nowMs = Date.now()
   let activeId = null
   // The row under the marker, when one was named deliberately: a tap, a scrub,
@@ -397,7 +412,7 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     foldEl.setAttribute('aria-label', atLast ? 'Expand receptions' : 'Collapse receptions')
     root.classList.toggle('rx-collapsed', collapse > 0)
     const filteredIds = new Set(filtered.map((r) => r.id))
-    countEl.textContent = view.length + ' rx'
+    countEl.textContent = rxCountLabel(mode === 'all' ? counts.all : counts.filtered)
     tgEl.innerHTML = mode === 'filtered'
       ? '<b>filtered</b><span class="rx-off"> · all</span>'
       : '<span class="rx-off">filtered · </span><b>all</b>'
@@ -504,9 +519,14 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
   tgEl.addEventListener('click', toggle)
   tgEl.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle() } })
 
-  function render(filteredRecords, allRecords, now) {
+  // `totals` is how many receptions each stand actually has (#638), which the
+  // caller knows and the component cannot: the rows it is handed are already a
+  // capped read. Without it the header falls back to counting what it was
+  // given, which is what it always did.
+  function render(filteredRecords, allRecords, now, totals) {
     filtered = filteredRecords || []
     all = allRecords || []
+    counts = totals || { filtered: filtered.length, all: all.length }
     nowMs = now ?? Date.now()
     rebuild()
   }

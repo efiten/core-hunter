@@ -725,7 +725,10 @@ async function fetchTickerPage(mode) {
   const r = await fetch(`${API_BASE}/api/points?${p.toString()}`)
   if (!r.ok) throw new Error(`points ${r.status}`)
   const d = await r.json()
-  return d.points || []
+  // truncated travels with the rows: QueryPoints fetches one past the limit to
+  // detect it precisely, and the ticker's header needs it to say whether more
+  // receptions exist behind this page (#638).
+  return { points: d.points || [], truncated: !!d.truncated }
 }
 
 // Snap the map to the selected hunter(s) (#195).

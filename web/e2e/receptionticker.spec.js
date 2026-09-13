@@ -94,6 +94,16 @@ test('clicking a point inside a hex cell in both mode keeps the ticker on that p
   await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NEO7HI')
 })
 
+// #638: the header printed the length of the list, which stops at 200, so it
+// stopped counting there. The map counts the page the server sent and says so
+// when more rows exist behind it — /api/points fetches one row past the limit
+// precisely so it can answer that (server/internal/store/query.go).
+test('says the count is a lower bound when more rows sit behind the page', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [POINT, POINT2], truncated: true } }))
+  await page.goto('/?mode=points')
+  await expect(page.locator('#rx-log .rx-count')).toHaveText('2+ rx', { timeout: 10000 })
+})
+
 // #619: a full card runs out of scroll three lanes before its newest row, so a
 // marker read off the scroll position alone stopped at the fourth-newest. The
 // last three rows could not be clicked onto the marker, and the map highlight

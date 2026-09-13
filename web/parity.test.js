@@ -707,6 +707,19 @@ describe('receptions ticker CSS parity (#322)', () => {
     }
   })
 
+  // #638: the header's count reads the same on both surfaces, including the
+  // mark for a total that is only a lower bound. What each surface can count
+  // differs — the app has its own store, the map has the page the server sent
+  // — but how the number is written must not.
+  it('writes the header count identically on both surfaces', () => {
+    for (const total of [0, 7, 200, 1483, 20000]) {
+      for (const truncated of [false, true]) {
+        expect(webTicker.rxCountLabel(total, truncated), `${total}/${truncated}`)
+          .toBe(appTicker.rxCountLabel(total, truncated))
+      }
+    }
+  })
+
   // The stops are the same set on both surfaces, and putting the ticker away is
   // the cross on both. The map used to fold to its header instead, because it
   // had no button in the bar to come back from; it has one now (#424).
