@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-13-theme-switch-keeps-the-map",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "Switching theme no longer blanks the map",
+    "body": "The map keeps its basemap and its layer order through a theme switch, even on a slow connection."
+  },
+  {
     "id": "2026-09-08-coverage-overview",
     "date": "2026-09-08",
     "where": "both",
