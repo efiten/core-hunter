@@ -265,8 +265,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
 /* ---- Reception ticker (#224) ----
    Parity with app's Receptions log (app/src/receptionlog.js, #130): frameless,
-   log-style tail over the map. Newest at the bottom; a fixed playhead lane
+   log-style tail over the map. Newest at the bottom; a playhead lane
    (scroll-padding-top / LANE) that lines snap to like a combination-lock dial.
+   The lane is where the marker starts, not where it is pinned: over the last
+   rows the list cannot scroll to, the marker walks down to them (#619).
    No background panel -- text-shadow carries legibility.
    Ported from app/src/styles/app.css for exact visual parity; parity.test.js
    pins the two copies together. Full-width centred layout and the

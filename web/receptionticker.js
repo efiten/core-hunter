@@ -152,19 +152,29 @@ export function rxCanCollapse(count) {
 // The blank lanes under a full card were never the playhead's fault. They came
 // from padding the list below the last row, which is what rxPadBottom is now
 // zero for. With no padding under it, the browser clamps the follow-scroll
-// short of the lane, and that clamp is exactly what parks the newest reception
-// on the bottom lane while the playhead stays where it is. Both things at once,
-// which is what "laatste onderaan" and "rol-door" each needed.
+// short of the lane, and that clamp is what parks the newest reception on the
+// bottom lane. Both things at once, which is what "laatste onderaan" and
+// "rol-door" each needed.
+//
+// The clamp also costs the rows past it their scroll position: every one of
+// them sits at the same scrollTop, so the marker rather than the list moves
+// over those last lanes (#619, rxMarkerLane). This is the lane it starts from,
+// not the only lane it is ever on.
 export function rxPlayhead(lanes) {
   if (lanes <= 1) return 0
   return Math.round((lanes - 1) * 2 / 3)
 }
 
-// rxBelow is how many lanes sit under the playhead, so newer receptions have
+// rxBelow is how many lanes sit under the marker, so newer receptions have
 // somewhere to roll through. Zero on the small cards, where there is no room
 // and the newest reception is the active one.
-export function rxBelow(lanes) {
-  return Math.max(0, lanes - 1 - rxPlayhead(lanes))
+//
+// It answers for the playhead lane by default, which is where the marker sits
+// until the list runs out of scroll (#619). Past that the marker walks down
+// and the fade is measured from where it actually is, so callers drawing the
+// fade pass the lane rather than assuming the playhead's.
+export function rxBelow(lanes, lane = rxPlayhead(lanes)) {
+  return Math.max(0, lanes - 1 - lane)
 }
 
 // rxPadBottom is the padding under the last row, in lanes: none. It used to be
@@ -174,6 +184,38 @@ export function rxBelow(lanes) {
 // written against it.
 export function rxPadBottom() {
   return 0
+}
+
+// rxMaxScroll is how far the list can be scrolled, in lanes. With the playhead
+// lane's worth of padding above the rows and none below (#424), the content is
+// `count + playhead` lanes tall inside a card of `lanes`, and the browser stops
+// there. atBottom() still asks the browser rather than this — sub-pixel row
+// heights make the two disagree by a fraction — but which rows a scroll
+// position can name is a question about the geometry, and that is this.
+export function rxMaxScroll(count, lanes) {
+  const n = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0
+  return Math.max(0, n + rxPlayhead(lanes) - lanes)
+}
+
+// rxScrollLane is the scroll position that puts row `index` under the marker,
+// in lanes. Up to the clamp that is the row itself; past it the list has
+// nowhere left to go and stays put, which is what makes the marker do the
+// moving instead (#619).
+export function rxScrollLane(index, count, lanes) {
+  const i = Number.isFinite(index) && index > 0 ? Math.floor(index) : 0
+  return Math.min(i, rxMaxScroll(count, lanes))
+}
+
+// rxMarkerLane is the lane the marker sits on for a given row (#619). It is
+// the playhead lane for every row the list can still scroll to, and walks down
+// one lane for each row past the clamp, so the newest reception ends up on the
+// bottom lane rather than three lanes out of reach. The old behaviour read the
+// row off the scroll position alone, which stopped at `count - 4` on a full
+// card: the last three rows could not be tapped onto the marker and were drawn
+// faintest.
+export function rxMarkerLane(index, count, lanes) {
+  const i = Number.isFinite(index) && index > 0 ? Math.floor(index) : 0
+  return rxPlayhead(lanes) + (i - rxScrollLane(i, count, lanes))
 }
 
 export function relTime(rxAt, nowMs) {
@@ -356,6 +398,12 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
   let view = []
   let nowMs = Date.now()
   let activeId = null
+  // The row under the marker, when one was named deliberately: a click, a
+  // marker on the map, or following the newest. It has to be remembered
+  // because past the clamp the scroll position cannot tell the last lanes
+  // apart — every row there sits at the same scrollTop (#619). null means no
+  // such row, and the scroll position answers again.
+  let activeIdx = null
 
   // Read once per instance rather than at module load: the stylesheet has to be
   // applied before the variable resolves, and both components are constructed
@@ -396,6 +444,7 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     follow = true
     applyGeometry()
     list.scrollTop = maxScroll()
+    activeIdx = view.length ? view.length - 1 : null
     paint()
   }
 
@@ -442,35 +491,58 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
         + '<span class="rx-me">' + esc(lineMeta(r)) + '</span>' + nm + '</span></div>'
     }
     list.innerHTML = h
-    if (follow) list.scrollTop = maxScroll()
-    else {
+    if (follow) {
+      list.scrollTop = maxScroll()
+      activeIdx = view.length ? view.length - 1 : null
+    } else {
       const idx = view.findIndex((r) => key(r) === activeId)
-      if (idx >= 0) list.scrollTop = idx * LINE_H
+      if (idx >= 0) { activeIdx = idx; list.scrollTop = rxScrollLane(idx, view.length, rxLanes(view.length, collapse)) * LINE_H }
     }
     paint()
   }
 
+  // markerIndex is the row under the marker. A row named deliberately wins;
+  // with none named the scroll position answers, the way it always did.
+  function markerIndex(n) {
+    if (activeIdx == null) return rxActiveIndex(list.scrollTop, LINE_H, n)
+    return Math.min(Math.max(activeIdx, 0), n - 1)
+  }
+
   function paint() {
     const n = view.length
-    if (!n) { if (activeId != null) { activeId = null; onActiveChange && onActiveChange(null) } return }
-    const ai = rxActiveIndex(list.scrollTop, LINE_H, n)
+    if (!n) { if (activeId != null) { activeId = null; activeIdx = null; onActiveChange && onActiveChange(null) } return }
+    const ai = markerIndex(n)
+    const lanes = rxLanes(n, collapse)
+    // The fade is measured from where the marker actually is (#619). Walked
+    // onto the bottom lane it has nothing under it, and the rows above it span
+    // the whole card rather than the six lanes above the playhead.
+    const lane = rxMarkerLane(ai, n, lanes)
+    const below = rxBelow(lanes, lane)
     const els = list.children
     for (let i = 0; i < els.length; i++) {
       const d = i - ai
       if (d === 0) { els[i].classList.add('act'); els[i].style.opacity = '' }
       else {
-        const lanes = rxLanes(n, collapse)
         els[i].classList.remove('act')
-        els[i].style.opacity = String(rxFade(d, rxPlayhead(lanes), rxBelow(lanes)))
+        els[i].style.opacity = String(rxFade(d, lane, below))
       }
     }
     const rec = view[ai]
     if (rec && key(rec) !== activeId) { activeId = key(rec); onActiveChange && onActiveChange(rec) }
   }
 
+  // toLane puts a row under the marker. Up to the clamp the list scrolls to
+  // it; past the clamp there is no scroll left, so the row is remembered and
+  // the marker walks to it instead (#619). Without that a click on one of the
+  // three newest rows set a scrollTop the browser threw away, and read as a
+  // dead press.
   function toLane(idx) {
-    list.scrollTop = idx * LINE_H
-    follow = atBottom()
+    const n = view.length
+    activeIdx = Math.min(Math.max(idx, 0), n - 1)
+    list.scrollTop = rxScrollLane(activeIdx, n, rxLanes(n, collapse)) * LINE_H
+    // Following is the marker on the newest row, not merely the list at its
+    // end: every row past the clamp sits at that same end.
+    follow = atBottom() && activeIdx === n - 1
     paint()
   }
 
@@ -478,7 +550,18 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
     const l = e.target.closest('.rx-ln')
     if (l) toLane(Number(l.dataset.idx))
   })
-  list.addEventListener('scroll', () => { follow = atBottom(); paint() })
+  list.addEventListener('scroll', () => {
+    const n = view.length
+    // Scrolling away from the end hands the marker back to the scroll
+    // position. Arriving at the end by scrolling means the newest reception,
+    // which is exactly the row the position cannot name (#619). A row put
+    // there deliberately is left where it is: the scroll a click causes must
+    // not take it straight back off.
+    if (!atBottom()) activeIdx = null
+    else if (activeIdx == null) activeIdx = n ? n - 1 : null
+    follow = atBottom() && activeIdx === n - 1
+    paint()
+  })
 
   async function fetchAndRebuild() {
     nowMs = Date.now()

@@ -699,7 +699,7 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
   display: inline-flex; align-items: center; justify-content: center; }
 
 /* ---- Receptions log (#130) ----
-   Log-style tail over the map. Newest at the bottom; a fixed playhead lane
+   Log-style tail over the map. Newest at the bottom; a playhead lane
    (scroll-padding-top / LANE) that lines snap to like a combination-lock dial.
 
    #539 gave it a card: a fixed backing plate (--ch-surface-thin, more

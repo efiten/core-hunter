@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex, rxLanes, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -219,5 +219,84 @@ describe('senderCell — the id stays beside the name it resolved to', () => {
   it('gives a hash id no column: the # in the name cell is all it is', () => {
     expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
     expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
+  })
+})
+
+// #619: the three newest receptions could not be put under the marker. The
+// list is padded above by the playhead lane and not at all below (#560), so it
+// clamps at count + playhead - lanes lanes of scroll, and an index read off
+// the scroll position alone can never name a row past that. Tapping one of the
+// last three set a scrollTop the browser threw away, so the marker did not
+// move and the tap read as dead; the HUD that shares the marker showed the
+// fourth-newest while the ticker was following.
+//
+// Decided (Kasper, 12 September): the marker moves instead of the list. Once
+// the scroll is clamped the marker walks down the last lanes onto the bottom
+// row and the fade follows it, so no blank lanes come back.
+describe('rxMaxScroll — how far the list can be scrolled, in lanes', () => {
+  it('is the content that does not fit: the rows plus the padding above them', () => {
+    expect(rxMaxScroll(200, 10)).toBe(196)
+    expect(rxMaxScroll(12, 10)).toBe(8)
+  })
+  it('is zero when there is nothing to scroll past', () => {
+    expect(rxMaxScroll(0, 10)).toBe(0)
+    expect(rxMaxScroll(1, 1)).toBe(0)
+  })
+})
+
+describe('rxScrollLane — the scroll that shows a row, never past the clamp', () => {
+  it('scrolls to the row itself while the list can still reach it', () => {
+    expect(rxScrollLane(0, 200, 10)).toBe(0)
+    expect(rxScrollLane(120, 200, 10)).toBe(120)
+  })
+  // The old bug in one assertion: these four rows all sit at the same clamped
+  // scroll, so scroll position cannot tell them apart and the marker has to.
+  it('stops at the clamp rather than asking for scroll that does not exist', () => {
+    for (const i of [196, 197, 198, 199]) expect(rxScrollLane(i, 200, 10), `row ${i}`).toBe(196)
+  })
+})
+
+describe('rxMarkerLane — the marker walks the last lanes once the list clamps (#619)', () => {
+  it('holds the marker on the playhead lane for every row the list can scroll to', () => {
+    for (let i = 0; i <= rxMaxScroll(200, 10); i++) {
+      expect(rxMarkerLane(i, 200, 10), `row ${i}`).toBe(rxPlayhead(10))
+    }
+  })
+  it('walks it down the three lanes below the playhead for the three newest rows', () => {
+    expect(rxMarkerLane(197, 200, 10)).toBe(7)
+    expect(rxMarkerLane(198, 200, 10)).toBe(8)
+    expect(rxMarkerLane(199, 200, 10)).toBe(9)
+  })
+  // The defect itself: before this the newest reception was unreachable on a
+  // full card, which is what took the HUD off it.
+  it('reaches the newest reception at every card size', () => {
+    for (const count of [1, 2, 3, 5, 9, 10, 60, 200]) {
+      const lanes = rxLanes(count, 0)
+      expect(rxMarkerLane(count - 1, count, lanes), `${count} receptions`).toBe(lanes - 1)
+    }
+  })
+  it('never puts the marker off the card', () => {
+    for (const count of [1, 3, 7, 10, 200]) {
+      const lanes = rxLanes(count, 0)
+      for (let i = 0; i < count; i++) {
+        const lane = rxMarkerLane(i, count, lanes)
+        expect(lane, `row ${i} of ${count}`).toBeGreaterThanOrEqual(0)
+        expect(lane, `row ${i} of ${count}`).toBeLessThanOrEqual(lanes - 1)
+      }
+    }
+  })
+})
+
+// The fade is measured from the marker, not from the playhead lane it usually
+// sits on: with the marker walked down to the bottom lane there is nothing
+// under it, and the rows above it span the whole card.
+describe('rxBelow — the lanes under the marker, wherever it is', () => {
+  it('is the playhead geometry while the marker sits on its own lane', () => {
+    expect(rxBelow(10, rxPlayhead(10))).toBe(rxBelow(10))
+    expect(rxBelow(10, 6)).toBe(3)
+  })
+  it('is nothing once the marker has walked onto the bottom lane', () => {
+    expect(rxBelow(10, 9)).toBe(0)
+    expect(rxBelow(10, 8)).toBe(1)
   })
 })

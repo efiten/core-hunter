@@ -687,6 +687,26 @@ describe('receptions ticker CSS parity (#322)', () => {
     }
   })
 
+  // #619: which row the marker can be put on is the same question on both
+  // surfaces, because both clamp their scroll the same way. Run rather than
+  // read, for the reason above: the lane the marker lands on is what a reader
+  // sees, and two copies can agree on the constants and still disagree here.
+  it('puts the marker on the same lane on both surfaces, including past the clamp', () => {
+    for (const count of [1, 2, 3, 5, 9, 10, 60, 200]) {
+      const lanes = appTicker.rxLanes(count, 0)
+      expect(webTicker.rxMaxScroll(count, lanes), `${count} receptions`).toBe(appTicker.rxMaxScroll(count, lanes))
+      for (let i = 0; i < count; i++) {
+        expect(webTicker.rxScrollLane(i, count, lanes), `row ${i} of ${count}`).toBe(appTicker.rxScrollLane(i, count, lanes))
+        expect(webTicker.rxMarkerLane(i, count, lanes), `row ${i} of ${count}`).toBe(appTicker.rxMarkerLane(i, count, lanes))
+      }
+    }
+    for (const lanes of [1, 3, 5, 10]) {
+      for (let lane = 0; lane < lanes; lane++) {
+        expect(webTicker.rxBelow(lanes, lane), `lane ${lane} of ${lanes}`).toBe(appTicker.rxBelow(lanes, lane))
+      }
+    }
+  })
+
   // The stops are the same set on both surfaces, and putting the ticker away is
   // the cross on both. The map used to fold to its header instead, because it
   // had no button in the bar to come back from; it has one now (#424).

@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-13-newest-receptions-selectable",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "The newest receptions can be selected again",
+    "body": "The marker now reaches the last lines of the receptions list, so the readout follows the newest reception."
+  },
+  {
     "id": "2026-09-08-coverage-overview",
     "date": "2026-09-08",
     "where": "both",
