@@ -603,16 +603,20 @@ Any output that displays or implies a target's location must state clearly:
 > tracking of the target. The stored GPS coordinates are the hunter phone's own position at
 > the time of reception.
 
-**How long it must be shown (amended 2026-08-21, #413).** The disclaimer, and any key explaining
-position-bearing glyphs, must be **shown when the output is switched on and remain reachable
-afterwards** — not necessarily displayed permanently. For the node-position layer, "reachable"
-means every marker popup carries it (`.np-caveat`); the on-screen key is a glance on each
-activation.
+**Where it must be shown (revised 2026-09-13, #631).** The disclaimer prose is **shown when the
+output is switched on**. The meaning of a position-bearing glyph is **reachable from the output
+itself**, and is not written over the map: for the node-position layer every marker popup carries a
+sentence per glyph it drew (`.np-caveat` — what an advertised ▲ is, and that a ● is inferred from
+RSSI rather than from GPS tracking). The two sentences live in `nodeposnotice.js` and are pinned
+identical on both surfaces, because this is the requirement rather than decoration.
 
-The earlier rule was permanent display, and it was dropped for a concrete reason rather than for
-convenience: #306 moved these notices into `#toast-stack` at the top of the screen, #322 then put
-the enlarged receptions ticker in the same band, and a permanent key sat on the ticker for the whole
-session. See `docs/2026-08-21-nodepos-key-glance.md`.
+The rule has been narrowed twice, each time for a concrete reason rather than for convenience. It
+began as a permanent on-screen key. #306 moved these notices into `#toast-stack` at the top of the
+screen, #322 then put the enlarged receptions ticker in the same band, and a permanent key sat on
+the ticker for the whole session — so #413 made it a glance on each activation. #631 then asked
+where a reader actually goes to find out what a marker is: they tap it, and the popup has answered
+since #197. A second copy painted over the map is what the rule cost, not what it needs. See
+`docs/2026-08-21-nodepos-key-glance.md` for the intermediate round.
 
 **What is not a glance:** a line reporting that nothing could be drawn — an empty registry, an
 unreachable resolver — is an explanation, not a label, and stays for as long as the state does.

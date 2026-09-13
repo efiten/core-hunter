@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-13-node-marker-explains-itself",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "Node markers explain themselves in their popup",
+    "body": "The legend over the map is gone. Tap a node marker and it says what its triangle and dot mean."
+  },
+  {
     "id": "2026-09-08-coverage-overview",
     "date": "2026-09-08",
     "where": "both",

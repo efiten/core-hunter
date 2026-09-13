@@ -109,23 +109,27 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .rc-hub { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg); background: var(--ch-muted); cursor: pointer; position: relative; }
 .rc-hub::after { content: ''; position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
 
-/* AGENTS.md §7: the layer implies node locations, so what the glyphs mean is
-   shown when it is switched on and stays reachable in the marker popups
-   (.np-caveat) afterwards — amended by #413, see nodeposnotice.js and
+/* AGENTS.md §7: the layer implies node locations, so what the glyphs mean has
+   to be reachable from it. Since #631 that is the marker popup and nothing
+   else — it carries a sentence per glyph it drew (.np-caveat) — so no legend
+   is painted here. See nodeposnotice.js and, for the round before it,
    docs/2026-08-21-nodepos-key-glance.md.
    Both live in #toast-stack rather than pinned at bottom:12px, where they sat
    over the hero RSSI readout in #hud (#306). Stacking is what that container
    is for, so neither can overlap the HUD or the paused banner. That container
    is pinned to the top, which is also where #322 put the enlarged receptions
-   ticker — the collision that made a permanent key untenable.
-   Both are a 2s glance now; the key outlives it only while it is reporting an
-   empty registry, which is an explanation rather than a legend. */
+   ticker — the collision that made a permanent key untenable, and the reason
+   this surface got smaller twice before it got the answer right.
+   The prose is a 2s glance. The second box now appears only to say the
+   registry came up empty, which is an explanation rather than a legend and so
+   stays for as long as that is true. */
 #nodepos-note, #nodepos-key {
   padding: 7px 10px; border: 1px solid var(--ch-border); border-radius: 10px;
   background: var(--ch-surface); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
   color: var(--ch-muted); font-size: 11px; line-height: 1.45; pointer-events: none; }
-/* Quieter than the prose — it is a legend, on screen for the whole session,
-   so it should not compete with the map it labels. */
+/* Quieter than the prose. It is the only line left on this surface (#631) and
+   it appears when there is nothing on the map to compete with anyway, but it
+   keeps the smaller type: it explains an absence rather than announcing one. */
 #nodepos-key { font-size: 10.5px; padding: 5px 9px; opacity: 0.85; }
 
 /* Shared toast stack (#199) — paused-banner and the first-connect hint share

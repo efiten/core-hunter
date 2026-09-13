@@ -8,7 +8,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, reso
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
-import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS, NODEPOS_ADVERT_CAVEAT, NODEPOS_ESTIMATE_CAVEAT } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
@@ -1201,8 +1201,14 @@ function nodePosPopup(name, id, p, est) {
         ? `search radius ~${Math.round(p.circle.radiusM)} m`
         : 'one-sided — radius not trusted'}`
     : ''
+  // The popup is where the glyph meaning lives since #631, so it carries the
+  // sentence for each glyph it actually drew. Explaining a ● that is not on
+  // this node is the same mistake the old key made on an empty map.
+  const caveats = p.kind === 'advertised-only'
+    ? NODEPOS_ADVERT_CAVEAT
+    : NODEPOS_ADVERT_CAVEAT + ' ' + NODEPOS_ESTIMATE_CAVEAT
   return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}`
-    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
+    + `<br><span class="np-caveat">${caveats}</span>`
 }
 
 // Generation token: a draw can be re-entered while its /api/points fetch is in

@@ -939,28 +939,39 @@ describe('nodelayer — parity of the shared core', () => {
 // both surfaces show are shared. Those two are what AGENTS.md §7 requires on
 // screen, which is exactly why they must not drift apart.
 describe('nodeposnotice — parity of the two shared lines', () => {
-  it('shows the same key and the same empty-registry line', () => {
-    expect(webNotice.NODEPOS_KEY_TEXT).toBe(appNotice.NODEPOS_KEY_TEXT)
-    expect(webNotice.NODEPOS_EMPTY_TEXT).toBe(appNotice.NODEPOS_EMPTY_TEXT)
-    // §7's requirement is the glyph meaning, so pin the content too: a key that
-    // lost its ▲/● would still be "identical on both sides".
-    expect(webNotice.NODEPOS_KEY_TEXT).toMatch(/▲.*●/)
+  // Since #631 what §7 requires on screen is the popup's two sentences, so
+  // those are what must not drift. Pin the content as well as the equality: a
+  // caveat that lost the claim it exists to make would still be "identical on
+  // both sides".
+  it('says the same thing in the marker popup, glyph for glyph', () => {
+    expect(webNotice.NODEPOS_ADVERT_CAVEAT).toBe(appNotice.NODEPOS_ADVERT_CAVEAT)
+    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toBe(appNotice.NODEPOS_ESTIMATE_CAVEAT)
+    expect(webNotice.NODEPOS_ADVERT_CAVEAT).toMatch(/operator/i)
+    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toMatch(/rssi/i)
+    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toMatch(/not from gps/i)
   })
 
-  it('chooses between them the same way', () => {
+  it('shows the same empty-registry line', () => {
+    expect(webNotice.NODEPOS_EMPTY_TEXT).toBe(appNotice.NODEPOS_EMPTY_TEXT)
+  })
+
+  it('chooses what the on-map line says the same way', () => {
     for (const args of [undefined, {}, { registryEmpty: false }, { registryEmpty: true }]) {
       expect(webNotice.nodePosKeyText(args)).toBe(appNotice.nodePosKeyText(args))
     }
     expect(webNotice.nodePosKeyText({ registryEmpty: true })).toBe(webNotice.NODEPOS_EMPTY_TEXT)
+    // And nothing over the map when there are markers to explain (#631): the
+    // popup is where the meaning went, on both surfaces.
+    expect(webNotice.nodePosKeyText({ registryEmpty: false })).toBe('')
   })
 
   it('keeps web a strict superset — the app has no server to be unconfigured', () => {
-    for (const n of ['NODEPOS_KEY_TEXT', 'NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
+    for (const n of ['NODEPOS_ADVERT_CAVEAT', 'NODEPOS_ESTIMATE_CAVEAT', 'NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
       expect(appNotice[n], n).toBeDefined()
       expect(webNotice[n], n).toBeDefined()
     }
     expect(Object.keys(webNotice).filter((n) => !(n in appNotice)).sort())
-      .toEqual(['NODEPOS_GUEST_TEXT', 'NODEPOS_NONE_IN_VIEW_TEXT', 'NODEPOS_STALE_SUFFIX',
+      .toEqual(['NODEPOS_GUEST_TEXT', 'NODEPOS_NONE_IN_VIEW_TEXT', 'NODEPOS_STALE_TEXT',
         'NODEPOS_UNAVAILABLE_TEXT', 'NODEPOS_UNCONFIGURED_TEXT', 'nodePosPresentation', 'registryStatusFor'])
   })
 })

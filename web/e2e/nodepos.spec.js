@@ -40,6 +40,60 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
 })
 
+// #641: the notice and the readout each owned a bottom corner, and a phone has
+// only one. #631 empties the notice in the ordinary case, but not in the states
+// that explain an absence — which are exactly the ones a reader has to be able
+// to read. So the collision is pinned in one of those states.
+test('the notice, the readout and the attribution share a phone screen without overlapping', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  // An unreachable registry: the layer is on, nothing is drawn, and the line
+  // saying so stays up for as long as that is true (AGENTS.md §7).
+  await page.route('**/api/nodes/positions*', (r) =>
+    r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
+  // The reported case had a full readout, and the per-SF node counts are what
+  // make it wide enough to reach the notice (index.html fills #sf-counts from
+  // these two). Without them the readout is "8 points", which fits beside the
+  // notice at 412px and would prove nothing.
+  await page.route('**/sf7/api/nodes/count*', (r) => r.fulfill({ json: { count: 180 } }))
+  await page.route('**/cs/api/stats*', (r) => r.fulfill({ json: { totalNodes: 1520 } }))
+  await page.setViewportSize({ width: 412, height: 915 })
+  await page.goto('/')
+  await setNodePos(page, '1')
+  await mapSettled(page)
+  await expect(page.locator('#nodepos-key')).toBeVisible()
+  await expect(page.locator('#sf-counts')).toContainText('1520 nodes')
+
+  const { boxes, viewportH } = await page.evaluate(() => {
+    const box = (sel) => {
+      const el = document.querySelector(sel)
+      if (!el) return null
+      const b = el.getBoundingClientRect()
+      return { top: b.top, right: b.right, bottom: b.bottom, left: b.left }
+    }
+    return { boxes: { notice: box('#nodepos-stack'), readout: box('#map-readout') }, viewportH: window.innerHeight }
+  })
+  // A box that is missing, or laid out at zero size, passes every overlap test
+  // below without measuring anything — which is how the first version of this
+  // test passed with the fix removed.
+  for (const [name, b] of Object.entries(boxes)) {
+    expect(b, `${name} is in the DOM`).not.toBeNull()
+    expect(b.right - b.left, `${name} has width`).toBeGreaterThan(0)
+    expect(b.bottom - b.top, `${name} has height`).toBeGreaterThan(0)
+  }
+
+  const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+  expect(overlaps(boxes.notice, boxes.readout), 'notice over the readout').toBe(false)
+
+  // The attribution itself cannot be measured here: the harness answers the
+  // basemap style with a bare background that carries no sources, so
+  // MapLibre's compact control renders empty and zero-wide. The strip it
+  // occupies at the bottom of a real map is asserted instead, which is the
+  // half of #641 that is not cosmetic.
+  const ATTRIB_STRIP = 24
+  expect(viewportH - boxes.notice.bottom, 'clearance under the notice for the attribution')
+    .toBeGreaterThanOrEqual(ATTRIB_STRIP)
+})
+
 test('layer is off by default and the toggle is visible to a member', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
@@ -156,13 +210,23 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
 // them silent. Each now says which one it was, and the disclaimer — which
 // asserts that advertised positions are on screen — appears only with markers
 // behind it.
-test('with markers on screen it names the glyphs and disclaims them', async ({ page }) => {
+//
+// #631 then took the glyph key off the map: with markers on screen the corner
+// says nothing about them, and what a ▲ and a ● mean is answered by the marker
+// the reader tapped to ask.
+test('with markers on screen the glyph meaning is in the popup, not over the map', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
   await setNodePos(page, '1')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
-  await expect(page.locator('#nodepos-key')).toContainText('▲ advertised position')
   await expect(page.locator('#nodepos-note')).toBeVisible()
+  // Nothing in the corner explains a glyph any more, whatever state it is in.
+  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
+
+  await page.locator('.np-advert').first().click()
+  const caveat = page.locator('.maplibregl-popup .np-caveat')
+  await expect(caveat).toContainText('self-reported by the operator')
+  await expect(caveat).toContainText('inferred from RSSI')
 })
 
 for (const [label, fulfil, expected] of [
@@ -302,19 +366,18 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
 
 test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ page }) => {
   // #426: the same 300px corner block is cheap on a desktop map and a quarter
-  // of the viewport on a phone, over the part of the map being read. The key is
-  // one line and never goes -- that is the half §7 requires.
+  // of the viewport on a phone, over the part of the map being read. Since #631
+  // the prose is the only thing the glance has to reach: there is no key beside
+  // it while the layer is drawing.
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
   await setNodePos(page, '1')
 
   const note = page.locator('#nodepos-note')
-  const key = page.locator('#nodepos-key')
   await expect(note).toBeVisible()
   await expect(note).toBeHidden({ timeout: 10000 })
-  await expect(key).toBeVisible()
-  await expect(key).toContainText('▲')
+  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 
   // Off and on again is a fresh glance, not a memory of the last one.
   await setNodePos(page, '')
@@ -326,7 +389,6 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
   await setNodePos(page, '')
   await setNodePos(page, '1')
   await expect(note).toBeVisible()
-  await expect(key).toBeVisible()
   await page.waitForTimeout(3000)
   await expect(note).toBeVisible()
 })
@@ -346,10 +408,10 @@ test('a layer restored from the URL glances too, without a change event', async 
   await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
   const note = page.locator('#nodepos-note')
-  const key = page.locator('#nodepos-key')
   await expect(note).toBeVisible()
   await expect(note).toBeHidden({ timeout: 10000 })
-  await expect(key).toBeVisible()
+  // And nothing is left behind in the corner once it goes (#631).
+  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 })
 
 // The other half of the same gap: urlstate persists to localStorage under
@@ -369,7 +431,8 @@ test('a layer restored from localStorage glances too', async ({ page }) => {
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
   await expect(note).toBeHidden({ timeout: 10000 })
-  await expect(page.locator('#nodepos-key')).toBeVisible()
+  // And nothing is left behind in the corner once it goes (#631).
+  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 })
 
 // The glance's verdict is read at render time, so re-answering a media query
@@ -386,7 +449,6 @@ test('rotating across the boundary re-decides the disclaimer without a redraw', 
   await setNodePos(page, '1')
 
   const note = page.locator('#nodepos-note')
-  const key = page.locator('#nodepos-key')
   await expect(note).toBeVisible()
   await expect(note).toBeHidden({ timeout: 10000 })
 
@@ -397,13 +459,14 @@ test('rotating across the boundary re-decides the disclaimer without a redraw', 
   // prose is affordable and comes back.
   await page.setViewportSize({ width: 900, height: 390 })
   await expect(note).toBeVisible()
-  await expect(key).toBeVisible()
 
   // And back: the glance has already expired, so portrait takes it away again
   // rather than starting a second one.
   await page.setViewportSize({ width: 390, height: 780 })
   await expect(note).toBeHidden()
-  await expect(key).toBeVisible()
+  // The prose is the only thing moving here: since #631 the corner carries no
+  // glyph line to be affected either way.
+  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 })
 
 // A glance is per activation, not per draw. The layer redraws on every pan,
@@ -445,7 +508,9 @@ test('a redraw after the glance does not bring the disclaimer back', async ({ pa
 
   expect(await page.evaluate(() => window.__noteReturned)).toBe(false)
   await expect(note).toBeHidden()
-  await expect(page.locator('#nodepos-key')).toBeVisible()
+  // And the redraw does not put a glyph line back either: since #631 there is
+  // none to put back while the layer is drawing (the corner is for absences).
+  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 })
 
 test('overlapping names are dropped, and the markers they belong to are not', async ({ page }) => {
