@@ -13,13 +13,12 @@ describe('activeFilterCount', () => {
     expect(activeFilterCount({ types: new Set(['advert', 'trace', 'request', 'ack']) })).toBe(1)
     expect(activeFilterCount({ idClasses: ['pubkey', '1byte'] })).toBe(1)
   })
-  it('adds the checkboxes and layers up dimension by dimension', () => {
-    expect(activeFilterCount({ directOnly: true, nodePos: true })).toBe(2)
+  it('adds the dimensions up one by one', () => {
+    expect(activeFilterCount({ directOnly: true, types: new Set(['advert']) })).toBe(2)
     expect(activeFilterCount({
       directOnly: true,
       types: new Set(['advert']), idClasses: new Set(['pubkey']),
-      nodePos: true,
-    })).toBe(4)
+    })).toBe(3)
   })
 
   // #629: CS adverts and CS relays were two more toggles for the question the
@@ -29,7 +28,14 @@ describe('activeFilterCount', () => {
   // a Sender-unknown flag does since #535.
   it('does not count the CoreScope overlays, which the layer owns now', () => {
     expect(activeFilterCount({ csAdverts: true, csRelays: true })).toBe(0)
-    expect(activeFilterCount({ nodePos: true, csAdverts: true, csRelays: true })).toBe(1)
+    expect(activeFilterCount({ directOnly: true, csAdverts: true, csRelays: true })).toBe(1)
+  })
+  // #630: node positions left the panel for a button on the map's rail. It is
+  // a view choice there, like the layer mode, so Clear leaves it standing and
+  // a count that included it would promise a clear that does not happen.
+  it('does not count node positions, a view choice on the rail', () => {
+    expect(activeFilterCount({ nodePos: true })).toBe(0)
+    expect(activeFilterCount({ directOnly: true, nodePos: true })).toBe(1)
   })
   // #535: Sender unknown was the Unnamed chip under another name, so it is
   // not a dimension any more; a caller still passing it counts nothing.

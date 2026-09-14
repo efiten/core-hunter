@@ -5,8 +5,9 @@
 // read, rather than a template string buried in a 2500-line module. The map's
 // panel is the same list in the same order, and web/parity.test.js reads both.
 //
-// The map adds Overlays and View after these, and they stay map-only: they are
-// analysis, and the map is the superset (docs/design-system.md).
+// The map adds View and Hunters after these, and they stay map-only: they are
+// analysis, and the map is the superset (docs/design-system.md). Its Overlays
+// group went when node positions moved to the rail (#630).
 
 import { TIME_WINDOWS, windowMs } from './timewindows.js'
 

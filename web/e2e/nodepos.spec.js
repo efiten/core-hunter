@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, setNodePos, openFilters, closeFilters, toggleLocate } from './fixtures.js'
+import { test, expect, mapSettled, setNodePos, toggleLocate } from './fixtures.js'
 import { NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
@@ -58,7 +58,7 @@ test('the notice, the readout and the attribution share a phone screen without o
   await page.route('**/cs/api/stats*', (r) => r.fulfill({ json: { totalNodes: 1520 } }))
   await page.setViewportSize({ width: 412, height: 915 })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await mapSettled(page)
   await expect(page.locator('#nodepos-key')).toBeVisible()
   await expect(page.locator('#sf-counts')).toContainText('1520 nodes')
@@ -70,7 +70,7 @@ test('the notice, the readout and the attribution share a phone screen without o
       const b = el.getBoundingClientRect()
       return { top: b.top, right: b.right, bottom: b.bottom, left: b.left }
     }
-    return { boxes: { notice: box('#nodepos-stack'), readout: box('#map-readout') }, viewportH: window.innerHeight }
+    return { boxes: { notice: box('#nodepos-stack'), readout: box('#map-readout'), rail: box('#map-rail') }, viewportH: window.innerHeight }
   })
   // A box that is missing, or laid out at zero size, passes every overlap test
   // below without measuring anything — which is how the first version of this
@@ -83,6 +83,7 @@ test('the notice, the readout and the attribution share a phone screen without o
 
   const overlaps = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
   expect(overlaps(boxes.notice, boxes.readout), 'notice over the readout').toBe(false)
+  expect(overlaps(boxes.rail, boxes.readout), `rail over the readout ${JSON.stringify(boxes)}`).toBe(false)
 
   // The attribution itself cannot be measured here: the harness answers the
   // basemap style with a bare background that carries no sources, so
@@ -94,20 +95,50 @@ test('the notice, the readout and the attribution share a phone screen without o
     .toBeGreaterThanOrEqual(ATTRIB_STRIP)
 })
 
+// #630: the readout stood left of the FAB rail's column at every width, and at
+// 320px a guest's readout ("0 cells" and both node counts, 263px) did not fit
+// in the 244px beside it. It wrapped to two lines and grew up under the node
+// positions notice. On a phone the rail stands above the readout, so the
+// readout keeps the screen's right edge there.
+test('a guest\'s readout stays one line under the notice on a 320px phone', async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
+  await page.route('**/sf7/api/nodes/count*', (r) => r.fulfill({ json: { count: 180 } }))
+  await page.route('**/cs/api/stats*', (r) => r.fulfill({ json: { totalNodes: 1520 } }))
+  await page.setViewportSize({ width: 320, height: 568 })
+  await page.goto('/')
+  await expect(page.locator('#sf-counts')).toContainText('1520 nodes')
+  await expect(page.locator('#status')).toContainText('cells')
+  // A guest's tap shows the reason in the notice rather than the layer (#630).
+  await page.locator('#nodepos-toggle').click()
+  await expect(page.locator('#nodepos-key')).toBeVisible()
+  const b = await page.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect().toJSON()
+    return { notice: r('#nodepos-stack'), readout: r('#map-readout'), rail: r('#map-rail') }
+  })
+  const overlaps = (a, c) => a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom
+  expect(b.readout.width, 'the readout is empty, so this measures nothing').toBeGreaterThan(200)
+  expect(b.readout.height, `the readout wrapped ${JSON.stringify(b)}`).toBeLessThan(30)
+  expect(overlaps(b.notice, b.readout), `notice over the readout ${JSON.stringify(b)}`).toBe(false)
+  expect(overlaps(b.rail, b.readout), `rail over the readout ${JSON.stringify(b)}`).toBe(false)
+  expect(b.readout.left, 'no gutter at the left edge').toBeGreaterThanOrEqual(8)
+})
+
 test('layer is off by default and the toggle is visible to a member', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await openFilters(page) // the layer toggle lives in the filter panel (#539)
-  await expect(page.locator('.np-layer-toggle')).toBeVisible()
-  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true')
-  await closeFilters(page)
+  // In the FAB rail since #630, out of the filter panel.
+  const fab = page.locator('#nodepos-toggle')
+  await expect(fab).toBeVisible()
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
+  await expect(fab).toHaveAttribute('aria-pressed', 'false')
   await expect(page.locator('#nodepos-note')).toBeHidden()
 })
 
 test('checking it draws the advertised marker, reflects in the URL, and shows the disclaimer', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
 
   // Exactly one marker per node — concurrent redraws must not leave duplicates.
   // The marker only appears after two sequential round-trips (points, then the
@@ -118,7 +149,7 @@ test('checking it draws the advertised marker, reflects in the URL, and shows th
   // §7: the disclaimer is on screen for as long as the layer is drawn.
   await expect(page.locator('#nodepos-note')).toBeVisible()
   await expect(page.locator('#nodepos-note')).toContainText('not GPS tracking')
-  await expect(page).toHaveURL(/nodepos=1/)
+  await expect(page).toHaveURL(/[?&]nodepos=positions/)
 
   await page.locator('.np-advert').click({ force: true })
   const popup = page.locator('.maplibregl-popup-content')
@@ -132,7 +163,7 @@ test('a drift under 100 m reports a distance but claims no radius', async ({ pag
   // popup states the drift but draws (and mentions) no circle.
   await routes(page, { lat: 51.0004, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await page.locator('.np-advert').first().click({ force: true })
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText(/drift \d+ m/)
@@ -150,7 +181,7 @@ test('a one-sided estimate does not claim a search radius', async ({ page }) => 
   // Pin the view: with all points on one bearing the auto-fit (#218) is very
   // tight, which can push the advertised marker outside the viewport.
   await page.goto('/?lat=51.0012&lon=4.0&z=14')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1)
   await page.locator('.np-advert').click({ force: true })
   await expect(page.locator('.maplibregl-popup-content')).toContainText('radius not trusted')
@@ -164,13 +195,14 @@ test('the layer is refused to a guest, whose resolve responses carry no position
     json: { prefix: SENDER, pubkey: SENDER, name: 'Repeater-Zuid', ambiguous: false },
   }))
   await page.goto('/')
-  await openFilters(page) // asserted with the panel open, or hidden is vacuous
-  // #629: the control stays and is disabled with a reason, where it used to be
-  // hidden outright. Refusing it visibly is what tells a guest it exists.
-  await expect(page.locator('.np-layer-toggle')).toBeVisible()
-  await expect(page.locator('#np-pos')).toBeDisabled()
-  await expect(page.locator('#nodepos-gate-note')).toContainText(/account/i)
-  await closeFilters(page)
+  // #629: the control stays where it used to be hidden outright, since refusing
+  // it visibly is what tells a guest it exists. #630: a tap on the rail's
+  // button says why and keeps the stop.
+  const fab = page.locator('#nodepos-toggle')
+  await expect(fab).toBeVisible()
+  await fab.click()
+  await expect(page.locator('#nodepos-key')).toContainText(/account/i)
+  await expect(fab).toHaveAttribute('aria-pressed', 'false')
   // What the gate is for is unchanged: nothing is drawn.
   await expect(page.locator('.np-advert')).toHaveCount(0)
 })
@@ -181,7 +213,7 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   // early return fires and the layer stays empty for the rest of the session.
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 
   await toggleLocate(page) // Locate lives in the filter panel (#539)
@@ -204,7 +236,7 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
     points: ring(51, 4, 250, 8).map((p) => ({ ...p, sender_kind: 'relay' })),
   })
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('#nodepos-note')).toBeVisible()
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   // No ● and no connector: the relay receptions carried no attributable identity.
@@ -222,7 +254,7 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
 test('with markers on screen the glyph meaning is in the popup, not over the map', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   await expect(page.locator('#nodepos-note')).toBeVisible()
   // Nothing in the corner explains a glyph any more, whatever state it is in.
@@ -245,7 +277,7 @@ for (const [label, fulfil, expected] of [
     await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
     await page.route('**/api/nodes/positions*', (r) => r.fulfill(fulfil))
     await page.goto('/?mode=points')
-    await setNodePos(page, '1')
+    await setNodePos(page, 'positions')
     await expect(page.locator('#nodepos-key')).toContainText(expected, { timeout: 10000 })
     // The disclaimer would claim positions are being shown. None are.
     await expect(page.locator('#nodepos-note')).toBeHidden()
@@ -259,7 +291,7 @@ test('marks a registry the server could not refresh (#376)', async ({ page }) =>
     json: { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }], stale: true },
   }))
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   // Drawn, and dated: the positions are real, their age is not guaranteed.
   await expect(page.locator('#nodepos-key')).toContainText('positions may be a few minutes old')
@@ -267,12 +299,12 @@ test('marks a registry the server could not refresh (#376)', async ({ page }) =>
 })
 
 test('a guest who deep-links the layer is told it is the account (#376)', async ({ page }) => {
-  // The control is hidden below member, but urlstate binds the checkbox from
-  // ?nodepos=1 regardless — so this state is reachable and used to be silent.
+  // urlstate restores the stop from ?nodepos= whatever the role, so this
+  // state is reachable and used to be silent.
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
-  await page.goto('/?mode=points&nodepos=1')
-  await expect(page.locator('#nodepos-key')).toContainText('verified member account', { timeout: 10000 })
+  await page.goto('/?mode=points&nodepos=positions')
+  await expect(page.locator('#nodepos-key')).toContainText('Log in to switch the layer on', { timeout: 10000 })
   await expect(page.locator('#nodepos-note')).toBeHidden()
   // And it stays. The gate put the key up and unchecked the box; the refresh
   // it then asked for redrew from the box and took the key back 250 ms later,
@@ -288,7 +320,7 @@ test('a guest who deep-links the layer is told it is the account (#376)', async 
   const heat = page.waitForRequest('**/api/heatmap*')
   await page.evaluate(() => window.__refresh())
   await heat // the debounced draw ran: hex is fetched from the same tick as the node layer
-  await expect(page.locator('#nodepos-key')).toContainText('verified member account')
+  await expect(page.locator('#nodepos-key')).toContainText('Log in to switch the layer on')
   expect(await page.evaluate(() => window.__keyHid), 'the key was hidden by a later draw').toBe(0)
 })
 
@@ -298,7 +330,7 @@ test('a node nobody in this filter heard is still drawn (#377)', async ({ page }
   // nodes from the filtered reception set, so this drew nothing at all.
   await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
   await expect(page.locator('.np-estimate')).toHaveCount(0)
@@ -314,7 +346,7 @@ test('the registry slice follows the viewport, not the reception filter (#377)',
   })
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   expect(urls.length).toBeGreaterThan(0)
   const bbox = new URL(urls[urls.length - 1]).searchParams.get('bbox')
@@ -352,7 +384,7 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
     { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }] })
 
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   // The registry is in flight, so the draw is parked on its await and nothing
   // is on the map yet.
   await expect(page.locator('.np-advert')).toHaveCount(0)
@@ -377,7 +409,7 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
 
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -385,21 +417,21 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
   await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 
   // Off and on again is a fresh glance, not a memory of the last one.
-  await setNodePos(page, '')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'off')
+  await setNodePos(page, 'positions')
   await expect(note).toBeVisible()
 
   // Same page, wide: the prose stays put well past the glance.
   await page.setViewportSize({ width: 1280, height: 800 })
-  await setNodePos(page, '')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'off')
+  await setNodePos(page, 'positions')
   await expect(note).toBeVisible()
   await page.waitForTimeout(3000)
   await expect(note).toBeVisible()
 })
 
-// The path #426 is actually about. urlstate.bindControl restores the checkbox
-// by assignment and dispatches nothing, so a layer that comes on from the URL
+// The path #426 is actually about. urlstate restores the stop (a checkbox
+// then) by assignment and dispatches nothing, so a layer that comes on from the URL
 // or from restored localStorage never fires `change` -- and the glance used to
 // be started from that listener alone. Every returning phone user who had the
 // layer on last time landed here and got the permanent quarter-screen block
@@ -408,9 +440,9 @@ test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ pa
 test('a layer restored from the URL glances too, without a change event', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
-  await page.goto('/?mode=points&nodepos=1')
+  await page.goto('/?mode=points&nodepos=positions')
 
-  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -421,17 +453,17 @@ test('a layer restored from the URL glances too, without a change event', async 
 
 // The other half of the same gap: urlstate persists to localStorage under
 // `ch-state`, so the second visit of a returning user restores the layer with
-// no `?nodepos=1` in the URL at all.
+// no `?nodepos=` in the URL at all.
 test('a layer restored from localStorage glances too', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
 
-  // Plain revisit, no query string: the checkbox comes back from the store.
+  // Plain revisit, no query string: the stop comes back from the store.
   await page.goto('/')
-  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -451,7 +483,7 @@ test('rotating across the boundary re-decides the disclaimer without a redraw', 
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
 
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -482,7 +514,7 @@ test('a redraw after the glance does not bring the disclaimer back', async ({ pa
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.setViewportSize({ width: 390, height: 780 })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
 
   const note = page.locator('#nodepos-note')
   await expect(note).toBeVisible()
@@ -530,7 +562,7 @@ test('overlapping names are dropped, and the markers they belong to are not', as
   }))
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8), nodes: cluster })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
 
   // Every node keeps its marker: decluttering hides names, never nodes.
   await expect(page.locator('.np-advert')).toHaveCount(4, { timeout: 15000 })
@@ -570,7 +602,7 @@ test('a pair the character estimate would call clear is decluttered on its real 
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8),
     nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.01)] })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
 
   const pxPerDeg = await page.evaluate(() => {
@@ -586,8 +618,8 @@ test('a pair the character estimate would call clear is decluttered on its real 
   await page.route('**/api/nodes/positions*', (r) => r.fulfill({
     json: { nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.0 + GAP_PX / pxPerDeg)] },
   }))
-  await setNodePos(page, '')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'off')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
 
   // Both markers, one name. Under the estimate both names were drawn, 4 px of
@@ -614,7 +646,7 @@ test('a pair the character estimate would call clear is decluttered on its real 
 test('the measuring probe is hidden and parked, and reads the label font', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid', { timeout: 15000 })
 
   const probe = await page.evaluate(() => {

@@ -33,6 +33,22 @@ test('__locateRender draws centroid, strongest marker, heatmap and info card', a
   await expect(info).toContainText('1-byte ID') // senderId '4a' (< 64 chars) -> hash note
 })
 
+// #630: the card clears the FAB rail's column, and its 264px did not fit left
+// of it at 320px, so it ran flush to the screen's left edge.
+test('the Locate info box keeps a gutter left of the rail on a narrow phone', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 })
+  await page.goto('/')
+  await page.waitForFunction(() => typeof window.__locateRender === 'function')
+  await page.evaluate((pts) => window.__locateRender(pts, '4a'), POINTS)
+  await expect(page.locator('#locate-info')).toBeVisible()
+  const g = await page.evaluate(() => ({
+    info: document.getElementById('locate-info').getBoundingClientRect().toJSON(),
+    rail: document.getElementById('map-rail').getBoundingClientRect().toJSON(),
+  }))
+  expect(g.info.left, JSON.stringify(g)).toBeGreaterThanOrEqual(8)
+  expect(g.info.right, JSON.stringify(g)).toBeLessThanOrEqual(g.rail.left)
+})
+
 test('"?" toggles the plain-English legend in the Locate info box', async ({ page }) => {
   await page.goto('/')
   await page.waitForFunction(() => typeof window.__locateRender === 'function')

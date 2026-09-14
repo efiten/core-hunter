@@ -47,14 +47,10 @@ function resetFilters() {
   document.getElementById('f-to').value = toLocalInput(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59))
   if (window.setTypes) window.setTypes('')
   if (window.setIdClasses) window.setIdClasses('')
-  // Through a change event, not a bare .checked write: the label sync and the
-  // node-position teardown both listen for one.
-  for (const id of ['f-direct', 'f-nodepos']) {
-    const el = document.getElementById(id)
-    if (el && el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })) }
-  }
-  // Node positions is a three-stop control since #603, owned by map.js.
-  if (window.setNodePos) window.setNodePos('')
+  // Through a change event, not a bare .checked write: the label sync listens
+  // for one. Node positions is not reset: a view choice since #630.
+  const direct = document.getElementById('f-direct')
+  if (direct && direct.checked) { direct.checked = false; direct.dispatchEvent(new Event('change', { bubbles: true })) }
 }
 
 // All DOM wiring below is guarded so this module can be imported under Vitest

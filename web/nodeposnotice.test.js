@@ -32,7 +32,7 @@ describe('nodePosPresentation — every way to draw nothing says which one it wa
       { status: 'unavailable' }, { status: 'forbidden' }]) {
       expect(on({ registry, drawn: 0 }).note).toBe(false)
     }
-    expect(on({ member: false, registry: { status: 'ok' }, drawn: 9 }).note).toBe(false)
+    expect(on({ reason: 'Log in.', registry: { status: 'ok' }, drawn: 9 }).note).toBe(false)
   })
 
   it('treats a failed fetch as unreachable, not as an empty registry', () => {
@@ -45,8 +45,19 @@ describe('nodePosPresentation — every way to draw nothing says which one it wa
   it('names the role before anything about the registry', () => {
     // Below member the server strips positions, so an empty layer is explained
     // by the account, whatever the registry would have said.
-    expect(on({ member: false, registry: { status: 'empty' } }).key).toBe(NODEPOS_GUEST_TEXT)
+    expect(on({ reason: 'Log in.', registry: { status: 'empty' } }).key).toBe('Log in.')
     expect(on({ registry: { status: 'forbidden' } }).key).toBe(NODEPOS_GUEST_TEXT)
+  })
+
+  // The line is the role's own reason (auth.js nodePosReason), so a guest reads
+  // that logging in is the step and a hunter reads that an admin verifies them
+  // (#174). Since #630 there is no note under the stops to carry it: this line
+  // is the one place a tap on the rail's button answers.
+  it('says the reason it was handed, one per role', () => {
+    const guest = 'Node positions need an account. Log in to switch the layer on.'
+    const hunter = 'Node positions need a verified member account. An admin verifies you.'
+    expect(on({ reason: guest }).key).toBe(guest)
+    expect(on({ reason: hunter }).key).toBe(hunter)
   })
 
   it('marks a stale registry, on both of the states that drew from one', () => {
@@ -107,7 +118,7 @@ describe('nodePosKeyText — kept in step with the app copy', () => {
 // the map being read. On a wide screen the same corner costs nothing, so the
 // glance is scoped to narrow viewports rather than applied to web as a whole.
 describe('nodePosPresentation — the prose is a glance on a narrow screen', () => {
-  const drawn = { on: true, member: true, registry: { status: 'ok', stale: false }, drawn: 3 }
+  const drawn = { on: true, registry: { status: 'ok', stale: false }, drawn: 3 }
 
   it('keeps the prose on a wide screen however long the layer is on', () => {
     expect(nodePosPresentation({ ...drawn, narrow: false, glanceExpired: true }).note).toBe(true)
@@ -134,7 +145,7 @@ describe('nodePosPresentation — the prose is a glance on a narrow screen', () 
   it('cannot switch the prose on for a state that has none', () => {
     const off = [
       { on: false },
-      { on: true, member: false },
+      { on: true, reason: 'Log in.' },
       { on: true, registry: { status: 'empty' } },
       { on: true, registry: { status: 'unavailable' } },
       { on: true, registry: { status: 'ok' }, drawn: 0 },

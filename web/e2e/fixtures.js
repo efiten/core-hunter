@@ -1,4 +1,5 @@
 import { test as base, expect } from '@playwright/test'
+import { NODEPOS_LABELS } from '../nodeposmode.js'
 
 // Hermetic e2e: block every third-party origin the page would otherwise hit for
 // real on each load — basemap tiles (cartocdn), Leaflet itself (unpkg), and the
@@ -206,12 +207,21 @@ export async function clickPanelChip(page, selector) {
   await closeFilters(page)
 }
 
-// Sets the Node positions stop (#603): '' off, '1' positions, 'reach'
-// positions + reach. A segmented control in the panel, like the layer mode.
+// Sets the Node positions stop (#603), in the app's vocabulary since #630:
+// 'off', 'positions' or 'reach'. The rail's button cycles, so this taps until
+// its label names the stop. The label is checked before each tap, and the tap
+// repaints it synchronously, so a landed tap is never followed by one that
+// overshoots; a tap dropped in the boot window (clickUntil) is simply retried.
+// Below member a tap keeps the stop and the label never changes, so a stop it
+// cannot reach fails here rather than letting the spec carry on with the layer
+// off.
 export async function setNodePos(page, stop) {
-  await openFilters(page)
-  await page.click(`#nodepos-seg button[data-nodepos="${stop}"]`)
-  await closeFilters(page)
+  const fab = page.locator('#nodepos-toggle')
+  const label = () => fab.getAttribute('aria-label')
+  await expect(async () => {
+    if (await label() !== NODEPOS_LABELS[stop]) await fab.click()
+    expect(await label(), 'a viewer below member cannot switch node positions').toBe(NODEPOS_LABELS[stop])
+  }).toPass({ timeout: 15000 })
 }
 
 // Sets the layer mode via the segmented control in the panel.

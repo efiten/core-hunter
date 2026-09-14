@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampToViewport, clampUnlessNarrow, topRight, initialPlacement, serialise, parse, EDGE_GAP, COLLAPSE_LEVELS } from './tickerplace.js'
+import { clampToViewport, clampUnlessNarrow, firstVisitPosition, initialPlacement, serialise, parse, EDGE_GAP, COLLAPSE_LEVELS } from './tickerplace.js'
 
 const SIZE = { w: 680, h: 200 }
 const DESKTOP = { vw: 1280, vh: 800, top: 48 }
@@ -52,19 +52,19 @@ describe('clampUnlessNarrow', () => {
   })
 })
 
-describe('topRight', () => {
-  it('sits clear of the right edge and below the bar', () => {
-    expect(topRight(SIZE, DESKTOP)).toEqual({ x: 1280 - 680 - EDGE_GAP, y: 48 + EDGE_GAP })
-  })
-  it('does not go negative on a screen narrower than the ticker', () => {
-    expect(topRight(SIZE, PHONE).x).toBe(0)
+describe('firstVisitPosition', () => {
+  // #630: the top left, since the zoom control it used to avoid there is gone
+  // and the FAB rail owns the right-hand side of the map.
+  it('sits a gap in from the left edge and below the bar', () => {
+    expect(firstVisitPosition(DESKTOP)).toEqual({ x: EDGE_GAP, y: 48 + EDGE_GAP })
+    expect(firstVisitPosition(PHONE)).toEqual({ x: EDGE_GAP, y: 96 + EDGE_GAP })
   })
 })
 
 describe('initialPlacement', () => {
-  it('starts top-right on a first visit', () => {
+  it('starts top-left on a first visit', () => {
     const p = initialPlacement({ size: SIZE, viewport: DESKTOP })
-    expect(p).toMatchObject(topRight(SIZE, DESKTOP))
+    expect(p).toMatchObject({ x: EDGE_GAP, y: 48 + EDGE_GAP })
   })
 
   it('restores a remembered position, clamped to this screen', () => {
@@ -125,7 +125,7 @@ describe('initialPlacement', () => {
 
   it('ignores a saved value that is not a position', () => {
     for (const saved of [{ x: null, y: 5 }, { x: NaN, y: 5 }, {}]) {
-      expect(initialPlacement({ saved, size: SIZE, viewport: DESKTOP })).toMatchObject(topRight(SIZE, DESKTOP))
+      expect(initialPlacement({ saved, size: SIZE, viewport: DESKTOP })).toMatchObject(firstVisitPosition(DESKTOP))
     }
   })
 })

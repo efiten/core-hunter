@@ -106,9 +106,9 @@ describe('modeForRole — a deep link cannot open a gated layer', () => {
 
 // #629 folded the two CoreScope overlays into the node-position layer, and
 // #631's guest handling with it: the control used to be hidden outright below
-// member, so the only thing that ever said why was a deep link. It is disabled
-// with a reason under it now, the way the layer segments have been since #493 —
-// a control you can see and cannot use tells you an account exists to be had.
+// member, so the only thing that ever said why was a deep link. Since #630 the
+// rail's button stays enabled below member and a tap answers with this reason:
+// a control you can see tells you an account exists to be had.
 describe('nodePosReason', () => {
   it('names both things the account switches on, not just that it is off', () => {
     const msg = nodePosReason('guest')

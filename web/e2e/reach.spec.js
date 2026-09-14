@@ -78,11 +78,16 @@ test('a tap on ▲ selects that star and dims the others; a second tap or a tap 
   await page.locator('.np-advert').click()
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await mapSettled(page)
-  // A bare spot: the map's top-left corner, under the bar. The view snapped
-  // to the hearings, which lie centre, north-east and south-west of it, and
-  // the ▲'s popup opens at the centre.
+  // A bare spot, south-east of the centre: the view snapped to the hearings,
+  // which lie centre, north-east and south-west of it, and no ray runs that
+  // way. It used to be the map's top-left corner, where the ticker starts
+  // since #630; the map's left edge at half height is the ▲ itself, whose
+  // second tap would clear the selection without testing the bare map.
+  const pt = await page.evaluate(() => window.__mapProject(50.99, 4.01))
   const box = await page.locator('#map').boundingBox()
-  await page.mouse.click(box.x + 60, box.y + 140)
+  const bare = await page.evaluate(([x, y]) => document.elementFromPoint(x, y).tagName, [box.x + pt.x, box.y + pt.y])
+  expect(bare, 'the spot is not bare map').toBe('CANVAS')
+  await page.mouse.click(box.x + pt.x, box.y + pt.y)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([])
 })
 
@@ -111,12 +116,12 @@ test('in 3D the rays leave the ground: the line layer goes, the ray layer takes 
 test('the positions stop keeps the ▲ and drops the rays; off drops both', async ({ page }) => {
   await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect.poll(() => rays(page)).toBe(0)
   await expect(page.locator('.np-advert')).toHaveCount(1)
   await expect(page.locator('.rc-hub')).toHaveCount(0)
-  await expect(page).toHaveURL(/[?&]nodepos=1/)
-  await setNodePos(page, '')
+  await expect(page).toHaveURL(/[?&]nodepos=positions/)
+  await setNodePos(page, 'off')
   await expect(page.locator('.np-advert')).toHaveCount(0)
   await expect(page).not.toHaveURL(/[?&]nodepos=/)
 })

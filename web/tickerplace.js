@@ -6,10 +6,11 @@
 // There was no way to put it away.
 //
 // Decided on the issue (2026-08-21): dragging REPLACES the anchor rather than
-// overriding it. The ticker starts top-right on a first visit and afterwards
-// sits wherever it was left. That makes "put it back" not free, so the clamp
-// below is the safety net rather than a nicety -- a ticker dragged to the edge
-// of a wide screen has to still be reachable on a narrow one.
+// overriding it. The ticker starts top-left on a first visit (top-right until
+// #630) and afterwards sits wherever it was left. That makes "put it back" not
+// free, so the clamp below is the safety net rather than a nicety -- a ticker
+// dragged to the edge of a wide screen has to still be reachable on a narrow
+// one.
 //
 // Pure so the geometry can be tested without a browser: the caller measures.
 
@@ -43,11 +44,13 @@ export function clampUnlessNarrow(at, size, viewport, narrow) {
   return narrow ? { x: at.x, y: at.y } : clampToViewport(at, size, viewport)
 }
 
-// topRight is the first-visit position: out of the centre where the map content
-// is, and clear of the zoom control at the top-left, which is the collision the
-// issue names.
-export function topRight({ w }, { vw, top = 0 }) {
-  return { x: Math.max(0, vw - w - EDGE_GAP), y: top + EDGE_GAP }
+// firstVisitPosition is where a ticker nobody has dragged starts: out of the
+// centre where the map content is, in the top-left corner under the bar. It
+// was the top right until #630, to stay clear of the zoom control at the top
+// left; that control went into the FAB rail, and the rail owns the right-hand
+// side of the map now.
+export function firstVisitPosition({ top = 0 }) {
+  return { x: EDGE_GAP, y: top + EDGE_GAP }
 }
 
 // How much of the ticker is on screen, as one field (#424): full, three lanes,
@@ -88,7 +91,7 @@ export function coversTheMap(cardHeight, { vh, top = 0 }) {
 export function initialPlacement({ saved = null, size, viewport, narrow = false }) {
   const at = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
     ? { x: saved.x, y: saved.y }
-    : topRight(size, viewport)
+    : firstVisitPosition(viewport)
   // A remembered choice always wins. Without one, a phone starts at the
   // smallest stop rather than away: the reason the default is per-surface is
   // that the card should not cover the map there, and a ticker nobody can see

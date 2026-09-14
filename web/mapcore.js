@@ -19,6 +19,7 @@
 import { skyForHour, currentHour } from './sky.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
 import { createRayLayer } from './raylayer.js'
+import { northResetEase } from './maprail.js'
 import { EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 
@@ -44,11 +45,9 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // touch pitch is a separate handler that defaults on.
     attributionControl: false, dragRotate: true, pitchWithRotate: true, maxPitch: MAX_PITCH,
   })
-  // The compass draws the bearing and the pitch, and a click puts north back
-  // up and the camera flat: MapLibre's own control, in the house colours
-  // (style.css). The app's compass button cycles through following the
-  // phone, which the site has nothing to follow (#403); this is the rest.
-  map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'top-left')
+  // No NavigationControl (#630): zoom and the compass are buttons in the FAB
+  // rail (index.html, map.js), which call zoomIn, zoomOut and resetNorth below.
+  // The attribution stays MapLibre's, in its bottom-right corner.
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
 
   let currentTheme = theme
@@ -250,21 +249,6 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   }
   function setExaggeration(x) { terrainExag = Number(x) || DEFAULT_EXAGGERATION; applyTerrain() }
 
-  // A house button in the map's control corner (#595): a MapLibre control
-  // group of one, so it stacks under the zoom and compass the library
-  // places, and styles with them. The caller owns the state; this only
-  // draws the button and reports the click.
-  function addButton({ id, label, html, onClick }, position = 'top-left') {
-    const el = document.createElement('div')
-    el.className = 'maplibregl-ctrl maplibregl-ctrl-group'
-    const btn = document.createElement('button')
-    btn.type = 'button'; btn.id = id; btn.innerHTML = html
-    btn.setAttribute('aria-label', label); btn.setAttribute('aria-pressed', 'false')
-    btn.addEventListener('click', onClick)
-    el.appendChild(btn)
-    map.addControl({ onAdd() { return el }, onRemove() { el.remove() } }, position)
-    return btn
-  }
   function mountBare() { if (map.isStyleLoaded()) addOverlays(); else setTimeout(mountBare, 100) }
   map.on('load', addOverlays)
   armStyleFallback()
@@ -429,12 +413,24 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
       return { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }
     },
     getZoom() { return map.getZoom() },
+    // The rail's zoom buttons (#630), disabled at these exact bounds.
+    getMinZoom() { return map.getMinZoom() },
+    getMaxZoom() { return map.getMaxZoom() },
+    zoomIn() { map.zoomIn() },
+    zoomOut() { map.zoomOut() },
+    // The rail's compass (#630): north up, the pitch kept (maprail.js). Reduced
+    // motion is read at the press rather than once, so a setting changed while
+    // the page is open is honoured, and the module stays free of window access
+    // at import time.
+    resetNorth() {
+      map.easeTo(northResetEase({ reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches }))
+    },
     getCenter() { const c = map.getCenter(); return { lat: c.lat, lng: c.lng } },
     project(lat, lon) { const p = map.project([lon, lat]); return { x: p.x, y: p.y } },
     fitBounds(bounds) { if (bounds) map.fitBounds(bounds, { padding: 40, duration: 0, maxZoom: 16 }) },
     getBearing() { return map.getBearing() },
     getPitch() { return map.getPitch() },
-    setView, setExaggeration, addButton,
+    setView, setExaggeration,
     // Test hooks (#595): what a layer is set to, a paint value, and whether
     // the mesh is on. The canvas has no DOM to read, so these are the read.
     layerVisible(id) { return !!map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none' },

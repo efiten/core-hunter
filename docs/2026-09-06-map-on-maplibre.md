@@ -15,6 +15,8 @@ The website drew its map with Leaflet 1.9.4 on Carto raster tiles while the app 
 - **A click reaches only the topmost clickable layer under it**, as a Leaflet click stopped at the marker. MapLibre's layer listener fires for every layer under the pointer, so in `both` mode a click on a point also ran its cell's handler and moved the ticker to the cell's newest row.
 - **Zoom keeps Leaflet's numbers on the outside.** MapLibre counts against a 512 px world, Leaflet against 256, so the same scale is one level apart. `?z=` in shared links and the `z` the server bins hex cells by both stay in Leaflet units, converted at the edge, so every existing link lands where it did and no cell changes size. The server's `z` is a whole level (`leafletZoom`), since its binning reads one. The link keeps the fraction to a hundredth of a level (`zoomParam`, read back by `mapZoomFromLeaflet`): MapLibre zooms between whole levels, and a rounded link reopened a wheel-zoomed view at a different scale than the one shared.
 - **The controls follow the theme** through MapLibre's own class names, with the double-class attribution selector the #427 lesson asked for, and the hover and disabled states asserted the same way.
+
+  > **Amended 2026-09-14 (#630, `docs/2026-09-14-map-rail.md`).** Only the attribution is a MapLibre control now. Zoom and the compass left with the NavigationControl, for buttons in the map's FAB rail that take the tokens directly; their hover and disabled states are asserted on the rail's buttons.
 - **`web/sky.js`** is the app's copy, pinned by the parity suite.
 
 ## What stayed

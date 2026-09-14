@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-14-map-control-rail",
+  "date": "2026-09-14",
+  "where": "map",
+  "title": "The map's buttons are one column, like the app",
+  "body": "Zoom, compass, 2D/3D and node positions sit bottom right. The compass turns to north and keeps the tilt."
+}

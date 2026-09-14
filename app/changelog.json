@@ -7,6 +7,13 @@
     "body": "Centred under the bar on a narrow screen, like the app. A position dragged on a wide screen is kept."
   },
   {
+    "id": "2026-09-14-map-control-rail",
+    "date": "2026-09-14",
+    "where": "map",
+    "title": "The map's buttons are one column, like the app",
+    "body": "Zoom, compass, 2D/3D and node positions sit bottom right. The compass turns to north and keeps the tilt."
+  },
+  {
     "id": "2026-09-13-node-marker-explains-itself",
     "date": "2026-09-13",
     "where": "both",

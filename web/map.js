@@ -26,8 +26,12 @@ import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter, keptSel
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, clampUnlessNarrow, serialise, parse as parsePlacement } from './tickerplace.js'
+import { noticesPlacement } from './noticeplace.js'
 import { wireNarrowBar } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
+import { compassNeedleTransform, zoomButtonsDisabled, nodePosTap } from './maprail.js'
+import { NODEPOS_MODES, NODEPOS_LABELS, parseNodePosMode } from './nodeposmode.js'
+import { fabRingSvg } from './fabring.js'
 
 let currentRole = 'guest'
 // 'guest' above is what the page renders from until /api/auth/me answers, not
@@ -74,17 +78,12 @@ const wm = createWebMap('map', {
   zoom: Number.isFinite(iZoom) ? mapZoomFromLeaflet(iZoom) : (hasSavedView ? 11 : 1),
   theme, mode, mode3D: view3D, pitch: cam.pitch, bearing: cam.bearing, exaggeration: exag,
 })
-// The view button (#595): 2D or 3D, in the control corner under the zoom and
-// the compass, the app's view in the house form. In 3D the hex cells stand
-// as bars, the receptions as pillars, the buildings rise, and the terrain
-// comes with it at the exaggeration from Settings (Kasper, 2026-09-06: 3D
-// carries the terrain, on the app as well, #396).
-const VIEW_ICON = `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
-  <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7z"/>
-  <path d="M4 6.5l6 3.5 6-3.5M10 10v7"/>
-</svg>`
-const viewBtn = wm.addButton({ id: 'view-toggle', label: 'View: 2D', html: VIEW_ICON,
-  onClick: () => { view3D = !view3D; applyView(); urlstate.save(); refresh() } })
+// The view button (#595): 2D or 3D, in the FAB rail since #630 (index.html).
+// In 3D the hex cells stand as bars, the receptions as pillars, the buildings
+// rise, and the terrain comes with it at the exaggeration from Settings
+// (Kasper, 2026-09-06: 3D carries the terrain, on the app as well, #396).
+const viewBtn = document.getElementById('view-toggle')
+viewBtn.addEventListener('click', () => { view3D = !view3D; applyView(); urlstate.save(); refresh() })
 function applyView() {
   wm.setView(mode, view3D)
   viewBtn.classList.toggle('on', view3D)
@@ -92,6 +91,26 @@ function applyView() {
   viewBtn.setAttribute('aria-label', view3D ? 'View: 3D' : 'View: 2D')
 }
 applyView()
+// The rest of the FAB rail (#630), in place of MapLibre's NavigationControl.
+// Zoom is disabled at the map's exact bounds, as the library's buttons were;
+// the compass turns to north and keeps the pitch, since flattening is the view
+// button's job. The needle follows every rotation, including a drag.
+const zoomInBtn = document.getElementById('zoom-in')
+const zoomOutBtn = document.getElementById('zoom-out')
+const compassNeedle = document.getElementById('compass-needle')
+zoomInBtn.addEventListener('click', () => wm.zoomIn())
+zoomOutBtn.addEventListener('click', () => wm.zoomOut())
+document.getElementById('compass-btn').addEventListener('click', () => wm.resetNorth())
+function paintZoomButtons() {
+  const off = zoomButtonsDisabled(wm.getZoom(), { min: wm.getMinZoom(), max: wm.getMaxZoom() })
+  zoomInBtn.disabled = off.zoomIn
+  zoomOutBtn.disabled = off.zoomOut
+}
+function paintCompass() { compassNeedle.style.transform = compassNeedleTransform(wm.getBearing()) }
+wm.on('zoom', paintZoomButtons)
+wm.on('rotate', paintCompass)
+paintZoomButtons()
+paintCompass()
 const tierColor = (tier) => cssVar(tierColorVar(tier))
 // The two CoreScope layers are named by their source (mapcore.js); the
 // call sites below pass these names where they used to pass layer groups.
@@ -441,30 +460,25 @@ function applyLocateGate() {
 // since #493. It used to be hidden outright, which is true to the data and
 // hopeless as an answer: a guest never learned the layer existed, and the only
 // thing that ever explained it was a deep link somebody else had shared.
+//
+// Since #630 the control is the rail's node-positions button, and it stays
+// enabled below member: a tap there says why instead of switching the layer on
+// (tapNodePosFab). The gate's off below goes through setNodePosStop, which
+// repaints the button, so a sign-out cannot leave it showing a stop.
 function applyObserverGate() {
   const show = canSeeObserverPoints(currentRole)
-  const reason = nodePosReason(currentRole)
-  for (const b of document.querySelectorAll('#nodepos-seg button')) {
-    b.disabled = !show
-    // The note below carries the reason visually; this hands it to a reader
-    // landing on a disabled stop.
-    if (reason) b.setAttribute('aria-describedby', 'nodepos-gate-note')
-    else b.removeAttribute('aria-describedby')
-  }
-  const note = document.getElementById('nodepos-gate-note')
-  if (note) { note.textContent = reason || ''; note.hidden = !reason }
   if (!show) {
-    // Read before clearing: ?nodepos=1 restores the stop even for a guest,
-    // whose control is disabled rather than absent since #629, and that ask is
+    // Read before clearing: ?nodepos= restores the stop even for a guest,
+    // whose control is on screen since #629, and that ask is
     // the only thing separating "you cannot see this layer" from a line about
     // a layer nobody wanted. Kept
-    // (nodePosAskedBelowMember): the next refresh redraws from the checkbox,
+    // (nodePosAskedBelowMember): the next refresh redraws from the stop,
     // which is now off, and used to take the key back 250 ms after this put
     // it up (the #376 test caught it only when its poll fell in that window).
     nodePosAskedBelowMember = nodePosAskedBelowMember || nodePosCb.checked
     nodePosCb.checked = false
     clearNodePosLayer(); nodePosSig = null
-    showNodePosNotice({ on: nodePosAskedBelowMember, member: false })
+    showNodePosNotice({ on: nodePosAskedBelowMember, reason: nodePosReason(currentRole) })
   }
   if (!show) {
     clearObserverLayers()
@@ -522,6 +536,7 @@ function applyRole(me) {
   }
   applyLocateGate()
   applyObserverGate()
+  if (nodePosTapHeld) { nodePosTapHeld = false; tapNodePosFab() }
   applyPointLayerGate()
   // The roster answers as the role the server saw (#463): below member every
   // hunter the caller does not own is a pseudonym. It was fetched once, at
@@ -1065,7 +1080,6 @@ window.__coverageSel = () => [...coverageSel] // test hook
 window.__rayCount = () => wm.rayCount() // test hook
 window.__raysVisible = () => wm.raysVisible() // test hook
 window.__features = (id) => wm.features(id).map((f) => f.properties) // test hook
-window.setNodePos = (stop) => setNodePosStop(stop) // Clear filters (filters.js) and tests
 
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---
 // Timeframe-scoped (from/to), not bbox; the heard_key resolves to the node /
@@ -1107,9 +1121,9 @@ async function drawObserverPoints(src, layer, ring) {
     if (!r.ok) return
     d = await r.json()
   } catch { return }
-  // The checkbox may have been unchecked while this fetch was in flight —
-  // bail so a late response doesn't re-populate a layer the user just turned
-  // off (the toggle already cleared it and dropped adv/rel from the URL).
+  // The node positions stop may have gone off while this fetch was in flight
+  // (#629): bail so a late response doesn't re-populate a layer the user just
+  // turned off (setNodePosStop already cleared it and dropped ?nodepos=).
   // locateActive for the same reason: Locate clears both CS layers for its
   // focus view and suppresses refresh() for the whole session, so a late
   // response would repaint into it and stay there. Reachable deterministically
@@ -1153,50 +1167,72 @@ async function drawObserverPoints(src, layer, ring) {
 // layer stays empty. Unlike the app (which bulk-fetches the whole registry),
 // web only covers senders present in the current filter set; registry-wide
 // coverage would need a bulk proxy endpoint on the Go server.
-// Node positions has three stops (#603): '' off, '1' the ▲/● layer (the
-// value ?nodepos=1 links carry since #197), 'reach' that layer plus every
-// repeater's reach. nodePosCb keeps the checkbox's shape for the code below:
-// `checked` is "the layer is on", whichever of the two on-stops it is.
-const NODEPOS_STOPS = ['', '1', 'reach']
-let nodePosStop = ''
+// Node positions has three stops (#603), the app's since #630
+// (nodeposmode.js): 'off', 'positions' the ▲/● layer, 'reach' that layer plus
+// every repeater's reach. nodePosCb keeps the checkbox's shape for the code
+// below: `checked` is "the layer is on", whichever of the two on-stops it is.
+let nodePosStop = 'off'
 const nodePosCb = {
-  get checked() { return nodePosStop !== '' },
+  get checked() { return nodePosStop !== 'off' },
   // The gate's "off" (applyObserverGate) is a silent write, as unchecking
   // the box was: no draw, no glance, no save.
-  set checked(v) { setNodePosStop(v ? '1' : '', { restore: true }) },
+  set checked(v) { setNodePosStop(v ? 'positions' : 'off', { restore: true }) },
 }
-const syncNodePosSeg = () => {
-  for (const b of document.querySelectorAll('#nodepos-seg button')) {
-    const on = b.dataset.nodepos === nodePosStop
-    b.classList.toggle('active', on)
-    b.setAttribute('aria-pressed', String(on))
+// The rail's node-positions button (#630), painted as the app paints its FAB
+// (app.js updateNodePosIcon): the icon stays, the ring shows the stop, and off
+// fills nothing. While Locate is on the layer does not draw, and the button
+// still shows the stop: it is a setting, and it comes back when Locate ends.
+const nodePosFab = document.getElementById('nodepos-toggle')
+const NODEPOS_ICON = nodePosFab.innerHTML
+function paintNodePosFab() {
+  const on = nodePosCb.checked
+  nodePosFab.innerHTML = fabRingSvg(NODEPOS_MODES.indexOf(nodePosStop), NODEPOS_MODES.length, { offIndex: NODEPOS_MODES.indexOf('off') }) + NODEPOS_ICON
+  nodePosFab.setAttribute('aria-label', NODEPOS_LABELS[nodePosStop])
+  nodePosFab.setAttribute('aria-pressed', String(on))
+  nodePosFab.classList.toggle('on', on)
+}
+// A tap from member up cycles the stops. Below member it keeps the stop and
+// puts up the role's reason the layer cannot draw, through the same path a
+// guest's ?nodepos= link takes. Before the role is known the tap is held and
+// applyRole replays it: several held taps are one, since no role has been
+// able to answer any of them yet.
+let nodePosTapHeld = false
+function tapNodePosFab() {
+  const tap = nodePosTap(nodePosStop, { roleKnown, reason: nodePosReason(currentRole) })
+  if (tap.wait) { nodePosTapHeld = true; return }
+  if (tap.reason) {
+    nodePosAskedBelowMember = true
+    showNodePosNotice({ on: true, reason: tap.reason })
+    return
   }
+  setNodePosStop(tap.mode)
 }
-// One entry for every way the stop changes: a tap on the control, a restored
-// URL or store, Clear filters, and the tests. `restore` is the silent path
+// One entry for every way the stop changes: a tap on the rail's button, and a
+// restored URL or store. `restore` is the silent path
 // urlstate takes (its set() dispatches nothing), which starts no glance: the
 // draw starts one itself, once, as it did for the checkbox (#426).
 function setNodePosStop(stop, { restore = false } = {}) {
-  const next = NODEPOS_STOPS.includes(stop) ? stop : ''
+  const next = parseNodePosMode(stop)
   if (next === nodePosStop) return
-  const wasOn = nodePosStop !== ''
+  const wasOn = nodePosStop !== 'off'
   nodePosStop = next
-  syncNodePosSeg()
+  paintNodePosFab()
   if (next !== 'reach') { coverageSel.clear(); clearCoverageLayer() }
   wm.setReach(next === 'reach')
   nodePosSig = null
   if (restore) return
-  if (!wasOn || next === '') restartNodePosGlance()
+  if (!wasOn || next === 'off') restartNodePosGlance()
   drawNodePositions()
   // The CoreScope sightings are this layer's other source (#629), so they come
   // on and go off with the stops instead of with two checkboxes beside them.
-  if (next === '') clearObserverLayers()
+  if (next === 'off') clearObserverLayers()
   else drawObserverLayers()
   urlstate.save()
 }
-// A guest's ?nodepos=1 ask, held past the gate's uncheck (applyObserverGate)
-// so every later draw keeps answering it; cleared once the role can see the
-// layer, where the checkbox itself is the state again.
+// A guest's ask, a ?nodepos= link or a tap on the rail's button (#630), held
+// past the gate's off (applyObserverGate) so every later draw keeps answering
+// it; cleared once the role can see the layer, where the stop itself is the
+// state again.
 let nodePosAskedBelowMember = false
 
 // Colour states the rule that produced them, never a verdict on which position
@@ -1226,8 +1262,8 @@ function nodePosPopup(name, id, p, est) {
 }
 
 // Generation token: a draw can be re-entered while its /api/points fetch is in
-// flight (the checkbox, a refresh, and the name-resolution redraw all trigger
-// one). Without this the later pass clears the layer and both then add their
+// flight (a change of stop, a refresh, and the name-resolution redraw all
+// trigger one). Without this the later pass clears the layer and both then add their
 // markers, leaving duplicates behind.
 let nodePosGen = 0
 // Signature of what is currently drawn. Rebuilding the layer destroys every
@@ -1262,9 +1298,9 @@ async function fetchNodeRegistry() {
 // Both surfaces, from one decision (nodeposnotice.js). Called on every exit
 // path of a draw, including the early ones: a layer that returns without
 // saying why is the whole of #376.
-// `on` defaults to the checkbox, but the role branch passes it explicitly: it
-// clears the checkbox before it can explain itself, and "the account is why"
-// is precisely what a guest who deep-linked ?nodepos=1 needs to be told.
+// `on` defaults to the stop, but the role branch passes it explicitly: it
+// turns the stop off before it can explain itself, and "the account is why"
+// is precisely what a guest who deep-linked ?nodepos= needs to be told.
 // Narrow enough that the disclaimer block is a quarter of the map (#426).
 // matchMedia rather than innerWidth so the answer arrives as an event: the
 // value is read at render time, so re-answering by itself changes nothing —
@@ -1304,8 +1340,8 @@ narrowQuery.addEventListener('change', rerenderNodePosNotice)
 
 // Whether a glance has been started for the current activation of the layer.
 // Needed because `change` is not the only way the layer comes on:
-// urlstate.bindControl restores the checkbox by assignment and dispatches
-// nothing (urlstate.js `set:`), so ?nodepos=1 and the localStorage-restored
+// urlstate restores the stop through its silent `set:` and dispatches
+// nothing (urlstate.js), so ?nodepos= and the localStorage-restored
 // state both arrive with no event at all. Started from the change listener
 // alone, those readers never began a glance, nodePosGlanceOver stayed false,
 // and the note was permanent for the rest of the session — and since urlstate
@@ -1336,10 +1372,10 @@ function ensureNodePosGlance() {
   restartNodePosGlance()
 }
 
-function showNodePosNotice({ on = nodePosCb.checked, member = true, registry = null, drawn = 0 } = {}) {
-  nodePosNoticeArgs = { on, member, registry, drawn }
+function showNodePosNotice({ on = nodePosCb.checked, reason = null, registry = null, drawn = 0 } = {}) {
+  nodePosNoticeArgs = { on, reason, registry, drawn }
   const { note, key } = nodePosPresentation({
-    on, member, registry, drawn, narrow: narrowScreen(), glanceExpired: nodePosGlanceOver,
+    on, reason, registry, drawn, narrow: narrowScreen(), glanceExpired: nodePosGlanceOver,
   })
   const noteEl = document.getElementById('nodepos-note')
   const keyEl = document.getElementById('nodepos-key')
@@ -1372,15 +1408,15 @@ async function drawNodePositions() {
   // with #377; the fetch below is the window that remains.
   if (!nodePosCb.checked || !canSeeObserverPoints(currentRole) || locateActive) {
     clearNodePosLayer(); nodePosSig = null
-    // A guest can still reach this with ?nodepos=1, since urlstate binds the
-    // checkbox whether or not the control is on screen — and that is state 1
-    // of #376: an empty layer whose cause is the account, not the area. The
-    // ask outlives the checkbox below member, or this draw would clear it.
-    showNodePosNotice({ on: nodePosCb.checked || nodePosAskedBelowMember, member: canSeeObserverPoints(currentRole) })
+    // A guest can still reach this with ?nodepos=, since urlstate restores the
+    // stop whatever the role, or with a tap on the rail's button (#630). That
+    // is state 1 of #376: an empty layer whose cause is the account, not the
+    // area. The ask outlives the stop below member, or this draw would clear it.
+    showNodePosNotice({ on: nodePosCb.checked || nodePosAskedBelowMember, reason: nodePosReason(currentRole) })
     return
   }
   // Past the guards, so this is a draw that really puts the layer up. A guest
-  // deep-linking ?nodepos=1 returns above and keeps its note: "the account is
+  // deep-linking ?nodepos= returns above and keeps its note: "the account is
   // why" is the only explanation on screen, and timing it out would leave an
   // empty layer with nothing saying so.
   ensureNodePosGlance()
@@ -1546,10 +1582,8 @@ function clearNodePosLayer() {
   wm.clearMarkers('nodepos')
 }
 
-for (const b of document.querySelectorAll('#nodepos-seg button')) {
-  b.addEventListener('click', () => setNodePosStop(b.dataset.nodepos))
-}
-syncNodePosSeg()
+nodePosFab.addEventListener('click', tapNodePosFab)
+paintNodePosFab()
 
 // The CoreScope sightings follow the node-position stops since #629. They were
 // two checkboxes answering the question this layer already answers — where
@@ -1735,8 +1769,10 @@ onBarChange(() => {
 })
 window.__syncTimeUi = syncTimeUi // test hook
 
-// Clear button: reset every filter to its default, drop the CS observer layers,
-// leave Locate, then redraw + persist (empty values fall out of the URL).
+// Clear button: reset every filter to its default, leave Locate, then redraw +
+// persist (empty values fall out of the URL). Node positions is a view choice
+// since #630 and stays on, but its CoreScope sightings are timeframe-scoped and
+// Clear just restored today's range, so they are fetched again.
 document.getElementById('clear-filters').addEventListener('click', () => {
   if (window.__resetFilters) window.__resetFilters()
   // The picks live in the pickers, not in #f-sender or a native select, so
@@ -1746,9 +1782,9 @@ document.getElementById('clear-filters').addEventListener('click', () => {
   hunterPicker.setSelected([])
   syncTargetToggleLabel()
   syncHunterToggleLabel()
-  clearObserverLayers()
   coverageSel.clear()
-  if (locateActive) deactivateLocate() // restores points/hex per mode
+  if (locateActive) deactivateLocate() // restores points/hex per mode, and the sightings
+  else if (csOn.checked) drawObserverLayers()
   refresh()
   urlstate.save()
   syncTimeUi() // Clear rewrites from/to -> the picker label must follow (#285)
@@ -1882,7 +1918,35 @@ if (rxLog) {
     // The left grab strip spans the visible height, which changes when the
     // list folds away.
     rxLog.style.setProperty('--rx-grab-h', `${Math.max(24, rxLog.offsetHeight)}px`)
+    placeNotices()
   }
+
+  // The notices keep clear of the ticker (#630, noticeplace.js). Measured with
+  // the overrides removed, so the input is always the stylesheet's centred
+  // column and a narrower band, which wraps taller, never feeds back into the
+  // decision. Called from apply(), which every move, fold, close and resize
+  // goes through, and from a ResizeObserver for the two sizes that change on
+  // their own: rows arriving in the ticker and a notice appearing.
+  const notices = document.getElementById('map-notices')
+  const mapRail = document.getElementById('map-rail')
+  function placeNotices() {
+    if (!notices || !mapRail) return
+    for (const v of ['--nt-left', '--nt-w', '--nt-top']) notices.style.removeProperty(v)
+    const column = notices.getBoundingClientRect()
+    const card = rxLog.hidden ? null : rxLog.getBoundingClientRect()
+    const at = noticesPlacement({
+      vw: window.innerWidth,
+      column: { left: column.left, width: column.width, top: column.top, height: column.height },
+      railLeft: mapRail.getBoundingClientRect().left,
+      ticker: card && { left: card.left, right: card.right, top: card.top, bottom: card.bottom },
+    })
+    notices.style.setProperty('--nt-left', `${at.left}px`)
+    notices.style.setProperty('--nt-w', `${at.width}px`)
+    notices.style.setProperty('--nt-top', `${at.top}px`)
+  }
+  const resized = new ResizeObserver(placeNotices)
+  resized.observe(rxLog)
+  if (notices) resized.observe(notices)
 
   // Also what lands a resize across 640px (#643), either way: the crossing is a
   // window resize and re-lays the bar, and both call this, so no listener on the
@@ -2018,7 +2082,6 @@ if (barFilters && filterPill) {
       directOnly: on('f-direct'),
       types: String(types || '').split(',').filter(Boolean),
       idClasses: String((window.currentIdClasses ? window.currentIdClasses() : '') || '').split(',').filter(Boolean),
-      nodePos: nodePosCb.checked,   // either on-stop of the three (#603)
     })
     const pillCount = document.getElementById('filter-pill-count')
     pillCount.hidden = count === 0
@@ -2065,7 +2128,8 @@ if (barFilters && filterPill) {
   refreshFilterPill()
 }
 
-urlstate.register({ key: 'nodepos', get: () => nodePosStop, set: (v) => setNodePosStop(v, { restore: true }) })
+// Off is the empty value, so it falls out of the URL like every other default.
+urlstate.register({ key: 'nodepos', get: () => (nodePosStop === 'off' ? '' : nodePosStop), set: (v) => setNodePosStop(v, { restore: true }) })
 urlstate.register({ key: 'types', get: () => window.currentTypes(), set: (v) => window.setTypes(v) })
 urlstate.register({ key: 'idclass', get: () => window.currentIdClasses(), set: (v) => window.setIdClasses(v) })
 // Captured before load(): the picker is wired further down (it needs the DOM),
