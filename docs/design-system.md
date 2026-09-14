@@ -157,9 +157,10 @@ property of the **surface**, not of the ticker: the next interaction popup added
 the reader the same.
 
 **How it moves aside is a width question, not a touch one.** Above 640px it drags. Below,
-the card is full-bleed (`min(680px, 100vw)`), so every position is the same band at a different
-height and there is no "out of the way" to drag it to — its stops and its cross are what move it
-aside there, which is what the app does at every width (#561).
+the card is pinned as in the app: centred under the bar at `calc(100vw - 20px)` (#643). It spans
+the map, so there is no "out of the way" to drag it to, and its stops and its cross are what move
+it aside there, which is what the app does at every width (#561). The position dragged on a wide
+screen is kept, not clamped, while narrow, so it is back when the screen is wide again.
 
 So dragging is the one of the three that comes neither to the app nor to a phone. Both for the
 same reason: it only means something when there is map beside the panel as well as under it.
@@ -199,7 +200,7 @@ rules declaration by declaration.
 
 | | app | map | reason |
 |---|---|---|---|
-| position | fixed, centred | placed; dragged above 640px | surface rule above |
+| position | fixed, centred | placed and dragged above 640px; centred below, as in the app | surface rule above |
 | pointer events | caught | passed through | surface rule above |
 
 Everything else is the same, including the collapse stops and the cross with its bar button.

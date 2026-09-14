@@ -25,7 +25,7 @@ import { activeFilterCount } from './barfilters.js'
 import { hunterOptionLabel, hunterList, topHunters, withoutHunterFilter, keptSelection } from './hunterpicker.js'
 import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeForRole, rangeIsLive, coverageLabel, coverageTitle, oldestRxAt, resolveTimeValue, absoluteShareUrl, toLocalInput, boundFromField } from './timerange.js'
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
-import { initialPlacement, clampToViewport, serialise, parse as parsePlacement } from './tickerplace.js'
+import { initialPlacement, clampToViewport, clampUnlessNarrow, serialise, parse as parsePlacement } from './tickerplace.js'
 import { wireNarrowBar } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 
@@ -1823,13 +1823,17 @@ urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 // it back" button and the clamp is the safety net: on load and on every resize
 // the box is pulled inside the viewport, or a ticker left at the edge of a wide
 // monitor would be unreachable on a laptop.
+//
+// Below 640px there is no placement at all (#643): the stylesheet pins the card
+// centred under the bar, as in the app. The stored x,y is kept rather than
+// clamped there, so the position dragged on a wide screen is still there when
+// the screen is wide again.
 // The placement block runs before createReceptionTicker does, so the stored
 // level cannot reach the component on load from inside it. This is how it gets
 // there once the ticker exists (#424).
 let syncTickerCollapse = () => {}
 const rxLog = document.getElementById('rx-log')
 if (rxLog) {
-  const NARROW = window.matchMedia('(max-width: 640px)')
   let place = { x: 0, y: 0, collapse: 0, hidden: false }
 
   // The bar's lower edge, which is the ticker's ceiling: the bar is opaque, so
@@ -1850,8 +1854,16 @@ if (rxLog) {
   })
 
   function apply() {
-    rxLog.style.setProperty('--rx-x', `${place.x}px`)
-    rxLog.style.setProperty('--rx-y', `${place.y}px`)
+    // Removed rather than left stale below 640px: the narrow rule takes its top
+    // from the var's own fallback, under the bar, so a written --rx-y would
+    // hang the pinned card at the wide screen's height.
+    if (narrowQuery.matches) {
+      rxLog.style.removeProperty('--rx-x')
+      rxLog.style.removeProperty('--rx-y')
+    } else {
+      rxLog.style.setProperty('--rx-x', `${place.x}px`)
+      rxLog.style.setProperty('--rx-y', `${place.y}px`)
+    }
     // The ticker owns its own height now (#424): full, three lanes, one. Away
     // is the cross, and the bar button is how it comes back, exactly as in the
     // app.
@@ -1872,8 +1884,11 @@ if (rxLog) {
     rxLog.style.setProperty('--rx-grab-h', `${Math.max(24, rxLog.offsetHeight)}px`)
   }
 
+  // Also what lands a resize across 640px (#643), either way: the crossing is a
+  // window resize and re-lays the bar, and both call this, so no listener on the
+  // query itself is needed. matches is read live, so it is already the new side.
   function reflow() {
-    place = { ...place, ...clampToViewport(place, size(), viewport()) }
+    place = { ...place, ...clampUnlessNarrow(place, size(), viewport(), narrowQuery.matches) }
     apply()
   }
 
@@ -1882,13 +1897,13 @@ if (rxLog) {
     get: () => serialise(place),
     set: (v) => {
       const saved = parsePlacement(v)
-      place = initialPlacement({ saved, size: loadSize(), viewport: viewport(), narrow: NARROW.matches })
+      place = initialPlacement({ saved, size: loadSize(), viewport: viewport(), narrow: narrowQuery.matches })
       apply()
     },
   })
   // urlstate only calls set() when it has a value, so a first visit needs the
   // same decision made explicitly rather than leaving the ticker at 0,0.
-  place = initialPlacement({ saved: null, size: loadSize(), viewport: viewport(), narrow: NARROW.matches })
+  place = initialPlacement({ saved: null, size: loadSize(), viewport: viewport(), narrow: narrowQuery.matches })
   apply()
 
   window.addEventListener('resize', reflow)
@@ -1924,12 +1939,12 @@ if (rxLog) {
   // Pointer events rather than mouse so a drag works from a pen or a touch
   // screen on a wide display, where the frame is reached the same way.
   //
-  // Dragging stops below 640px (#561). The card is full-bleed there
-  // (`min(680px, 100vw)`), so there is no "out of the way" to drag it to: every
-  // position is the same full-width band at a different height. Shrinking and
-  // dismissing are what move it aside on a phone, which is exactly what the app
-  // does at every width. The strips are `display: none` at that width too, so
-  // this is belt and braces rather than the mechanism.
+  // Dragging stops below 640px (#561). The card is pinned there at
+  // `calc(100vw - 20px)` (#643), so there is no "out of the way" to drag it to:
+  // it spans the map whatever its height. Shrinking and dismissing are what
+  // move it aside on a phone, which is exactly what the app does at every width.
+  // The strips are `display: none` at that width too, so this is belt and
+  // braces rather than the mechanism.
   const dragHandle = (target) => (narrowQuery.matches ? null : target.closest('.rx-grab-t, .rx-grab-l'))
 
   rxLog.addEventListener('pointerdown', (e) => {

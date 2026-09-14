@@ -71,6 +71,8 @@ test('drags by its frame and remembers where it was left', async ({ page }) => {
 test('a ticker left at the edge of a wide screen is still reachable on a narrow one', async ({ page }) => {
   // The safety net the issue asks for: dragging replaces the anchor, so there
   // is no "put it back" and an off-screen ticker would be lost for good.
+  // 720, not a phone: below 640px the card is pinned rather than clamped
+  // (#643), and that has its own case below.
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.goto('/')
   const strip = page.locator('.rx-grab-t')
@@ -80,16 +82,56 @@ test('a ticker left at the edge of a wide screen is still reachable on a narrow 
   await page.mouse.move(1380, 860, { steps: 8 })
   await page.mouse.up()
 
-  await page.setViewportSize({ width: 480, height: 700 })
+  await page.setViewportSize({ width: 720, height: 700 })
   // Polled: the clamp runs from the resize handler, so asserting on the first
   // measurement races it. Polling also proves it actually settles rather than
   // happening to be right at one instant.
-  await expect.poll(async () => (await box(page)).x, { timeout: 5000 }).toBeLessThanOrEqual(480)
+  await expect.poll(async () => (await box(page)).right, { timeout: 5000 }).toBeLessThanOrEqual(720)
   const b = await box(page)
   expect(b.x).toBeGreaterThanOrEqual(0)
   expect(b.right, 'stranded off the right edge').toBeLessThanOrEqual(b.vw)
   expect(b.y).toBeLessThanOrEqual(b.vh)
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
+})
+
+// #643: below 640px the card is pinned under the bar like the app's, and the
+// position dragged on a wide screen is kept for when it is wide again. The
+// stored x,y is the part that used to be lost: urlstate writes the placement
+// back on every load, so clamping it against the phone overwrote it for good.
+test('pins under the bar on a narrow screen, and keeps the wide position for later', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const s = await page.locator('.rx-grab-t').boundingBox()
+  await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(900, 500, { steps: 10 })
+  await page.mouse.up()
+  const dragged = await box(page)
+  const storedXY = () => page.evaluate(() => (new URLSearchParams(location.search).get('rx') || '').split(',').slice(0, 2).join(','))
+  const wideXY = await storedXY()
+  expect(wideXY, 'the drag was not stored').toBe(`${dragged.x},${dragged.y}`)
+
+  // Centred at the app's width, straight under the bar. Polled for the same
+  // reason as the clamp above: the resize handler is what lands it.
+  const pinned = async () => {
+    const b = await box(page)
+    return b.w === b.vw - 20 && b.x === 10 && b.y >= b.barBottom && b.y <= b.barBottom + 5
+  }
+  await page.setViewportSize({ width: 390, height: 780 })
+  await expect.poll(pinned, { timeout: 5000 }).toBe(true)
+  // Removed, not left stale. The narrow rule's `left: 50%` hides a stale
+  // --rx-x from every geometry check, so only the inline style can show it.
+  expect(await page.locator('#rx-log').evaluate((el) => [el.style.getPropertyValue('--rx-x'), el.style.getPropertyValue('--rx-y')]))
+    .toEqual(['', ''])
+  // A reload is the load-time save that used to overwrite the position.
+  await page.reload()
+  await expect(page.locator('#rx-log')).toBeVisible()
+  await expect.poll(pinned, { timeout: 5000 }).toBe(true)
+  expect(await storedXY(), 'a narrow load rewrote the wide position').toBe(wideXY)
+
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect.poll(async () => { const b = await box(page); return `${b.x},${b.y}` }, { timeout: 5000 })
+    .toBe(`${dragged.x},${dragged.y}`)
 })
 
 // A height-only resize does not change the bar's size, so the bar's
@@ -259,9 +301,9 @@ test('the frame is invisible at rest and never covers the map', async ({ page })
   }
 })
 
-// Dragging is a wide-screen affordance (#561). The card is full-bleed below
-// 640px, so every position is the same band at a different height -- there is
-// no "out of the way" to drag it to. Shrinking and dismissing are what move it
+// Dragging is a wide-screen affordance (#561). The card is pinned below 640px
+// at the app's width (#643), spanning the map -- there is no "out of the way"
+// to drag it to. Shrinking and dismissing are what move it
 // aside there, which is what the app does at every width.
 test.describe('in mobile view', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })

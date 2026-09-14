@@ -287,8 +287,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    across the middle-top of the map, over the content, colliding with Leaflet's
    zoom control at the top-left. It is now a box the user drags, positioned from
    --rx-x/--rx-y which tickerplace.js clamps into the viewport on load and on
-   resize. The 680px width is what .rx-hd/.rx-list already constrained
-   themselves to, so the rows are unchanged; only the box around them moved. */
+   resize. Below 640px it is pinned instead (#643), in the narrow block. The
+   680px width is what .rx-hd/.rx-list already constrained themselves to, so
+   the rows are unchanged; only the box around them moved. */
 /* The backing plate (#424, F3 of the 26 August review). The app got one in
    #539; here the rows lay straight on the tiles, which is unreadable over a
    light basemap. pointer-events stays none on the box: the plate paints, and
@@ -951,19 +952,26 @@ body.wb-onboarding-on #bar { z-index:710; }
      24) plus 8px of air. The attribution keeps the strip below both, which is
      the part that is not cosmetic. */
   #nodepos-stack { left: 8px; right: 8px; bottom: 56px; max-width: none; }
-  /* The ticker does not drag at this width (#561). It is full-bleed here
-     (`min(680px, 100vw)`), so every position is the same band at a different
-     height and there is no "out of the way" to reach. The chevron's stops and
-     the cross are what move it aside, which is what the app does at every
-     width. Removing the strips rather than making them inert: they are 6px of
+  /* The ticker is pinned here, as in the app (#643): centred, 10px from each
+     edge, under the bar. Only the box is the app's; its top is not the app's
+     literal 52px but the base rule's fallback, calc(var(--ch-bar-h) + 4px),
+     because this bar's height varies. map.js removes --rx-x/--rx-y at this
+     width so that fallback applies, and keeps the stored position for when the
+     screen is wide again. */
+  #rx-log { left: 50%; transform: translateX(-50%); width: calc(100vw - 20px); }
+  /* The ticker does not drag at this width (#561). It spans the map here, so
+     there is no "out of the way" to reach. The chevron's stops and the cross
+     are what move it aside, which is what the app does at every width.
+     Removing the strips rather than making them inert: they are 6px of
      invisible hit area, and an invisible target that does nothing is worse
      than no target. */
   .rx-grab { display: none; }
-  /* Zoom moves to the bottom left. At this width the ticker is full-bleed
-     (`min(680px, 100vw)`) and starts under the bar, so the top-left corner is
-     the one place a map control cannot be: measured at 375x812 with the control
-     up there, elementFromPoint on the + returned #rx-log. Bottom is also where
-     a thumb is, which is the same reason the app's FABs sit low (#257). */
+  /* Zoom moves to the bottom left. At this width the ticker spans the map
+     (`calc(100vw - 20px)`, #643) and starts under the bar, so the top-left
+     corner is the one place a map control cannot be: measured at 375x812 with
+     the control up there, elementFromPoint on the + returned #rx-log. Bottom is
+     also where a thumb is, which is the same reason the app's FABs sit low
+     (#257). */
   .maplibregl-ctrl-top-left { top: auto; bottom: 44px; }
   .maplibregl-ctrl-top-left .maplibregl-ctrl { margin-top: 0; margin-bottom: 10px; }
 }

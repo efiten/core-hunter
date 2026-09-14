@@ -568,7 +568,8 @@ describe('receptions ticker CSS parity (#322)', () => {
   // has a drawn button. None of that is visible to a test that only checks
   // lane counts, so it drifted until someone looked at the two side by side.
   // This pins the chrome itself. What is deliberately per-surface is #rx-log's
-  // own box, which is placed and draggable on the map and centred in the app.
+  // own box, which is placed and draggable on a wide map and centred in the app
+  // (and on a map below 640px, #643).
   it('draws the same card on both surfaces', () => {
     const decls = (block, selector) => {
       const found = declBlock(block, selector)
