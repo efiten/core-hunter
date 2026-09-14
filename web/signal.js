@@ -153,8 +153,13 @@ export function tintOver(color, background, alpha) {
 // cell under it composites to. Measured 2026-09-05 (dark theme): a faint bar
 // used to stand at 85% solid purple on a 19% tint; with this it is within a
 // few levels of its cell at every tier.
-export function pillarTint(tier, tokenColor, background) {
-  return tintOver(tokenColor, background, fillOpacity(tier))
+//
+// `dim` multiplies the tier's opacity (#624): with a coverage star selected, a
+// bar outside it steps back by the same factor as its flat cell, so the two
+// still agree. Pre-mixed, so a dimmed bar moves toward the ground on both
+// themes. 1 leaves it exactly as it was.
+export function pillarTint(tier, tokenColor, background, dim = 1) {
+  return tintOver(tokenColor, background, fillOpacity(tier) * dim)
 }
 
 // The style light MapLibre shades every extrusion face with. Its default

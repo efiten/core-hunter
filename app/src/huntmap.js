@@ -1,15 +1,15 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarTint, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
-import { recordsKey, lastValueCache, hueKey } from './rendercache.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey } from './rendercache.js'
 import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
 import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
 import { displayName } from './names.js'
@@ -89,6 +89,9 @@ const POINT_PILLAR_RADIUS_M = 3
 // footprint off sub-pixel when zoomed out (#250). Across the flats that is
 // 4 x cos(pi/8) = 3.70 px, deliberately slimmer than the old square (#308).
 const POINT_PILLAR_MIN_RADIUS_PX = 4
+// The trail's own opacity, named so the layer and the #624 selection dim read
+// the same number rather than two copies of 0.5 that could drift apart.
+const TRAIL_OPACITY = 0.5
 
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
@@ -177,6 +180,10 @@ export function createHuntMap(containerId) {
     if (!coverageHue.size || !isRepeaterHearing(r) || r.sender_id == null) return null
     return coverageHue.get(String(r.sender_id).toLowerCase()) || null
   }
+  // The repeater a reception belongs to, by the same attribution the stars
+  // use, or null when it belongs to none (#624): what selectionDim is asked
+  // about for a dot, a cell or a pillar.
+  const ownerOf = (r) => (isRepeaterHearing(r) && r.sender_id != null ? r.sender_id : null)
   // Builds the stars for this tick, puts the rays up (one setData feeds the
   // 2D line source and the 3D ray layer), a ● hub for a star with no registry
   // position, and remembers the hues. Returns the selection for the markers.
@@ -214,6 +221,10 @@ export function createHuntMap(containerId) {
   let npMeasure = null
   const labelMeasurer = () => npMeasure || (npMeasure = createLabelMeasurer(map.getContainer()))
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
+  // The repeater whose popup comes back after a selecting tap (#623). A tap
+  // that selects redraws the node layer, and the redraw removes every marker,
+  // the tapped one included, so its popup has to be reopened on the rebuilt one.
+  let reopenNodeKey = null
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false
@@ -275,17 +286,19 @@ export function createHuntMap(containerId) {
   // nothing that moves on its own. All six are in the key, because a cache that
   // misses one input serves the previous tick's answer for a different question.
   const pointsCache = lastValueCache()
-  function buildPointsFC(records) {
+  function buildPointsFC(records, sel) {
     const outlines = showBacklogPoints(map.getZoom())
     const sig = recordsKey(records), hues = hueKey(coverageHue)
     // Unsignable on either axis means recompute: a key carrying "null" would
-    // match another set that also could not be signed.
+    // match another set that also could not be signed. The selection joined
+    // the key in #624, since it dims every dot outside it: a tap changes no
+    // record, so without it the cache would hand back the undimmed map.
     const key = sig === null || hues === null
       ? null
-      : `${sig}|${outlines ? 1 : 0}|${currentOffset()}|${cssVar('--ch-basemap')}|${hues}`
-    return pointsCache.get(key, () => buildPointsFCUncached(records, outlines))
+      : `${sig}|${outlines ? 1 : 0}|${currentOffset()}|${cssVar('--ch-basemap')}|${hues}|${selectionKey(sel)}`
+    return pointsCache.get(key, () => buildPointsFCUncached(records, outlines, sel))
   }
-  function buildPointsFCUncached(records, outlines) {
+  function buildPointsFCUncached(records, outlines, sel) {
     const feats = []
     // Backlog (#556): below BACKLOG_OUTLINE_ZOOM a reception from an earlier
     // ride is coverage only, its hex cell; from that zoom it comes back as an
@@ -300,8 +313,12 @@ export function createHuntMap(containerId) {
       // op is the stroke, fop the fill. The stroke is full since #648: it used
       // to carry the age fade alone, and it is what keeps a faint reception
       // findable on the map, so the tier belongs in the fill and not in it.
+      // A selection (#624) steps both back for every dot that is not the
+      // selected repeater's, so the other repeaters' dots no longer sit at full
+      // colour on top of their own dimmed rays.
+      const dim = selectionDim(sel, ownerOf(r))
       feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
-        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: 1, fop: fillOpacity(tier), backlog: backlog ? 1 : 0 } })
+        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: dim, fop: fillOpacity(tier) * dim, backlog: backlog ? 1 : 0 } })
     }
     return fc(feats)
   }
@@ -327,12 +344,14 @@ export function createHuntMap(containerId) {
   // zoom (the footprint), the offset and the theme, and all four are in the key.
   const collapseCache = lastValueCache()
   const pillarsCache = lastValueCache()
-  function buildPoints3DFC(records) {
+  function buildPoints3DFC(records, sel) {
     const sig = recordsKey(records)
-    const key = sig === null ? null : `${sig}|${map.getZoom()}|${currentOffset()}|${cssVar('--ch-basemap')}`
-    return pillarsCache.get(key, () => buildPoints3DFCUncached(records))
+    // The selection is in the key since #624, for the reason it is in the flat
+    // points' key: it dims every pillar outside it without changing a record.
+    const key = sig === null ? null : `${sig}|${map.getZoom()}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}`
+    return pillarsCache.get(key, () => buildPoints3DFCUncached(records, sel))
   }
-  function buildPoints3DFCUncached(records) {
+  function buildPoints3DFCUncached(records, sel) {
     const feats = []
     const rideStart = rideStartFor(records)
     // The ride outranks the strength in the collapse (#647). The survivor is
@@ -358,9 +377,12 @@ export function createHuntMap(containerId) {
       //
       // Which alpha is the ride rule itself (#647): the tier's own opacity for
       // this ride, one flat value below the weakest tier for everything before.
+      // A selection (#624) multiplies onto that, and because the colour is
+      // pre-mixed a dimmed pillar moves toward the ground on both themes rather
+      // than toward black on the light one.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
         properties: { id: String(r.id),
-          color: tintOver(cssVar(tierColorVar(tier)), cssVar('--ch-bg'), pillarAlpha(tier, isBacklog(r, rideStart))),
+          color: tintOver(cssVar(tierColorVar(tier)), cssVar('--ch-bg'), pillarAlpha(tier, isBacklog(r, rideStart)) * selectionDim(sel, ownerOf(r))),
           height: extrusionHeight(r.rssi, currentOffset()) } })
     }
     return fc(feats)
@@ -370,7 +392,7 @@ export function createHuntMap(containerId) {
   // offset, so the answer changes only when the records, the zoom resolution or
   // that offset do — all three are in the key (#462).
   const hexCache = lastValueCache()
-  function buildHexFC(records) {
+  function buildHexFC(records, sel) {
     const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
     // An unsignable set must not be cached under the string "null|10|0", which
     // is a perfectly good cache key and exactly the wrong one — the null has to
@@ -378,28 +400,42 @@ export function createHuntMap(containerId) {
     const sig = recordsKey(records)
     // The theme is in the key too (#412): the colours are read from the
     // tokens at build time, so a theme switch on unchanged records must not
-    // serve the other theme's cells and bars from the cache.
-    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}`, () => buildHexFCUncached(records, res))
+    // serve the other theme's cells and bars from the cache. So is the
+    // selection (#624), which dims cells without changing a record.
+    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}`, () => buildHexFCUncached(records, res, sel))
   }
-  function buildHexFCUncached(records, res) {
+  function buildHexFCUncached(records, res, sel) {
+    // A cell holds receptions from several repeaters at once, so it cannot ask
+    // selectionDim about one owner. It stays lit when ANY reception in it
+    // belongs to a selected repeater (#624): the cell is where that repeater
+    // was heard, even if a louder one from elsewhere set its colour. With no
+    // selection every reception answers 1, so every cell is lit and nothing
+    // changes from before.
     const cells = new Map()
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
       const id = hexCellAt(r.lat, r.lon, res)
+      const lit = selectionDim(sel, ownerOf(r)) === 1
       const cur = cells.get(id)
-      if (!cur || (r.rssi ?? -999) > (cur.best ?? -999)) cells.set(id, { best: r.rssi })
+      if (!cur) { cells.set(id, { best: r.rssi, lit }); continue }
+      if ((r.rssi ?? -999) > (cur.best ?? -999)) cur.best = r.rssi
+      if (lit) cur.lit = true
     }
     const feats = []
+    const bg = cssVar('--ch-bg')
     for (const [id, c] of cells) {
       const ring = hexBoundary(id); if (!ring) continue // [lat,lon] closed ring → [lon,lat]
       const tier = rssiTier(c.best, currentOffset())
       const token = cssVar(tierColorVar(tier))
+      const alpha = fillOpacity(tier) * (c.lit ? 1 : selectionDim(sel))
       // height and pillar are only read by the 3D fill-extrusion twin (hex-3d);
       // the flat 'hex' layer ignores them. Same source for both, per the
       // decision log. pillar is the cell's tint pre-mixed over the theme
-      // background (#412): opaque, so the bar reads as its cell does.
+      // background (#412): opaque, so the bar reads as its cell does. It takes
+      // the same dimmed alpha as the flat cell, which is what pillarTint would
+      // give undimmed, so a bar and its cell still agree under a selection.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring.map(([la, lo]) => [lo, la])] },
-        properties: { color: token, op: fillOpacity(tier), pillar: pillarTint(tier, token, cssVar('--ch-bg')), height: extrusionHeight(c.best, currentOffset()) } })
+        properties: { color: token, op: alpha, pillar: tintOver(token, bg, alpha), height: extrusionHeight(c.best, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -521,7 +557,7 @@ export function createHuntMap(containerId) {
     const vis = layerVisibility({ mode, mode3D })
     const shown = (id) => (vis[id] ? 'visible' : 'none')
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
-      paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': 0.5 } })
+      paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': TRAIL_OPACITY } })
     if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
       layout: { visibility: shown('hex') },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
@@ -721,10 +757,18 @@ export function createHuntMap(containerId) {
     // so it is built when either is on.
     const vis = layerVisibility({ mode, mode3D })
     const cov = drawCoverage(records)
-    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records) : EMPTY)
-    map.getSource('points').setData(vis.points ? buildPointsFC(records) : EMPTY)
-    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records) : EMPTY)
+    // With a star selected, the rest of the map steps back, not only the other
+    // stars (#624). null outside the reach stop, since drawCoverage answers
+    // null there, so nothing dims unless the reach is on.
+    const sel = cov ? cov.selected : null
+    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records, sel) : EMPTY)
+    map.getSource('points').setData(vis.points ? buildPointsFC(records, sel) : EMPTY)
+    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, sel) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
+    // The trail belongs to no repeater, so it is never part of a selection and
+    // always steps back with one. One LineString with no properties, so this
+    // is the layer's paint, not a feature value.
+    if (map.getLayer('trail')) map.setPaintProperty('trail', 'line-opacity', TRAIL_OPACITY * selectionDim(sel))
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
     drawNodeLayer(records, cov)
@@ -883,8 +927,13 @@ export function createHuntMap(containerId) {
     if (selected) inner.classList.add('np-selected')
     if (dim) inner.classList.add('np-dim')
     const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
-    el.addEventListener('click', (e) => { e.stopPropagation(); if (onTap) onTap(); marker.togglePopup() })
+    // A selecting tap redraws the node layer, which removes this very marker,
+    // so toggling its popup afterwards would open it on a marker already gone.
+    // That tap sets reopenNodeKey instead and drawNodeLayer reopens the popup
+    // on the rebuilt marker (#623). A tap with nothing to select just toggles.
+    el.addEventListener('click', (e) => { e.stopPropagation(); if (onTap) onTap(); else marker.togglePopup() })
     nodeMarkers.push(marker)
+    return marker
   }
 
   // Recomputed per tick: the visible node set follows the viewport, and each
@@ -960,11 +1009,25 @@ export function createHuntMap(containerId) {
       // declutter kept the name (#539).
       const key = String(n.pubkey).toLowerCase()
       const hue = coverageHue.get(key) || null
-      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
-        { color: hue, selected: !!(cov && cov.selected.has(key)), dim: !!(cov && cov.selected.size && !cov.selected.has(key) && hue),
-          onTap: hue ? () => toggleCoverageSelection(key) : null })
+      // Every repeater is selectable in the reach stop, star or no star (#623).
+      // The gate used to be `hue`, which did two jobs: it hid the tap from a
+      // repeater with no hearings this tick, and it stood in for "the reach is
+      // on", since coverageHue is empty outside it. coverageOn() now says the
+      // second directly, and the first is gone. A repeater with no hearings is
+      // a valid selection: nothing draws from it, everything else dims, and its
+      // popup says why. The dim loses its `hue` term for the same reason.
+      const reachOn = coverageOn()
+      const selected = !!(cov && cov.selected.has(key))
+      const tap = reachOn ? () => { reopenNodeKey = key; toggleCoverageSelection(key) } : null
+      const popupFor = () => nodePopup(n, p, est, { key, reachOn, selected, heard: !!hue })
+      const adv = addNodeMarker('np-advert', '▲', [n.lon, n.lat], popupFor(), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
+        { color: hue, selected, dim: !!(cov && cov.selected.size && !selected), onTap: tap })
+      // Only on the ▲, so a tap on the ● does not leave two popups open.
+      if (reopenNodeKey === key) adv.togglePopup()
       if (!est || !est.centroid) continue
-      addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], nodePopup(n, p, est))
+      // The ● is the same repeater, so it selects the same star (coverage log,
+      // decision 6: a tap on a repeater's ▲ or ● selects it).
+      addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], popupFor(), null, { onTap: tap })
       lines.push({ type: 'Feature', properties: { color },
         geometry: { type: 'LineString', coordinates: [[n.lon, n.lat], [est.centroid.lon, est.centroid.lat]] } })
       if (p.circle) {
@@ -973,11 +1036,15 @@ export function createHuntMap(containerId) {
           geometry: { type: 'LineString', coordinates: ring } })
       }
     }
+    // Cleared whether or not it matched: a repeater that scrolled out of view
+    // between the tap and the redraw must not pop its popup open the next time
+    // it comes back.
+    reopenNodeKey = null
     map.getSource('nodedrift').setData(fc(lines))
     map.getSource('nodecircle').setData(fc(circles))
   }
 
-  function nodePopup(n, p, est) {
+  function nodePopup(n, p, est, { key = null, reachOn = false, selected = false, heard = false } = {}) {
     const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
     const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
     // "no estimate" is not the same as "not heard" (#272). An advert or a
@@ -997,10 +1064,26 @@ export function createHuntMap(containerId) {
           ? `search radius ~${Math.round(p.circle.radiusM)} m`
           : 'one-sided — radius not trusted'}</span>`
       : ''
-    return new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+    // The reach action (#623), back in the popup where every other per-node
+    // action lives. #603 retired #549's per-node buttons when the layer began
+    // drawing every star at once, which left selecting a star an undiscoverable
+    // tap. Only in the reach stop, where a selection means something. It says
+    // what a press will do, so a selected repeater offers to hide its reach.
+    const reach = reachOn
+      ? `<br><button class="ch-reach${selected ? ' active' : ''}">${selected ? 'Hide reach' : 'Show reach'}</button>`
+        + (heard ? '' : '<br><span class="np-muted">No hearings in this window yet, so there is no reach to draw.</span>')
+      : ''
+    const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
       .setHTML(`<div class="ch-popup">${esc(n.name || n.pubkey)}<br>`
-        + `<span class="np-muted">${markers}</span>${drift}${circle}`
+        + `<span class="np-muted">${markers}</span>${drift}${circle}${reach}`
         + `<br><span class="np-muted np-caveat">Advertised position is self-reported by the operator and may be stale.</span></div>`)
+    // The popup's DOM exists only once it opens, so the button is wired then,
+    // the way wireIsolate wires a reception popup's buttons.
+    if (reachOn && key) popup.on('open', () => {
+      const btn = popup.getElement()?.querySelector('.ch-reach')
+      if (btn) btn.onclick = () => { reopenNodeKey = key; toggleCoverageSelection(key) }
+    })
+    return popup
   }
 
   // ---- public API (unchanged from the Leaflet version) ----

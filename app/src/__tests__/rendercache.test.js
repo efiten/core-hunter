@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { recordsKey, lastValueCache, hueKey } from '../rendercache.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey } from '../rendercache.js'
 
 const rec = (id) => ({ id, lat: 51, lon: 4, rssi: -70 })
 
@@ -96,6 +96,35 @@ describe('hueKey', () => {
 
   it('refuses to sign something that is not a map', () => {
     for (const bad of [null, undefined, {}, [], 'nope']) expect(hueKey(bad), String(bad)).toBeNull()
+  })
+})
+
+// #624 made the selection an input to the dots, the cells and the pillars, so
+// it has to be in their cache keys. The failure it guards is silent: a tap
+// changes the selection, the records do not change, and the cache hands back
+// the map as it was before the tap.
+describe('selectionKey', () => {
+  const s = (...ids) => new Set(ids)
+
+  it('signs no selection and an empty one alike, as the empty string', () => {
+    expect(selectionKey(null)).toBe('')
+    expect(selectionKey(undefined)).toBe('')
+    expect(selectionKey(s())).toBe('')
+  })
+
+  it('changes when the selection does', () => {
+    // The whole point: without this the cache serves the undimmed map after a
+    // tap, since nothing else in the key moved.
+    expect(selectionKey(s('aa'))).not.toBe(selectionKey(s('bb')))
+    expect(selectionKey(s('aa'))).not.toBe(selectionKey(s()))
+  })
+
+  it('ignores the order the repeaters were picked in', () => {
+    expect(selectionKey(s('aa', 'bb'))).toBe(selectionKey(s('bb', 'aa')))
+  })
+
+  it('ignores the case an id arrives in', () => {
+    expect(selectionKey(s('AA'))).toBe(selectionKey(s('aa')))
   })
 })
 
