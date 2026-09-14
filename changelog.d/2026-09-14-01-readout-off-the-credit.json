@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-14-readout-off-the-credit",
+  "date": "2026-09-14",
+  "where": "map",
+  "title": "The count no longer covers the map credit",
+  "body": "The cells and points count in the bottom corner now sits above the map credit instead of over it, on a phone too."
+}
