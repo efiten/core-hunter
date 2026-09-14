@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM , tintOver, pillarTint, EXTRUSION_LIGHT_INTENSITY } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM , tintOver, pillarTint, pillarAlpha, BACKLOG_PILLAR_ALPHA, EXTRUSION_LIGHT_INTENSITY } from '../signal.js'
 
 describe('thermal signal tiers (hot = strong)', () => {
   it('maps SNR to tiers', () => {
@@ -110,6 +110,43 @@ describe('effectivePlotOffset — calibration + attenuator added back', () => {
 // rather than against the drive, so the gradient was usually invisible, and it
 // held the only per-feature channel a pillar has. The pulse says what is
 // arriving now and the ride step says what is from before — see signal.js.
+
+// #647 spends the channel #648 freed. The tiers occupy 0.7 down to 0.15, and
+// the backlog steps off that scale entirely rather than sliding down it, which
+// mirrors what 2D does: there the backlog drops its fill and keeps its outline.
+const TIERS = ['hot', 'warm', 'mid', 'cool', 'cold', 'faint', 'none']
+describe('pillarAlpha — which ride a 3D pillar belongs to (#647)', () => {
+  it('leaves a reception from this ride on its own tier opacity', () => {
+    for (const tier of TIERS) expect(pillarAlpha(tier, false), tier).toBe(fillOpacity(tier))
+  })
+
+  it('gives every backlog reception the same value, whatever its tier', () => {
+    const all = TIERS.map((tier) => pillarAlpha(tier, true))
+    expect(new Set(all).size, 'one flat value, not a factor per tier').toBe(1)
+    expect(all[0]).toBe(BACKLOG_PILLAR_ALPHA)
+  })
+
+  it('puts the backlog under every tier that actually draws a pillar', () => {
+    // The invariant the flat value exists for, and the one a later tweak could
+    // quietly break: within a colour, this ride must always be the more present
+    // of the two, so nothing from this ride can imitate a backlog pillar.
+    // 'none' is left out because extrusionHeight gives it 0 — no pillar is
+    // drawn for it at any alpha, so it cannot be confused with anything.
+    // 'none' is the no-metric tier, reached by a null rssi and not by a weak
+    // one: -130 dBm is 'faint', which does draw. Nothing is exempt except the
+    // reception that carries no measurement at all.
+    expect(extrusionHeight(null), 'none draws nothing, which is why it is exempt').toBe(0)
+    for (const tier of TIERS.filter((t) => t !== 'none')) {
+      expect(BACKLOG_PILLAR_ALPHA, tier).toBeLessThan(fillOpacity(tier))
+    }
+  })
+
+  it('stays above zero, so the backlog is dimmed rather than deleted', () => {
+    // The map must never hide a measurement: a backlog reception is still where
+    // something was heard, which is the same reason 2D keeps the outline.
+    expect(BACKLOG_PILLAR_ALPHA).toBeGreaterThan(0)
+  })
+})
 
 describe('withAlpha — pillars carry fade in the colour (#302)', () => {
   it('converts a 6-digit hex token to rgba', () => {

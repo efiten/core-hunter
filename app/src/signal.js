@@ -10,6 +10,26 @@ export function tierColorVar(tier) { return `--ch-sig-${tier}` }
 const OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.26, faint: 0.19, none: 0.15 }
 export function fillOpacity(tier) { return OPACITY[tier] ?? 0.15 }
 
+// What a 3D pillar says about the ride it belongs to (#647). Everything from
+// this ride keeps its tier's own opacity; everything from before takes one flat
+// value, off the tier scale entirely, so within one colour "this ride" is
+// always the more present of the two and nothing from this ride can imitate a
+// backlog pillar.
+//
+// One value rather than a factor per tier, which is what a factor cannot give:
+// tier x 0.5 would put a backlog hot pillar (0.35) exactly where a this-ride
+// cool one sits (0.34), and the whole point is that the ride is a yes or no.
+//
+// 0.12 is below the weakest tier that draws at all. `none` is 0.15 on paper but
+// its extrusion height is 0, so nothing is drawn for it and `faint` at 0.19 is
+// the real floor. Measured against the dark ground on 2026-09-14 (MapLibre
+// 4.7.1, with the #412 style light): 0.12 stands 15 levels off the ground where
+// faint stands 31, present but plainly the weaker of the two.
+export const BACKLOG_PILLAR_ALPHA = 0.12
+export function pillarAlpha(tier, backlog) {
+  return backlog ? BACKLOG_PILLAR_ALPHA : fillOpacity(tier)
+}
+
 // effectivePlotOffset combines the per-device calibration offset with the active
 // attenuator setting. An attenuator lowers the measured RSSI, so its magnitude is
 // added back for plotting — attenuatorDb is the (non-positive) setting (e.g. -20),

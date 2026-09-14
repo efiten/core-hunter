@@ -2,7 +2,7 @@
 // what the API answers. mapcore.js is the DOM/WebGL glue and stays out of the
 // unit suite, the way huntmap.js does in the app; everything a test can pin
 // lives here.
-import { rssiTier, fillOpacity, extrusionHeight, withAlpha, pillarTint } from './signal.js'
+import { rssiTier, fillOpacity, extrusionHeight, tintOver, pillarTint } from './signal.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { PITCH_3D } from './maplayers.js'
 
@@ -57,21 +57,30 @@ export function hexFeatures(features, colorOf, background = '') {
 
 // The 3D twin of pointFeatures (#595), the app's buildPoints3DFC: an octagon
 // footprint per reception, extruded to the same tier height as the hex bars,
-// so a hotter reception stands taller. Tier opacity rides in the colour's
-// alpha, since fill-extrusion-opacity is one number for the whole layer
-// (#302). Coincident receptions collapse onto the strongest first (#402):
-// coplanar side walls in one depth pass z-fight, and a stationary hunter's
-// samples are exactly that. The footprint is metres, widened to a 4 px floor
-// when the zoom would make 3 m a hairline (pointmarker.js).
+// so a hotter reception stands taller. The tier opacity is pre-mixed over the
+// theme background and drawn opaque, the way the hex bars already are
+// (pillarTint, #412), rather than riding in the colour's alpha. Measured
+// 2026-09-14 (#647): MapLibre composites a translucent fill-extrusion against
+// black instead of against what lies under it, which is invisible on the dark
+// theme, where the ground is nearly black anyway, and inverted on the light
+// one, where a weaker tier then reads as MORE ink on a cream map. Pre-mixing
+// makes a lower opacity mean "closer to the ground" on both.
+//
+// Coincident receptions collapse onto the strongest first (#402): coplanar side
+// walls in one depth pass z-fight, and a stationary hunter's samples are
+// exactly that. No ride ranking here, unlike the app (#647): this map draws
+// published points from every hunter, so there is no current ride to be before.
+// The footprint is metres, widened to a 4 px floor when the zoom would make 3 m
+// a hairline (pointmarker.js).
 const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
-export function pillarFeatures(points, zoom, colorOf) {
+export function pillarFeatures(points, zoom, colorOf, background = '') {
   const placed = points.map((pt, i) => ({ ...pt, i })).filter((pt) => pt.lat != null && pt.lon != null)
   return fc(collapsePillars(placed).map((pt) => {
     const tier = rssiTier(pt.rssi)
     const ring = octagonRing(pt.lat, pt.lon, pillarRadiusM(pt.lat, zoom, POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
     return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
-      properties: { i: pt.i, color: withAlpha(colorOf(tier), fillOpacity(tier)), height: extrusionHeight(pt.rssi) } }
+      properties: { i: pt.i, color: tintOver(colorOf(tier), background, fillOpacity(tier)), height: extrusionHeight(pt.rssi) } }
   }))
 }
 

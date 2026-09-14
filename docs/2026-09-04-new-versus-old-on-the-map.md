@@ -17,6 +17,17 @@ Four rules now. All four were decided for 2D and the 3D views kept their drawing
 
 And a hex cell carries a label from zoom 16 (`app/src/hexlabels.js`): the 4-character prefixes of the nodes heard in it, newest first, three at most, then `+N`. A prefix comes only from a record with a node id; the hash kinds (`direct_hash`, `path_hash`) never contribute one, and a refused identity has none. Drawn as HTML markers like the node layer, since the bare fallback style has no glyphs for a symbol layer.
 
+## In 3D (#647)
+
+The four rules above were written for 2D. #648 gave the pulse a form that works in 3D; #647 answers the other half, old versus new:
+
+5. **A pillar from before this ride is dimmed to one flat value.** Everything from this ride keeps its tier's own opacity (0.7 down to 0.19 across the tiers that draw a pillar at all); everything from before takes 0.12, off the tier scale entirely, so within one colour this ride is always the more present of the two. A factor per tier was rejected: tier x 0.5 would put a backlog hot pillar (0.35) exactly where a this-ride cool one sits (0.34), and the ride is a yes or no, not a degree.
+6. **Where old and new share a spot, the new one is the pillar.** Coincident receptions collapse onto a single pillar (#402), decided by signal alone until now, so a louder reception from an earlier ride could stand in for one that just arrived and read as "not heard here today" on a place just heard. The ride now ranks above the strength; the strength still decides within a ride.
+
+Both are app-only. The web map draws published points from every hunter, where there is no current ride for anything to be before.
+
+Underneath them, a rendering correction that applies to both maps: a pillar's tier opacity is now pre-mixed over the theme background and drawn opaque, the way the hex bars already were (#412), instead of riding in the colour's alpha. MapLibre composites a translucent fill-extrusion against black rather than against what lies under it, measured 2026-09-14 against MapLibre 4.7.1 with an opaque light layer directly beneath one. On the dark theme that is invisible, since the ground is nearly black anyway, which is why it stood this long; on the light theme it inverted the meaning, a weaker tier reading as more ink on a cream map. Without this correction the dimming in rule 5 would have made a backlog pillar stand out harder than a fresh one, the exact opposite of the intent.
+
 ## Why these and not the alternatives
 
 Four drawings of one drive were put side by side (design round R10): today's rendering, "new pulses and old is outline", "old as hex only and new as points", and the two label forms. Kasper took the coverage drawing for the zoomed-out view and the outlines once zoomed in, "reasonably soon" (zoom 15), with the pulse in both. The ride rather than the app-open moment, because a restart mid-hunt must not turn the hunt into backlog. Prefixes rather than a count, with the #558 caveat kept: a prefix is an id, never a name, and never from an identity the app refused.

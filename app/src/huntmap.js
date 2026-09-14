@@ -1,5 +1,5 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, withAlpha, tintOver, pillarTint, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarTint, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
@@ -8,7 +8,7 @@ import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
 import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
-import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
+import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
 import { recordsKey, lastValueCache, hueKey } from './rendercache.js'
 import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
 import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
@@ -310,15 +310,33 @@ export function createHuntMap(containerId) {
   }
   function buildPoints3DFCUncached(records) {
     const feats = []
-    for (const r of collapseCache.get(recordsKey(records), () => collapsePillars(records))) {
+    const rideStart = rideStartFor(records)
+    // The ride outranks the strength in the collapse (#647). The survivor is
+    // what the pillar says, not only where it stands, so a louder reception
+    // from an earlier ride must not stand in for one that just arrived at the
+    // same spot: that would read as "not heard here today" on a place just
+    // heard. rideStart comes from the records, so the collapse still answers to
+    // them alone and its cache key is unchanged.
+    const thisRide = (r) => (isBacklog(r, rideStart) ? 0 : 1)
+    for (const r of collapseCache.get(recordsKey(records), () => collapsePillars(records, PILLAR_MERGE_M, thisRide))) {
       const tier = rssiTier(r.rssi, currentOffset())
       const ring = octagonRing(r.lat, r.lon, pillarRadiusM(r.lat, map.getZoom(), POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
-      // Alpha rides in the colour, not in fill-extrusion-opacity, which is a
-      // single layer-wide number (#302). The tier is all it carries since #648
-      // dropped the age fade, which frees the channel for the ride (#647).
+      // Opaque, pre-mixed over the theme background, the way the hex bars are
+      // painted (#412, pillarTint). Not a style choice: MapLibre composites a
+      // translucent fill-extrusion against black rather than against what lies
+      // under it, measured 2026-09-14 with an opaque light layer directly
+      // beneath one. On the dark theme that is invisible, since the ground is
+      // nearly black anyway, which is why it stood this long. On the light
+      // theme it inverts the meaning -- a lower alpha becomes MORE ink on a
+      // cream map, so a backlog pillar would stand out harder than a fresh one,
+      // the exact opposite of what #647 asks for. Pre-mixing makes a lower
+      // alpha mean "closer to the ground" on both themes.
+      //
+      // Which alpha is the ride rule itself (#647): the tier's own opacity for
+      // this ride, one flat value below the weakest tier for everything before.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
         properties: { id: String(r.id),
-          color: withAlpha(cssVar(tierColorVar(tier)), fillOpacity(tier)),
+          color: tintOver(cssVar(tierColorVar(tier)), cssVar('--ch-bg'), pillarAlpha(tier, isBacklog(r, rideStart))),
           height: extrusionHeight(r.rssi, currentOffset()) } })
     }
     return fc(feats)
@@ -538,16 +556,18 @@ export function createHuntMap(containerId) {
     // #556 left 3D out.
     if (!map.getLayer('pulse-3d')) map.addLayer({ id: 'pulse-3d', type: 'fill-extrusion', source: 'pulse-3d',
       layout: { visibility: shown('pulse-3d') },
-      // 1, for the same reason points-3d is 1 (#302): the alpha rides in the
-      // colour, so pulse() can animate it per frame. A layer-wide value would
-      // multiply on top -- and it is the wrong channel here anyway, see pulse().
+      // 1, for the same reason points-3d is 1: the colour arrives already
+      // composited over the theme background (#412, #647), so there is no alpha
+      // left for a layer-wide value to multiply. The flash animates that colour
+      // and never an opacity, and the measurements for why are in pulse().
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
         'fill-extrusion-vertical-gradient': false, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     // 3D twin of 'points' (#250): a fill-extrusion pillar per reception, same
     // tier colour/height as hex-3d — reads clearly at pitch instead of a flat
     // circle disappearing under the hex bars/buildings. Separate source (its
     // Polygon footprints can't double as the flat layer's Point geometry, the
-    // way hex/hex-3d share one source), same constant-opacity limitation.
+    // way hex/hex-3d share one source), and painted the way hex-3d is: opaque,
+    // with the tier pre-mixed into the colour (#412, #647).
     if (!map.getLayer('points-3d')) map.addLayer({ id: 'points-3d', type: 'fill-extrusion', source: 'points-3d',
       layout: { visibility: shown('points-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
@@ -555,9 +575,12 @@ export function createHuntMap(containerId) {
         // height and colour always agree on the same tier, and a default-on
         // gradient darkens the sides until they do not.
         'fill-extrusion-vertical-gradient': false,
-        // 1, not 0.9: the per-feature alpha in fill-extrusion-color carries
-        // tier opacity and age-fade, and a layer-wide value would multiply on
-        // top of it (#302).
+        // 1, not 0.9: fill-extrusion-color arrives opaque, with the tier and
+        // the ride (#647) already composited over the theme background, so a
+        // layer-wide opacity has nothing left to multiply. Translucency is what
+        // this layer deliberately stopped using -- MapLibre composites a
+        // translucent extrusion against black rather than against the map under
+        // it, which turned the tier scale upside down on the light theme.
         'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     if (!map.getLayer('highlight')) map.addLayer({ id: 'highlight', type: 'circle', source: 'highlight',
       paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 3 } })
@@ -738,13 +761,17 @@ export function createHuntMap(containerId) {
     if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null }
     const tier = rssiTier(rec.rssi, currentOffset())
     const color = cssVar(tierColorVar(tier))
-    // Where the flash travels from and where it lands: white and solid at the
-    // moment the reception arrives, and by the end the pillar's exact colour,
-    // the same token at the same tier opacity buildPoints3DFC paints it with.
-    // Ending there is what makes the handoff invisible -- the last frame of the
-    // flash and the pillar underneath it are the same colour, so clearing the
-    // source changes nothing on screen.
-    const flash3DColor = (t) => withAlpha(tintOver('#ffffff', color, 1 - t), fillOpacity(tier) + (1 - fillOpacity(tier)) * (1 - t))
+    // Where the flash travels from and where it lands: opaque white the moment
+    // the reception arrives, and by the end the pillar's exact colour -- the
+    // same token, pre-mixed over the same background, at the same tier opacity
+    // buildPoints3DFC paints it with. Ending exactly there is what makes the
+    // handoff invisible: the flash's last frame and the pillar underneath it
+    // are the same colour, so clearing the source changes nothing on screen.
+    // Opaque and pre-mixed for the reason the pillars are (#412, #647), and it
+    // has to move with them or that handoff stops being seamless. A reception
+    // that just arrived belongs to this ride by definition, so it lands on the
+    // tier's own opacity and never on the backlog value.
+    const flash3DColor = (t) => tintOver(tintOver('#ffffff', color, 1 - t), cssVar('--ch-bg'), fillOpacity(tier) + (1 - fillOpacity(tier)) * (1 - t))
     map.getSource(id).setData(id === 'pulse'
       ? fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [rec.lon, rec.lat] }, properties: { color } }])
       // The octagon the reception's own pillar stands on, swelled by a couple
