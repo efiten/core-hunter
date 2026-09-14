@@ -198,9 +198,13 @@ for (const [w, h] of [[375, 812], [390, 844], [768, 1024], [1280, 800], [844, 39
 // stood on both: at 568x320 #zoom-in was under #settings-btn and the compass
 // under the guest notice, and at 667x375 the notice's right end reached into
 // the column. Every button is hit at its centre, not only the column's box.
-// Where the column fits at the app's 46px, as at 844x390 and 667x375, it keeps
-// that size; only a shorter screen shrinks the buttons.
-for (const [w, h, fullSize] of [[844, 390, true], [740, 360], [667, 375, true], [640, 360], [568, 320]]) {
+// The buttons take the space left under the bar, between 36px and the app's
+// 46px, and that is what is asserted, measured against the bar as it actually
+// renders. Not a size per viewport: at 667x375 the space is within a pixel of
+// 46, so a font that makes the bar taller (CI's system-ui does) shrinks the
+// buttons there, which is the rule working. Only 844x390, with room to spare,
+// is held to the full 46px.
+for (const [w, h, fullSize] of [[844, 390, true], [740, 360], [667, 375], [640, 360], [568, 320]]) {
   test(`the rail fits a phone held sideways at ${w}x${h}, clear of the bar, the ticker and the notices`, async ({ page }) => {
     await asGuest(page)
     await page.setViewportSize({ width: w, height: h })
@@ -214,13 +218,20 @@ for (const [w, h, fullSize] of [[844, 390, true], [740, 360], [667, 375, true], 
         const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
         return { id: btn.id, size: b.height, hit: top ? (top.closest('[id]')?.id || top.tagName) : null }
       })
-      return { bar: r('#bar'), rail: r('#map-rail'), ticker: r('#rx-log'), notice: r('#guest-notice'), hits }
+      const rail = getComputedStyle(document.getElementById('map-rail'))
+      return { bar: r('#bar'), rail: r('#map-rail'), ticker: r('#rx-log'), notice: r('#guest-notice'), hits,
+        vh: innerHeight, barH: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-bar-h')),
+        railBottom: parseFloat(rail.bottom), gap: parseFloat(rail.rowGap) }
     })
     expect(g.rail.top, 'the rail runs up under the bar').toBeGreaterThanOrEqual(g.bar.bottom)
     const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top
     expect(apart(g.rail, g.ticker), `rail ${JSON.stringify(g.rail)} over ticker ${JSON.stringify(g.ticker)}`).toBe(true)
     expect(apart(g.rail, g.notice), `rail ${JSON.stringify(g.rail)} under notice ${JSON.stringify(g.notice)}`).toBe(true)
     for (const { id, hit } of g.hits) expect(hit, `#${id} is covered`).toBe(id)
+    // Five buttons and four gaps in what is left between 8px under the bar and
+    // the rail's bottom offset, never under 36px and never over 46px.
+    const fits = Math.min(46, Math.max(36, (g.vh - g.barH - 8 - g.railBottom - 4 * g.gap) / 5))
+    for (const { id, size } of g.hits) expect(Math.abs(size - fits), `#${id} is ${size}px where ${fits}px fits`).toBeLessThan(0.1)
     if (fullSize) for (const { id, size } of g.hits) expect(size, `#${id} shrank`).toBe(46)
   })
 }

@@ -103,7 +103,8 @@ take what fits, 8px under the bar, with a 36px floor, and the gap halves to 4px 
 of height first. That floor is under the 44px rule below, as a deliberate exception (Kasper,
 14 September 2026): it only applies to a phone held sideways under about 400px of height,
 where the alternatives were a rail under the bar, a rail over the attribution, or dropping
-the zoom buttons. Wherever 46px fits it is kept (844x390, 667x375).
+the zoom buttons. Wherever 46px fits it is kept, as at 844x390; near the limit, as at 667x375, the
+bar's rendered height decides, so a taller font shrinks the buttons a little.
 
 Overlays keep the rail's column clear (`--ch-rail-clear`, 14 + 46 + 8px): the readout, the
 Locate card and the node-positions notice stop at it. On a phone held sideways, narrower
