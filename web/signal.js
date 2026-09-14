@@ -42,19 +42,22 @@ export function rssiToPct(rssi, offset = 0) {
   return Math.round(rssiFrac(rssi, offset) * 100)
 }
 
-// ageFade returns an opacity multiplier for a reception's age within the
-// active time window: 1 when brand-new, linearly down to AGE_FADE_FLOOR at the
-// window edge (#149). Old points fade instead of vanishing hard, so recent
-// versus stale is readable at a glance. With no time window (windowMs null),
-// or an unusable rx_at, nothing fades.
-const AGE_FADE_FLOOR = 0.15
-export function ageFade(rxAt, nowMs, windowMs) {
-  if (windowMs == null || !(windowMs > 0)) return 1
-  const t = Date.parse(rxAt)
-  if (Number.isNaN(t)) return 1
-  const frac = Math.max(0, Math.min(1, (nowMs - t) / windowMs))
-  return 1 - (1 - AGE_FADE_FLOOR) * frac
-}
+// ageFade used to live here (#149): an opacity multiplier for a reception's
+// age within the window, 1 when new and down to a 0.15 floor at the edge. It
+// went in #648, and the reason is worth keeping so it is not reinvented.
+//
+// It measured against the time window rather than against the drive, so a
+// short ride in a wide window sat in the top few percent of its own scale: a
+// 30-minute window with an 8-minute ride faded 1 to 0.77, and All time with a
+// two-hour ride faded 1 to 0.99. The gradient it promised was usually
+// invisible. What it cost was the whole alpha channel, which is the only
+// per-feature channel a pillar has (#302).
+//
+// Both halves of what it encoded are answered elsewhere and on the surface
+// where they are visible: the pulse (#556) says something is arriving now, and
+// the ride step says something is from before. The map never carried the fade
+// at all, so dropping it converges the two surfaces (#644) rather than porting
+// a third rule across.
 
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.

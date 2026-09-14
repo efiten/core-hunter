@@ -8,14 +8,20 @@
 //
 // What may be cached is decided by what each derivation actually reads:
 //
-//   hex features      records + zoom resolution + attenuator offset
+//   hex features      records + zoom resolution + attenuator offset + theme
 //   pillar collapse   records
-//   flat points       records + NOW  <- age-fade, so never cached
+//   pillar features   records + zoom + attenuator offset + theme
+//   flat points       records + backlog zoom + offset + theme + coverage hues
 //
-// ageFade() is a continuous function of the clock, so anything carrying it has
-// to be rebuilt every tick or the fade freezes. That is why this caches the
-// collapse rather than the 3D collection built from it: the expensive half does
-// not depend on the time, and the half that does is cheap.
+// Nothing here reads the clock any more. It used to: the point collections
+// carried ageFade, a continuous function of NOW, so they had to be rebuilt
+// every tick or the fade froze on screen — which is why only the collapse was
+// cached and the collection built from it was not. #648 removed the fade, so
+// both collections answer to their inputs alone and both are cached.
+//
+// Every input is in the key or the cache lies. The one that is easy to miss is
+// the coverage hue map, which decides a dot's colour while the reach is on;
+// hueKey below signs it.
 
 // recordsKey is a content signature, not an identity check: drawOnce() hands
 // render() a freshly filtered array every tick, so the reference always differs
@@ -50,6 +56,32 @@ export function recordsKey(records) {
     h = (h * 31 + (id | 0)) | 0
   }
   return records.length + ':' + h
+}
+
+// hueKey signs the coverage hue map, for the same reason and with the same
+// shape: while the reach is on, a dot takes its repeater's hue (#603), so the
+// flat point collection depends on that map as much as on the records. Size
+// alone would miss one repeater swapped for another between draws — which a
+// selection change does routinely — and that direction of error serves last
+// tick's colours over this tick's data.
+//
+// Insertion order is whatever drawCoverage produced, so the same contents in a
+// different order sign differently. That costs a rebuild, never a wrong hit,
+// which is the side to fail on.
+//
+// The "|" between an id and its hue is not decoration: without it ("ab", 12)
+// and ("ab1", 2) both fold as "ab12", which is the wrong direction to fail in.
+// It only earns that if neither side can contain it, which holds here — ids are
+// hex sender ids and hues are numbers. The suite pins the collision case.
+export function hueKey(hues) {
+  if (!hues || typeof hues.size !== 'number' || typeof hues.forEach !== 'function') return null
+  if (hues.size === 0) return '0'
+  let h = 0
+  hues.forEach((hue, id) => {
+    const s = String(id) + '|' + String(hue)
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  })
+  return hues.size + ':' + h
 }
 
 // lastValueCache remembers exactly one result. Not an LRU: the caller asks the

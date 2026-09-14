@@ -1,19 +1,19 @@
 # What you hear now stands apart from what you heard before (#556)
 
 **Date:** 2026-09-04
-**Status:** decided (Kasper, 2026-09-04, against a rendered design), implemented
-**Related:** #149 (age fade, unchanged), #549 (reach per hex cell, shares the label spot), #558 (why a prefix never comes from a hashed or refused identity)
+**Status:** decided (Kasper, 2026-09-04, against a rendered design), implemented; amended 2026-09-14 for #648
+**Related:** #149 (age fade, removed since by #648), #549 (reach per hex cell, shares the label spot), #558 (why a prefix never comes from a hashed or refused identity), #647 (new versus old in 3D, the question this left open)
 
 ## What changed
 
 The map drew a live reception and the stored backlog the same way. Open the app mid-hunt and the screen filled with everything in the time window; what landed right now, the thing you steer on, was indistinguishable from what already stood there. Age fade encodes age, not arrival: a 20-minute-old point looked the same whether it was on screen all along or loaded a second ago.
 
-Four rules now, all in 2D; the 3D views keep their drawing:
+Four rules now. All four were decided for 2D and the 3D views kept their drawing, until #648 gave the pulse a form of its own there (rule 4):
 
 1. **"Old" is everything from before the current ride** (`app/src/rides.js`). A ride ends when there is a gap of more than 10 minutes between consecutive receptions. Everything before the last such gap is backlog, whatever the time window says; a hunt that keeps going across an app restart stays one ride.
 2. **Zoomed out, the backlog is coverage only.** Below zoom 15 a backlog reception has no point, only its hex cell. What lands now is a point on top of that coverage.
-3. **From zoom 15, the backlog comes back as outlines.** A backlog reception is an outline circle in its tier colour, no fill, a heavier stroke; a reception from this ride is drawn filled, as before. Colour and place stay, so the backlog is still a measurement; the fill says "this ride". Age fade rides on top of both.
-4. **The newest reception pulses.** One ring in its tier colour, 1.6 s, on the reception that just arrived, whatever the zoom, and only when the filter would draw it. The ring follows the flat point layer (`layerVisibility`, Kasper, 2026-09-11): no ring in hex mode, where no point is drawn for the reception, and none in 3D, where it would sit on the ground under the reception's pillar.
+3. **From zoom 15, the backlog comes back as outlines.** A backlog reception is an outline circle in its tier colour, no fill, a heavier stroke; a reception from this ride is drawn filled, as before. Colour and place stay, so the backlog is still a measurement; the fill says "this ride". Age fade used to ride on top of both; #648 removed it, so the fill is now the whole distinction.
+4. **The newest reception pulses.** One ring in its tier colour, 1.6 s, on the reception that just arrived, whatever the zoom, and only when the filter would draw it. The ring follows the flat point layer (`layerVisibility`, Kasper, 2026-09-11): no ring in hex mode, where no point is drawn for the reception. In 3D the ring would lie on the ground underneath the reception's pillar, so #648 gave the pulse a second form there rather than dropping it: the pillar itself flashes, white and solid when the reception lands and settling onto the pillar's own colour over the same 1.6 s. One form per dimension, never both at once.
 
 And a hex cell carries a label from zoom 16 (`app/src/hexlabels.js`): the 4-character prefixes of the nodes heard in it, newest first, three at most, then `+N`. A prefix comes only from a record with a node id; the hash kinds (`direct_hash`, `path_hash`) never contribute one, and a refused identity has none. Drawn as HTML markers like the node layer, since the bare fallback style has no glyphs for a symbol layer.
 
@@ -23,5 +23,5 @@ Four drawings of one drive were put side by side (design round R10): today's ren
 
 ## Left out
 
-- Rendering in 3D: a label on a pillar's top would float at ground level under it, the pulse's ring would sit on the ground under the pillar, and outline pillars have no meaning.
+- Rendering in 3D: a label on a pillar's top would float at ground level under it, the pulse's ring would sit on the ground under the pillar, and outline pillars have no meaning. The pulse has since left this list: #648 gave it a 3D form of its own (rule 4), on the pillar rather than on the ground. What "old" looks like in 3D is still open, and is #647.
 - A count per cell, and anything about a cell's reach: #549.

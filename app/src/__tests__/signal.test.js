@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, ageFade, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM , tintOver, pillarTint, EXTRUSION_LIGHT_INTENSITY } from '../signal.js'
+import { snrTier, tierColorVar, fillOpacity, rssiTier, effectivePlotOffset, extrusionHeight, withAlpha, rssiToPct, RSSI_WEAK_DBM, RSSI_STRONG_DBM , tintOver, pillarTint, EXTRUSION_LIGHT_INTENSITY } from '../signal.js'
 
 describe('thermal signal tiers (hot = strong)', () => {
   it('maps SNR to tiers', () => {
@@ -106,27 +106,10 @@ describe('effectivePlotOffset — calibration + attenuator added back', () => {
   })
 })
 
-describe('ageFade — point opacity multiplier by age within the time window', () => {
-  const now = Date.parse('2026-06-29T10:10:00Z')
-  const WINDOW = 600000 // 10 min
-
-  it('is 1 for a brand-new reception', () => {
-    expect(ageFade('2026-06-29T10:10:00Z', now, WINDOW)).toBe(1)
-  })
-  it('fades linearly to the 0.15 floor at the window edge', () => {
-    expect(ageFade('2026-06-29T10:05:00Z', now, WINDOW)).toBeCloseTo(0.575) // half-window
-    expect(ageFade('2026-06-29T10:00:00Z', now, WINDOW)).toBeCloseTo(0.15) // full window
-  })
-  it('clamps: never below the floor, never above 1', () => {
-    expect(ageFade('2026-06-29T09:00:00Z', now, WINDOW)).toBeCloseTo(0.15) // way past the window
-    expect(ageFade('2026-06-29T10:11:00Z', now, WINDOW)).toBe(1)           // clock skew: rx_at in the future
-  })
-  it('is 1 when no time window is active or rx_at is unusable', () => {
-    expect(ageFade('2026-06-29T10:00:00Z', now, null)).toBe(1)
-    expect(ageFade(null, now, WINDOW)).toBe(1)
-    expect(ageFade('not-a-date', now, WINDOW)).toBe(1)
-  })
-})
+// ageFade and its tests went in #648. It measured age against the time window
+// rather than against the drive, so the gradient was usually invisible, and it
+// held the only per-feature channel a pillar has. The pulse says what is
+// arriving now and the ride step says what is from before — see signal.js.
 
 describe('withAlpha — pillars carry fade in the colour (#302)', () => {
   it('converts a 6-digit hex token to rgba', () => {
@@ -140,7 +123,8 @@ describe('withAlpha — pillars carry fade in the colour (#302)', () => {
     expect(withAlpha('#ff453a', -1)).toBe('rgba(255,69,58,0)')
   })
   it('rounds long alphas so the feature property stays compact', () => {
-    // fillOpacity x ageFade produces values like 0.5399999999999999.
+    // Float arithmetic on an opacity produces values like 0.5399999999999999,
+    // which would otherwise reach the paint property at full length.
     expect(withAlpha('#ff453a', 0.5399999999999999)).toBe('rgba(255,69,58,0.54)')
   })
   it('passes through a colour it cannot parse instead of guessing', () => {

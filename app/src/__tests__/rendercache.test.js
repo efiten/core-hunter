@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { recordsKey, lastValueCache } from '../rendercache.js'
+import { recordsKey, lastValueCache, hueKey } from '../rendercache.js'
 
 const rec = (id) => ({ id, lat: 51, lon: 4, rssi: -70 })
 
@@ -49,6 +49,53 @@ describe('recordsKey', () => {
   it('accepts an id of 0, which is falsy but perfectly real', () => {
     expect(recordsKey([{ id: 0 }, { id: 1 }])).not.toBeNull()
     expect(recordsKey([{ id: 0 }, { id: 1 }])).not.toBe(recordsKey([{ id: 1 }, { id: 0 }]))
+  })
+})
+
+// #648 freed the flat point collection to be cached: it used to carry the age
+// fade, a function of the clock, so it had to be rebuilt every tick. What it
+// still reads besides the records is the coverage hue per repeater (#603), and
+// that is the part a signature can get wrong in the dangerous direction — the
+// same trap recordsKey exists for, one level up.
+describe('hueKey', () => {
+  const m = (...pairs) => new Map(pairs)
+
+  it('is stable across the fresh map every draw produces', () => {
+    expect(hueKey(m(['aa', 3], ['bb', 7]))).toBe(hueKey(m(['aa', 3], ['bb', 7])))
+  })
+
+  it('changes when a repeater gets a different hue', () => {
+    // The case that decides a dot's colour, so a stale hit here paints the
+    // previous tick's colours over this tick's data.
+    expect(hueKey(m(['aa', 3]))).not.toBe(hueKey(m(['aa', 4])))
+  })
+
+  it('changes when one repeater is swapped for another at the same size', () => {
+    // Same count, different content: what size alone cannot see, and what a
+    // selection change does routinely.
+    expect(hueKey(m(['aa', 3], ['bb', 7]))).not.toBe(hueKey(m(['aa', 3], ['cc', 7])))
+  })
+
+  it('changes when a repeater joins or leaves', () => {
+    expect(hueKey(m(['aa', 3]))).not.toBe(hueKey(m(['aa', 3], ['bb', 7])))
+  })
+
+  it('signs an empty map, which is every tick with the reach off', () => {
+    // The commonest state by far, and a cacheable one: no hues means the dots
+    // take their tier colour and nothing about them depends on the coverage.
+    expect(hueKey(m())).toBe('0')
+  })
+
+  it('keeps an id from running into its hue', () => {
+    // Both of these are ordinary pairs — a hex sender id and a numeric hue —
+    // and with nothing between them they concatenate to the same "ab12", so the
+    // cache would serve one repeater's colour for another's. Pinned rather than
+    // assumed: the separator is invisible in the output it produces.
+    expect(hueKey(m(['ab', 12]))).not.toBe(hueKey(m(['ab1', 2])))
+  })
+
+  it('refuses to sign something that is not a map', () => {
+    for (const bad of [null, undefined, {}, [], 'nope']) expect(hueKey(bad), String(bad)).toBeNull()
   })
 })
 

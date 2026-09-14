@@ -1853,7 +1853,6 @@ function buildFilterSheet() {
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
   sel.addEventListener('change', () => {
     state.filter.windowMs = Number(sel.value) || null
-    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
     syncWindowRow(); refreshFilterState()
   })
 
@@ -1931,7 +1930,6 @@ function buildFilterSheet() {
     state.filter.windowMs = DEFAULT_FILTER.windowMs
     chk.checked = state.filter.directOnly
     sel.value = String(state.filter.windowMs)
-    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
     paintChipRow('fs-type-chips', 'type', new Set())
     paintChipRow('fs-idclass-chips', 'idclass', new Set())
     syncDirectRow(); syncWindowRow()
@@ -3074,7 +3072,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.map = createHuntMap('map')
   state.map.setAttenuator(state.attenuatorDb)
   applyExaggeration()
-  state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise the receptions log (#130) — replaces the Messages panel. The
   // playhead reception highlights its map marker and is what the HUD shows
