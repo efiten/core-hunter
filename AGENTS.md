@@ -518,8 +518,11 @@ One physical node is named by several different-length ids in the same pubkey na
 such ids may be treated as one node differs **per component, deliberately**:
 
 - **App (`app/src/feed.js`, `web`-independent):** strict. A prefix attaches to a full pubkey only
-  when a resolved name is present on **both** sides and matches. The app has a local capture store
-  and can afford the name as a safety margin. Do not loosen this.
+  when a name is present on **both** sides and matches. The app has a local capture store
+  and can afford the name as a safety margin. Do not loosen this. The name is the one each row
+  shows, so a relay's attribution by reach (#661, below) decides for its row: a collision or a
+  placement on another node never merges, not even when that node shares the name (Kasper,
+  2026-09-15).
 - **Website (`web/targetpicker.js`):** merging **is** allowed without a resolved name (#331). A
   prefix merges onto the longest id it belongs to when everything longer that it could be forms a
   single chain (`4a4a` → `4a4abe` → `4a4abe11…`).

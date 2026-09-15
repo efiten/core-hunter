@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds, selectedCompanionIds, isTargetKind } from '../feed.js'
+import { relTime, senderList, topSenders, targetParts, selectedRepeaterIds, clusterKey, expandSelection, selectionKeyFor, idPrefix, matchesTarget, heardRepeaterIds, selectedCompanionIds, isTargetKind, rememberTargetName, refreshTargetNames, pickName } from '../feed.js'
 
 const rec = (o) => ({ sender_kind: 'channel_name', sender_id: 'Spammer', rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -665,5 +665,211 @@ describe('selectedCompanionIds', () => {
     const repeater = 'abff' + '00'.repeat(30)
     const rows = [rec({ sender_id: repeater, sender_role: 'Repeater' }), rec({ sender_id: 'abff', sender_kind: 'relay', sender_role: null })]
     expect(selectedCompanionIds(rows, new Set([repeater, 'abff']))).toEqual([])
+  })
+})
+
+// #661: a relay row reads by the attribution of its newest reception, the one
+// it already takes its RSSI and age from (Kasper, 2026-09-15). The resolver
+// labels a relay only now and then, so the name cannot wait for sender_label.
+describe('targetParts follows attribution', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  it('names a relay placed on one node, with no resolver label at all', () => {
+    expect(targetParts({ sender_kind: 'relay', sender_id: '64aa', sender_label: null, _attr: { rule: 'node', node: HEUMEN } }))
+      .toEqual({ primary: '~Heumensoord-RPT', secondary: '64aa' })
+  })
+  it('shows a collided relay as not resolved, whatever the resolver named it', () => {
+    expect(targetParts({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } }))
+      .toEqual({ primary: '4a4a (name not resolved)', secondary: '4a4a' })
+  })
+  it("reads the row by its newest reception's attribution", () => {
+    const older = { sender_kind: 'relay', sender_id: '64aa', sender_label: null, rx_at: '2026-09-15T10:00:00Z', _attr: { rule: 'collision', count: 2 } }
+    const newer = { ...older, rx_at: '2026-09-15T10:05:00Z', _attr: { rule: 'node', node: HEUMEN } }
+    expect(targetParts(senderList([older, newer])[0]).primary).toBe('~Heumensoord-RPT')
+    expect(targetParts(senderList([{ ...older, rx_at: newer.rx_at }, { ...newer, rx_at: older.rx_at }])[0]).primary).toBe('64aa (name not resolved)')
+  })
+  // What a row shows is what the field finds: typing the node's name finds the
+  // relay row that reads by it.
+  it('is found by the name it shows', () => {
+    const row = { sender_kind: 'relay', sender_id: '64aa', sender_label: null, _attr: { rule: 'node', node: HEUMEN } }
+    expect(matchesTarget(row, 'heumen')).toBe(true)
+    expect(matchesTarget(row, 'zuid')).toBe(false)
+  })
+  it('is not found by a name it refuses to show', () => {
+    const row = { sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } }
+    expect(matchesTarget(row, 'repeater')).toBe(false)
+    expect(matchesTarget(row, '4a4a')).toBe(true)
+  })
+  // The list is alphabetical by what its rows say: a placed relay sorts under
+  // its node's name and a refused one under its id. The guess mark is no
+  // letter; sorted as one, every ~ name would gather at the top.
+  it('sorts a row by the name it shows, without the guess mark', () => {
+    const at = '2026-09-15T10:00:00Z'
+    const rows = [
+      { sender_kind: 'advert_pubkey', sender_id: pk('b2'), sender_label: 'Zulu', rx_at: at },
+      { sender_kind: 'relay', sender_id: 'c4c4', sender_label: 'Omega', rx_at: at, _attr: { rule: 'collision', count: 2 } },
+      { sender_kind: 'advert_pubkey', sender_id: pk('a1'), sender_label: 'Alpha', rx_at: at },
+      { sender_kind: 'relay', sender_id: '64aa', sender_label: null, rx_at: at, _attr: { rule: 'node', node: HEUMEN } },
+      { sender_kind: 'relay', sender_id: 'dddd', sender_label: 'Bravo', rx_at: at, _attr: { rule: 'estimate', prefixKnown: false } },
+    ]
+    expect(senderList(rows).map((r) => targetParts(r).primary))
+      .toEqual(['Alpha', '~Bravo', 'c4c4 (name not resolved)', '~Heumensoord-RPT', 'Zulu'])
+  })
+})
+
+// A relay prefix joins an advert's row (#267) only when the name its own row
+// shows, without the guess mark, is the advert's name (Kasper, 2026-09-15). A
+// row reads by its newest reception, so that one's attribution by reach
+// decides: a collision shows no name and a placement on another node shows
+// that node's, and both are evidence against the merge.
+describe('mergePrefixGroups merges on the name a relay row shows (#661)', () => {
+  const A = pk('a1b2c3')
+  const ZUID = { pubkey: A, name: 'Zuid', lat: 51.8, lon: 5.9 }
+  const NOORD = { pubkey: 'a1b2ff' + 'ff'.repeat(29), name: 'Noord', lat: 51.9, lon: 5.8 }
+  const advert = { sender_kind: 'advert_pubkey', sender_id: A, sender_label: 'Zuid', rx_at: '2026-09-15T10:00:00Z' }
+  const relay = { sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'Zuid', rx_at: '2026-09-15T10:05:00Z' }
+  const primaries = (rows) => rows.map((r) => targetParts(r).primary).sort()
+  it('keeps a collided relay off the advert, whatever the resolver named it', () => {
+    const out = senderList([advert, { ...relay, _attr: { rule: 'collision', count: 2 } }])
+    expect(out).toHaveLength(2)
+    expect(primaries(out)).toEqual(['Zuid', 'a1b2 (name not resolved)'])
+  })
+  it('keeps a relay placed on another node off the advert', () => {
+    const out = senderList([advert, { ...relay, _attr: { rule: 'node', node: NOORD } }])
+    expect(out).toHaveLength(2)
+    expect(primaries(out)).toEqual(['Zuid', '~Noord'])
+  })
+  // Two nodes can share a name and a prefix (#268): a relay placed on the
+  // other one is that node's reception, whatever its name reads.
+  it("keeps a relay placed on another node that shares the advert's name off the advert", () => {
+    const zuidElsewhere = { pubkey: 'a1b2ff' + 'ff'.repeat(29), name: 'Zuid', lat: 52.3, lon: 5.2 }
+    const out = senderList([advert, { ...relay, sender_label: null, _attr: { rule: 'node', node: zuidElsewhere } }])
+    expect(out).toHaveLength(2)
+    expect(out.find((r) => r.sender_id === A).merged_ids).toEqual([A])
+    expect([...expandSelection([A], out)]).toEqual([A])
+  })
+  it('keeps a relay whose name is refused as an estimate off the advert', () => {
+    const out = senderList([advert, { ...relay, _attr: { rule: 'estimate', prefixKnown: true } }])
+    expect(out).toHaveLength(2)
+  })
+  // meshpacket.js gives a relay no label unless the resolver names it, so a
+  // placement on the advert's own node is the name that merges it.
+  it("merges a relay placed on the advert's node, with no resolver label, and reads by that name", () => {
+    const out = senderList([advert, { ...relay, sender_label: null, _attr: { rule: 'node', node: ZUID } }])
+    expect(out).toHaveLength(1)
+    expect(out[0].merged_ids).toEqual(['a1b2', A])
+    expect(targetParts(out[0]).primary).toBe('~Zuid')
+    expect(matchesTarget(out[0], 'zuid')).toBe(true)
+  })
+  // registryIndex keys a node lowercased but hands back the registry's object.
+  it("merges a relay placed on the advert's node when the registry lists that pubkey in capitals", () => {
+    const zuidUpper = { ...ZUID, pubkey: A.toUpperCase() }
+    const out = senderList([advert, { ...relay, sender_label: null, _attr: { rule: 'node', node: zuidUpper } }])
+    expect(out).toHaveLength(1)
+    expect(out[0].merged_ids).toEqual(['a1b2', A])
+  })
+  it("merges a relay whose estimate keeps the advert's name, as before", () => {
+    const out = senderList([advert, { ...relay, _attr: { rule: 'estimate', prefixKnown: false } }])
+    expect(out).toHaveLength(1)
+    expect(targetParts(out[0]).primary).toBe('~Zuid')
+  })
+})
+
+// The target chip names a selection by what the node's row shows (#661), the
+// way the map's button does (web/targetpicker.js targetChipLabel). The HUD
+// and the map popup pick a reception, not a row, and the target list's row can
+// change between the tap and the next pick, so the row in hand decides.
+describe('rememberTargetName', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  const at = '2026-09-15T10:00:00Z'
+  const rows = senderList([
+    { sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', rx_at: at, _attr: { rule: 'collision', count: 2 } },
+    { sender_kind: 'relay', sender_id: '64aa', sender_label: null, rx_at: at, _attr: { rule: 'node', node: HEUMEN } },
+  ])
+  it('keeps the name the row shows, not the label the pick carried', () => {
+    const labels = new Map()
+    expect(rememberTargetName(labels, rows, '64aa', null)).toBe('~Heumensoord-RPT')
+    expect(labels.get('64aa')).toBe('~Heumensoord-RPT')
+    expect(rememberTargetName(labels, rows, '4a4a', 'repeater-3')).toBe('')
+    expect(labels.has('4a4a')).toBe(false)
+  })
+  // Picked while it was an estimate, the relay kept "~repeater-3"; picked again
+  // after the registry landed and made it a collision, that name must go.
+  it('forgets a name kept from an earlier pick once the row refuses it', () => {
+    const labels = new Map([['4a4a', '~repeater-3']])
+    rememberTargetName(labels, rows, '4a4a', '')
+    expect(labels.has('4a4a')).toBe(false)
+  })
+  it('takes the name the pick carried when no row claims the key', () => {
+    const labels = new Map()
+    expect(rememberTargetName(labels, [], 'abcd', '~Noord')).toBe('~Noord')
+    expect(labels.get('abcd')).toBe('~Noord')
+    rememberTargetName(labels, [], 'abcd', null)
+    expect(labels.has('abcd')).toBe(false)
+  })
+  it('names a merged node by its row when the pick was one of its prefixes', () => {
+    const A = pk('a1b2c3')
+    const merged = senderList([
+      { sender_kind: 'advert_pubkey', sender_id: A, sender_label: 'Zuid', rx_at: at },
+      { sender_kind: 'relay', sender_id: 'a1b2', sender_label: null, rx_at: '2026-09-15T10:05:00Z', _attr: { rule: 'node', node: { pubkey: A, name: 'Zuid', lat: 51.8, lon: 5.9 } } },
+    ])
+    expect(merged).toHaveLength(1)
+    const labels = new Map()
+    rememberTargetName(labels, merged, A, '')
+    expect(labels.get(A)).toBe('~Zuid')
+  })
+})
+
+// The chip follows its row after the pick, not only at it (#661, AGENTS.md
+// §5.4 item 3): the registry lands after start-up, the SF is set on connect,
+// the attenuator moves the reach. Each tick re-derives the names, and says
+// whether one changed so the chip is painted again.
+describe('refreshTargetNames', () => {
+  const at = '2026-09-15T10:00:00Z'
+  const relay = { sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', rx_at: at }
+  const NOORD = { pubkey: '4a4a' + 'bb'.repeat(30), name: 'Noord', lat: 51.8, lon: 5.9 }
+  it('renames a selected key when its row changes after the pick, and says so', () => {
+    const labels = new Map()
+    const estimate = senderList([{ ...relay, _attr: { rule: 'estimate', prefixKnown: false } }])
+    rememberTargetName(labels, estimate, '4a4a', '~repeater-3')
+    expect(refreshTargetNames(labels, estimate, ['4a4a'])).toBe(false)
+    expect(labels.get('4a4a')).toBe('~repeater-3')
+    const collided = senderList([{ ...relay, _attr: { rule: 'collision', count: 2 } }])
+    expect(refreshTargetNames(labels, collided, ['4a4a'])).toBe(true)
+    expect(labels.has('4a4a')).toBe(false)
+    const placed = senderList([{ ...relay, _attr: { rule: 'node', node: NOORD } }])
+    expect(refreshTargetNames(labels, placed, ['4a4a'])).toBe(true)
+    expect(labels.get('4a4a')).toBe('~Noord')
+  })
+  // A 1-byte hash has no row (it is no target kind), so the name its pick
+  // carried stays; so does a node's that aged out of the rows.
+  it('keeps the name of a key no row claims', () => {
+    const rows = senderList([{ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', rx_at: at, _attr: { rule: 'node', node: NOORD } }])
+    const labels = new Map([['64', '#64'], ['abcd', '~Zuid']])
+    expect(refreshTargetNames(labels, rows, ['64', 'abcd'])).toBe(false)
+    expect(labels.get('64')).toBe('#64')
+    expect(labels.get('abcd')).toBe('~Zuid')
+  })
+  it('touches only the selected keys', () => {
+    const collided = senderList([{ ...relay, _attr: { rule: 'collision', count: 2 } }])
+    const labels = new Map([['4a4a', '~repeater-3']])
+    expect(refreshTargetNames(labels, collided, [])).toBe(false)
+    expect(labels.get('4a4a')).toBe('~repeater-3')
+  })
+})
+
+// The name the map popup's Isolate carries onto the chip. Its selection is
+// the reception's id, and for a 1-byte hash that is every reception with that
+// id, wherever it was placed: the chip names the id, never one node.
+describe('pickName', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  it('carries # and the id for a 1-byte hash, placed on a node or not', () => {
+    expect(pickName({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: { rule: 'node', node: HEUMEN } })).toBe('#64')
+    expect(pickName({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: '4a', _attr: { rule: 'collision', count: 2 } })).toBe('#4a')
+  })
+  it('carries the name the reception shows for any other kind', () => {
+    expect(pickName({ sender_kind: 'relay', sender_id: '64aa', sender_label: null, _attr: { rule: 'node', node: HEUMEN } })).toBe('~Heumensoord-RPT')
+    expect(pickName({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } })).toBe('')
+    expect(pickName({ sender_kind: 'advert_pubkey', sender_id: pk('a1'), sender_label: 'Zuid' })).toBe('Zuid')
+    expect(pickName(null)).toBe('')
   })
 })

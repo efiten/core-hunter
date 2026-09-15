@@ -1,7 +1,7 @@
 # The coverage overview: every repeater's reach at once, each in its own hue (#603)
 
 **Date:** 2026-09-08
-**Status:** decided (Kasper, 2026-09-07 and 08, after the design rounds in `design-canvas/` and two renders on the real data), implemented on both maps in the same PR as #549; amended 2026-09-14 for #623 and #624. Decision 8 amended 2026-09-15 by #661 (`docs/2026-09-15-attribution-by-reach.md`).
+**Status:** decided (Kasper, 2026-09-07 and 08, after the design rounds in `design-canvas/` and two renders on the real data), implemented on both maps in the same PR as #549; amended 2026-09-14 for #623 and #624. Decision 8 and the #624 section amended 2026-09-15 by #661 (`docs/2026-09-15-attribution-by-reach.md`).
 **Related:** #549 (the star of one node, which this grew out of), #197 (the node-position layer it rides on), #595 (3D on the map), #481/#482 (the two-way hearings), #320 (the identity is unauthenticated), #374/#554 (other hunters' data, not this)
 
 ## What changed
@@ -31,6 +31,8 @@ Decision 6 left two gaps, both decided by Kasper on 12 and 14 September:
 
 - **Every repeater is selectable** (#623). The tap on a ▲ was gated on the repeater having a star this tick, so a repeater from the registry with no hearings attributed to it opened a popup and did nothing else; on the road that is most of them. The gate also stood in for "the reach is on", and now says so directly. A repeater with no hearings is a valid selection: nothing draws from it, the rest dims, and its popup says there is no reach to draw. The popup offers the action too, as "Show reach" or "Hide reach", so it is found where the other per-node actions are; a press reopens the popup with the new state rather than leaving it stale.
 - **A selection dims everything outside it** (#624). Decision 6 dimmed only the other stars' rays, so the other repeaters' dots kept full colour on top of their own dimmed rays. Now the dots, the hex cells, the 3D pillars and the app's trail step back by the same `DIM_OPACITY` as the rays (`coverage.js` `selectionDim`), and so does anything that belongs to no repeater, a companion's reception or the trail, since it is never part of a selection. In the app a cell stays lit when any reception in it belongs to a selected repeater. The map's cells are the server's aggregates with no reception of their own, so there every cell steps back under a selection while the rays and dots carry it.
+
+  > **Amended 2026-09-15 by `docs/2026-09-15-attribution-by-reach.md` (#661).** The repeater a reception belongs to is the star the attribution by reach puts it in (`starKey`), and a selection picks a star by the star's own id or by the raw id of a hearing in it (`starSelected`). A hearing placed on the node of a picked relay id stays lit with that star; a collided hearing belongs to no star and steps back. The popup's "Show reach" or "Hide reach" reads the node's own key only, since a press adds or removes that key.
 
 **The ray count (#621) is not changed here.** A solid band at a city zoom was considered together with #624. Kasper chose to leave the rays as they are and lean on this dimming, since every hearing keeping its own ray is decision 5. That fixes the view with a selection and leaves the view without one as it was, which is why #621 stays open.
 

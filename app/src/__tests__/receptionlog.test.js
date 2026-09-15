@@ -363,3 +363,36 @@ describe('rxBelow — the lanes under the marker, wherever it is', () => {
     expect(rxBelow(10, 8)).toBe(1)
   })
 })
+
+// #661: a relay id placed on one registry node by reach names the line by that
+// node, and the id it was placed from stands beside it; a collision leaves only
+// the id, whatever the resolver named it.
+describe('senderCell follows attribution', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  const placed = { rule: 'node', node: HEUMEN }
+  const collided = { rule: 'collision', count: 2 }
+  it('names an attributed hash id and puts the # id in the id column', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: placed })).toEqual({ id: '#64', name: '~Heumensoord-RPT' })
+    expect(senderText({ sender_kind: 'direct_hash', sender_id: '64', sender_label: '64', _attr: placed })).toBe('~Heumensoord-RPT')
+  })
+  it('names an attributed relay by its node, with the prefix beside it', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: '64aa', sender_label: 'repeater-3', _attr: placed })).toEqual({ id: '64aa', name: '~Heumensoord-RPT' })
+  })
+  // A relay has no label unless the resolver names it (meshpacket.js), so the
+  // placement alone carries the name.
+  it('names a relay placed on one node with no resolver label', () => {
+    const unlabelled = { sender_kind: 'relay', sender_id: '64aa', sender_label: null, _attr: placed }
+    expect(senderText(unlabelled)).toBe('~Heumensoord-RPT')
+    expect(senderCell(unlabelled)).toEqual({ id: '64aa', name: '~Heumensoord-RPT' })
+  })
+  it('keeps only the id on a collision', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: collided })).toEqual({ id: '', name: '4a4a' })
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: collided })).toEqual({ id: '', name: '#64' })
+  })
+  it('keeps the # id on an estimate, where the label is only the id again', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: { rule: 'estimate', prefixKnown: false } })).toEqual({ id: '', name: '#64' })
+  })
+  it('keeps the # id alone for a placed node without a name', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: { rule: 'node', node: { ...HEUMEN, name: '' } } })).toEqual({ id: '', name: '#64' })
+  })
+})

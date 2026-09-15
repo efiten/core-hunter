@@ -6,13 +6,14 @@ import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
-import { recordsKey, lastValueCache, hueKey, selectionKey } from './rendercache.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey } from './rendercache.js'
 import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
 import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
-import { displayName } from './names.js'
+import { senderText } from './receptionlog.js'
+import { pickName } from './feed.js'
 import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { followAfter, paddingAction } from './rotation.js'
@@ -150,6 +151,10 @@ export function createHuntMap(containerId) {
   // starCache keeps each star's estimate from tick to tick (coverage.js).
   const coverageSel = new Set(), starCache = new Map()
   let coverageHue = new Map(), lastReachRows = null, hubMarkers = []
+  // A reception's attribution by reach (#661, attribution.js): app.js works it
+  // out every tick and puts it on the row as _attr, so the stars, the dots and
+  // the node-position layer place a relay id exactly as the HUD names it.
+  const attributionOf = (pt) => pt._attr || null
   const rays = createRayLayer('reach-3d', {
     toMerc: (lon, lat, alt) => maplibregl.MercatorCoordinate.fromLngLat([lon, lat], alt),
     elevation: (lon, lat) => (typeof map.queryTerrainElevation === 'function' && map.getTerrain && map.getTerrain() ? (map.queryTerrainElevation([lon, lat]) || 0) : 0),
@@ -175,18 +180,25 @@ export function createHuntMap(containerId) {
     coverageSel.clear(); nodePosSig = null; draw()
   }
   // The dots of the points layer take the repeater's hue while the reach is
-  // on (#603), the tier colour otherwise; the pillars keep the tier.
+  // on (#603), the tier colour otherwise; the pillars keep the tier. A hearing
+  // placed on a node by reach takes that node's star's hue, a collided one
+  // none (starKey, #661).
   function pointHue(r) {
     if (!coverageHue.size || !isRepeaterHearing(r) || r.sender_id == null) return null
-    return coverageHue.get(String(r.sender_id).toLowerCase()) || null
+    const key = starKey(r, attributionOf(r))
+    return key == null ? null : coverageHue.get(key) || null
   }
-  // The repeater a reception belongs to, by the same attribution the stars
-  // use, or null when it belongs to none (#624): what selectionDim is asked
-  // about for a dot, a cell or a pillar.
-  const ownerOf = (r) => (isRepeaterHearing(r) && r.sender_id != null ? r.sender_id : null)
+  // The star a reception belongs to, by the same attribution the stars use
+  // (starKey, #661): the node's pubkey when reach placed it, its own id
+  // otherwise, and null for a collision or a reception that belongs to no
+  // repeater (#624). What selectionDim is asked about for a dot, a cell or a
+  // pillar.
+  const ownerOf = (r) => (isRepeaterHearing(r) && r.sender_id != null ? starKey(r, attributionOf(r)) : null)
   // Builds the stars for this tick, puts the rays up (one setData feeds the
   // 2D line source and the 3D ray layer), a ● hub for a star with no registry
-  // position, and remembers the hues. Returns the selection for the markers.
+  // position, and remembers the hues. Returns the selection for the markers:
+  // the selected ids, and the ids of the stars they select (starSelected), so
+  // a ▲ whose star was picked by a relay id placed on it is not dimmed.
   function drawCoverage(records) {
     hubMarkers.forEach((m) => m.remove()); hubMarkers = []
     if (!coverageOn() || !map.getSource('reach')) {
@@ -196,24 +208,25 @@ export function createHuntMap(containerId) {
     }
     const byKey = new Map(nodePositions.map((n) => [String(n.pubkey).toLowerCase(), n]))
     const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
-    const stars = coverageStars(lastReachRows || records, { positionOf, cache: starCache })
+    const stars = coverageStars(lastReachRows || records, { positionOf, cache: starCache, attributionOf })
     const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
     const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
     const selected = coverageSelected()
     const fcRays = coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected })
+    const selectedStars = new Set(selected.size ? stars.filter((st) => starSelected(st, selected)).map((st) => st.id) : [])
     coverageHue = new Map([...hues].map(([id, slot]) => [id, colorOf(slot)]))
     map.getSource('reach').setData(fcRays)
     rays.setData(fcRays.features)
     for (const st of stars) {
       if (st.origin.kind !== 'estimate') continue   // the ▲ of the node layer is the hub
       const el = document.createElement('div')
-      el.className = 'rc-hub' + (selected.size && !selected.has(st.id) ? ' np-dim' : '')
+      el.className = 'rc-hub' + (selected.size && !selectedStars.has(st.id) ? ' np-dim' : '')
       el.style.background = coverageHue.get(st.id)
       el.title = `${st.id.slice(0, 8)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where you drove; unmeasured is not unreachable.`
       el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
       hubMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([st.origin.lon, st.origin.lat]).addTo(map))
     }
-    return { selected, count: fcRays.features.length }
+    return { selected, selectedStars, count: fcRays.features.length }
   }
   // One probe per map for the label declutter (#539/#425): widths are
   // measured inside the map container, where .np-label's font actually
@@ -286,16 +299,17 @@ export function createHuntMap(containerId) {
   // nothing that moves on its own. All six are in the key, because a cache that
   // misses one input serves the previous tick's answer for a different question.
   const pointsCache = lastValueCache()
-  function buildPointsFC(records, sel) {
+  function buildPointsFC(records, sel, owners) {
     const outlines = showBacklogPoints(map.getZoom())
     const sig = recordsKey(records), hues = hueKey(coverageHue)
     // Unsignable on either axis means recompute: a key carrying "null" would
     // match another set that also could not be signed. The selection joined
     // the key in #624, since it dims every dot outside it: a tap changes no
-    // record, so without it the cache would hand back the undimmed map.
-    const key = sig === null || hues === null
+    // record, so without it the cache would hand back the undimmed map. The
+    // owners joined in #661 (ownersKey): a dot's star follows its attribution.
+    const key = sig === null || hues === null || owners === null
       ? null
-      : `${sig}|${outlines ? 1 : 0}|${currentOffset()}|${cssVar('--ch-basemap')}|${hues}|${selectionKey(sel)}`
+      : `${sig}|${outlines ? 1 : 0}|${currentOffset()}|${cssVar('--ch-basemap')}|${hues}|${selectionKey(sel)}|${owners}`
     return pointsCache.get(key, () => buildPointsFCUncached(records, outlines, sel))
   }
   function buildPointsFCUncached(records, outlines, sel) {
@@ -344,11 +358,12 @@ export function createHuntMap(containerId) {
   // zoom (the footprint), the offset and the theme, and all four are in the key.
   const collapseCache = lastValueCache()
   const pillarsCache = lastValueCache()
-  function buildPoints3DFC(records, sel) {
+  function buildPoints3DFC(records, sel, owners) {
     const sig = recordsKey(records)
     // The selection is in the key since #624, for the reason it is in the flat
     // points' key: it dims every pillar outside it without changing a record.
-    const key = sig === null ? null : `${sig}|${map.getZoom()}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}`
+    // So are the owners since #661, which decide which pillars it keeps lit.
+    const key = sig === null || owners === null ? null : `${sig}|${map.getZoom()}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}|${owners}`
     return pillarsCache.get(key, () => buildPoints3DFCUncached(records, sel))
   }
   function buildPoints3DFCUncached(records, sel) {
@@ -392,7 +407,7 @@ export function createHuntMap(containerId) {
   // offset, so the answer changes only when the records, the zoom resolution or
   // that offset do — all three are in the key (#462).
   const hexCache = lastValueCache()
-  function buildHexFC(records, sel) {
+  function buildHexFC(records, sel, owners) {
     const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
     // An unsignable set must not be cached under the string "null|10|0", which
     // is a perfectly good cache key and exactly the wrong one — the null has to
@@ -401,8 +416,9 @@ export function createHuntMap(containerId) {
     // The theme is in the key too (#412): the colours are read from the
     // tokens at build time, so a theme switch on unchanged records must not
     // serve the other theme's cells and bars from the cache. So is the
-    // selection (#624), which dims cells without changing a record.
-    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}`, () => buildHexFCUncached(records, res, sel))
+    // selection (#624), which dims cells without changing a record, and so are
+    // the owners (#661), which decide the cells it keeps lit.
+    return hexCache.get(sig === null || owners === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}|${owners}`, () => buildHexFCUncached(records, res, sel))
   }
   function buildHexFCUncached(records, res, sel) {
     // A cell holds receptions from several repeaters at once, so it cannot ask
@@ -759,11 +775,17 @@ export function createHuntMap(containerId) {
     const cov = drawCoverage(records)
     // With a star selected, the rest of the map steps back, not only the other
     // stars (#624). null outside the reach stop, since drawCoverage answers
-    // null there, so nothing dims unless the reach is on.
-    const sel = cov ? cov.selected : null
-    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records, sel) : EMPTY)
-    map.getSource('points').setData(vis.points ? buildPointsFC(records, sel) : EMPTY)
-    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, sel) : EMPTY)
+    // null there, so nothing dims unless the reach is on. The selected ids and
+    // the stars they select (starSelected), so a hearing reach placed on the
+    // node of a picked relay id stays lit with its star (#661).
+    const sel = cov ? new Set([...cov.selected, ...cov.selectedStars]) : null
+    // Which star each reception belongs to, for the cache keys (ownersKey).
+    // Only the reach stop reads it: outside it no dot takes a star's hue and
+    // nothing dims, so the fold is skipped there.
+    const owners = cov ? ownersKey(records, ownerOf) : ''
+    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records, sel, owners) : EMPTY)
+    map.getSource('points').setData(vis.points ? buildPointsFC(records, sel, owners) : EMPTY)
+    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, sel, owners) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     // The trail belongs to no repeater, so it is never part of a selection and
     // always steps back with one. One LineString with no properties, so this
@@ -955,12 +977,15 @@ export function createHuntMap(containerId) {
     // Registry nodes in view: advertised position, plus our estimate when we
     // have heard them enough to produce one. Match sender_id (from receptions)
     // against node pubkey: exact match for advert_pubkey, prefix match for
-    // discover_pubkey, no match for relay/direct_hash/channel_name (#197/#272).
-    // One pass over the records for the whole in-view set, not one pass per
-    // node: this also lets an id that matches two nodes be refused outright
-    // rather than attributed to both (#295).
+    // discover_pubkey, never for a channel_name (#197/#272). One pass over the
+    // records for the whole in-view set, not one pass per node: this also lets
+    // an id that matches two nodes be refused outright rather than attributed
+    // to both (#295). A relay, path or direct hash joins a node through its
+    // attribution by reach instead (#661), worked out by app.js against every
+    // candidate of the companion's SF, so a second candidate out of view still
+    // refuses it.
     const inView = nodesInView(nodePositions, bounds)
-    const byNode = groupSenderPointsForNodes(records, inView)
+    const byNode = groupSenderPointsForNodes(records, inView, { attributionOf })
     for (const n of inView) {
       const pts = byNode.get(String(n.pubkey).toLowerCase()) || []
       const est = pts.length ? estimateFor(pts) : null
@@ -995,7 +1020,7 @@ export function createHuntMap(containerId) {
       // the signature the early return would freeze the previous zoom's set.
       + '#' + [...labelled].join(',')
       // The hues and the selection are part of what the markers show (#603).
-      + (cov ? '#reach:' + cov.count + ':' + [...cov.selected].join(',') + ':' + [...coverageHue].map(([k, v]) => k.slice(0, 8) + v).join(',') : '')
+      + (cov ? '#reach:' + cov.count + ':' + [...cov.selected].join(',') + ':' + [...cov.selectedStars].join(',') + ':' + [...coverageHue].map(([k, v]) => k.slice(0, 8) + v).join(',') : '')
     if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
     nodePosSig = sig
 
@@ -1017,9 +1042,15 @@ export function createHuntMap(containerId) {
       // a valid selection: nothing draws from it, everything else dims, and its
       // popup says why. The dim loses its `hue` term for the same reason.
       const reachOn = coverageOn()
-      const selected = !!(cov && cov.selected.has(key))
+      // Picked directly, or through a relay id placed on this node by reach
+      // (starSelected, #661), so a ▲ whose star was picked by that id is not dimmed.
+      const selected = !!(cov && (cov.selected.has(key) || cov.selectedStars.has(key)))
+      // The popup's button reads the node's own key only: a press adds or
+      // removes that key (toggleCoverageSelection), so a star selected through
+      // a picked relay id offers "Show reach", not a "Hide reach" it cannot keep.
+      const picked = !!(cov && cov.selected.has(key))
       const tap = reachOn ? () => { reopenNodeKey = key; toggleCoverageSelection(key) } : null
-      const popupFor = () => nodePopup(n, p, est, { key, reachOn, selected, heard: !!hue })
+      const popupFor = () => nodePopup(n, p, est, { key, reachOn, selected: picked, heard: !!hue })
       const adv = addNodeMarker('np-advert', '▲', [n.lon, n.lat], popupFor(), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
         { color: hue, selected, dim: !!(cov && cov.selected.size && !selected), onTap: tap })
       // Only on the ▲, so a tap on the ● does not leave two popups open.
@@ -1051,15 +1082,14 @@ export function createHuntMap(containerId) {
     // inferred (#662).
     const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
     // "no estimate" is not the same as "not heard" (#272). An advert or a
-    // discover reply names the node outright, so those receptions join to it
-    // and produce an estimate. A relayed packet measures the LAST HOP that
-    // re-broadcast to us — a valid measurement of that repeater, but carried on
-    // a 2-byte path prefix, which cannot be pinned to one registry node. So a
-    // node heard only that way has plenty of receptions and still no estimate
-    // here, and claiming it was never heard would be wrong.
+    // discover reply names the node outright, and a relayed reception joins
+    // it when this is the one node with that prefix in reach (#661). A relayed
+    // reception with a second candidate in reach belongs to no node, and an
+    // estimate needs 3 receptions at separate spots, so a node heard often can
+    // still have none; claiming it was never heard would be wrong.
     const drift = p.driftM != null
       ? `<br>drift ${Math.round(p.driftM)} m · ${est ? est.n : 0} points`
-      : '<br>no estimate — no reception identifies this node directly'
+      : '<br>no estimate: too few of your receptions at separate spots belong to this node'
     // The circle only claims accuracy when the sampling geometry earned it;
     // say which of the two is being drawn so the map is self-explaining.
     const circle = p.circle
@@ -1201,13 +1231,17 @@ export function createHuntMap(containerId) {
   return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, releaseFollow, setLookAhead, setNodeLayer, setExaggeration, pulse, destroy }
 }
 
-function popupHtml(r, selectedIds) {
+// popupHtml is the point popup's markup, exported for its test.
+export function popupHtml(r, selectedIds) {
   const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
   // Glossary (#174): 'sender' is the general term for a heard device, 'repeater'
   // for one known to be relaying (not originating) traffic. `relay` here is the
   // internal sender_kind value (meshpacket.js) -- only its display label changed.
-  const kindLabel = { channel_name: 'name', advert_pubkey: 'sender', discover_pubkey: 'sender', relay: 'repeater' }[r.sender_kind] || 'sender'
-  const senderLine = r.sender_id ? `${kindLabel} ${esc(displayName(r) || r.sender_id)}` : 'sender — (none)'
+  // A path_hash is a relay hop too, with a 1-byte id.
+  const kindLabel = { channel_name: 'name', advert_pubkey: 'sender', discover_pubkey: 'sender', relay: 'repeater', path_hash: 'repeater' }[r.sender_kind] || 'sender'
+  // senderText, the ticker's name: a 1-byte hash reads '#' and its id unless
+  // its attribution by reach places it on a named node (#661).
+  const senderLine = r.sender_id ? `${kindLabel} ${esc(senderText(r))}` : 'sender (none)'
   const chanLine = r.channel_name ? `<br>channel ${esc(r.channel_name)}` : ''
   const textLine = r._text ? `<br>"${esc(r._text)}"` : ''
   const key = r.sender_id ? String(r.sender_id).toLowerCase() : null
@@ -1225,7 +1259,9 @@ function wireIsolate(popup, r) {
   const btn = popup.getElement()?.querySelector('.ch-isolate')
   if (!btn || !r.sender_id || btn.disabled) return
   btn.onclick = () => {
-    document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id, label: r.sender_label } }))
+    // pickName: a 1-byte hash selects every reception with that id, so the
+    // chip reads '#' and the id rather than the node this one was placed on.
+    document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: { id: r.sender_id, label: pickName(r) } }))
     btn.textContent = 'Isolated ✓'; btn.disabled = true; btn.classList.add('active')
   }
 }

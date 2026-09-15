@@ -23,6 +23,16 @@
 // half that is missing; "no nodes in view right now" is a different sentence.
 export const NODEPOS_EMPTY_TEXT = 'No positions from the node registry — resolver unreachable or it holds none, so nothing can be drawn'
 
+// Whether "the registry is empty" is a fact yet. Only once a load has finished
+// with nothing, and while no other load is out: #661 loads the registry again
+// on connect, and a retry that may still answer is not a failure. Until then
+// saying nothing is the honest answer (#307). With no resolver configured
+// (`resolvers` 0) there is nothing to ask and no load ever runs, so it is a
+// fact from the start.
+export function registryKnownEmpty({ attempted = false, loading = false, count = 0, resolvers = null } = {}) {
+  return (Boolean(attempted) || resolvers === 0) && !loading && count === 0
+}
+
 // What the line says: the explanation for an empty map, or nothing at all.
 // With markers on screen the popup's glyph line names what each glyph is, and a
 // line repeating it over the map is what #631 removed.

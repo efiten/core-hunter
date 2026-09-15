@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { recordsKey, lastValueCache, hueKey, selectionKey } from '../rendercache.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey, rowCache } from '../rendercache.js'
 
 const rec = (id) => ({ id, lat: 51, lon: 4, rssi: -70 })
 
@@ -128,6 +128,39 @@ describe('selectionKey', () => {
   })
 })
 
+// #661 made the star a reception belongs to depend on its attribution by reach,
+// which the registry landing or the companion's SF can change while the
+// records stay the same. A dot's hue and whether a dot, a cell or a pillar
+// stays lit under a selection read that owner, so it has to be in their keys:
+// otherwise the map keeps last tick's hue and dimming for a hearing that has
+// moved to another star.
+describe('ownersKey', () => {
+  const owner = (r) => r.owner
+  const rows = (...owners) => owners.map((o, i) => ({ id: i + 1, owner: o }))
+
+  it('is stable across the fresh rows every tick reads', () => {
+    expect(ownersKey(rows('64aa', null), owner)).toBe(ownersKey(rows('64aa', null), owner))
+  })
+
+  it('changes when a reception moves to another star, the ids unchanged', () => {
+    // The registry lands: 64aa is placed on its node and keyed by the pubkey.
+    expect(ownersKey(rows('64aa'), owner)).not.toBe(ownersKey(rows('64aa' + 'aa'.repeat(30)), owner))
+  })
+
+  it('changes when a reception leaves every star', () => {
+    // A second candidate comes into reach: a collision belongs to no star.
+    expect(ownersKey(rows('64aa'), owner)).not.toBe(ownersKey(rows(null), owner))
+  })
+
+  it('keeps one owner from running into the next', () => {
+    expect(ownersKey(rows('ab', 'c'), owner)).not.toBe(ownersKey(rows('a', 'bc'), owner))
+  })
+
+  it('refuses to sign something that is not a list', () => {
+    for (const bad of [null, undefined, {}, 'nope']) expect(ownersKey(bad, owner), String(bad)).toBeNull()
+  })
+})
+
 describe('lastValueCache', () => {
   it('builds once and reuses while the key holds', () => {
     const build = vi.fn(() => ({ big: true }))
@@ -179,5 +212,59 @@ describe('lastValueCache', () => {
     c.clear()
     c.get('k', build)
     expect(build).toHaveBeenCalledTimes(2)
+  })
+})
+
+// #661: the attribution by reach of every row in the window, worked out every
+// tick, measured at 5.4 ms for 20 000 rows against 2 500 nodes on a laptop. A
+// stored reception never changes, so its answer holds while the registry index
+// and the plot offset stay the same.
+describe('rowCache', () => {
+  const index = { byPrefix: new Map() }
+
+  it('works a row out once while the inputs stay the same, across ticks and within one', () => {
+    const compute = vi.fn((r) => ({ rule: 'estimate', id: r.id }))
+    const c = rowCache()
+    c.tick([index, 0])
+    const first = c.get(rec(1), compute)
+    // The window read and the recent read overlap: the same row twice in one tick.
+    expect(c.get(rec(1), compute)).toBe(first)
+    c.tick([index, 0])
+    // A fresh object for the same stored row, as the next read from the store hands back.
+    expect(c.get(rec(1), compute)).toBe(first)
+    expect(compute).toHaveBeenCalledTimes(1)
+  })
+
+  it('works every row out again once an input changes', () => {
+    const compute = vi.fn(() => ({ rule: 'estimate' }))
+    const c = rowCache()
+    c.tick([index, 0]); c.get(rec(1), compute)
+    // The registry landed again: a new index, even with the same contents.
+    c.tick([{ byPrefix: new Map() }, 0]); c.get(rec(1), compute)
+    expect(compute).toHaveBeenCalledTimes(2)
+    // The attenuator moved: the reach follows the plotted RSSI.
+    const again = { byPrefix: new Map() }
+    c.tick([again, 0]); c.get(rec(1), compute)
+    c.tick([again, 20]); c.get(rec(1), compute)
+    expect(compute).toHaveBeenCalledTimes(4)
+  })
+
+  it('keeps an answer that is null, which is most rows', () => {
+    // attributeReception answers null for a kind the rule does not cover; a
+    // truthiness check would work those out on every tick.
+    const compute = vi.fn(() => null)
+    const c = rowCache()
+    c.tick([index, 0]); expect(c.get(rec(1), compute)).toBe(null)
+    c.tick([index, 0]); expect(c.get(rec(1), compute)).toBe(null)
+    expect(compute).toHaveBeenCalledTimes(1)
+  })
+
+  it('forgets a row the last tick did not read, so it holds the rows in hand', () => {
+    const compute = vi.fn(() => ({ rule: 'estimate' }))
+    const c = rowCache()
+    c.tick([index, 0]); c.get(rec(1), compute)
+    c.tick([index, 0]); c.get(rec(2), compute)
+    c.tick([index, 0]); c.get(rec(1), compute)
+    expect(compute).toHaveBeenCalledTimes(3)
   })
 })

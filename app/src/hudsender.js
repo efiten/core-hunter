@@ -18,9 +18,14 @@ export function senderReadout(rec) {
   // path_hash is the same shape as direct_hash: a 1-byte id, carried as its own
   // label, in a 256-way collision space. It arrives on a FLOOD path[last], so
   // it is still a relay we heard, and it reads "via #64".
+  // What does name a hash id is its attribution by reach (#661): placed on the
+  // one registry node in reach, it reads by that node's name ("via ~Name");
+  // otherwise it keeps its # id. displayName gives a hash id no name unless it
+  // is placed, and drops a resolved relay name on a collision too.
   const isHashId = isHashIdKind(rec.sender_kind)
+  const trimmed = typeof rec.sender_label === 'string' ? rec.sender_label.trim() : ''
   // displayName carries the guess mark for a name on a short prefix (#452).
-  const label = !isHashId && typeof rec.sender_label === 'string' && rec.sender_label.trim() ? displayName({ ...rec, sender_label: rec.sender_label.trim() }) : ''
+  const label = displayName({ ...rec, sender_label: trimmed })
   const id = typeof rec.sender_id === 'string' ? rec.sender_id.trim() : ''
   const name = label || (id ? (isHashId ? '#' : '') + id.slice(0, ID_PREFIX_LEN) : '')
   if (!name || name === '#') return { text: '—', viaRelay: false }

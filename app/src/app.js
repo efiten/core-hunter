@@ -46,19 +46,21 @@ import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal
 import { createReceptionLog, tickerState, tickerStored, nextRxMode, outsideWindow, rxView } from './receptionlog.js'
 import { TIME_WINDOWS, windowMs as windowMsOf, widerWindowMs } from './timewindows.js'
 import { createTargetList } from './targetlist.js'
-import { resolveName, cachedName, resolvableKey } from './names.js'
+import { resolveName, cachedName, resolvableKey, displayName } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
-import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor } from './feed.js'
+import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor, rememberTargetName, refreshTargetNames } from './feed.js'
 import { shouldAutoFire, staggerTargets, autoPingCadenceText } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
 import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES, TELEMETRY_REQ_BYTES } from './airtime.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
-import { nodePosNotice, nodePosKeyText } from './nodeposnotice.js'
+import { nodePosNotice, nodePosKeyText, registryKnownEmpty } from './nodeposnotice.js'
 import { NODEPOS_MODES, NODEPOS_LABELS, nextNodePosMode, parseNodePosMode } from './nodeposmode.js'
 import { drawableNodes } from './nodelayer.js'
-import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
+import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, candidateNodes, registryLoadPlan, mergeRegistryLists, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
+import { registryIndex, attributeReception } from './attribution.js'
+import { rowCache } from './rendercache.js'
 import { calloutPosition, unionRect, avoidOverlap, overlapsAny } from './calloutPosition.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, compassRingIndex, COMPASS_RING_STOPS, resolveCourseHeading, autoSource, orientedToTravel, lookAheadPadding } from './rotation.js'
@@ -181,6 +183,10 @@ const state = {
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
+  // The registry index attribution by reach looks candidates up in (#661).
+  // Until the registry has loaded it holds no node, so every relay id is an
+  // estimate and keeps its resolver name, as before.
+  attrIndex: null,
   map: null,
   rxLog: null,
   tickerVisible: true,
@@ -475,9 +481,11 @@ function renderHudTools() {
 // code path; the stand toggle is the ticker's, flipped from here.
 function wireHudTools() {
   el('hud-mode').addEventListener('click', () => setRxMode(nextRxMode(state.rxMode)))
+  // The label is the name the HUD shows (#661); the target chip still takes
+  // the node's row first (rememberTargetName).
   const detail = (extra) => {
     const r = state.hudRec
-    return { id: r.sender_id, label: r.sender_label, ...extra }
+    return { id: r.sender_id, label: displayName(r), ...extra }
   }
   el('hud-target').addEventListener('click', () => {
     if (state.hudRec) document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: detail({}) }))
@@ -1092,6 +1100,9 @@ async function processFrame(dv) {
   // and so does any other traffic from it, which is the cheaper of the two.
   if (rec.sender_id != null) state.sweep.heardAt.set(String(rec.sender_id).toLowerCase(), Date.now())
   await state.queue.add(rec)
+  // After the add, so the store never keeps it: an attribution follows the
+  // registry and the attenuator, which change after the reception (#661).
+  rec._attr = attributeReception(rec, attributionContext())
   state.lastPacketAt = Date.now()
   state.lastRec = rec
   // The HUD follows the shared filtered/all stand (#555): a reception the
@@ -1136,6 +1147,24 @@ function enrichNames(rows) {
   }
 }
 
+// attributeRows puts each row's attribution by reach on it as _attr (#661):
+// the one registry node of the companion's SF in reach, a collision, or an
+// estimate, against the RSSI the map plots. The HUD, the float, the ticker,
+// the target list and the map all read that one answer. Render rows only, like
+// the names: the capture path sets it after the add, and publisher.js names
+// the fields it sends. The window can hold tens of thousands of rows, so each
+// row's answer is kept while the index and the offset stay the same (rowCache).
+const attrCache = rowCache()
+function attributionContext() {
+  return { index: state.attrIndex, offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb) }
+}
+function attributeRows(rowSets) {
+  const ctx = attributionContext()
+  attrCache.tick([ctx.index, ctx.offsetDb])
+  const compute = (r) => attributeReception(r, ctx)
+  for (const rows of rowSets) for (const r of rows) r._attr = attrCache.get(r, compute)
+}
+
 // The actual redraw, split out from renderTick's timer-rescheduling so it can
 // also be called on demand (e.g. right after ignoring a sender) without
 // spawning a second parallel setTimeout chain alongside the running one.
@@ -1156,14 +1185,20 @@ async function drawOnce() {
     // caps at 200 rows and the list shows far fewer senders than RECENT_CAP
     // covers, so this is indistinguishable in practice at any realistic size.
     const rows = await state.queue.recent(RECENT_CAP)
+    // Enrich names on both the window and the recent rows to prevent mismatches
+    // in the log and target list (BLOCKER 1 fix for PR #283). Both run before
+    // the rows are handed out as state.lastRows and before the next await: a
+    // tap on a list row, the HUD or a popup during renderBacklog reads
+    // state.lastRows, and a row without its attribution would give the chip a
+    // name the attribution refuses (#661).
+    enrichNames(windowRows)
+    enrichNames(rows)
+    attributeRows([windowRows, rows])
     state.lastRows = rows
+    refreshTargetChip()
     el('hud-since').textContent = sinceLabel(now, state.hudAt)
     drawFloat()
     await renderBacklog()
-    // Enrich names on both the window and the recent rows to prevent mismatches
-    // in the log and target list (BLOCKER 1 fix for PR #283)
-    enrichNames(windowRows)
-    enrichNames(rows)
     // activeFilter() from #267 (selection expanded to every id variant of the
     // node), applied to the windowed read from #230 — the map shows the chosen
     // window, not the whole retained store.
@@ -1745,6 +1780,11 @@ async function connectAll() {
     state.rxPubkey = info.pubkey.toLowerCase()
     state.name = info.name || ''
     state.sf = info.sf ?? null
+    // The SF picks the registries a relay id is placed against (#661). When a
+    // registry of that SF has not answered yet, the fetch asks it again now,
+    // or once its request from start-up has settled if that one is still out.
+    rebuildAttributionIndex()
+    retryNodePositions(state.sf).catch(() => {})
 
     // 3. GPS
     startGpsWatch()
@@ -1871,6 +1911,7 @@ async function disconnectAll(nextPhase = 'idle') {
   state.connected = false
   state.rxPubkey = ''
   state.sf = null
+  rebuildAttributionIndex()
   el('discover-btn').disabled = true
   stopAutoPing()
   stopBatteryPoll()
@@ -2672,22 +2713,64 @@ function cycleView() {
 // Three stops since #603 (nodeposmode.js): off / positions / positions +
 // reach, persisted like the sound mode so the layer a hunter drives with
 // comes back with the next session.
-let nodePosMode = 'off', nodePosLoaded = false, nodePosAttempted = false, nodePosCount = 0
+let nodePosMode = 'off', nodePosAttempted = false, nodePosCount = 0
+// The same fetch feeds attribution by reach (#661), which the HUD and the
+// ticker need whether the layer is on or not, so it also runs at start-up.
+// One { resolver, nodes, answered } per resolver asked, nodes [] for one that
+// has not answered, since the candidates are those of the companion's SF only.
+// A resolver latches once it has answered, each on its own.
+let registryLists = []
+function rebuildAttributionIndex() {
+  state.attrIndex = registryIndex(candidateNodes(registryLists, state.sf))
+}
 try { nodePosMode = parseNodePosMode(localStorage.getItem('core-hunter-nodepos')) } catch (_) {}
 function saveNodePosMode(m) {
   try { localStorage.setItem('core-hunter-nodepos', m) } catch (_) {}
 }
 const nodePosOn = () => nodePosMode !== 'off'
 
-// Single-flight: toggling the layer off and on during a slow fetch used to
-// start a second concurrent load, and a failing second pass would clobber a
-// successful first one — leaving an empty layer under a "no registry data"
-// line that was not true.
-let nodePosInFlight = null
-function loadNodePositions() {
-  if (nodePosLoaded) return Promise.resolve()
-  if (!nodePosInFlight) nodePosInFlight = fetchNodePositions().finally(() => { nodePosInFlight = null })
-  return nodePosInFlight
+// Every resolver is its own request, folded in when it settles: a resolver on
+// another SF that is slow, or never answers, holds back neither the nodes of
+// one that answered nor the connect retry of the companion's SF (AGENTS.md
+// §5.4 items 3 and 4). Asked one after the other, merged at the end, the HUD
+// named nothing until the slowest resolver of the load had settled.
+// A resolver with a request out is never asked twice: toggling the layer off
+// and on during a slow fetch used to start a second concurrent load, and a
+// failing second pass would clobber a successful first one, leaving an empty
+// layer under a "no registry data" line that was not true.
+// The line is re-applied when a request starts and when it settles, whichever
+// caller started it: the start-up, the connect retry (#661) or the FAB. A
+// connect retry that answers after a failed start-up has to take the line
+// down, and one still out means nothing is known yet (§5.4 item 3).
+// registryLoadPlan picks the resolvers in scope that have not answered: every
+// one at start-up and from the FAB, the companion's SF on connect. It asks the
+// ones not out now and names the ones out; loadNodePositions joins those.
+const registryOut = new Map()
+const configuredResolvers = () => (getConfig() && getConfig().resolvers) || []
+function planRegistryLoad(companionSf) {
+  return registryLoadPlan(configuredResolvers(), registryLists, [...registryOut.keys()], companionSf)
+}
+function loadNodePositions(companionSf = null) {
+  const plan = planRegistryLoad(companionSf)
+  if (plan.ask.length) {
+    registryLists = plan.lists
+    for (const r of plan.ask) registryOut.set(r, fetchNodePositions(r))
+    applyNodePosNotices()
+  }
+  return Promise.all([...plan.ask, ...plan.wait].map((r) => registryOut.get(r)))
+}
+
+// Loads again the registries of the companion's SF that have not answered. It
+// asks the ones not out at once. One still out may yet fail, so it waits for
+// that one before asking again: joining it would lose the retry when it does
+// (AGENTS.md §5.4 item 3). Each one it waits for plans again when it settles,
+// on its own: a slow resolver of the same SF holds back nothing but itself. A
+// resolver on another SF, out or answered, does not count (§5.4 item 4).
+function retryNodePositions(companionSf) {
+  const { wait } = planRegistryLoad(companionSf)
+  const now = loadNodePositions(companionSf)
+  const again = () => loadNodePositions(companionSf)
+  return Promise.all([now, ...wait.map((r) => registryOut.get(r).then(again, again))])
 }
 
 // One resolver's positioned nodes, whichever shape it speaks. /positions first
@@ -2717,30 +2800,43 @@ async function fetchRegistry(resolverUrl) {
   return rows
 }
 
-async function fetchNodePositions() {
-  const cfg = getConfig()
-  const resolvers = (cfg && cfg.resolvers) || []
-  const byPubkey = new Map()
-  let anyAnswered = false
-  for (const r of resolvers) {
+// One resolver's request, folded into the lists when it settles. The promise
+// registryOut keeps settles only once the resolver is no longer out, so a
+// caller that waited on it and then plans again asks it again if it failed.
+function fetchNodePositions(resolver) {
+  const request = (async () => {
+    const list = { resolver, nodes: [], answered: false }
     try {
-      const nodes = await fetchRegistry(r.url)
-      if (nodes === null) continue
-      anyAnswered = true
-      for (const n of drawableNodes(nodes)) {
-        byPubkey.set(String(n.pubkey).toLowerCase(), n)
+      const nodes = await fetchRegistry(resolver.url)
+      if (nodes !== null) {
+        list.nodes = drawableNodes(nodes)
+        list.answered = true
       }
     } catch (_) {
       // resolver unreachable or answered something unparseable — skip it
     }
-  }
-  // Only latch when something actually answered. A run where every resolver
-  // was unreachable is a transient failure, not an empty registry: latching it
-  // would pin the empty layer for the whole session, with no retry when
-  // connectivity comes back.
-  nodePosLoaded = anyAnswered
+    foldRegistryList(list)
+  })()
+  return request.finally(() => {
+    registryOut.delete(resolver)
+    applyNodePosNotices()
+  })
+}
+
+function foldRegistryList(list) {
+  // Only a resolver that answered latches. One that was unreachable is a
+  // transient failure, not an empty registry: latching it would pin its part
+  // of the layer, and its SF's attribution, empty for the whole session, with
+  // no retry when connectivity comes back.
+  registryLists = mergeRegistryLists(registryLists, [list])
   nodePosAttempted = true
+  const byPubkey = new Map()
+  for (const l of registryLists) {
+    for (const n of l.nodes) byPubkey.set(String(n.pubkey).toLowerCase(), n)
+  }
   nodePosCount = byPubkey.size
+  // Attribution counts the companion's SF; the layer draws every SF.
+  rebuildAttributionIndex()
   if (state.map) state.map.setNodePositions([...byPubkey.values()])
 }
 
@@ -2749,11 +2845,13 @@ async function fetchNodePositions() {
 // the map repeats that positions are inferred (#662); the splash and About say
 // that. The decision is nodeposnotice.js's, under test.
 function applyNodePosNotices() {
-  // registryEmpty is only meaningful once the fetch has finished; until then
-  // saying nothing is the honest answer, since positions may still arrive
-  // (#307). "Nothing came back" and "nobody answered" both mean nothing can be
-  // drawn, and both are only knowable once a load attempt has finished.
-  const registryEmpty = nodePosAttempted && nodePosCount === 0
+  // "Nothing came back" and "nobody answered" both mean nothing can be drawn,
+  // and both are only knowable once a load has finished with no other one out
+  // (registryKnownEmpty, #307).
+  const registryEmpty = registryKnownEmpty({
+    attempted: nodePosAttempted, loading: registryOut.size > 0, count: nodePosCount,
+    resolvers: configuredResolvers().length,
+  })
   // It explains why the map is blank, so it does not fade: the reason has to
   // stay for as long as the state does.
   const { key } = nodePosNotice({ on: nodePosOn(), registryEmpty })
@@ -2781,18 +2879,17 @@ function updateNodePosIcon() {
   btn.classList.toggle('on', nodePosOn())
 }
 
-// Applies the mode: the notice, the registry fetch on the first on-stop,
-// and the map's layer. A tap and a restored mode at start-up take one path.
+// Applies the mode: the notice, the map's layer, and a load of the registries
+// that have not answered yet. A tap and a restored mode at start-up take one
+// path.
 async function applyNodePosMode() {
   updateNodePosIcon()
   applyNodePosNotices()
   if (state.map) state.map.setNodeLayer(nodePosMode)
-  if (nodePosOn()) {
-    await loadNodePositions()
-    // The count is only known after the fetch, so the key is re-applied here:
-    // "no registry data" and "worked, nothing in view" must not look alike.
-    applyNodePosNotices()
-  }
+  // The count is only known after the fetch; loadNodePositions re-applies the
+  // key when it settles, so "no registry data" and "worked, nothing in view"
+  // do not look alike.
+  if (nodePosOn()) await loadNodePositions()
 }
 
 async function cycleNodePositions() {
@@ -2987,14 +3084,26 @@ function applyCourseHeading(heading, speed) {
 // selection change). senderList runs the dedupe+merge pass, which is already
 // the most expensive thing on the render tick, so this must not add another
 // one per caller.
-let selCache = { rows: null, keys: null, set: null }
+let selCache = { rows: null, keys: null, set: null, list: null }
 function selectedSet() {
   if (!state.filter.sender) return null
   const keys = state.filter.sender.keys
   if (selCache.rows === state.lastRows && selCache.keys === keys) return selCache.set
-  const set = expandSelection(keys, senderList(state.lastRows, { ignore: state.ignore }))
-  selCache = { rows: state.lastRows, keys, set }
+  const list = senderList(state.lastRows, { ignore: state.ignore })
+  const set = expandSelection(keys, list)
+  selCache = { rows: state.lastRows, keys, set, list }
   return set
+}
+
+// refreshTargetChip lets the chip follow its row after the pick, not only at
+// it (#661, AGENTS.md §5.4 item 3): the registry lands after start-up, the SF
+// is set on connect and the attenuator moves the reach, and each of those can
+// rename or refuse the row a moment later. Called once per tick with the new
+// rows, it reuses the list selectedSet just built for them, so the tick runs
+// no extra senderList pass.
+function refreshTargetChip() {
+  if (!selectedSet()) return
+  if (refreshTargetNames(state.senderLabels, selCache.list, state.filter.sender.keys)) updateTargetChip()
 }
 
 // state.filter carries selected node KEYS; makeFilter and isFilterActive work
@@ -3053,12 +3162,16 @@ document.addEventListener('hunt:isolate-sender', (e) => {
     // One key per node, not one per id variant (#268), resolved against the
     // rows in hand so the map popup and the target list agree (#297) — see
     // selectionKeyFor.
-    const key = selectionKeyFor(senderList(state.lastRows || [], { ignore: state.ignore }), id, d.ids)
+    const rows = senderList(state.lastRows || [], { ignore: state.ignore })
+    const key = selectionKeyFor(rows, id, d.ids)
     // Store the label under the KEY, which is what updateTargetChip reads. It
     // used to be stored under the id: for a merged row the display record is
     // usually the most recent reception (often a prefix), so the lookup missed
     // and the chip fell through to rendering the raw 64-hex anchor (#297).
-    if (d.label != null) state.senderLabels.set(key, d.label || String(d.id))
+    // The name is the one the node's row shows (#661), and every tick renames
+    // it when the row changes after the pick (refreshTargetChip), so the chip
+    // does not name what the row refuses; with none it shows the id prefix.
+    rememberTargetName(state.senderLabels, rows, key, d.label)
     if (d.toggle) {
       if (keys.has(key)) keys.delete(key); else keys.add(key)
     } else {
@@ -3183,6 +3296,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   const restoredView = VIEW_STATES[viewIdx]
   state.map.setView(restoredView.mode, restoredView.mode3D)
   el('nodepos-toggle').addEventListener('click', () => { cycleNodePositions().catch(() => {}) })
+  // The registry loads whether the layer is on or not: the HUD and the ticker
+  // name a relay id by it (#661). One fetch; applyNodePosMode shares it.
+  loadNodePositions().catch(() => {})
   applyNodePosMode().catch(() => {})
 
   // Sound FAB (#145). A persisted non-off mode is restored here; the engine

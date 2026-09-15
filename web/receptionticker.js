@@ -347,10 +347,12 @@ export function rxLineHeight(raw) {
 }
 export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js's fetch limit
 
-// senderCell, the app's rule (app/src/receptionlog.js, #451): once a name has
-// resolved the id stands beside it in its own column, cut to the same six
-// characters the target picker uses; a line without a name keeps the id in
-// the name cell and the column empty, and a hash id is its # mark only.
+// senderCell, the app's rule for a row without an attribution
+// (app/src/receptionlog.js, #451): once a name has resolved the id stands
+// beside it in its own column, cut to the same six characters the target
+// picker uses; a line without a name keeps the id in the name cell and the
+// column empty, and a hash id is its # mark only. The map's ticker does not
+// attribute by reach, so it has no placed hash id to name.
 const ID_PREFIX_HEX_CHARS = 6
 export function senderCell(pt) {
   const id = pt.sender_id ? String(pt.sender_id) : ''

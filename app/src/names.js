@@ -34,9 +34,12 @@ export function isFullPubkey(id) { return typeof id === 'string' && FULL_PUBKEY.
 // Resolvable = 2..32 bytes (4..64 hex): full advert pubkeys, discover 8-byte
 // prefixes, AND CoreScope 2-byte relay path-prefixes — CoreScope resolves all of
 // these, returning `ambiguous` when a prefix collides (handled by resolveName,
-// cached as ''). 1-byte hashes (2 hex) stay excluded: too collision-prone to
-// name. Mirrors the analysis website's gate (web/names.js) so a relayed advert
-// heard by the hunter shows the same repeater name the map does.
+// cached as ''). 1-byte hashes (2 hex) stay excluded: the resolver answers per
+// id without knowing where it was heard, and one byte is shared by too many
+// nodes for that answer to mean anything. A 1-byte hash is named only by its
+// attribution by reach (#661, displayName). Mirrors the analysis website's
+// gate (web/names.js) so a relayed advert heard by the hunter shows the same
+// repeater name the map does.
 const RESOLVABLE = /^[0-9a-f]{4,64}$/i;
 export function isResolvableId(id) { return typeof id === 'string' && RESOLVABLE.test(id); }
 
@@ -50,11 +53,12 @@ export function resolvableKey(rec) {
   return isResolvableId(rec.sender_id) ? rec.sender_id.toLowerCase() : null;
 }
 
-// A sender id of one byte (2 hex) is a 256-way collision space, so it is never
-// a name, and meshpacket.js carries it as its OWN sender_label for the two
-// kinds below. A surface that prints that label unguarded shows "77" exactly
-// as it would show a resolved short name. Marked with # instead, the house
-// style hudsender.js set, and kept out of the resolver by the 4-hex floor.
+// A sender id of one byte (2 hex) is a 256-way collision space, so the id
+// itself is never a name, and meshpacket.js carries it as its OWN sender_label
+// for the two kinds below. A surface that prints that label unguarded shows
+// "77" exactly as it would show a resolved short name. Marked with # instead,
+// the house style hudsender.js set, and kept out of the resolver by the 4-hex
+// floor. A name for it comes only from its attribution by reach (#661).
 const HASH_ID_KINDS = ['direct_hash', 'path_hash']
 export function isHashIdKind(kind) { return HASH_ID_KINDS.includes(kind) }
 
@@ -106,7 +110,8 @@ export function consensusName(names) {
 // the field reads by it) and wears GUESS_MARK on every surface, so nothing
 // presents it as a resolved identity (#452). An advert's own name on its
 // full key, a channel sender's name and an 8-byte discover prefix are not
-// guesses; a 1-byte hash never carries a name at all (isHashIdKind).
+// guesses; a 1-byte hash carries no resolved name (isHashIdKind), only the
+// name of the node it is placed on by reach (displayName).
 export const GUESS_MARK = '~';
 const GUESS_MAX_HEX = 6;
 export function isGuessedName(rec) {
@@ -115,10 +120,29 @@ export function isGuessedName(rec) {
   const id = typeof rec.sender_id === 'string' ? rec.sender_id : '';
   return /^[0-9a-f]+$/i.test(id) && id.length <= GUESS_MAX_HEX;
 }
-// displayName: the label as a surface should print it, marked when guessed;
-// '' when there is no label, so callers fall back to the id as before.
+// displayName: the name as a surface should print it, marked when guessed;
+// '' when there is none, so callers fall back to the id as before.
+//
+// A relay, path or direct hash of 1 to 3 bytes is named by its attribution by
+// reach first (#661, attribution.js), which the app puts on the row as _attr:
+//   node       the one registry node in reach: that node's name, marked, since
+//              the node is still a guess about who relayed; '' if it has none
+//   collision  two or more in reach: no name, whatever the resolver said
+//   estimate   none in reach: the resolver's name as before, unless the
+//              registry holds a positioned node with that prefix out of reach
+//              (prefixKnown), which is evidence the name is that node's
+// A 1-byte hash (isHashIdKind) is named only by a placement: meshpacket.js
+// carries the hash as its own label, which is no name. Any other row without
+// _attr (a kind the rule does not cover, or not worked out yet) reads by its
+// label, as before.
 export function displayName(rec) {
-  if (!rec || !rec.sender_label) return '';
+  if (!rec) return '';
+  const attr = rec._attr;
+  if (attr && attr.rule === 'node') return attr.node && attr.node.name ? GUESS_MARK + String(attr.node.name) : '';
+  if (attr && attr.rule === 'collision') return '';
+  if (isHashIdKind(rec.sender_kind)) return '';
+  if (attr && attr.rule === 'estimate' && attr.prefixKnown) return '';
+  if (!rec.sender_label) return '';
   return (isGuessedName(rec) ? GUESS_MARK : '') + String(rec.sender_label);
 }
 

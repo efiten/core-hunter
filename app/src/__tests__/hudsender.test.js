@@ -101,3 +101,34 @@ describe('senderReadout marks a guessed name', () => {
     expect(senderReadout({ sender_kind: 'advert_pubkey', sender_id: 'ab'.repeat(32), sender_label: 'alpha', hops: 0 }).text).toBe('alpha')
   })
 })
+
+// #661: a relay id placed on one registry node by reach reads by that node's
+// name; a collision reads by the id, whatever the resolver named it.
+describe('senderReadout follows attribution', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  it('reads via ~name for a 1-byte last hop placed on one node', () => {
+    const r = senderReadout({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', hops: 3, _attr: { rule: 'node', node: HEUMEN } })
+    expect(r.text).toBe('via ~Heumensoord-RPT')
+    expect(r.viaRelay).toBe(true)
+  })
+  it('names a zero-hop source hash placed on one node, without a via', () => {
+    expect(senderReadout({ sender_kind: 'direct_hash', sender_id: '64', sender_label: '64', hops: 0, _attr: { rule: 'node', node: HEUMEN } }).text).toBe('~Heumensoord-RPT')
+  })
+  it('keeps via #64 on a collision, and on an estimate', () => {
+    expect(senderReadout({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', hops: 3, _attr: { rule: 'collision', count: 2 } }).text).toBe('via #64')
+    expect(senderReadout({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', hops: 3, _attr: { rule: 'estimate', prefixKnown: false } }).text).toBe('via #64')
+  })
+  // The common case: meshpacket.js gives a relay no label unless the resolver
+  // names it, so the placement alone has to carry the name.
+  it('names a relay placed on one node with no resolver label', () => {
+    const r = senderReadout({ sender_kind: 'relay', sender_id: '64aa', sender_label: null, hops: 2, _attr: { rule: 'node', node: HEUMEN } })
+    expect(r.text).toBe('via ~Heumensoord-RPT')
+    expect(r.viaRelay).toBe(true)
+  })
+  it('drops a resolved relay name on a collision and shows the id', () => {
+    expect(senderReadout({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', hops: 2, _attr: { rule: 'collision', count: 2 } }).text).toBe('via 4a4a')
+  })
+  it('shows the id for a placed node without a name', () => {
+    expect(senderReadout({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', hops: 3, _attr: { rule: 'node', node: { ...HEUMEN, name: '' } } }).text).toBe('via #64')
+  })
+})

@@ -340,10 +340,12 @@ export function lineMeta(r) {
 // move the camera off a marker the user just chose.
 // senderText is the ticker's sender cell. meshpacket.js carries a 1-byte hash
 // as its own sender_label, so printing the label unguarded put "77" on screen
-// looking exactly like a resolved short name. Same # mark the HUD uses.
+// looking exactly like a resolved short name. Same # mark the HUD uses. A hash
+// id placed on one registry node by reach (#661) reads by that node's name.
 export function senderText(r) {
-  if (isHashIdKind(r.sender_kind) && r.sender_id) return '#' + String(r.sender_id)
-  // A name resolved for a short prefix wears the guess mark (#452, names.js).
+  if (isHashIdKind(r.sender_kind) && r.sender_id) return displayName(r) || '#' + String(r.sender_id)
+  // A name resolved for a short prefix wears the guess mark (#452, names.js),
+  // and the attribution by reach decides a relay's name first.
   return displayName(r) || r.sender_id || '—'
 }
 
@@ -353,12 +355,18 @@ export function senderText(r) {
 // screen to check against. Once a name has resolved the id stands beside it,
 // cut with idPrefix like the target list and the HUD; a line without a name
 // keeps the id in the name cell and the column empty, so a prefix is never
-// printed twice, and a hash id is its # mark and nothing else. A label that is
-// the id is no name either: meshpacket.js gives a channel_name sender its
-// decrypted name as both. Same rule as web/receptionticker.js.
+// printed twice. A hash id is its # mark and nothing else, until it is placed
+// on a named node by reach (#661): then the # id stands beside that name. A
+// label that is the id is no name either: meshpacket.js gives a channel_name
+// sender its decrypted name as both. For a row without an attribution this is
+// the rule of web/receptionticker.js; the map's ticker does not attribute.
 export function senderCell(r) {
   const name = senderText(r)
-  const resolved = !isHashIdKind(r.sender_kind) && !!r.sender_id && name !== String(r.sender_id)
+  if (isHashIdKind(r.sender_kind) && r.sender_id) {
+    const hashId = '#' + String(r.sender_id)
+    return { id: name === hashId ? '' : hashId, name }
+  }
+  const resolved = !!r.sender_id && name !== String(r.sender_id)
   return { id: resolved ? idPrefix(r.sender_id) : '', name }
 }
 

@@ -1,4 +1,6 @@
 import { senderList, topSenders, relTime, targetParts, rowIds } from './feed.js'
+import { displayName } from './names.js'
+import { attributionSignature } from './attribution.js'
 
 const PAGE_SIZE = 6
 const PINNED_COUNT = 3
@@ -50,7 +52,7 @@ function row(rec, nowMs, onSelect, selectedIds) {
   meta.append(rssi, time)
 
   btn.append(check, name, meta)
-  btn.addEventListener('click', () => onSelect && onSelect(rec.sender_id, rec.sender_label, ids))
+  btn.addEventListener('click', () => onSelect && onSelect(rec.sender_id, displayName(rec), ids))
 
   li.appendChild(btn)
   return li
@@ -79,6 +81,11 @@ export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, se
   let _lastPinnedSig = null
 
   const selSig = (sel) => (sel ? [...sel].sort().join(',') : '')
+  // What a row paints: its name, which follows the resolver's label and the
+  // attribution by reach of its newest reception (#661, targetParts), and its
+  // reading. The registry landing, or the attenuator moving the reach, changes
+  // the name without changing the reception, so the attribution is in it.
+  const rowSig = (r) => (r.sender_label || r.sender_id || '') + attributionSignature(r._attr) + r.rssi + r.rx_at
   const query = () => (searchEl ? String(searchEl.value || '').trim() : '')
 
   function render(rows, ignore, nowMs, selectedIds) {
@@ -93,7 +100,7 @@ export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, se
       const pinned = topSenders(rows, { ignore, count: PINNED_COUNT, nowMs })
       pinnedEl.hidden = pinned.length === 0
       if (pinnedLabelEl) pinnedLabelEl.hidden = pinned.length === 0
-      const pinnedSig = pinned.map((r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at).join('|') + '@' + selKey
+      const pinnedSig = pinned.map(rowSig).join('|') + '@' + selKey
       if (pinnedSig !== _lastPinnedSig) {
         _lastPinnedSig = pinnedSig
         pinnedEl.replaceChildren(...pinned.map((rec) => row(rec, nowMs, onSelect, lastSelected)))
@@ -101,7 +108,7 @@ export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, se
     }
 
     const items = senderList(rows, { ignore, limit: visible, query: q })
-    const sig = items.map((r) => (r.sender_label || r.sender_id || '') + r.rssi + r.rx_at).join('|') + '#' + visible + '@' + selKey + '?' + q
+    const sig = items.map(rowSig).join('|') + '#' + visible + '@' + selKey + '?' + q
     if (sig === _lastSig) return
     _lastSig = sig
     if (q && items.length === 0) { listEl.replaceChildren(emptyRow()); return }

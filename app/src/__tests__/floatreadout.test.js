@@ -14,7 +14,8 @@ describe('floatModel — what the float readout draws', () => {
     expect(m.who).toBe('alpha')
     expect(m.tier).toBe('warm')
   })
-  // The same refusal the HUD makes: a 1-byte hash is an id, never a name.
+  // The same rule the HUD follows: a 1-byte hash is an id unless it is placed
+  // on a node by reach (#661).
   it('goes through senderReadout, so a hash id stays marked as one', () => {
     const m = floatModel({ ...base, rec: { ...rec, sender_kind: 'direct_hash', sender_id: '4a', sender_label: '4a' } })
     expect(m.who).toBe('#4a')

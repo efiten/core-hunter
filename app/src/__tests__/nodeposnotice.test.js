@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { nodePosNotice, nodePosKeyText, NODEPOS_EMPTY_TEXT } from '../nodeposnotice.js'
+import { nodePosNotice, nodePosKeyText, registryKnownEmpty, NODEPOS_EMPTY_TEXT } from '../nodeposnotice.js'
 
 // #662: the node-position layer writes nothing over the map about what a
 // position is. The ▲ and ● say what they are in the popup's glyph line, and
@@ -17,6 +17,40 @@ describe('nodePosNotice', () => {
 
   it('defaults to showing nothing when called with no argument', () => {
     expect(nodePosNotice()).toEqual({ key: false })
+  })
+})
+
+// #661 made the registry load twice: at start-up and again on connect, when the
+// companion's SF is known. "Empty" is only a fact once a load has finished and
+// no other one is running, or a retry that may still answer reads as a failure
+// (#307: until then saying nothing is the honest answer).
+describe('registryKnownEmpty', () => {
+  it('is false for a registry that answered with nodes', () => {
+    expect(registryKnownEmpty({ attempted: true, loading: false, count: 12 })).toBe(false)
+  })
+
+  it('is true once a finished load found nothing and none is running', () => {
+    expect(registryKnownEmpty({ attempted: true, loading: false, count: 0 })).toBe(true)
+  })
+
+  it('is false before any load has finished', () => {
+    expect(registryKnownEmpty({ attempted: false, loading: true, count: 0 })).toBe(false)
+    expect(registryKnownEmpty({ attempted: false, loading: false, count: 0 })).toBe(false)
+    expect(registryKnownEmpty()).toBe(false)
+  })
+
+  // The start-up load failed, the connect retry is still out: the old count
+  // of 0 is no longer the answer.
+  it('is false while a retry after a failed load is in flight', () => {
+    expect(registryKnownEmpty({ attempted: true, loading: true, count: 0 })).toBe(false)
+  })
+
+  // A config without resolvers, or a config.json that did not load, leaves
+  // nothing to ask, so no load ever runs. Nothing can be drawn, and that is
+  // known from the start.
+  it('is true with no resolver configured, before any load', () => {
+    expect(registryKnownEmpty({ attempted: false, loading: false, count: 0, resolvers: 0 })).toBe(true)
+    expect(registryKnownEmpty({ attempted: false, loading: false, count: 0, resolvers: 2 })).toBe(false)
   })
 })
 
