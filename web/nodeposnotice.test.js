@@ -8,10 +8,13 @@ import {
 const on = (over) => nodePosPresentation({ on: true, ...over })
 
 describe('nodePosPresentation — every way to draw nothing says which one it was', () => {
-  // #631: with markers on screen the layer writes no key at all. What a ▲ and
-  // a ● are is answered by the popup, which is where a reader goes to ask.
-  it('writes no key over the map once there are markers to explain', () => {
-    expect(on({ registry: { status: 'ok' }, drawn: 3 })).toEqual({ note: true, key: '' })
+  // #631 took the glyph key off the map, and #662 the note that repeated that
+  // positions are inferred. Over a drawn layer the only line left is the one
+  // that reports a state of the registry itself.
+  it('says nothing over a drawn layer, only why a layer is empty or old', () => {
+    expect(on({ registry: { status: 'ok' }, drawn: 3 })).toEqual({ key: '' })
+    expect(on({ registry: { status: 'ok', stale: true }, drawn: 3 })).toEqual({ key: NODEPOS_STALE_TEXT })
+    expect(on({ registry: { status: 'empty' } })).toEqual({ key: NODEPOS_EMPTY_TEXT })
   })
 
   it('gives each empty state its own line', () => {
@@ -23,16 +26,6 @@ describe('nodePosPresentation — every way to draw nothing says which one it wa
     expect(key({ registry: { status: 'unavailable' } })).toBe(NODEPOS_UNAVAILABLE_TEXT)
     expect(new Set([NODEPOS_NONE_IN_VIEW_TEXT, NODEPOS_EMPTY_TEXT, NODEPOS_UNCONFIGURED_TEXT,
       NODEPOS_UNAVAILABLE_TEXT, NODEPOS_GUEST_TEXT]).size).toBe(5)
-  })
-
-  it('never shows the disclaimer without markers behind it', () => {
-    // It asserts that advertised positions are on screen. With none, it reads
-    // as "the layer works and the area is empty" — the original defect.
-    for (const registry of [null, { status: 'ok' }, { status: 'empty' }, { status: 'not_configured' },
-      { status: 'unavailable' }, { status: 'forbidden' }]) {
-      expect(on({ registry, drawn: 0 }).note).toBe(false)
-    }
-    expect(on({ reason: 'Log in.', registry: { status: 'ok' }, drawn: 9 }).note).toBe(false)
   })
 
   it('treats a failed fetch as unreachable, not as an empty registry', () => {
@@ -83,8 +76,8 @@ describe('nodePosPresentation — every way to draw nothing says which one it wa
   })
 
   it('says nothing at all while the layer is off', () => {
-    expect(nodePosPresentation({ on: false, registry: { status: 'ok' }, drawn: 5 })).toEqual({ note: false, key: '' })
-    expect(nodePosPresentation()).toEqual({ note: false, key: '' })
+    expect(nodePosPresentation({ on: false, registry: { status: 'ok' }, drawn: 5 })).toEqual({ key: '' })
+    expect(nodePosPresentation()).toEqual({ key: '' })
   })
 })
 
@@ -111,52 +104,5 @@ describe('nodePosKeyText — kept in step with the app copy', () => {
     expect(nodePosKeyText({ registryEmpty: true })).toBe(NODEPOS_EMPTY_TEXT)
     expect(nodePosKeyText({ registryEmpty: false })).toBe('')
     expect(nodePosKeyText()).toBe('')
-  })
-})
-
-// #426: the disclaimer block is a quarter of a phone screen, over the part of
-// the map being read. On a wide screen the same corner costs nothing, so the
-// glance is scoped to narrow viewports rather than applied to web as a whole.
-describe('nodePosPresentation — the prose is a glance on a narrow screen', () => {
-  const drawn = { on: true, registry: { status: 'ok', stale: false }, drawn: 3 }
-
-  it('keeps the prose on a wide screen however long the layer is on', () => {
-    expect(nodePosPresentation({ ...drawn, narrow: false, glanceExpired: true }).note).toBe(true)
-    expect(nodePosPresentation({ ...drawn, narrow: false, glanceExpired: false }).note).toBe(true)
-  })
-
-  it('shows it on a narrow screen and then lets it go', () => {
-    expect(nodePosPresentation({ ...drawn, narrow: true, glanceExpired: false }).note).toBe(true)
-    expect(nodePosPresentation({ ...drawn, narrow: true, glanceExpired: true }).note).toBe(false)
-  })
-
-  // #631: there is no key left in this state to take, and the glance must not
-  // resurrect one by any route.
-  it('leaves no key behind in either direction', () => {
-    for (const glanceExpired of [true, false]) {
-      const r = nodePosPresentation({ ...drawn, narrow: true, glanceExpired })
-      expect(r.key, String(glanceExpired)).toBe('')
-    }
-  })
-
-  // Every other branch already answers note:false, so the glance must not turn
-  // one of them back on -- a guest or an unreachable registry has no prose to
-  // show in the first place.
-  it('cannot switch the prose on for a state that has none', () => {
-    const off = [
-      { on: false },
-      { on: true, reason: 'Log in.' },
-      { on: true, registry: { status: 'empty' } },
-      { on: true, registry: { status: 'unavailable' } },
-      { on: true, registry: { status: 'ok' }, drawn: 0 },
-    ]
-    for (const base of off) {
-      expect(nodePosPresentation({ ...base, narrow: true, glanceExpired: false }).note,
-        JSON.stringify(base)).toBe(false)
-    }
-  })
-
-  it('defaults to no glance, so a caller that does not opt in is unaffected', () => {
-    expect(nodePosPresentation(drawn).note).toBe(true)
   })
 })

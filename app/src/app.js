@@ -55,7 +55,7 @@ import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES, TELEMETRY_REQ_BY
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
-import { nodePosNotice, nodePosKeyText, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { nodePosNotice, nodePosKeyText } from './nodeposnotice.js'
 import { NODEPOS_MODES, NODEPOS_LABELS, nextNodePosMode, parseNodePosMode } from './nodeposmode.js'
 import { drawableNodes } from './nodelayer.js'
 import { positionsUrl, nodesPageUrl, normalizeNodes, morePages, REGISTRY_PAGE, MAX_REGISTRY_PAGES } from './noderegistry.js'
@@ -2744,26 +2744,20 @@ async function fetchNodePositions() {
   if (state.map) state.map.setNodePositions([...byPubkey.values()])
 }
 
-// §7: this layer implies node locations. The one-line ▲/● key is on screen for
-// as long as the layer is — a popup-only note would not satisfy it — while the
-// full disclaimer prose is a 2s glance so it stops covering the HUD (#306).
-// Which of the two may fade is decided in nodeposnotice.js, under test.
-let nodePosFadeTimer = null
-
-function applyNodePosNotices({ glanceExpired = false } = {}) {
+// The one line the node-position layer writes over the map: why nothing could
+// be drawn. The glyph meaning is in the marker popup (#631), and nothing over
+// the map repeats that positions are inferred (#662); the splash and About say
+// that. The decision is nodeposnotice.js's, under test.
+function applyNodePosNotices() {
   // registryEmpty is only meaningful once the fetch has finished; until then
   // saying nothing is the honest answer, since positions may still arrive
   // (#307). "Nothing came back" and "nobody answered" both mean nothing can be
   // drawn, and both are only knowable once a load attempt has finished.
   const registryEmpty = nodePosAttempted && nodePosCount === 0
-  // Since #631 it is the only thing this surface carries: the glyph meaning
-  // moved into the marker popup, and what is left explains why the map is
-  // blank. That does not fade, because the reason has to outlast a glance.
-  const { note, key } = nodePosNotice({ on: nodePosOn(), glanceExpired, registryEmpty })
-  const noteEl = el('nodepos-note')
+  // It explains why the map is blank, so it does not fade: the reason has to
+  // stay for as long as the state does.
+  const { key } = nodePosNotice({ on: nodePosOn(), registryEmpty })
   const keyEl = el('nodepos-key')
-  noteEl.textContent = SPLASH_DISCLAIMER
-  noteEl.hidden = !note
   keyEl.textContent = nodePosKeyText({ registryEmpty })
   keyEl.hidden = !key
 }
@@ -2787,34 +2781,24 @@ function updateNodePosIcon() {
   btn.classList.toggle('on', nodePosOn())
 }
 
-// Applies the mode: the notices, the registry fetch on the first on-stop,
-// and the map's layer. `fromTap` starts the glance; a restored mode at
-// start-up draws without the prose, as the web's restore does (#426).
-async function applyNodePosMode({ fromTap = false } = {}) {
+// Applies the mode: the notice, the registry fetch on the first on-stop,
+// and the map's layer. A tap and a restored mode at start-up take one path.
+async function applyNodePosMode() {
   updateNodePosIcon()
-  // Cleared on every entry, so rapid toggling can't have a stale timer hide
-  // the glance two seconds into a later activation.
-  if (nodePosFadeTimer) { clearTimeout(nodePosFadeTimer); nodePosFadeTimer = null }
-  applyNodePosNotices({ glanceExpired: !fromTap })
-  if (nodePosOn() && fromTap) {
-    nodePosFadeTimer = setTimeout(() => {
-      nodePosFadeTimer = null
-      applyNodePosNotices({ glanceExpired: true })
-    }, NODEPOS_GLANCE_MS)
-  }
+  applyNodePosNotices()
   if (state.map) state.map.setNodeLayer(nodePosMode)
   if (nodePosOn()) {
     await loadNodePositions()
     // The count is only known after the fetch, so the key is re-applied here:
     // "no registry data" and "worked, nothing in view" must not look alike.
-    applyNodePosNotices({ glanceExpired: nodePosFadeTimer === null })
+    applyNodePosNotices()
   }
 }
 
 async function cycleNodePositions() {
   nodePosMode = nextNodePosMode(nodePosMode)
   saveNodePosMode(nodePosMode)
-  await applyNodePosMode({ fromTap: true })
+  await applyNodePosMode()
 }
 
 // ---------------------------------------------------------------------------

@@ -47,7 +47,7 @@ at the attacker's position into that node's set, which moves its estimate, not j
 heuristic detector for a forged hop count is worth building (#321) — measured against real traffic,
 every candidate is either indistinguishable from honest behaviour or needs data we do not record.
 
-**Position disclaimer (required in all position-bearing output):** position is *inferred* from radio
+**Position is inferred:** position is *inferred* from radio
 measurements (RSSI, SNR) via mesh topology — **not** from GPS tracking of the target node. The GPS
 coordinates stored with each reception are the **hunter phone's own position** at the moment of
 reception. The map shows where *you* were when you heard the target, and how well, not where the
@@ -594,34 +594,6 @@ All timestamps in `hunter_receptions` are UTC. Convert to local time only in the
 Implement exactly what the task spec asks. Do not add error-handling, validation, or behaviour
 for scenarios that cannot occur within the current design. Do not pre-implement future iteration
 features unless the spec explicitly includes them.
-
-### Position disclaimer in all position-bearing output
-
-Any output that displays or implies a target's location must state clearly:
-
-> Position is inferred from radio measurements (RSSI/SNR) via mesh topology — not from GPS
-> tracking of the target. The stored GPS coordinates are the hunter phone's own position at
-> the time of reception.
-
-**Where it must be shown (revised 2026-09-13, #631).** The disclaimer prose is **shown when the
-output is switched on**. The meaning of a position-bearing glyph is **reachable from the output
-itself**, and is not written over the map: for the node-position layer every marker popup carries a
-sentence per glyph it drew (`.np-caveat` — what an advertised ▲ is, and that a ● is inferred from
-RSSI rather than from GPS tracking). The two sentences live in `nodeposnotice.js` and are pinned
-identical on both surfaces, because this is the requirement rather than decoration.
-
-The rule has been narrowed twice, each time for a concrete reason rather than for convenience. It
-began as a permanent on-screen key. #306 moved these notices into `#toast-stack` at the top of the
-screen, #322 then put the enlarged receptions ticker in the same band, and a permanent key sat on
-the ticker for the whole session — so #413 made it a glance on each activation. #631 then asked
-where a reader actually goes to find out what a marker is: they tap it, and the popup has answered
-since #197. A second copy painted over the map is what the rule cost, not what it needs. See
-`docs/2026-08-21-nodepos-key-glance.md` for the intermediate round.
-
-**What is not a glance:** a line reporting that nothing could be drawn — an empty registry, an
-unreachable resolver — is an explanation, not a label, and stays for as long as the state does.
-Fading it makes "we got nothing" and "there is nothing here" look alike, which is the failure #307
-exists to prevent.
 
 ---
 

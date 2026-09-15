@@ -1,117 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { nodePosNotice, nodePosKeyText, NODEPOS_EMPTY_TEXT, NODEPOS_GLANCE_MS,
-  NODEPOS_ADVERT_CAVEAT, NODEPOS_ESTIMATE_CAVEAT } from '../nodeposnotice.js'
+import { readFileSync } from 'node:fs'
+import { nodePosNotice, nodePosKeyText, NODEPOS_EMPTY_TEXT } from '../nodeposnotice.js'
 
-// AGENTS.md §7, as revised by #631. The rule these tests defend: while the
-// node-position layer is drawn, what ▲ and ● mean lives in the marker popup,
-// and nothing about the glyphs is written over the map.
-//
-// It has been through three rounds, and the reasoning is worth carrying rather
-// than being rediscovered as a bug. #306 pushed both notices out of the HUD
-// into #toast-stack, pinned to the top of the screen. #322 then made the
-// receptions ticker large enough to read while driving, and it takes that same
-// band, so a permanent key sat on the ticker for the whole session. #413 made
-// the key a two-second glance instead. #631 asks the question one level up: if
-// the popup is where a reader actually goes to find out what a marker is, a
-// second copy over the map is not the requirement, it is clutter.
-//
-// What remains on screen is not a legend: a line saying nothing could be drawn
-// explains an absence, and §7 keeps that for as long as the state lasts.
-describe('nodePosNotice — the §7 guarantee, as revised by #631', () => {
-  it('writes no glyph key over the map, however fresh the activation', () => {
-    expect(nodePosNotice({ on: true, glanceExpired: false }).key).toBe(false)
-    expect(nodePosNotice({ on: true, glanceExpired: true }).key).toBe(false)
-  })
-
-  it('shows nothing at all while the layer is off', () => {
-    expect(nodePosNotice({ on: false, glanceExpired: false })).toEqual({ note: false, key: false })
-    expect(nodePosNotice({ on: false, glanceExpired: true })).toEqual({ note: false, key: false })
-  })
-
-  // The one line that survives, and the reason the surface still exists.
-  // "No positions from the registry" is not a legend for glyphs on screen —
-  // there are none — it is the explanation for why the map is blank. Dropping
-  // it puts #307's bug back: an empty registry and an empty area look
-  // identical again.
-  it('keeps the empty-registry line, because it explains an absence', () => {
-    expect(nodePosNotice({ on: true, glanceExpired: true, registryEmpty: true }).key).toBe(true)
-    expect(nodePosNotice({ on: true, glanceExpired: false, registryEmpty: true }).key).toBe(true)
+// #662: the node-position layer writes nothing over the map about what a
+// position is. The ▲ and ● say what they are in the popup's glyph line, and
+// the statement that positions are inferred lives in the splash and About.
+// What is left on this surface is the line saying why nothing could be drawn,
+// and that stays for as long as the state lasts (#307, docs/design-system.md).
+describe('nodePosNotice', () => {
+  it('returns only the empty-registry explanation, never a note', () => {
+    expect(nodePosNotice({ on: true, registryEmpty: false })).toEqual({ key: false })
+    expect(nodePosNotice({ on: true, registryEmpty: true })).toEqual({ key: true })
     // ...and only while the layer is on.
-    expect(nodePosNotice({ on: false, glanceExpired: true, registryEmpty: true }).key).toBe(false)
-  })
-
-  // The glance never reached that line before #631 either, and must not start
-  // now that it is the only thing the surface carries.
-  it('never fades the line that explains an absence', () => {
-    for (const glanceExpired of [true, false]) {
-      expect(nodePosNotice({ on: true, glanceExpired, registryEmpty: true }).key, String(glanceExpired)).toBe(true)
-    }
-  })
-
-  it('is total — both surfaces answer with a boolean for every input', () => {
-    for (const on of [true, false, undefined]) {
-      for (const glanceExpired of [true, false, undefined]) {
-        const r = nodePosNotice({ on, glanceExpired })
-        expect(typeof r.note).toBe('boolean')
-        expect(typeof r.key).toBe('boolean')
-      }
-    }
+    expect(nodePosNotice({ on: false, registryEmpty: true })).toEqual({ key: false })
   })
 
   it('defaults to showing nothing when called with no argument', () => {
-    expect(nodePosNotice()).toEqual({ note: false, key: false })
-  })
-})
-
-// The position disclaimer itself is a separate sentence in §7 and is NOT what
-// #631 removes: it is about the whole layer, not about which glyph is which.
-describe('nodePosNotice — the prose glance is untouched', () => {
-  it('shows the prose on activation', () => {
-    expect(nodePosNotice({ on: true, glanceExpired: false }).note).toBe(true)
-  })
-
-  it('lets it go once the glance has expired', () => {
-    expect(nodePosNotice({ on: true, glanceExpired: true }).note).toBe(false)
-  })
-
-  // "Every time the view freshly (re-)appears", not just the first time: the
-  // function holds no state across activations, so an off→on cycle with a
-  // reset timer is a fresh glance.
-  it('has no memory of earlier activations', () => {
-    const first = nodePosNotice({ on: true, glanceExpired: false })
-    nodePosNotice({ on: true, glanceExpired: true })
-    nodePosNotice({ on: false, glanceExpired: true })
-    expect(nodePosNotice({ on: true, glanceExpired: false })).toEqual(first)
-  })
-
-  it('keeps the glance short enough to be a glance', () => {
-    expect(NODEPOS_GLANCE_MS).toBeGreaterThan(0)
-    expect(NODEPOS_GLANCE_MS).toBeLessThanOrEqual(5000)
-  })
-})
-
-// #631 moves the glyph meaning into the popup, so the popup has to carry all
-// of it. It already named the two glyphs and disclaimed the advertised one;
-// what it never said is the half the key did: that ● is inferred from radio,
-// not a position the node reported or a GPS fix of it.
-describe('the popup caveats — where the glyph meaning lives now', () => {
-  it('attributes the advertised position to the operator, and calls it stale-able', () => {
-    expect(NODEPOS_ADVERT_CAVEAT).toMatch(/operator/i)
-    expect(NODEPOS_ADVERT_CAVEAT).toMatch(/stale/i)
-  })
-
-  it('says the estimate comes from radio measurements', () => {
-    expect(NODEPOS_ESTIMATE_CAVEAT).toMatch(/rssi/i)
-  })
-
-  // The claim §7 exists to prevent, and the one the estimate is most likely to
-  // be misread as.
-  it('denies that the estimate is a GPS fix of the node', () => {
-    expect(NODEPOS_ESTIMATE_CAVEAT).toMatch(/not gps|not from gps/i)
-  })
-
-  it('are two different sentences, so neither has to cover the other glyph', () => {
-    expect(NODEPOS_ADVERT_CAVEAT).not.toBe(NODEPOS_ESTIMATE_CAVEAT)
+    expect(nodePosNotice()).toEqual({ key: false })
   })
 })
 
@@ -141,5 +46,23 @@ describe('nodePosKeyText — the line that is left', () => {
 
   it('names the registry as the source of the emptiness, not the map view', () => {
     expect(NODEPOS_EMPTY_TEXT).toMatch(/registry|resolver/i)
+  })
+})
+
+// #662 removed #nodepos-note, which was the layer's live region. The line that
+// is left takes that role over, or a screen reader stops hearing why nothing
+// is drawn. That is markup, so it is pinned against the file, the way
+// splash.test.js pins the FAB offsets.
+describe('the key line keeps the live region (#662)', () => {
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
+
+  it('#nodepos-key is a status region', () => {
+    const tag = html.match(/<[^>]*\bid="nodepos-key"[^>]*>/)
+    expect(tag, 'index.html has #nodepos-key').toBeTruthy()
+    expect(tag[0]).toMatch(/\brole="status"/)
+  })
+
+  it('#nodepos-note is gone', () => {
+    expect(html).not.toMatch(/id="nodepos-note"/)
   })
 })

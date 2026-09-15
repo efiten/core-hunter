@@ -16,9 +16,8 @@ describe('landing pages', () => {
     expect(pages.length).toBeGreaterThan(1)
   })
 
-  // AGENTS.md §7: output that displays or implies a target's location carries
-  // the position disclaimer. The FAQ answers "does the map show where my node
-  // is", so it is such an output.
+  // AGENTS.md §1: position is inferred, not GPS tracking of the target. The FAQ
+  // answers "does the map show where my node is", so it explains that.
   it('faq.html carries the position disclaimer', () => {
     expect(read('faq.html')).toMatch(/inferred from radio measurements/)
   })

@@ -45,10 +45,10 @@ describe('ONBOARDING_CALLOUTS', () => {
 })
 
 describe('panel copy', () => {
-  it('carries the AGENTS.md §7 position disclaimer', () => {
-    // The map implies node locations, so this is a hard rule, not a nicety:
-    // the statement has to say what the position is inferred from and what it
-    // is not.
+  it('carries the AGENTS.md §1 position statement', () => {
+    // The map implies node locations, and since #662 the onboarding and About
+    // are where it says so: the statement has to say what the position is
+    // inferred from and what it is not.
     expect(ONBOARDING_DISCLAIMER).toMatch(/RSSI/)
     expect(ONBOARDING_DISCLAIMER).toMatch(/not GPS tracking/i)
   })

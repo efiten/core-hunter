@@ -1,5 +1,4 @@
 import { test, expect, mapSettled, setNodePos, toggleLocate } from './fixtures.js'
-import { NODEPOS_GLANCE_MS } from '../nodeposnotice.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
 // against our RSSI estimate (●), with the gap between them as drift.
@@ -47,7 +46,7 @@ test.beforeEach(async ({ page }) => {
 test('the notice, the readout and the attribution share a phone screen without overlapping', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   // An unreachable registry: the layer is on, nothing is drawn, and the line
-  // saying so stays up for as long as that is true (AGENTS.md §7).
+  // saying so stays up for as long as that is true (#307, docs/design-system.md).
   await page.route('**/api/nodes/positions*', (r) =>
     r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
   // The reported case had a full readout, and the per-SF node counts are what
@@ -132,10 +131,9 @@ test('layer is off by default and the toggle is visible to a member', async ({ p
   await expect(fab).toBeVisible()
   await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
   await expect(fab).toHaveAttribute('aria-pressed', 'false')
-  await expect(page.locator('#nodepos-note')).toBeHidden()
 })
 
-test('checking it draws the advertised marker, reflects in the URL, and shows the disclaimer', async ({ page }) => {
+test('checking it draws the advertised marker, names it on the map and reflects in the URL', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
   await setNodePos(page, 'positions')
@@ -146,16 +144,12 @@ test('checking it draws the advertised marker, reflects in the URL, and shows th
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
   // The name is on the map, not only in the popup: the layer is opt-in.
   await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
-  // §7: the disclaimer is on screen for as long as the layer is drawn.
-  await expect(page.locator('#nodepos-note')).toBeVisible()
-  await expect(page.locator('#nodepos-note')).toContainText('not GPS tracking')
   await expect(page).toHaveURL(/[?&]nodepos=positions/)
 
   await page.locator('.np-advert').click({ force: true })
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText('Repeater-Zuid')
   await expect(popup).toContainText('▲ advertised · ● estimated')
-  await expect(popup).toContainText('self-reported')
 })
 
 test('a drift under 100 m reports a distance but claims no radius', async ({ page }) => {
@@ -237,33 +231,48 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
   })
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('#nodepos-note')).toBeVisible()
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   // No ● and no connector: the relay receptions carried no attributable identity.
   await expect(page.locator('.np-estimate')).toHaveCount(0)
+
+  // The popup agrees: it names only the ▲, and like the estimate branch it
+  // repeats no position notice (#662).
+  await page.locator('.np-advert').first().click()
+  const popup = page.locator('.maplibregl-popup')
+  await expect(popup).toContainText('▲ advertised')
+  await expect(popup).not.toContainText('estimated')
+  await expect(popup).not.toContainText(/self-reported|inferred|GPS/i)
 })
 
 // #376: the layer used to end in an empty state four different ways, all of
-// them silent. Each now says which one it was, and the disclaimer — which
-// asserts that advertised positions are on screen — appears only with markers
-// behind it.
+// them silent. Each now says which one it was.
 //
 // #631 then took the glyph key off the map: with markers on screen the corner
-// says nothing about them, and what a ▲ and a ● mean is answered by the marker
-// the reader tapped to ask.
-test('with markers on screen the glyph meaning is in the popup, not over the map', async ({ page }) => {
+// says nothing about them, and the popup's glyph line names the ▲ and the ●
+// the reader tapped. #662 took the rest: no note over the map and no sentence
+// in the popup repeating that positions are inferred. The splash and About
+// say that once.
+test('with markers on screen the popup names its glyphs and nothing repeats a notice', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
-  await expect(page.locator('#nodepos-note')).toBeVisible()
   // Nothing in the corner explains a glyph any more, whatever state it is in.
   await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
+  // Nor does it say that positions are inferred (#662). The stack as a whole,
+  // so a note back beside the key is caught; and a drawn layer with a fresh
+  // registry has nothing to report, so the key itself stays down.
+  await expect(page.locator('#nodepos-stack')).not.toContainText(/inferred|GPS/i)
+  await expect(page.locator('#nodepos-key')).toBeHidden()
 
   await page.locator('.np-advert').first().click()
-  const caveat = page.locator('.maplibregl-popup .np-caveat')
-  await expect(caveat).toContainText('self-reported by the operator')
-  await expect(caveat).toContainText('inferred from RSSI')
+  const popup = page.locator('.maplibregl-popup')
+  await expect(popup).toContainText('advertised')
+  await expect(page.locator('.maplibregl-popup .np-caveat')).toHaveCount(0)
+  // The text, not only the class: a caveat re-added under any other element
+  // still says one of these.
+  await expect(popup).not.toContainText('self-reported')
+  await expect(popup).not.toContainText(/inferred|GPS/i)
 })
 
 for (const [label, fulfil, expected] of [
@@ -279,8 +288,6 @@ for (const [label, fulfil, expected] of [
     await page.goto('/?mode=points')
     await setNodePos(page, 'positions')
     await expect(page.locator('#nodepos-key')).toContainText(expected, { timeout: 10000 })
-    // The disclaimer would claim positions are being shown. None are.
-    await expect(page.locator('#nodepos-note')).toBeHidden()
     await expect(page.locator('.np-advert')).toHaveCount(0)
   })
 }
@@ -295,7 +302,6 @@ test('marks a registry the server could not refresh (#376)', async ({ page }) =>
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   // Drawn, and dated: the positions are real, their age is not guaranteed.
   await expect(page.locator('#nodepos-key')).toContainText('positions may be a few minutes old')
-  await expect(page.locator('#nodepos-note')).toBeVisible()
 })
 
 test('a guest who deep-links the layer is told it is the account (#376)', async ({ page }) => {
@@ -305,7 +311,6 @@ test('a guest who deep-links the layer is told it is the account (#376)', async 
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.goto('/?mode=points&nodepos=positions')
   await expect(page.locator('#nodepos-key')).toContainText('Log in to switch the layer on', { timeout: 10000 })
-  await expect(page.locator('#nodepos-note')).toBeHidden()
   // And it stays. The gate put the key up and unchecked the box; the refresh
   // it then asked for redrew from the box and took the key back 250 ms later,
   // so this used to pass only when the poll above fell inside that window
@@ -399,155 +404,6 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
   // And the layer still comes back when Locate is switched off.
   await toggleLocate(page, false)
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
-})
-
-test('on a phone the disclaimer is a glance; on a desktop it stays', async ({ page }) => {
-  // #426: the same 300px corner block is cheap on a desktop map and a quarter
-  // of the viewport on a phone, over the part of the map being read. Since #631
-  // the prose is the only thing the glance has to reach: there is no key beside
-  // it while the layer is drawing.
-  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
-  await page.setViewportSize({ width: 390, height: 780 })
-  await page.goto('/')
-  await setNodePos(page, 'positions')
-
-  const note = page.locator('#nodepos-note')
-  await expect(note).toBeVisible()
-  await expect(note).toBeHidden({ timeout: 10000 })
-  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
-
-  // Off and on again is a fresh glance, not a memory of the last one.
-  await setNodePos(page, 'off')
-  await setNodePos(page, 'positions')
-  await expect(note).toBeVisible()
-
-  // Same page, wide: the prose stays put well past the glance.
-  await page.setViewportSize({ width: 1280, height: 800 })
-  await setNodePos(page, 'off')
-  await setNodePos(page, 'positions')
-  await expect(note).toBeVisible()
-  await page.waitForTimeout(3000)
-  await expect(note).toBeVisible()
-})
-
-// The path #426 is actually about. urlstate restores the stop (a checkbox
-// then) by assignment and dispatches nothing, so a layer that comes on from the URL
-// or from restored localStorage never fires `change` -- and the glance used to
-// be started from that listener alone. Every returning phone user who had the
-// layer on last time landed here and got the permanent quarter-screen block
-// this PR exists to remove. The toggle path above is the one where a user has
-// just deliberately switched the layer on and is already looking at it.
-test('a layer restored from the URL glances too, without a change event', async ({ page }) => {
-  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
-  await page.setViewportSize({ width: 390, height: 780 })
-  await page.goto('/?mode=points&nodepos=positions')
-
-  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
-  const note = page.locator('#nodepos-note')
-  await expect(note).toBeVisible()
-  await expect(note).toBeHidden({ timeout: 10000 })
-  // And nothing is left behind in the corner once it goes (#631).
-  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
-})
-
-// The other half of the same gap: urlstate persists to localStorage under
-// `ch-state`, so the second visit of a returning user restores the layer with
-// no `?nodepos=` in the URL at all.
-test('a layer restored from localStorage glances too', async ({ page }) => {
-  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
-  await page.setViewportSize({ width: 390, height: 780 })
-  await page.goto('/')
-  await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
-
-  // Plain revisit, no query string: the stop comes back from the store.
-  await page.goto('/')
-  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
-  const note = page.locator('#nodepos-note')
-  await expect(note).toBeVisible()
-  await expect(note).toBeHidden({ timeout: 10000 })
-  // And nothing is left behind in the corner once it goes (#631).
-  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
-})
-
-// The glance's verdict is read at render time, so re-answering a media query
-// changes nothing by itself -- something has to re-render. A resize does
-// happen to reach drawNodePositions (setMapTop -> invalidateSize -> moveend ->
-// refresh), which would make the query look handled while it is really the
-// network round-trip doing it. So the registry is left hanging here: with no
-// draw able to complete, the media listener is the only thing that can move
-// the note, which is the point of using matchMedia rather than innerWidth.
-test('rotating across the boundary re-decides the disclaimer without a redraw', async ({ page }) => {
-  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
-  await page.setViewportSize({ width: 390, height: 780 })
-  await page.goto('/')
-  await setNodePos(page, 'positions')
-
-  const note = page.locator('#nodepos-note')
-  await expect(note).toBeVisible()
-  await expect(note).toBeHidden({ timeout: 10000 })
-
-  // From here on no draw can finish.
-  await page.route('**/api/nodes/positions*', () => {})
-
-  // Turned to landscape: the block is a corner of a wide map again, so the
-  // prose is affordable and comes back.
-  await page.setViewportSize({ width: 900, height: 390 })
-  await expect(note).toBeVisible()
-
-  // And back: the glance has already expired, so portrait takes it away again
-  // rather than starting a second one.
-  await page.setViewportSize({ width: 390, height: 780 })
-  await expect(note).toBeHidden()
-  // The prose is the only thing moving here: since #631 the corner carries no
-  // glyph line to be affected either way.
-  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
-})
-
-// A glance is per activation, not per draw. The layer redraws on every pan,
-// zoom and filter change, and restarting the clock there would put the prose
-// back over the map the user is reading -- and on a phone refreshing faster
-// than the glance, it would never expire at all.
-test('a redraw after the glance does not bring the disclaimer back', async ({ page }) => {
-  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
-  await page.setViewportSize({ width: 390, height: 780 })
-  await page.goto('/')
-  await setNodePos(page, 'positions')
-
-  const note = page.locator('#nodepos-note')
-  await expect(note).toBeVisible()
-  await expect(note).toBeHidden({ timeout: 10000 })
-
-  // Watched rather than polled: a retrying toBeHidden() would simply wait out
-  // a restarted glance and pass, which is the assertion this test is here to
-  // avoid. The observer records any moment the note came back at all.
-  await page.evaluate(() => {
-    const el = document.getElementById('nodepos-note')
-    window.__noteReturned = !el.hidden
-    new MutationObserver(() => { if (!el.hidden) window.__noteReturned = true })
-      .observe(el, { attributes: true, attributeFilter: ['hidden'] })
-  })
-
-  // Pan: moveend -> refresh() -> drawNodePositions(), a full redraw of the
-  // layer with the note re-rendered at the end of it.
-  const box = await page.locator('#map').boundingBox()
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width / 2 - 80, box.y + box.height / 2 - 60, { steps: 8 })
-  await page.mouse.up()
-  await mapSettled(page)
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
-  // Past a restarted glance, so a note put back by the redraw has been seen
-  // and has had time to go again.
-  await page.waitForTimeout(NODEPOS_GLANCE_MS + 500)
-
-  expect(await page.evaluate(() => window.__noteReturned)).toBe(false)
-  await expect(note).toBeHidden()
-  // And the redraw does not put a glyph line back either: since #631 there is
-  // none to put back while the layer is drawing (the corner is for absences).
-  await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
 })
 
 test('overlapping names are dropped, and the markers they belong to are not', async ({ page }) => {

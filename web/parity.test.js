@@ -969,22 +969,10 @@ describe('nodelayer — parity of the shared core', () => {
 })
 
 // nodeposnotice.js is a partial port (#376): web needs states the app cannot
-// have — an unconfigured server, a role the server refuses — so only the lines
-// both surfaces show are shared. Those two are what AGENTS.md §7 requires on
-// screen, which is exactly why they must not drift apart.
-describe('nodeposnotice — parity of the two shared lines', () => {
-  // Since #631 what §7 requires on screen is the popup's two sentences, so
-  // those are what must not drift. Pin the content as well as the equality: a
-  // caveat that lost the claim it exists to make would still be "identical on
-  // both sides".
-  it('says the same thing in the marker popup, glyph for glyph', () => {
-    expect(webNotice.NODEPOS_ADVERT_CAVEAT).toBe(appNotice.NODEPOS_ADVERT_CAVEAT)
-    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toBe(appNotice.NODEPOS_ESTIMATE_CAVEAT)
-    expect(webNotice.NODEPOS_ADVERT_CAVEAT).toMatch(/operator/i)
-    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toMatch(/rssi/i)
-    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toMatch(/not from gps/i)
-  })
-
+// have (an unconfigured server, a role the server refuses), so only the line
+// both surfaces show is shared. It explains why the layer drew nothing, and
+// the same state must not read as two different problems.
+describe('nodeposnotice: parity of the shared line', () => {
   it('shows the same empty-registry line', () => {
     expect(webNotice.NODEPOS_EMPTY_TEXT).toBe(appNotice.NODEPOS_EMPTY_TEXT)
   })
@@ -1000,7 +988,7 @@ describe('nodeposnotice — parity of the two shared lines', () => {
   })
 
   it('keeps web a strict superset — the app has no server to be unconfigured', () => {
-    for (const n of ['NODEPOS_ADVERT_CAVEAT', 'NODEPOS_ESTIMATE_CAVEAT', 'NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
+    for (const n of ['NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
       expect(appNotice[n], n).toBeDefined()
       expect(webNotice[n], n).toBeDefined()
     }

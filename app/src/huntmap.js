@@ -13,7 +13,6 @@ import { recordsKey, lastValueCache, hueKey, selectionKey } from './rendercache.
 import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
 import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
 import { displayName } from './names.js'
-import { NODEPOS_ADVERT_CAVEAT, NODEPOS_ESTIMATE_CAVEAT } from './nodeposnotice.js'
 import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { followAfter, paddingAction } from './rotation.js'
@@ -1047,13 +1046,10 @@ export function createHuntMap(containerId) {
 
   function nodePopup(n, p, est, { key = null, reachOn = false, selected = false, heard = false } = {}) {
     const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+    // The glyph meaning lives here since #631: this line names the glyphs drawn
+    // for this node, and no sentence under it repeats that positions are
+    // inferred (#662).
     const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
-    // The popup is where the glyph meaning lives since #631, so it carries the
-    // sentence for each glyph it actually drew. Explaining a ● that is not on
-    // this node is the same mistake the old key made on an empty map.
-    const caveats = p.kind === 'advertised-only'
-      ? NODEPOS_ADVERT_CAVEAT
-      : NODEPOS_ADVERT_CAVEAT + ' ' + NODEPOS_ESTIMATE_CAVEAT
     // "no estimate" is not the same as "not heard" (#272). An advert or a
     // discover reply names the node outright, so those receptions join to it
     // and produce an estimate. A relayed packet measures the LAST HOP that
@@ -1082,8 +1078,7 @@ export function createHuntMap(containerId) {
       : ''
     const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
       .setHTML(`<div class="ch-popup">${esc(n.name || n.pubkey)}<br>`
-        + `<span class="np-muted">${markers}</span>${drift}${circle}${reach}`
-        + `<br><span class="np-muted np-caveat">${caveats}</span></div>`)
+        + `<span class="np-muted">${markers}</span>${drift}${circle}${reach}</div>`)
     // The popup's DOM exists only once it opens, so the button is wired then,
     // the way wireIsolate wires a reception popup's buttons.
     if (reachOn && key) popup.on('open', () => {

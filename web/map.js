@@ -8,7 +8,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, reso
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
-import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS, NODEPOS_ADVERT_CAVEAT, NODEPOS_ESTIMATE_CAVEAT } from './nodeposnotice.js'
+import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
@@ -854,20 +854,12 @@ function renderLocate(points, senderId) {
   updateLocateInfo(res, senderId)
 }
 
-// AGENTS.md §7: any output implying a target's location must state it is
-// inferred from radio measurements, not GPS-tracked. Web-side counterpart of
-// the app's SPLASH_DISCLAIMER, adapted for the multi-hunter context.
-const LOCATE_DISCLAIMER =
-  'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where hunters were when they heard it.'
-
 function updateLocateInfo(res, senderId) {
   const box = document.getElementById('locate-info')
   box.hidden = false
   const s = res.stats
-  const disclaimer = `<div class="lc-muted lc-disclaimer">${LOCATE_DISCLAIMER}</div>`
   if (!res.centroid) {
     box.innerHTML = `<h4>Locate</h4><div class="lc-muted">${res.inliers.length} point(s) — too few to estimate (need 3+).</div>`
-      + disclaimer
     return
   }
   const isHash = !!senderId && !isFullPubkey(senderId)
@@ -880,7 +872,6 @@ function updateLocateInfo(res, senderId) {
     + `<div>${s.n} points · search radius ~${radius} · encircle ${enc}%${strong}</div>`
     + encHint + hashNote
     + `<div class="lc-muted">● weighted estimate · ★ where you heard it loudest. Within driven area · ~hundreds of m · no TX calibration.</div>`
-    + disclaimer
     + locateLegendHtml()
 }
 
@@ -1193,7 +1184,7 @@ let nodePosStop = 'off'
 const nodePosCb = {
   get checked() { return nodePosStop !== 'off' },
   // The gate's "off" (applyObserverGate) is a silent write, as unchecking
-  // the box was: no draw, no glance, no save.
+  // the box was: no draw, no save.
   set checked(v) { setNodePosStop(v ? 'positions' : 'off', { restore: true }) },
 }
 // The rail's node-positions button (#630), painted as the app paints its FAB
@@ -1226,20 +1217,18 @@ function tapNodePosFab() {
   setNodePosStop(tap.mode)
 }
 // One entry for every way the stop changes: a tap on the rail's button, and a
-// restored URL or store. `restore` is the silent path
-// urlstate takes (its set() dispatches nothing), which starts no glance: the
-// draw starts one itself, once, as it did for the checkbox (#426).
+// restored URL or store. `restore` is the silent path urlstate and the role
+// gate take (urlstate's set() dispatches nothing): it records the stop and
+// leaves the draw and the save to its caller.
 function setNodePosStop(stop, { restore = false } = {}) {
   const next = parseNodePosMode(stop)
   if (next === nodePosStop) return
-  const wasOn = nodePosStop !== 'off'
   nodePosStop = next
   paintNodePosFab()
   if (next !== 'reach') { coverageSel.clear(); clearCoverageLayer() }
   wm.setReach(next === 'reach')
   nodePosSig = null
   if (restore) return
-  if (!wasOn || next === 'off') restartNodePosGlance()
   drawNodePositions()
   // The CoreScope sightings are this layer's other source (#629), so they come
   // on and go off with the stops instead of with two checkboxes beside them.
@@ -1269,12 +1258,6 @@ function nodePosPopup(name, id, p, est, { reachOn = false, selected = false, hea
         ? `search radius ~${Math.round(p.circle.radiusM)} m`
         : 'one-sided — radius not trusted'}`
     : ''
-  // The popup is where the glyph meaning lives since #631, so it carries the
-  // sentence for each glyph it actually drew. Explaining a ● that is not on
-  // this node is the same mistake the old key made on an empty map.
-  const caveats = p.kind === 'advertised-only'
-    ? NODEPOS_ADVERT_CAVEAT
-    : NODEPOS_ADVERT_CAVEAT + ' ' + NODEPOS_ESTIMATE_CAVEAT
   // The reach action (#623), back in the popup where the other per-node
   // actions live, since #603 retired #549's buttons and left selecting a star
   // an undiscoverable tap. Only in the reach stop, where a selection means
@@ -1282,10 +1265,9 @@ function nodePosPopup(name, id, p, est, { reachOn = false, selected = false, hea
   // hide its reach. Delegated below, like "Ignore this ID".
   const reach = reachOn
     ? `<br><button class="pp-reach${selected ? ' active' : ''}" data-node="${esc(id)}">${selected ? 'Hide reach' : 'Show reach'}</button>`
-      + (heard ? '' : '<br><span class="np-caveat">No hearings in this window yet, so there is no reach to draw.</span>')
+      + (heard ? '' : '<br><span class="pp-note">No hearings in this window yet, so there is no reach to draw.</span>')
     : ''
   return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}${reach}`
-    + `<br><span class="np-caveat">${caveats}</span>`
 }
 
 // Generation token: a draw can be re-entered while its /api/points fetch is in
@@ -1326,96 +1308,29 @@ async function fetchNodeRegistry() {
   }
 }
 
-// Both surfaces, from one decision (nodeposnotice.js). Called on every exit
-// path of a draw, including the early ones: a layer that returns without
-// saying why is the whole of #376.
+// The one line over the map, from one decision (nodeposnotice.js). Called on
+// every exit path of a draw, including the early ones: a layer that returns
+// without saying why is the whole of #376.
 // `on` defaults to the stop, but the role branch passes it explicitly: it
 // turns the stop off before it can explain itself, and "the account is why"
 // is precisely what a guest who deep-linked ?nodepos= needs to be told.
-// Narrow enough that the disclaimer block is a quarter of the map (#426).
-// matchMedia rather than innerWidth so the answer arrives as an event: the
-// value is read at render time, so re-answering by itself changes nothing —
-// a phone turned to landscape would keep the phone's verdict until something
-// else happened to redraw, which on a still map is never. The listener below
-// is what makes the query worth using.
-const narrowQuery = window.matchMedia('(max-width: 640px)')
-const narrowScreen = () => narrowQuery.matches
-// The bar's group keeps two of its four controls below 640px and the filter
-// panel takes the other two (#561). Wired to the same query rather than a
-// second matchMedia, so the bar and everything else that answers "is this a
-// phone" cannot disagree about where the line is.
-wireNarrowBar(narrowQuery)
-
-// Cleared on every entry, so rapid toggling cannot have a stale timer hide the
-// prose two seconds into a later activation.
-let nodePosGlanceTimer = null
-let nodePosGlanceOver = false
-// The arguments the last real caller passed, or null before there has been one.
-// A re-render has to use THESE and not the defaults: `registry: null` means
-// "unreachable" to nodePosPresentation, so a bare re-render would replace a
-// working layer's key with an error line.
-let nodePosNoticeArgs = null
-
-// Re-render the notice from what was last drawn, for the two things that change
-// the verdict without changing the layer: the glance expiring, and the screen
-// crossing the narrow boundary. Silent before the first real render — there is
-// nothing to re-state, and stating the defaults would be a lie.
-function rerenderNodePosNotice() {
-  if (nodePosNoticeArgs) showNodePosNotice(nodePosNoticeArgs)
-}
-
-// A rotation crosses the boundary in both directions: to landscape, the prose
-// is affordable again and comes back; to portrait, an already-expired glance
-// takes it away. Neither redraws the layer, so nothing else would notice.
-narrowQuery.addEventListener('change', rerenderNodePosNotice)
-
-// Whether a glance has been started for the current activation of the layer.
-// Needed because `change` is not the only way the layer comes on:
-// urlstate restores the stop through its silent `set:` and dispatches
-// nothing (urlstate.js), so ?nodepos= and the localStorage-restored
-// state both arrive with no event at all. Started from the change listener
-// alone, those readers never began a glance, nodePosGlanceOver stayed false,
-// and the note was permanent for the rest of the session — and since urlstate
-// persists to `ch-state`, that is every returning phone user who had the layer
-// on last time, i.e. exactly the case #426 is about.
-let nodePosGlanceStarted = false
-
-// Restarts the glance. Called when the layer is switched on, so that off-and-on
-// is a fresh glance rather than a memory of the last one.
-function restartNodePosGlance() {
-  if (nodePosGlanceTimer) { clearTimeout(nodePosGlanceTimer); nodePosGlanceTimer = null }
-  nodePosGlanceOver = false
-  nodePosGlanceStarted = false
-  if (!nodePosCb.checked) return
-  nodePosGlanceStarted = true
-  nodePosGlanceTimer = setTimeout(() => {
-    nodePosGlanceTimer = null
-    nodePosGlanceOver = true
-    rerenderNodePosNotice()
-  }, NODEPOS_GLANCE_MS)
-}
-
-// Starts the glance for a layer that came on without a change event. Once per
-// activation: a later draw — a pan, a zoom, a refresh tick — must not push the
-// note back on screen after it has gone, and must not restart the clock.
-function ensureNodePosGlance() {
-  if (!nodePosCb.checked || nodePosGlanceStarted) return
-  restartNodePosGlance()
-}
-
 function showNodePosNotice({ on = nodePosCb.checked, reason = null, registry = null, drawn = 0 } = {}) {
-  nodePosNoticeArgs = { on, reason, registry, drawn }
-  const { note, key } = nodePosPresentation({
-    on, reason, registry, drawn, narrow: narrowScreen(), glanceExpired: nodePosGlanceOver,
-  })
-  const noteEl = document.getElementById('nodepos-note')
+  const { key } = nodePosPresentation({ on, reason, registry, drawn })
   const keyEl = document.getElementById('nodepos-key')
-  if (noteEl) noteEl.hidden = !note
   if (keyEl) {
     keyEl.hidden = !key
     keyEl.textContent = key
   }
 }
+
+// Narrow is 640px, the line the bar and the ticker answer "is this a phone"
+// with. matchMedia rather than innerWidth so the answer arrives as an event.
+const narrowQuery = window.matchMedia('(max-width: 640px)')
+// The bar's group keeps two of its four controls below 640px and the filter
+// panel takes the other two (#561). Wired to the same query rather than a
+// second matchMedia, so the bar and everything else that answers "is this a
+// phone" cannot disagree about where the line is.
+wireNarrowBar(narrowQuery)
 
 // One probe span for the page, created on the first draw that needs it: the map
 // container exists by then, and a layer that is never switched on never touches
@@ -1446,11 +1361,6 @@ async function drawNodePositions() {
     showNodePosNotice({ on: nodePosCb.checked || nodePosAskedBelowMember, reason: nodePosReason(currentRole) })
     return
   }
-  // Past the guards, so this is a draw that really puts the layer up. A guest
-  // deep-linking ?nodepos= returns above and keeps its note: "the account is
-  // why" is the only explanation on screen, and timing it out would leave an
-  // empty layer with nothing saying so.
-  ensureNodePosGlance()
   // The registry is what decides which nodes are drawn (#377). It used to be
   // the filtered reception set, which meant the layer could only ever show
   // nodes this filter happened to match — the website, with the bigger screen

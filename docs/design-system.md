@@ -361,6 +361,13 @@ the bar and straight over Leaflet's zoom control, which is the same defect in a
 new place — `elementFromPoint` on the `+` returned `#guest-notice`. Overlays
 clear the controls.
 
+**An explanation stays for as long as its state** (#307). A line saying why
+nothing could be drawn (an empty registry, an unreachable resolver, an account
+below member) is an explanation, not a label, and it stays up while that state
+lasts. Fading it makes "we got nothing" and "there is nothing here" look alike.
+A notice that only repeats what the splash or About already says does not go
+over the map at all (#662, `docs/2026-09-15-position-notices.md`).
+
 **Where the notices sit** (#630). On a desktop, at the top centre under the bar,
 between the ticker's first-visit corner at the top left and the FAB rail on the
 right: a centred column at most 560px wide, never wider than the room between

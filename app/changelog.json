@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-15-no-position-notices",
+    "date": "2026-09-15",
+    "where": "both",
+    "title": "Fewer position notices",
+    "body": "Node popups and the node-positions note no longer repeat that positions are inferred. About still says it."
+  },
+  {
     "id": "2026-09-14-readout-off-the-credit",
     "date": "2026-09-14",
     "where": "map",

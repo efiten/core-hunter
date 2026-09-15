@@ -41,6 +41,10 @@ This does not change the standing position disclaimer (AGENTS.md §7): position 
 measurements via mesh topology, and the stored GPS is the hunter phone's own position at reception
 time, not the target's.
 
+> **Amended 2026-09-15 by `docs/2026-09-15-position-notices.md` (#662).** The statement above stays true,
+> and AGENTS.md §1 carries it. The §7 rule that required it in every position-bearing output was
+> removed.
+
 ## Watch-outs
 
 - **Render cost.** At res 15 over a dense session this rebuilds many small `L.polygon`s on every pan
