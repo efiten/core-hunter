@@ -216,14 +216,15 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
 })
 
-test('a 64-hex id of a non-registry kind does not become an estimate for a node (#296)', async ({ page }) => {
-  // sender_id can be 64 hex without being a pubkey — a full-length relay path
-  // element, or an operator who named a channel that way. Since #377 the
-  // registry decides what is drawn, so the marker appears either way; what must
-  // not happen is those receptions pairing onto it as if we had heard the node.
-  // Asserting "nothing is drawn" would now pass for the wrong reason (an
-  // unstubbed registry answers nothing at all), so the registry IS stubbed here
-  // and the assertion is about the pairing.
+test('a relay id longer than 3 bytes does not become an estimate for a node (#661)', async ({ page }) => {
+  // sender_id can be 64 hex without being a pubkey: a full-length relay path
+  // element. A relay id reaches a node only through its attribution by reach,
+  // which covers ids of 1 to 3 bytes, and is never compared with a key, so
+  // these receptions pair with nothing even though the id is the node's own.
+  // Since #377 the registry decides what is drawn, so the marker appears
+  // either way; asserting "nothing is drawn" would pass for the wrong reason
+  // (an unstubbed registry answers nothing at all), so the registry IS stubbed
+  // here and the assertion is about the pairing.
   await routes(page, {
     lat: 51.0005,
     lon: 4.0,
@@ -242,6 +243,34 @@ test('a 64-hex id of a non-registry kind does not become an estimate for a node 
   await expect(popup).toContainText('▲ advertised')
   await expect(popup).not.toContainText('estimated')
   await expect(popup).not.toContainText(/self-reported|inferred|GPS/i)
+})
+
+// #661: a relay id of 1 to 3 bytes pairs with the one registry node that has
+// that prefix within reach of where it was heard (the reach at -90 dBm is the
+// full 15 km), and with none when two are. The receptions ring the view's
+// centre; the view is pinned so a node 5 km east lies outside it.
+const RELAY_NODE = { pubkey: '4a4a' + 'be'.repeat(30), name: 'Heumensoord-RPT', lat: 51.0005, lon: 4.0 }
+const relayRing = () => ring(51, 4, 250, 8).map((p) => ({ ...p, sender_id: '4a4a', sender_kind: 'relay', rssi: -90 }))
+
+test('a 2-byte relay heard near the one node with that prefix pairs onto it (#661)', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: relayRing(), nodes: [RELAY_NODE] })
+  await page.goto('/?mode=points&lat=51&lon=4&z=15')
+  await setNodePos(page, 'positions')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('.np-estimate')).toHaveCount(1)
+})
+
+test('a relay with two candidate nodes in reach pairs with neither, the second one out of view (#661)', async ({ page }) => {
+  // 5 km east: out of the view, so it gets no marker, and within the reach of
+  // every reception, so it still refuses the pairing. The stub answers it
+  // whatever bbox is asked; the padding itself is pinned further down.
+  const elsewhere = { pubkey: '4a4a' + 'cd'.repeat(30), name: 'Elders-4a4a', lat: 51.0005, lon: 4 + 5000 / (111320 * Math.cos((51 * Math.PI) / 180)) }
+  await routes(page, { lat: 51.0005, lon: 4.0, points: relayRing(), nodes: [RELAY_NODE, elsewhere] })
+  await page.goto('/?mode=points&lat=51&lon=4&z=15')
+  await setNodePos(page, 'positions')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expect(page.locator('.np-label')).toHaveText('Heumensoord-RPT')
+  await expect(page.locator('.np-estimate')).toHaveCount(0)
 })
 
 // #376: the layer used to end in an empty state four different ways, all of
@@ -341,21 +370,48 @@ test('a node nobody in this filter heard is still drawn (#377)', async ({ page }
   await expect(page.locator('.np-estimate')).toHaveCount(0)
 })
 
-test('the registry slice follows the viewport, not the reception filter (#377)', async ({ page }) => {
+test('the registry slice follows the viewport padded by the reach, not the reception filter (#377, #661)', async ({ page }) => {
   // One request per view, carrying the map's bbox — the bulk shape the server
-  // endpoint is built around, not a per-node lookup.
+  // endpoint is built around, not a per-node lookup. Since #661 the box is the
+  // view widened by the 15 km reach on every side, so a candidate just outside
+  // the view still counts; the stubs elsewhere answer whatever box is asked, so
+  // this is the one test that sees the padding.
   const urls = []
   await page.route('**/api/nodes/positions*', (r) => {
     urls.push(r.request().url())
     return r.fulfill({ json: { nodes: [{ pubkey: SENDER, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0 }] } })
   })
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
-  await page.goto('/?mode=points')
+  // A town-sized view: with no points the map would stay on the whole world,
+  // where the box runs past 180 degrees and the pads say little.
+  await page.goto('/?mode=points&lat=51&lon=4&z=13')
   await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
   expect(urls.length).toBeGreaterThan(0)
+  // One more draw on the settled view, so the request and the bounds read below
+  // describe the same view.
+  await mapSettled(page)
+  const asked = urls.length
+  await page.evaluate(() => window.__refresh())
+  await expect.poll(() => urls.length).toBeGreaterThan(asked)
+  const view = await page.evaluate(() => window.__mapBounds())
   const bbox = new URL(urls[urls.length - 1]).searchParams.get('bbox')
   expect(bbox, 'bbox=minLat,minLon,maxLat,maxLon').toMatch(/^-?\d+(\.\d+)?(,-?\d+(\.\d+)?){3}$/)
+  const [minLat, minLon, maxLat, maxLon] = bbox.split(',').map(Number)
+  // Kilometres of pad on each side; east and west measured along the view's
+  // northern edge, where a degree of longitude is shortest.
+  const KM_PER_DEG = 111.32
+  const kmLon = KM_PER_DEG * Math.cos((view.north * Math.PI) / 180)
+  const pads = {
+    south: (view.south - minLat) * KM_PER_DEG,
+    north: (maxLat - view.north) * KM_PER_DEG,
+    west: (view.west - minLon) * kmLon,
+    east: (maxLon - view.east) * kmLon,
+  }
+  for (const [side, km] of Object.entries(pads)) {
+    expect(km, `${side} pad ${JSON.stringify({ view, bbox })}`).toBeGreaterThan(14.999)
+    expect(km, `${side} pad is the reach, not a multiple`).toBeLessThan(16)
+  }
 })
 
 // #390: a draw that lands after Locate is on walks through every other guard and
@@ -454,10 +510,12 @@ test('a pair the character estimate would call clear is decluttered on its real 
   const NAME = 'NL-DR-GTN-OBS0'
   const node = (i, lat, lon) => ({ pubkey: `cc${i}`.padEnd(64, '0'), name: `${NAME}${i}`, lat, lon })
   // Two calibration nodes a known distance apart in longitude, to read px/deg
-  // off the live projection.
+  // off the live projection. The view is pinned around both: the layer draws
+  // the nodes in view only (#661), and the fit to the ring alone ends short of
+  // 4.01, where a real registry would not have answered the second node.
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8),
     nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.01)] })
-  await page.goto('/')
+  await page.goto('/?lat=51.0005&lon=4.005&z=16')
   await setNodePos(page, 'positions')
   await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
 

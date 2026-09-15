@@ -6,7 +6,7 @@ import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected, starLabel } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
 import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey } from './rendercache.js'
@@ -222,7 +222,8 @@ export function createHuntMap(containerId) {
       const el = document.createElement('div')
       el.className = 'rc-hub' + (selected.size && !selectedStars.has(st.id) ? ' np-dim' : '')
       el.style.background = coverageHue.get(st.id)
-      el.title = `${st.id.slice(0, 8)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where you drove; unmeasured is not unreachable.`
+      // A hub keyed by one byte reads '#64', never a bare hash (starLabel).
+      el.title = `${starLabel(st)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where you drove; unmeasured is not unreachable.`
       el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
       hubMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([st.origin.lon, st.origin.lat]).addTo(map))
     }

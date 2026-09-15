@@ -586,7 +586,9 @@ reception came from are different acts. The second is one rule on both surfaces,
   not. When it is negative (a negative calibration beyond the attenuator's loss) the map's reach
   is the smaller one and it can place a reception on a node the app calls a collision.
 - **Candidates** in the app are the registry nodes of the resolvers on the companion's SF
-  (`resolversFor`, #452), or of all resolvers when the SF is unknown or matches none. A node
+  (`resolversFor`, #452), or of all resolvers when the SF is unknown or matches none. On the map
+  they are the registry slice of the view widened by the 15 km reach on every side (`padBounds`),
+  every SF, since the map has no companion; the layer still draws only the nodes in view. A node
   without an advertised position is no candidate, since reach cannot place it; one pubkey listed
   twice is one node.
 - **Surfaces:** the reach stars and the node-position layer in the app and on the map, and in the
@@ -594,9 +596,15 @@ reception came from are different acts. The second is one rule on both surfaces,
   only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2 estimate gets no marker of
   its own. On the map, the ticker and the point popup keep their resolver names, a separate issue.
   A 1-byte star or hub id reads `#` plus the id in a tooltip, never as a bare name (§5.4 item 6).
+  The map's ● hub tooltip names a 2 or 3-byte id by rule 2, and reads the id also when the resolver
+  places the named node out of reach, since its slice ends at the reach; the app's shows the id
+  (`starLabel` in `coverage.js`).
 - Relay ids longer than 3 bytes, advert and discover keys and channel names keep their own rules.
-  This replaces the website's refusal to resolve a prefix to a node on its node-position layer
-  (#296). The decision and its limits: `docs/2026-09-15-attribution-by-reach.md`.
+  On the node-position layer both surfaces pair an advert by its whole key, and a discover prefix
+  from 2 bytes only when it starts exactly one key among the nodes compared
+  (`groupSenderPointsForNodes`); the other kinds never pair. This replaces the website's refusal
+  to resolve a prefix to a node on its node-position layer (#296). The decision and its limits:
+  `docs/2026-09-15-attribution-by-reach.md`.
 
 ### Colours via CSS variables only
 

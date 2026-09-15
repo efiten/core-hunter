@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-15-relay-placed-by-reach",
+  "date": "2026-09-15",
+  "where": "both",
+  "title": "A relay heard by a short id gets a place",
+  "body": "Even a 1-byte id joins the one known node with that id in reach; the app also names it with ~. Two in reach: neither."
+}

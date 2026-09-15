@@ -139,17 +139,26 @@ export function senderIdMatches(senderId, senderKind, nodePubkey) {
 // estimate joins nothing, since this layer draws registry nodes. Without
 // attributionOf no such reception lands anywhere.
 //
+// A reception is compared only with the nodes whose key starts with the same
+// two bytes (HEAD_HEX): an advert id is the whole key and a discover prefix is
+// at least two bytes of it, so no other node can match. Comparing with every
+// node passed in took 1.7 s for 25 000 synthetic receptions against 3 000
+// nodes, 7 ms this way (2026-09-15); a zoomed-out map passes a slice that big.
+//
 // Returns Map<pubkey, points[]>, with an entry for every node passed in.
+const HEAD_HEX = 4
 export function groupSenderPointsForNodes(records, nodes, { attributionOf = () => null } = {}) {
   const out = new Map()
-  const keys = []
+  const byHead = new Map()
   for (const n of nodes || []) {
     const k = n && n.pubkey ? String(n.pubkey).toLowerCase() : null
     if (!k) continue
     out.set(k, [])
-    keys.push(k)
+    const head = k.slice(0, HEAD_HEX)
+    if (!byHead.has(head)) byHead.set(head, [])
+    byHead.get(head).push(k)
   }
-  if (!Array.isArray(records) || keys.length === 0) return out
+  if (!Array.isArray(records) || out.size === 0) return out
 
   for (const r of records) {
     if (!r || r.sender_id == null) continue
@@ -162,29 +171,12 @@ export function groupSenderPointsForNodes(records, nodes, { attributionOf = () =
     }
     if (!isRegistryIdKind(r.sender_kind)) continue
     let matched = null
-    for (const k of keys) {
+    for (const k of byHead.get(String(r.sender_id).toLowerCase().slice(0, HEAD_HEX)) || []) {
       if (!senderIdMatches(r.sender_id, r.sender_kind, k)) continue
       if (matched !== null) { matched = null; break }   // ambiguous -> drop it
       matched = k
     }
     if (matched) out.get(matched).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
-  }
-  return out
-}
-
-
-// groupSenderPoints buckets located receptions by sender so each node can be
-// estimated independently. Receptions without a sender or a GPS fix carry no
-// location information and are dropped.
-export function groupSenderPoints(records) {
-  const out = new Map()
-  if (!Array.isArray(records)) return out
-  for (const r of records) {
-    if (r.sender_id == null) continue
-    if (!isCoord(r.lat) || !isCoord(r.lon)) continue
-    const key = String(r.sender_id).toLowerCase()
-    if (!out.has(key)) out.set(key, [])
-    out.get(key).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
   }
   return out
 }

@@ -66,9 +66,21 @@ The reach stop's selection (`docs/2026-09-08-coverage-overview.md`, decision 6, 
 
 The app works the rule out for every row in the window on every tick: 5.4 ms for 20 000 rows against 2 500 nodes on a laptop, 1.2 ms once each row's answer is kept while the registry index and the plot offset stay the same (`rowCache` in `rendercache.js`). While the reach stop is on, the star each record belongs to joins the map's cache keys for the dots, the pillars and the cells (`ownersKey` in `rendercache.js`): that answer moves when the registry lands or the companion's SF is set, with every record the same, so without it a cached layer kept the last tick's hue and dimming.
 
+## On the map
+
+- **Which registry nodes count.** The map asks the server for the registry slice of the view widened by the reach, 15 km, on every side (`padBounds` in `web/nodelayer.js`). A node just outside the view can be the one candidate for a reception inside it, or the second one that makes it a collision. The east-west pad is worked out at the box's poleward edge, where a kilometre spans the most degrees. The layer draws the nodes in view only; the rest of the slice only counts. The map has no companion, so every SF counts.
+- **The RSSI** is the raw one (answer 5).
+- **Who sees it.** The node-position layer and its reach stop are for members, as the registry positions are. A guest gets no layer, so the map places nothing for a guest.
+- **Pairing on the layer.** The map pairs a reception with a registry node by the app's `groupSenderPointsForNodes`, pinned in `web/parity.test.js`: an advert by its whole key, a discover prefix from 2 bytes when it starts exactly one key of the padded slice, and a relay, path or direct hash by its attribution. Before, the map paired a full advert key only (#296).
+- **The ● hub's tooltip** names a 2 or 3-byte id by rule 2 (`starLabel` in `coverage.js`): the resolver's name with `~`, or the id once the registry holds a node with that prefix out of reach. The padded slice cannot see a node further out, so the map also reads where the resolver places the node it names: out of the hearing's reach, the id shows. The title is part of the layer's signature, so a name or position that arrives after a draw redraws the hub. A 1-byte id reads `#` and the id (answer 8). The ticker and the point popup keep their names (answer 7).
+- **Cost.** `groupSenderPointsForNodes` compared every advert and discover reception with every node passed in: 1.7 s for 25 000 synthetic receptions against 3 000 nodes, a zoomed-out padded slice. It now compares a reception only with the nodes whose key starts with the same two bytes, which is the only place a match can be: 7 ms, and 13 ms against 20 000 nodes (Node, laptop, 2026-09-15). The app runs the same function. The attribution itself takes 3 to 6 ms a pass over those 25 000 receptions, and a draw makes at most three passes (the layer, the stars, the dots), so the map keeps no memo.
+
 ## Known limits
 
 - **433 MHz.** The reach assumes 868 MHz; see above.
 - **Unpositioned registry nodes.** A node without an advertised position is dropped before the rule sees it, so a same-prefix node that never advertised a location cannot make a collision. Rule 1 then names the positioned one.
 - **The outlier floor is wider than the reach.** Outlier rejection never drops a reception within 20 km of the centre (`MIN_OUTLIER_M`), and the reach stops at 15 km. A rule-2 estimate over one id heard from two unregistered transmitters 15 to 20 km apart blends them.
+- **A discover prefix is refused only against the nodes compared:** the nodes in view in the app, the padded slice on the map. A prefix that also starts a node further away still pairs.
+- **Beyond the slice, the map's hub sees the resolver's node only.** The resolver answers from the first registry that holds exactly one node with the prefix. When that node has no position and another registry places a node with the same prefix far away, the hub keeps `~` and the name.
+- **The server cuts a slice at 20 000 nodes** and the map does not read that it did (`truncated`). A padded slice past the cap can miss a candidate.
 - **The identity is still unauthenticated** (#320). A forged relay id near a registered node is placed on that node, as a forged id already moved an estimate.

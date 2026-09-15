@@ -36,6 +36,7 @@ import { readFileSync } from 'node:fs'
 import { buildChangelog, readEntryFiles } from '../scripts/build-changelog.mjs'
 import * as webLayer from './nodelayer.js'
 import * as appLayer from '../app/src/nodelayer.js'
+import * as attrRule from './attribution.js'
 import * as webNotice from './nodeposnotice.js'
 import * as appNotice from '../app/src/nodeposnotice.js'
 import * as webTicker from './receptionticker.js'
@@ -832,7 +833,8 @@ describe('calloutPosition — parity between the app and web copies', () => {
 // functions the other has no use for, and only the shared core is pinned here.
 describe('nodelayer — parity of the shared core', () => {
   const SHARED = ['TIGHT_DRIFT_M', 'TRUSTED_ENCIRCLEMENT', 'circleRing', 'drawableNodes',
-    'driftPresentation', 'estimateFor', 'groupSenderPoints', 'inBounds', 'isRegistryIdKind', 'nodesInView']
+    'driftPresentation', 'estimateFor', 'groupSenderPointsForNodes', 'inBounds',
+    'isRegistryIdKind', 'nodesInView', 'senderIdMatches']
 
   it('keeps the shared core present on both sides, and the divergence deliberate', () => {
     const names = (m) => Object.keys(m).sort()
@@ -842,9 +844,39 @@ describe('nodelayer — parity of the shared core', () => {
     }
     // Named, so growing a copy is a decision and not an accident: a new export
     // on one side lands here or in SHARED, and either way this test says so.
-    expect(names(appLayer).filter((n) => !SHARED.includes(n)))
-      .toEqual(['groupSenderPointsForNodes', 'senderIdMatches'])
-    expect(names(webLayer).filter((n) => !SHARED.includes(n))).toEqual(['nodeRows'])
+    expect(names(appLayer).filter((n) => !SHARED.includes(n))).toEqual([])
+    expect(names(webLayer).filter((n) => !SHARED.includes(n))).toEqual(['nodeRows', 'padBounds'])
+  })
+
+  // #661 retires the map's own pairing rule (#296): both layers pair a
+  // reception with a registry node the same way. An advert by its whole key, a
+  // discover prefix from 2 bytes when it starts one key only, and a relay, path
+  // or direct hash through its attribution by reach, never by comparing keys.
+  it('attributes relays through attribution and refuses an ambiguous discover prefix the same way on both surfaces', () => {
+    const key = (head, fill) => head + fill.repeat((64 - head.length) / 2)
+    const P = { pubkey: key('cc', 'cc'), name: 'Advertiser', lat: 51.01, lon: 4 }
+    const D1 = { pubkey: key('dd00ee', '11'), name: 'Discover-1', lat: 51.02, lon: 4 }
+    const D2 = { pubkey: key('dd00ff', '22'), name: 'Discover-2', lat: 51.03, lon: 4 }
+    const Q = { pubkey: key('4a', '33').toUpperCase(), name: 'Heumensoord-RPT', lat: 51.0004, lon: 4 }
+    const R1 = { pubkey: key('7b7b01', '44'), name: 'Relay-1', lat: 51, lon: 4 + 2000 * M }
+    const R2 = { pubkey: key('7b7b02', '55'), name: 'Relay-2', lat: 51, lon: 4 - 2000 * M }
+    const nodes = [P, D1, D2, Q, R1, R2]
+    const rec = (sender_id, sender_kind, rssi = -90) => ({ sender_id, sender_kind, rssi, lat: 51, lon: 4 })
+    const recs = [
+      rec(P.pubkey, 'advert_pubkey'),
+      rec('CCCC', 'discover_pubkey'),       // 2 bytes, starts P only
+      rec('dd00ee11', 'discover_pubkey'),   // starts D1 only
+      rec('dd00', 'discover_pubkey'),       // starts D1 and D2: neither
+      rec('4a', 'path_hash'),               // Q is the one 4a node in reach
+      rec('7b7b', 'relay'),                 // R1 and R2 both in reach: a collision
+      rec(key('7b7b01', '44'), 'relay'),    // a 32-byte relay id is not attributed, nor matched
+    ]
+    const index = attrRule.registryIndex(nodes)
+    const attributionOf = (r) => attrRule.attributeReception(r, { index })
+    const webOut = webLayer.groupSenderPointsForNodes(recs, nodes, { attributionOf })
+    expect([...webOut]).toEqual([...appLayer.groupSenderPointsForNodes(recs, nodes, { attributionOf })])
+    const count = (n) => webOut.get(n.pubkey.toLowerCase()).length
+    expect([P, D1, D2, Q, R1, R2].map(count)).toEqual([2, 1, 0, 1, 0, 0])
   })
 
   it('agrees on the drift threshold, at the boundary', () => {
@@ -923,20 +955,6 @@ describe('nodelayer — parity of the shared core', () => {
     expect(webLayer.nodesInView(pts, bounds)).toEqual(appLayer.nodesInView(pts, bounds))
     expect(webLayer.nodesInView(pts, bounds)).toHaveLength(3)
     expect(webLayer.nodesInView(pts, null)).toEqual(appLayer.nodesInView(pts, null))
-  })
-
-  it('buckets receptions by sender identically, case folded, unlocated dropped', () => {
-    const recs = [
-      { sender_id: 'AA', lat: 51, lon: 4, rssi: -70 },
-      { sender_id: 'aa', lat: 51.001, lon: 4, rssi: -80 },   // same node, other case
-      { sender_id: 'bb', lat: 51, lon: 4, rssi: -60 },
-      { sender_id: 'cc', lat: null, lon: 4, rssi: -60 },     // no fix: no information
-      { lat: 51, lon: 4, rssi: -60 },
-    ]
-    const webOut = webLayer.groupSenderPoints(recs)
-    expect([...webOut]).toEqual([...appLayer.groupSenderPoints(recs)])
-    expect(webOut.get('aa')).toHaveLength(2)
-    expect(webOut.has('cc')).toBe(false)
   })
 
   it('estimates identically, including the too-few-inliers floor', () => {

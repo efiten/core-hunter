@@ -2,15 +2,16 @@ import { describe, it, expect } from 'vitest'
 import {
   isRepeaterHearing, isTwoWay, hueSlot, assignHues, HUE_COUNT, NEAR_M,
   rayStrength, rayStyle, ONE_WAY_OPACITY, DIM_OPACITY,
-  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim, starKey, starSelected,
+  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim, starKey, starSelected, starLabel,
 } from '../coverage.js'
 import { estimateFor } from '../nodelayer.js'
 
 const A = 'aa'.repeat(32), B = 'bb'.repeat(32)
 
-// #603: which hearings a repeater's star is built from. The same rule as the
-// feed's repeater test, plus the Discover reply, which is a reply from the
-// node itself. A companion advert is not a repeater's hearing.
+// #603: which hearings a repeater's star is built from. The feed's repeater
+// test, plus the Discover reply, which is a reply from the node itself, and
+// since #661 a flood's 1-byte last hop, which reach can place on its node. A
+// companion advert is not a repeater's hearing.
 describe('isRepeaterHearing', () => {
   it('takes a Repeater role, a relay, a Discover reply and a trace reply', () => {
     expect(isRepeaterHearing({ sender_kind: 'advert_pubkey', sender_role: 'Repeater' })).toBe(true)
@@ -18,10 +19,15 @@ describe('isRepeaterHearing', () => {
     expect(isRepeaterHearing({ sender_kind: 'discover_pubkey', sender_role: null })).toBe(true)
     expect(isRepeaterHearing({ sender_kind: 'trace_reply' })).toBe(true)
   })
-  it('leaves a companion advert, a channel name and a path hash out', () => {
+  it('takes a path hash: a flood\'s 1-byte last hop is a repeater', () => {
+    expect(isRepeaterHearing({ sender_kind: 'path_hash', sender_id: '64', sender_role: null })).toBe(true)
+  })
+  it('leaves a direct hash out: zero hops is the originator, not a relay', () => {
+    expect(isRepeaterHearing({ sender_kind: 'direct_hash', sender_id: '64', sender_role: null })).toBe(false)
+  })
+  it('leaves a companion advert and a channel name out', () => {
     expect(isRepeaterHearing({ sender_kind: 'advert_pubkey', sender_role: 'Companion' })).toBe(false)
     expect(isRepeaterHearing({ sender_kind: 'channel_name' })).toBe(false)
-    expect(isRepeaterHearing({ sender_kind: 'path_hash' })).toBe(false)
     expect(isRepeaterHearing(null)).toBe(false)
   })
 })
@@ -274,6 +280,13 @@ describe('coverageStars with attribution', () => {
       expect(stars[0].origin.kind).toBe('estimate')
     }
   })
+  it('hangs a placed 1-byte last hop from its node, and no direct hash from anything', () => {
+    const toNode = () => ({ rule: 'node', node: N })
+    const pts = [...ring('4a', 'path_hash', 4), ...ring('4a', 'direct_hash', 3)]
+    const stars = coverageStars(pts, { positionOf: () => null, attributionOf: toNode })
+    expect(stars.map((s) => s.id)).toEqual([nKey])
+    expect(stars[0].points.map((p) => p.sender_kind)).toEqual(['path_hash', 'path_hash', 'path_hash', 'path_hash'])
+  })
   it('does not blend a node\'s hearings into the estimate of the same raw id elsewhere', () => {
     const far = { lat: 51.3, lon: 4.2 }
     const nearN = ring('4a4a', 'relay', 5)
@@ -296,6 +309,44 @@ describe('starKey', () => {
     expect(starKey(pt, { rule: 'collision', count: 2 })).toBeNull()
     expect(starKey(pt, { rule: 'estimate', prefixKnown: false })).toBe('4a4a')
     expect(starKey(pt, null)).toBe('4a4a')
+  })
+})
+
+// A star's name in a tooltip (#661). A 1-byte id is an id, never a name
+// (AGENTS.md 5.4 item 6), and a short relay id's resolver name follows rule 2:
+// it wears ~, and gives way to the id once the registry places a node with that
+// prefix out of reach.
+describe('starLabel', () => {
+  const pts = (id, kind) => [{ sender_id: id, sender_kind: kind, lat: 51, lon: 4, rssi: -80 }]
+  const named = () => 'Heumensoord-RPT'
+  it('reads # and the id for a star keyed by one byte, whatever name it is given', () => {
+    expect(starLabel({ id: '64', points: pts('64', 'path_hash') })).toBe('#64')
+    expect(starLabel({ id: '64', points: pts('64', 'path_hash') }, { nameOf: named, attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) })).toBe('#64')
+    expect(starLabel({ id: 'b7', points: pts('b7', 'relay') }, { nameOf: named })).toBe('#b7')
+  })
+  it('names a short relay id by its resolver name with ~, unless a node with that prefix is out of reach', () => {
+    const star = { id: '4a4a', points: pts('4a4a', 'relay') }
+    expect(starLabel(star, { nameOf: () => 'repeater-3', attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) })).toBe('~repeater-3')
+    expect(starLabel(star, { nameOf: () => 'repeater-3', attributionOf: () => ({ rule: 'estimate', prefixKnown: true }) })).toBe('4a4a')
+    expect(starLabel(star, { nameOf: () => undefined, attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) })).toBe('4a4a')
+  })
+  // The map's registry slice ends at the reach around the view, so a node with
+  // that prefix further out never makes prefixKnown there. The name lookup's
+  // own position for the named node says the same thing: out of the hearing's
+  // reach, the name is that node's and the id shows.
+  it('gives way to the id when the named node advertises a position out of the hearing\'s reach', () => {
+    const star = { id: '4a4a', points: pts('4a4a', 'relay') }   // -80 dBm at 51,4: the full 15 km
+    const opts = { nameOf: () => 'repeater-3', attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) }
+    expect(starLabel(star, { ...opts, nameAt: () => ({ lat: 51.5, lon: 4 }) })).toBe('4a4a')          // 55 km north
+    expect(starLabel(star, { ...opts, nameAt: () => ({ lat: 51.1, lon: 4 }) })).toBe('~repeater-3')    // 11 km north
+    expect(starLabel(star, { ...opts, nameAt: () => null })).toBe('~repeater-3')
+    expect(starLabel(star, { ...opts, nameAt: () => undefined })).toBe('~repeater-3')
+  })
+  it('names a full key by its name as it is, and falls back to the first 8 hex', () => {
+    const star = { id: A, points: pts(A, 'advert_pubkey') }
+    expect(starLabel(star, { nameOf: () => 'Zuid', attributionOf: () => null })).toBe('Zuid')
+    expect(starLabel(star, { nameOf: () => '', attributionOf: () => null })).toBe('aaaaaaaa')
+    expect(starLabel(star)).toBe('aaaaaaaa')
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, isRegistryIdKind, drawableNodes, nodeRows } from './nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, isRegistryIdKind, drawableNodes, nodeRows, padBounds } from './nodelayer.js'
 import { haversineM } from './locate.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -112,31 +112,6 @@ describe('driftPresentation — how a node with both positions is drawn (#197)',
   })
 })
 
-describe('groupSenderPoints', () => {
-  const rec = (o) => ({ sender_id: 'aa', lat: 51.2, lon: 4.4, rssi: -70, ...o })
-
-  it('groups located receptions by lowercased sender id', () => {
-    const g = groupSenderPoints([
-      rec({ sender_id: 'AA', rssi: -60 }),
-      rec({ sender_id: 'aa', rssi: -70 }),
-      rec({ sender_id: 'bb' }),
-    ])
-    expect(g.get('aa')).toHaveLength(2)
-    expect(g.get('bb')).toHaveLength(1)
-  })
-  it('drops receptions without a sender or without a GPS fix', () => {
-    const g = groupSenderPoints([
-      rec({ sender_id: null }),
-      rec({ sender_id: 'cc', lat: null }),
-      rec({ sender_id: 'dd' }),
-    ])
-    expect([...g.keys()]).toEqual(['dd'])
-  })
-  it('returns an empty map for missing input', () => {
-    expect(groupSenderPoints(null).size).toBe(0)
-  })
-})
-
 describe('estimateFor', () => {
   // A small spread of points around a centre, enough to survive the <3 rule.
   const spread = [
@@ -212,7 +187,8 @@ describe('nodeRows — registry slice paired with our own receptions (#377)', ()
     { pubkey: 'AA'.repeat(32), name: 'Repeater-Zuid', lat: 51.0, lon: 4.0 },
     { pubkey: 'bb'.repeat(32), name: 'Never-heard', lat: 51.5, lon: 4.5 },
   ]
-  // Receptions around the first node only, keyed as groupSenderPoints keys them.
+  // Receptions around the first node only, keyed as groupSenderPointsForNodes
+  // keys them: the lowercased pubkey.
   const heard = new Map([[ 'aa'.repeat(32), [
     { lat: 51.0005, lon: 4.0, rssi: -70 },
     { lat: 50.9995, lon: 4.0, rssi: -72 },
@@ -251,5 +227,39 @@ describe('nodeRows — registry slice paired with our own receptions (#377)', ()
 
   it('skips registry rows that cannot be plotted', () => {
     expect(nodeRows([{ pubkey: 'aa', lat: null, lon: 4 }], new Map())).toEqual([])
+  })
+})
+
+// The registry slice a draw asks for (#661): a node just outside the view can
+// still be the one candidate for a reception inside it, or the second one that
+// makes it a collision, so the box is widened by the reach on every side. The
+// map's own shape, { south, west, north, east }, in and out.
+describe('padBounds', () => {
+  const VIEW = { south: 50.9, west: 3.9, north: 51.1, east: 4.1 }
+  const M = 111320
+  const inside = (b, p) => p.lat >= b.south && p.lat <= b.north && p.lon >= b.west && p.lon <= b.east
+  // km east of a point, measured along its own latitude.
+  const east = (p, km) => ({ lat: p.lat, lon: p.lon + (km * 1000) / (M * Math.cos((p.lat * Math.PI) / 180)) })
+  const north = (p, km) => ({ lat: p.lat + (km * 1000) / M, lon: p.lon })
+
+  it('widens the box by the reach on every side, enough at its poleward edge', () => {
+    const b = padBounds(VIEW, 15)
+    expect(inside(b, north({ lat: VIEW.north, lon: 4 }, 15))).toBe(true)
+    expect(inside(b, north({ lat: VIEW.south, lon: 4 }, -15))).toBe(true)
+    expect(inside(b, east({ lat: VIEW.north, lon: VIEW.east }, 15))).toBe(true)
+    expect(inside(b, east({ lat: VIEW.north, lon: VIEW.west }, -15))).toBe(true)
+    // The view itself stays inside, and the pad is the reach, not a multiple of it.
+    expect(inside(b, { lat: 51, lon: 4 })).toBe(true)
+    expect(inside(b, north({ lat: VIEW.north, lon: 4 }, 16))).toBe(false)
+    expect(inside(b, east({ lat: VIEW.north, lon: VIEW.east }, 16))).toBe(false)
+  })
+  // South of the equator the poleward edge is the south one (AU/NZ meshes).
+  it('takes the east-west pad at the south edge south of the equator', () => {
+    const SOUTH = { south: -51.1, west: 3.9, north: -50.9, east: 4.1 }
+    const b = padBounds(SOUTH, 15)
+    expect(inside(b, east({ lat: SOUTH.south, lon: SOUTH.east }, 15))).toBe(true)
+    expect(inside(b, east({ lat: SOUTH.south, lon: SOUTH.west }, -15))).toBe(true)
+    expect(inside(b, north({ lat: SOUTH.south, lon: 4 }, -15))).toBe(true)
+    expect(inside(b, east({ lat: SOUTH.south, lon: SOUTH.east }, 16))).toBe(false)
   })
 })

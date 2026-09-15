@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
 import { haversineM } from '../geometry.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -166,6 +166,17 @@ describe('groupSenderPointsForNodes', () => {
     expect(out.get(C)).toHaveLength(1)
   })
 
+  it('attributes a discover prefix from 2 bytes and in either case', () => {
+    const recs = [
+      rec({ sender_id: 'ffee', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: 'AABBCCDD', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: A.toUpperCase() }),
+    ]
+    const out = groupSenderPointsForNodes(recs, nodes(A, C))
+    expect(out.get(A)).toHaveLength(2)
+    expect(out.get(C)).toHaveLength(1)
+  })
+
   // The reason this function takes the whole node set instead of one node.
   it('refuses a prefix that matches two nodes, rather than giving it to both', () => {
     // 'aabb' starts both A and B. There is no way to tell which one sent it,
@@ -258,31 +269,6 @@ describe('groupSenderPointsForNodes', () => {
   it('is case-insensitive on both sides', () => {
     const out = groupSenderPointsForNodes([rec({ sender_id: A.toUpperCase() })], nodes(A.toUpperCase()))
     expect(out.get(A)).toHaveLength(1)
-  })
-})
-
-describe('groupSenderPoints', () => {
-  const rec = (o) => ({ sender_id: 'aa', lat: 51.2, lon: 4.4, rssi: -70, ...o })
-
-  it('groups located receptions by lowercased sender id', () => {
-    const g = groupSenderPoints([
-      rec({ sender_id: 'AA', rssi: -60 }),
-      rec({ sender_id: 'aa', rssi: -70 }),
-      rec({ sender_id: 'bb' }),
-    ])
-    expect(g.get('aa')).toHaveLength(2)
-    expect(g.get('bb')).toHaveLength(1)
-  })
-  it('drops receptions without a sender or without a GPS fix', () => {
-    const g = groupSenderPoints([
-      rec({ sender_id: null }),
-      rec({ sender_id: 'cc', lat: null }),
-      rec({ sender_id: 'dd' }),
-    ])
-    expect([...g.keys()]).toEqual(['dd'])
-  })
-  it('returns an empty map for missing input', () => {
-    expect(groupSenderPoints(null).size).toBe(0)
   })
 })
 

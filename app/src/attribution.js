@@ -76,12 +76,18 @@ export function attributeReception(rec, { index = null, offsetDb = 0 } = {}) {
   const id = attributableId(rec)
   if (id == null) return null
   const candidates = index ? index.byPrefix.get(id) || [] : []
-  const rssi = rec.rssi == null ? NaN : Number(rec.rssi) + offsetDb
-  const reach = reachKm(rssi)
-  const inReach = candidates.filter((n) => kmBetween(rec, n) <= reach)
+  const inReach = candidates.filter((n) => withinReach(rec, n, { offsetDb }))
   if (inReach.length === 1) return { rule: 'node', node: inReach[0] }
   if (inReach.length >= 2) return { rule: 'collision', count: inReach.length }
   return { rule: 'estimate', prefixKnown: candidates.length > 0 }
+}
+
+// withinReach: whether a position ({ lat, lon }) is within the reach of the
+// reception's RSSI plus offsetDb, the test a candidate passes for rule 1. A
+// reach edge counts as within.
+export function withinReach(rec, pos, { offsetDb = 0 } = {}) {
+  const rssi = rec.rssi == null ? NaN : Number(rec.rssi) + offsetDb
+  return kmBetween(rec, pos) <= reachKm(rssi)
 }
 
 // attributionSignature: equal exactly when two attributions read the same, so

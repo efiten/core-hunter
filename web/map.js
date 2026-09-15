@@ -1,13 +1,14 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
 import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected, starLabel } from './coverage.js'
+import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
+import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
@@ -621,6 +622,7 @@ wm.on('moveend', () => { urlstate.save(); refresh() })
 window.__refresh = refresh
 window.__mapZoom = () => Number(zoomParam(wm.getZoom())) // test hook, in the URL's (Leaflet) zoom units
 window.__mapCenter = () => wm.getCenter() // test hook
+window.__mapBounds = () => wm.getBounds() // test hook: the view the registry slice is padded around (#661)
 window.__mapProject = (lat, lon) => wm.project(lat, lon) // test hook
 // Canvas layers have no DOM to count; the tests read the sources instead.
 window.__featureCount = (id) => wm.featureCount(id) // test hook
@@ -1034,6 +1036,13 @@ const coverageSel = new Set()
 let coverageHue = new Map()
 // Each star's estimate, kept from one draw to the next (coverage.js).
 const starCache = new Map()
+// Each hearing's attribution by reach in the last draw (#661, attribution.js),
+// for the dots' hues between draws: a relay id placed on a node takes that
+// node's hue, a collided one none.
+let coverageAttributionOf = () => null
+// The stars of the last draw, so a repaint between draws can tell which star a
+// selection picks (starSelected) without building them again.
+let coverageStarList = []
 function coverageOn() { return nodePosStop === 'reach' }
 function coverageSelected() {
   const ids = new Set(coverageSel)
@@ -1056,6 +1065,7 @@ function clearCoverageLayer() {
   wm.setData('reach', null)
   wm.clearMarkers('reach')
   coverageHue = new Map()
+  coverageStarList = []
   starCache.clear()
 }
 // The receptions the stars are built from. With a target picked the view's
@@ -1071,19 +1081,27 @@ async function coveragePoints(viewPoints) {
   }
   try { return (await fetchPointsPaged(p.toString(), { maxTotal: 25000 })).points } catch (_) { return viewPoints }
 }
-// Builds the stars and their hues for one draw: the registry's advertised
-// position when the id is a full pubkey it knows, the RSSI estimate otherwise
-// (a relay hash never has a registry position). Returns null when the layer
-// is off, so the caller draws nothing.
-function buildCoverage(points, registryNodes) {
+// Builds the stars and their hues for one draw. A hearing placed on a node by
+// reach (attributionOf, #661) joins that node's star under its ▲, a collided
+// one joins none, and every other star hangs from the registry's advertised
+// position when its id is a full pubkey the registry knows, the RSSI estimate
+// otherwise. selectedStars are the stars the selection picks (starSelected):
+// a relay id picked in the list selects the star of the node it was placed on.
+// hubNames are the ● hubs' tooltip names (starLabel), worked out here because
+// a name, or where its node is, can arrive after a draw, and the signature has
+// to see that. Returns null when the layer is off, so the caller draws nothing.
+function buildCoverage(points, registryNodes, attributionOf) {
   if (!coverageOn()) return null
   const byKey = new Map((registryNodes || []).map((n) => [String(n.pubkey).toLowerCase(), n]))
   const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
-  const stars = coverageStars(points, { positionOf, cache: starCache })
+  const stars = coverageStars(points, { positionOf, cache: starCache, attributionOf })
   const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
   const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
   const selected = coverageSelected()
-  return { stars, hues, colorOf, selected, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
+  const selectedStars = new Set(selected.size ? stars.filter((st) => starSelected(st, selected)).map((st) => st.id) : [])
+  const hubNames = new Map(stars.filter((st) => st.origin.kind === 'estimate')
+    .map((st) => [st.id, starLabel(st, { nameOf: cachedName, nameAt: cachedPosition, attributionOf })]))
+  return { stars, hues, colorOf, selected, selectedStars, attributionOf, hubNames, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
 }
 window.__coverageSel = () => [...coverageSel] // test hook
 window.__rayCount = () => wm.rayCount() // test hook
@@ -1287,16 +1305,22 @@ let nodePosSig = null
 // button's new state rather than left showing the one from before the press.
 let reopenNodeId = null
 
-// Fetches the registry slice for the current viewport from the server's bulk
-// proxy (#377). Same-origin, member-gated server-side; a failure returns null
-// and the caller leaves the layer alone rather than emptying it.
+// Fetches the registry slice for the view from the server's bulk proxy (#377).
+// Same-origin, member-gated server-side; a failure returns null and the caller
+// leaves the layer alone rather than emptying it.
+//
+// The slice is the view padded by the reach on every side (#661, padBounds):
+// a node just outside the view can be the one candidate for a reception inside
+// it, or the second one that makes it a collision. The layer still draws only
+// the nodes in view.
 //
 // The status rides along (#376). The server answers 403 below member and three
 // distinct 503s — not configured, reachable but empty, unreachable — because
 // they are three different things to a reader of the map, and a plain null here
 // would have flattened them back into one silent empty layer.
-async function fetchNodeRegistry() {
-  const bbox = viewportParams().bbox
+async function fetchNodeRegistry(view) {
+  const b = padBounds(view, REACH_CAP_KM)
+  const bbox = [b.south, b.west, b.north, b.east].join(',')
   try {
     const r = await fetch(`${API_BASE}/api/nodes/positions?bbox=${encodeURIComponent(bbox)}`, { credentials: 'same-origin' })
     const body = await r.json().catch(() => ({}))
@@ -1367,8 +1391,9 @@ async function drawNodePositions() {
   // and the multi-hunter picture, was a strict subset of the app on the one
   // layer where it should be a superset. The receptions are still fetched, but
   // now only to pair an estimate onto a node the registry already places.
+  const view = wm.getBounds()
   const [registry, pointsRes] = await Promise.all([
-    fetchNodeRegistry(),
+    fetchNodeRegistry(view),
     fetchPointsPaged(qs(), { maxTotal: 25000 }),
   ])
   // A newer draw started, the layer was switched off, or Locate took over
@@ -1387,14 +1412,17 @@ async function drawNodePositions() {
   }
   const points = pointsRes.points
 
-  // Only a full-pubkey reception may pair with a registry node. A discover
-  // reply carries a 2+ byte PREFIX, and this side is handed a viewport slice,
-  // so "unique among the nodes on screen" is a weaker claim than the app's
-  // "unique in the whole registry" — a prefix ambiguous two towns over would
-  // look unique here. AGENTS.md §7 keeps the website out of prefix-to-identity
-  // resolution (#296), and having a registry slice does not change that.
-  const pairable = points.filter((pt) => isRegistryIdKind(pt.sender_kind) && isFullPubkey(String(pt.sender_id)))
-  const draw = nodeRows(registry.nodes, groupSenderPoints(pairable))
+  // A reception pairs with a registry node by the app's rule (#661, AGENTS.md
+  // §7): an advert by its whole key, a discover prefix that starts one key
+  // only, and a relay, path or direct hash by its attribution by reach. Both
+  // are worked out against the whole padded slice, the reach from the raw
+  // RSSI, since the map is never told a hunter's calibration or attenuator.
+  // The markers are the nodes in view; the rest of the slice only counts as
+  // candidates.
+  const index = registryIndex(registry.nodes)
+  const attributionOf = (pt) => attributeReception(pt, { index })
+  const inView = nodesInView(registry.nodes, { minLat: view.south, maxLat: view.north, minLon: view.west, maxLon: view.east })
+  const draw = nodeRows(inView, groupSenderPointsForNodes(points, registry.nodes, { attributionOf }))
     // estimate-only cannot occur here (every row has an advertised position by
     // construction), but 'none' can if a registry row arrives unplottable.
     .filter((r) => r.p.kind !== 'none')
@@ -1432,12 +1460,13 @@ async function drawNodePositions() {
   // The coverage (#603) rides on this draw: same registry slice, same view.
   // Built before the signature, since the hues and the selection are part
   // of what the markers show.
-  const cov = buildCoverage(coverageOn() ? await coveragePoints(points) : [], registry.nodes)
+  const cov = buildCoverage(coverageOn() ? await coveragePoints(points) : [], registry.nodes, attributionOf)
   if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),
     d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
-    + (cov ? '#reach:' + cov.fc.features.length + ':' + [...cov.selected].join(',') + ':' + [...cov.hues].map(([k, v]) => k.slice(0, 8) + v).join(',') : '')
+    + (cov ? '#reach:' + cov.fc.features.length + ':' + [...cov.selected].join(',') + ':' + [...cov.selectedStars].join(',') + ':' + [...cov.hues].map(([k, v]) => k.slice(0, 8) + v).join(',')
+      + ':' + [...cov.hubNames].map(([k, v]) => k + '=' + v).join(',') : '')
     // The label set is part of what is drawn, and it depends on the projection
     // rather than on the rows: a zoom that changes nothing about which nodes
     // are in view still changes which names fit. Without it in the signature,
@@ -1456,11 +1485,16 @@ async function drawNodePositions() {
   for (const { id, advertised, est, p, name } of deduped) {
     // With the reach on, a repeater's ▲ takes the hue of its star, so the
     // marker and the rays read as one (#603); the drift colour stays for a
-    // node without a star. A selected star's name sits in a pill.
+    // node without a star. A selected star's name sits in a pill, whether the
+    // pick was the node's key or a relay id placed on it (selectedStars).
     const hue = coverageHue.get(id)
     const color = hue || cssVar(driftColorVar(p))
-    const selected = !!(cov && cov.selected.has(id))
-    const html = nodePosPopup(name, id, p, est, { reachOn: coverageOn(), selected, heard: !!hue })
+    const selected = !!(cov && (cov.selected.has(id) || cov.selectedStars.has(id)))
+    // The popup's button reads the node's own key only: a press adds or
+    // removes that key (toggleCoverageSelection), so a star selected through a
+    // picked relay id offers "Show reach", not a "Hide reach" it cannot keep.
+    const picked = !!(cov && cov.selected.has(id))
+    const html = nodePosPopup(name, id, p, est, { reachOn: coverageOn(), selected: picked, heard: !!hue })
     // The name rides on the map next to the ▲, not just in the popup: the
     // layer is opt-in, so it can afford the labels while it is on. Only the ▲
     // is labelled — the ● is the same node.
@@ -1506,16 +1540,17 @@ async function drawNodePositions() {
 function drawCoverage(cov) {
   if (!cov) { clearCoverageLayer(); repaintSelection(); return }
   coverageHue = new Map([...cov.hues].map(([id, slot]) => [id, cov.colorOf(slot)]))
+  coverageAttributionOf = cov.attributionOf
+  coverageStarList = cov.stars
   wm.setData('reach', cov.fc)
   wm.clearMarkers('reach')
   for (const st of cov.stars) {
     if (st.origin.kind !== 'estimate') continue   // the ▲ of the node layer is the hub
     const el = document.createElement('div')
-    const dim = cov.selected.size && !cov.selected.has(st.id)
+    const dim = cov.selected.size && !cov.selectedStars.has(st.id)
     el.className = 'rc-hub rc-estimate' + (dim ? ' np-dim' : '')
     el.style.background = coverageHue.get(st.id)
-    const name = cachedName(st.id) || st.id.slice(0, 6)
-    el.title = `${name}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where hunters drove; unmeasured is not unreachable.`
+    el.title = `${cov.hubNames.get(st.id)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where hunters drove; unmeasured is not unreachable.`
     el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
     wm.addMarker('reach', el, [st.origin.lat, st.origin.lon])
   }
@@ -1542,16 +1577,23 @@ function repaintSelection() {
 // point (coverageSelected builds a fresh Set each call). Only in the reach
 // stop, where a selection means something, so a target picked with the reach
 // off leaves the map at full strength. dimFor asks about a reception's
-// repeater by the stars' own attribution; cellDim is the single factor every
-// aggregate cell takes, since a cell carries no repeater (hexFeatures).
+// repeater by the stars' own attribution: the star starKey puts it in (#661),
+// none for a collision, lit when that star is picked by its own id or by the
+// raw id of a hearing in it (starSelected), so a hearing placed on the node of
+// a picked relay id stays lit with its star. cellDim is the single factor
+// every aggregate cell takes, since a cell carries no repeater (hexFeatures).
 function selectionDimmer() {
   const sel = coverageOn() ? coverageSelected() : null
-  const owner = (pt) => (isRepeaterHearing(pt) && pt.sender_id != null ? pt.sender_id : null)
-  return { dimFor: (pt) => selectionDim(sel, owner(pt)), cellDim: selectionDim(sel) }
+  const lit = sel && sel.size
+    ? new Set([...sel, ...coverageStarList.filter((st) => starSelected(st, sel)).map((st) => st.id)])
+    : sel
+  const owner = (pt) => (isRepeaterHearing(pt) && pt.sender_id != null ? starKey(pt, coverageAttributionOf(pt)) : null)
+  return { dimFor: (pt) => selectionDim(lit, owner(pt)), cellDim: selectionDim(sel) }
 }
 function pointHue(pt) {
   if (!coverageHue.size || !isRepeaterHearing(pt) || pt.sender_id == null) return null
-  return coverageHue.get(String(pt.sender_id).toLowerCase()) || null
+  const key = starKey(pt, coverageAttributionOf(pt))
+  return key == null ? null : coverageHue.get(key) || null
 }
 
 // The layer is three things: the two GeoJSON sources and the markers.
