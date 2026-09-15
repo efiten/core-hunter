@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { resolversFor, consensusName, isGuessedName, displayName, GUESS_MARK, resolvableKey, isFullPubkey, isResolvableId, cachedName, cachedPosition, resolveName } from '../names.js'
+import { resolversFor, consensusName, isGuessedName, displayName, nameParts, GUESS_MARK, resolvableKey, isFullPubkey, isResolvableId, cachedName, cachedPosition, resolveName } from '../names.js'
 import { setConfig } from '../config.js'
 
 const PUBKEY = 'ab'.repeat(32) // 64 hex chars
@@ -232,6 +232,30 @@ describe('displayName follows attribution', () => {
     const relay = { sender_kind: 'relay', sender_id: '4a4abe', sender_label: 'repeater-3' }
     expect(displayName({ ...relay, _attr: { rule: 'estimate', prefixKnown: false } })).toBe('~repeater-3')
     expect(displayName({ ...relay, _attr: { rule: 'estimate', prefixKnown: true } })).toBe('')
+  })
+})
+
+// #618: the HUD mutes the guess mark and prints the name in the text colour,
+// so the mark and the name come apart. displayName is the two joined, which
+// keeps every other surface printing what it printed before.
+describe('nameParts', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  it('splits the guess mark from the name', () => {
+    const relay = { sender_kind: 'relay', sender_id: '4a4abe', sender_label: 'repeater-3' }
+    const advert = { sender_kind: 'advert_pubkey', sender_id: PUBKEY, sender_label: 'alpha' }
+    const placed = { sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: { rule: 'node', node: HEUMEN } }
+    expect(nameParts(relay)).toEqual({ mark: '~', name: 'repeater-3' })
+    expect(nameParts(advert)).toEqual({ mark: '', name: 'alpha' })
+    expect(nameParts(placed)).toEqual({ mark: '~', name: 'Heumensoord-RPT' })
+    for (const rec of [relay, advert, placed]) {
+      const { mark, name } = nameParts(rec)
+      expect(displayName(rec)).toBe(mark + name)
+    }
+  })
+  it('has no mark without a name', () => {
+    expect(nameParts({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } })).toEqual({ mark: '', name: '' })
+    expect(nameParts({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64' })).toEqual({ mark: '', name: '' })
+    expect(nameParts(null)).toEqual({ mark: '', name: '' })
   })
 })
 

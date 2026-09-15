@@ -304,29 +304,44 @@ function updateHud(rec) {
   // Hero: RSSI, in its thermal tier colour — the same tier the map paints
   // this reception with, so the number and the dot speak one language and
   // the readout replaces the colour-bar legend the HUD used to carry (#539).
+  // The number alone (#618): the float keeps the unit, the HUD has no room.
+  // A slot without a value stays empty rather than holding a dash.
   const rssiEl = el('hud-rssi')
   const offset = effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb)
   if (rec.rssi != null) {
-    rssiEl.innerHTML = rec.rssi + '<span class="unit"> dBm</span>'
+    rssiEl.textContent = String(rec.rssi)
     rssiEl.style.color = getComputedStyle(document.documentElement).getPropertyValue(tierColorVar(rssiTier(rec.rssi, offset))).trim()
   } else {
-    rssiEl.textContent = '—'
+    rssiEl.textContent = ''
     rssiEl.style.color = ''
   }
 
   // Secondary: SNR (small muted)
-  el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : 'SNR —'
+  el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : ''
 
-  // Who we heard it from — the origin, or "via <repeater>" for a relayed hop.
-  const who = senderReadout(rec)
-  const senderEl = el('hud-sender')
-  senderEl.textContent = who.text
-  senderEl.classList.toggle('via', who.viaRelay)
+  // Who we heard it from: the origin, or "via <repeater>" for a relayed hop.
+  paintSender(senderReadout(rec))
 
   // Thermal bar marker — continuous position from RSSI (calibration +
   // attenuator). The bar itself only shows during the splash gate (#539).
   const pct = rssiToPct(rec.rssi, offset)
   el('hud-bar-marker').style.left = pct + '%'
+}
+
+// paintSender draws the sender line from senderReadout's parts (#618): "via "
+// and the guess mark in a muted span, the name in the text colour, or the
+// note alone, muted. textContent only: the name comes from a registry.
+function paintSender(who) {
+  const senderEl = el('hud-sender')
+  senderEl.replaceChildren()
+  if (who.prefix) {
+    const via = document.createElement('span')
+    via.className = 'hud-via'
+    via.textContent = who.prefix
+    senderEl.append(via)
+  }
+  senderEl.append(document.createTextNode(who.note || who.name))
+  senderEl.classList.toggle('empty', !!who.note)
 }
 
 // showOnHud puts one reception on the readout: the numbers, the sender and
@@ -3262,6 +3277,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   buildFilterSheet()
   buildSettingsSheet()
   buildTargetSheet()
+  // The HUD before the first reception (#618) is in index.html: the reading's
+  // slots are empty and the sender line says there is none yet, from the first
+  // frame rather than after config.json.
   wireHudTools()
   renderHudTools()
   initFloatReadout()

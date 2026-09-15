@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { floatModel, floatSupported } from '../floatreadout.js'
+import { senderReadout } from '../hudsender.js'
 
 const rec = { sender_kind: 'advert_pubkey', sender_id: 'ab12cd34ef56', sender_label: 'alpha', rssi: -85, snr: 8.5 }
 const base = { rec, sinceText: '12s', mode: 'filtered', hidden: 0, ble: true, mqtt: true }
@@ -24,7 +25,8 @@ describe('floatModel — what the float readout draws', () => {
     const m = floatModel({ ...base, rec: null, sinceText: '—' })
     expect(m.rssi).toBe('—')
     expect(m.snr).toBe('SNR —')
-    expect(m.who).toBe('—')
+    // The HUD's own empty sender line, until the float gets its own empty state.
+    expect(m.who).toBe(senderReadout(null).text)
     expect(m.tier).toBe('none')
   })
   it('names the stand, and marks the eye only while filtered mode hid something', () => {

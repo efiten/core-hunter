@@ -57,6 +57,11 @@ of defect #453 describes. So a reception either replaces everything on the HUD o
 One row of pills under the readout. Measured in the browser: 308 px of 328 px at 360 px wide
 with the widest labels (`Ignored`, `+ Target`), no wrap; 308 of 380 at 412 px.
 
+> **Amended 2026-09-15 by `docs/2026-09-15-reading-layer.md` (#618, #637).** The readout above
+> this row is two rows now: the reading (RSSI, SNR, age) and the sender line with the backlog
+> pill, each with a fixed height. This row of pills is unchanged. The HUD is 114.4 px while
+> hunting, which leaves 32 px to `#layer-toggle` with the FAB offsets as they are.
+
 ## The float readout
 
 Decided in the same round (Kasper, 2026-09-04, artboards R8 and R9): the row gets a fourth button,

@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-15-hud-sender-line",
+    "date": "2026-09-15",
+    "where": "app",
+    "title": "The HUD's SNR keeps its digits",
+    "body": "The sender has its own line, so a long name no longer cuts off the SNR."
+  },
+  {
     "id": "2026-09-15-relay-placed-by-reach",
     "date": "2026-09-15",
     "where": "both",

@@ -101,11 +101,18 @@
   </div>
   <div id="rx-log" aria-label="Receptions"></div>
   <section id="hud">
+    <!-- Row 1 is the reading, row 2 the sender line (#618). Before the first
+         reception the reading is empty and the sender line says so, here in
+         the markup, so a slow config.json or module never shows two blank
+         rows. The line is senderReadout(null) as paintSender draws a note
+         (hudlayout.test.js). -->
     <div id="hud-readout-row">
-      <div id="hud-rssi">—</div>
-      <div id="hud-snr">—</div>
-      <div id="hud-sender" title="Sender of the reception the ticker points at, or the repeater it was heard via">—</div>
-      <div id="hud-since" title="Age of the reception the ticker points at">—</div>
+      <div id="hud-rssi"></div>
+      <div id="hud-snr"></div>
+      <div id="hud-since" title="Age of the reception the ticker points at"></div>
+    </div>
+    <div id="hud-sender-row">
+      <div id="hud-sender" class="empty" title="Sender of the reception the ticker points at, or the repeater it was heard via">No reception yet</div>
       <!-- Receptions captured but not yet sent on. The MQTT dot answers
            "is the socket open", which is a different question (#454). -->
       <div id="hud-backlog" role="status" hidden></div>

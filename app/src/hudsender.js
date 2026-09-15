@@ -2,12 +2,17 @@
 // classifyReception() already resolves `sender` to the immediate transmitter —
 // the originating node at zero hops, or a FLOOD packet's last relay — so a
 // 'relay' kind is exactly the last-hop repeater we heard, not the origin.
-import { isHashIdKind, displayName } from './names.js'
+import { isHashIdKind, nameParts } from './names.js'
+import { packetTypeLabel } from './filters.js'
 
 const ID_PREFIX_LEN = 6
 
+// senderReadout returns the line as one string (`text`) and in the parts the
+// HUD draws apart (#618): `prefix` ("via " and the guess mark, muted), `name`
+// (text colour, cut from its end) and `note`, which stands alone, muted, when
+// there is no sender to name. text is always prefix + name, or the note.
 export function senderReadout(rec) {
-  if (!rec) return { text: '—', viaRelay: false }
+  if (!rec) return noSender('No reception yet')
   // For a DIRECT packet, meshpacket.js sets sender_label to the 2-hex source
   // hash itself, so taking the label branch would print e.g. "4a" — visually
   // identical to a resolved short name. That id is a 256-way collision space:
@@ -20,15 +25,25 @@ export function senderReadout(rec) {
   // it is still a relay we heard, and it reads "via #64".
   // What does name a hash id is its attribution by reach (#661): placed on the
   // one registry node in reach, it reads by that node's name ("via ~Name");
-  // otherwise it keeps its # id. displayName gives a hash id no name unless it
+  // otherwise it keeps its # id. nameParts gives a hash id no name unless it
   // is placed, and drops a resolved relay name on a collision too.
   const isHashId = isHashIdKind(rec.sender_kind)
   const trimmed = typeof rec.sender_label === 'string' ? rec.sender_label.trim() : ''
-  // displayName carries the guess mark for a name on a short prefix (#452).
-  const label = displayName({ ...rec, sender_label: trimmed })
+  // nameParts carries the guess mark for a name on a short prefix (#452).
+  const parts = nameParts({ ...rec, sender_label: trimmed })
   const id = typeof rec.sender_id === 'string' ? rec.sender_id.trim() : ''
-  const name = label || (id ? (isHashId ? '#' : '') + id.slice(0, ID_PREFIX_LEN) : '')
-  if (!name || name === '#') return { text: '—', viaRelay: false }
+  const name = parts.name || (id ? (isHashId ? '#' : '') + id.slice(0, ID_PREFIX_LEN) : '')
+  if (!name || name === '#') {
+    // No sender to name: say what was heard instead, in the packet-type words
+    // the ticker's meta cell uses (a trace, an undecodable packet).
+    const type = packetTypeLabel(rec.packet_type)
+    return noSender(type ? `${type}, no sender id` : 'No sender id')
+  }
   const viaRelay = rec.sender_kind === 'relay' || rec.sender_kind === 'path_hash'
-  return { text: viaRelay ? `via ${name}` : name, viaRelay }
+  const prefix = (viaRelay ? 'via ' : '') + parts.mark
+  return { text: prefix + name, viaRelay, prefix, name, note: '' }
+}
+
+function noSender(note) {
+  return { text: note, viaRelay: false, prefix: '', name: '', note }
 }

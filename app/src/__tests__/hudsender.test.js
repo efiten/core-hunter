@@ -26,14 +26,52 @@ describe('senderReadout', () => {
     expect(r.viaRelay).toBe(true)
   })
 
-  it('returns a placeholder when there is no sender at all', () => {
-    expect(senderReadout({ sender_id: null, sender_label: null, hops: 0 }).text).toBe('—')
-    expect(senderReadout(null).text).toBe('—')
+  // #618: no placeholder dash. A reception without a sender says why, in the
+  // packet-type words the ticker uses, and the line before the first reception
+  // says there is none yet.
+  it('explains a reception without a sender by its packet type', () => {
+    const trace = senderReadout({ sender_id: null, sender_label: null, hops: 0, packet_type: 'Trace' })
+    expect(trace.note).toBe('Trace, no sender id')
+    expect(trace.text).toBe('Trace, no sender id')
+    expect(trace.name).toBe('')
+    expect(trace.prefix).toBe('')
+    expect(senderReadout({ sender_id: null, sender_label: null, hops: 0, packet_type: 'GroupText' }).note).toBe('Channel, no sender id')
+    expect(senderReadout({ sender_id: null, sender_label: null, hops: 0, packet_type: null }).note).toBe('No sender id')
+  })
+  it('says No reception yet before the first reception', () => {
+    const r = senderReadout(null)
+    expect(r.note).toBe('No reception yet')
+    expect(r.text).toBe('No reception yet')
+    expect(r.viaRelay).toBe(false)
   })
 
   it('trims whitespace-only labels rather than showing a blank readout', () => {
     const r = senderReadout({ sender_kind: 'advert_pubkey', sender_id: 'ab12cd34ef56', sender_label: '   ', hops: 0 })
     expect(r.text).toBe('ab12cd')
+  })
+})
+
+// #618: the HUD mutes "via " and the guess mark and prints the name in the
+// text colour, cut from its end, so the line comes in two parts.
+describe('senderReadout parts', () => {
+  it('splits the line into a muted prefix and the name', () => {
+    const relay = senderReadout({ sender_kind: 'relay', sender_id: '4a4abe', sender_label: 'repeater-3', hops: 1 })
+    expect(relay).toEqual({ text: 'via ~repeater-3', viaRelay: true, prefix: 'via ~', name: 'repeater-3', note: '' })
+    const hash = senderReadout({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', hops: 3 })
+    expect(hash).toEqual({ text: 'via #64', viaRelay: true, prefix: 'via ', name: '#64', note: '' })
+    const advert = senderReadout({ sender_kind: 'advert_pubkey', sender_id: 'ab'.repeat(32), sender_label: 'alpha', hops: 0 })
+    expect(advert).toEqual({ text: 'alpha', viaRelay: false, prefix: '', name: 'alpha', note: '' })
+  })
+  it('marks a name placed by reach in the prefix, never in the name', () => {
+    const node = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+    const r = senderReadout({ sender_kind: 'direct_hash', sender_id: '64', sender_label: '64', hops: 0, _attr: { rule: 'node', node } })
+    expect(r.prefix).toBe('~')
+    expect(r.name).toBe('Heumensoord-RPT')
+  })
+  it('keeps an unresolved id unmarked', () => {
+    const r = senderReadout({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: null, hops: 2 })
+    expect(r.prefix).toBe('via ')
+    expect(r.name).toBe('a1b2f3')
   })
 })
 
