@@ -150,9 +150,32 @@ export function starOrigin({ advertised, estimate } = {}) {
 // 2026-09-08), so the star reads as the signal coming down.
 export const RAY_ALT_M = 30
 
-// coverageStars groups the repeater hearings by id and hangs each star from
-// its origin. positionOf(id) answers the registry's advertised position or
-// null; estimate(points) is the node layer's estimateFor unless a test says
+// starKey is the star a hearing hangs from (#661). attr is the hearing's
+// attribution (attribution.js): a hearing placed on one registry node belongs
+// to that node's star, keyed by its pubkey, which is also the key of the
+// node's own Repeater adverts; a collided hearing belongs to no star (null);
+// every other hearing keys a star of its own id. So an id heard near its node
+// and again where no node can be it makes two stars, and the second one's
+// estimate is over its own hearings only (Kasper, 2026-09-15).
+export function starKey(pt, attr) {
+  if (attr && attr.rule === 'node') return String(attr.node.pubkey).toLowerCase()
+  if (attr && attr.rule === 'collision') return null
+  return String(pt.sender_id).toLowerCase()
+}
+
+// starSelected: a selection holds raw ids (the app's selected senders, the
+// map's picker), while a star is keyed by its node once a hearing is
+// attributed. A star is selected by its own id or by the id of any hearing in it.
+export function starSelected(star, selected) {
+  return selected.has(star.id) || star.points.some((p) => p.sender_id != null && selected.has(String(p.sender_id).toLowerCase()))
+}
+
+// coverageStars groups the repeater hearings by starKey and hangs each star
+// from its origin. attributionOf(pt) answers a hearing's attribution, or null
+// where none was worked out, which groups by id as before. A star keyed by an
+// attributed node hangs from that node's advertised position; otherwise
+// positionOf(id) answers the registry's advertised position or null.
+// estimate(points) is the node layer's estimateFor unless a test says
 // otherwise. A star with no origin at all (no position, too few hearings for
 // an estimate) is left out: there is nothing to draw it from.
 //
@@ -162,18 +185,22 @@ export const RAY_ALT_M = 30
 // hear nothing new. So a star's estimate is reused while its hearings are the
 // same positions and RSSIs in the same order, and the cache keeps only the
 // stars of this call. The registry position is read every call.
-export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null } = {}) {
+export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null, attributionOf = () => null } = {}) {
   const byId = new Map()
+  const nodeOf = new Map()
   for (const pt of points || []) {
     if (!isRepeaterHearing(pt) || pt.sender_id == null) continue
     if (!Number.isFinite(pt.lat) || !Number.isFinite(pt.lon)) continue
-    const id = String(pt.sender_id).toLowerCase()
+    const attr = attributionOf(pt)
+    const id = starKey(pt, attr)
+    if (id == null) continue
+    if (attr && attr.rule === 'node') nodeOf.set(id, attr.node)
     if (!byId.has(id)) byId.set(id, [])
     byId.get(id).push(pt)
   }
   const out = []
   for (const [id, pts] of byId) {
-    const advertised = positionOf(id) || null
+    const advertised = nodeOf.get(id) || positionOf(id) || null
     const est = cache ? cachedEstimate(cache, id, pts, estimate) : estimate(pts.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi })))
     const origin = starOrigin({ advertised, estimate: est })
     if (!origin) continue
@@ -193,13 +220,13 @@ function cachedEstimate(cache, id, pts, estimate) {
 
 // coverageFeatures: one LineString per hearing, hub to hearing, with the
 // repeater's hue and the ray's strength on the feature. `selected` is the set
-// of selected ids; empty or absent means nothing is dimmed.
+// of selected ids (starSelected); empty or absent means nothing is dimmed.
 export function coverageFeatures(stars, { slotOf, colorOf, selected = null } = {}) {
   const dimming = !!(selected && selected.size)
   const features = []
   for (const s of stars || []) {
     const color = colorOf(slotOf(s.id))
-    const dim = dimming && !selected.has(s.id)
+    const dim = dimming && !starSelected(s, selected)
     for (const pt of s.points) {
       const two = isTwoWay(pt)
       const { w, op } = rayStyle(pt.rssi, { twoWay: two, dimmed: dim })

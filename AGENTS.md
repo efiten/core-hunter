@@ -511,7 +511,7 @@ Verify against the other surface, not only against the issue text: put the two C
 two screens side by side. Where a shared rule can be asserted, pin it in `web/parity.test.js` so
 it is mechanical instead of remembered.
 
-### Prefix attribution: the app refuses, the website may merge
+### Prefix attribution: rows merge per surface, a relay id is placed by reach
 
 One physical node is named by several different-length ids in the same pubkey namespace — the full
 32-byte advert pubkey, an 8-byte (or full) discover prefix, a 1-3 byte relay path hash. Whether two
@@ -545,7 +545,9 @@ as one target:
   the longest id: an unlabelled longest id is compatible with everything, so a pairwise-only check
   lets two members with disagreeing names meet through it. Because the common long id carries no
   label, that is the ordinary shape here rather than a corner case.
-- merging starts at 2 bytes; a 1-byte path hash is 1-in-256, too coarse to attribute
+- merging starts at 2 bytes (`MIN_MERGE_HEX_CHARS`): a 1-byte id is shared by too many nodes to fold
+  picker rows on because one longer id happens to be in the window. That is a floor for merging
+  rows, not for placing a reception on a node, which follows reach (below)
 
 A merged row is named by the node's own key (the longest id known for it) with the id still shown,
 keeps the newest reception for RSSI and age, and carries `merged_ids` so one click selects every
@@ -553,10 +555,45 @@ prefix variant as one target. Its displayed name comes from the **longest** memb
 name on a full advert pubkey came from the advert, whereas one on a 2-byte prefix is a backfilled
 unique-match guess, so the two are not interchangeable.
 
-This does **not** relax the separate, stricter rule on the website's node-position layer
-(`web/map.js`, #296): a prefix is never resolved to a node *identity* there, because the resolver's
-`ambiguous=false` is a per-registry claim and this side has no local registry to check it against.
-Merging rows in a picker and trusting a prefix as an identity are different acts.
+**Attribution by reach (#661).** Merging rows in a picker and saying which registry node a
+reception came from are different acts. The second is one rule on both surfaces, in
+`attribution.js` (copied whole). A relay id of 1, 2 or 3 bytes (`relay`, `path_hash`, and
+`direct_hash` as a zero-hop source hash) is placed per reception:
+
+1. **One candidate:** exactly one positioned registry node whose pubkey starts with the id lies
+   within reach of where the reception was heard. The reception belongs to that node: its
+   advertised position, and its name with the `~` guess mark (#452).
+2. **No candidate, or no registry (a guest):** the estimate over the receptions of that id that
+   fall under this rule themselves. A reception placed on a node belongs to that node and a
+   collided one to nothing, so neither pulls the estimate. A 2 or 3-byte relay id keeps the
+   resolver's name with `~`, unless the registry holds a positioned node with that prefix out of
+   reach: that is evidence the name belongs to another node, so the id is shown instead.
+3. **Two or more candidates within reach:** evidence of a collision. No position, no arrow, no name.
+
+- **Reach** is the free-space distance at which a 1 W transmitter with 3 dBi antennas on both ends
+  still arrives that strong at 868 MHz, capped at 15 km:
+  `min(15, 10^((36 - RSSI - 20 log10(868) - 32.44) / 20))`. That is 5.5 km at -70 dBm, 9.8 km at
+  -75 and 15 km at -79 and weaker. The frequency is assumed because the app does not read the
+  companion's; on 433 MHz the same signal can come from twice as far.
+- **The RSSI** in the app is the plotted one: `rssiCalibrationOffset` applied and the attenuator's
+  loss added back (`effectivePlotOffset` in `signal.js`). The map receives neither, since the
+  published RSSI stays raw (`signal.js`, `publisher.js`), so the map's reach uses the raw RSSI.
+  The two differ by that offset, in either direction. When it is positive (an attenuator on, or a
+  positive calibration) the map's reach is the larger one and it can see a collision the app does
+  not. When it is negative (a negative calibration beyond the attenuator's loss) the map's reach
+  is the smaller one and it can place a reception on a node the app calls a collision.
+- **Candidates** in the app are the registry nodes of the resolvers on the companion's SF
+  (`resolversFor`, #452), or of all resolvers when the SF is unknown or matches none. A node
+  without an advertised position is no candidate, since reach cannot place it; one pubkey listed
+  twice is one node.
+- **Surfaces:** the reach stars and the node-position layer in the app and on the map, and in the
+  app also the arrow (#660) and the sender names. The node-position layer draws registry nodes
+  only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2 estimate gets no marker of
+  its own. On the map, the ticker and the point popup keep their resolver names, a separate issue.
+  A 1-byte star or hub id reads `#` plus the id in a tooltip, never as a bare name (§5.4 item 6).
+- Relay ids longer than 3 bytes, advert and discover keys and channel names keep their own rules.
+  This replaces the website's refusal to resolve a prefix to a node on its node-position layer
+  (#296). The decision and its limits: `docs/2026-09-15-attribution-by-reach.md`.
 
 ### Colours via CSS variables only
 

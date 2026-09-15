@@ -38,10 +38,11 @@ const (
 // sender that cannot be named still leaves receptions that group together.
 //
 // That matters because the alternative handle does not exist. A flood sent with
-// 1-byte path hashes carries no attributable sender at all (classifyReception
-// refuses a 1-byte prefix, 1-in-256), so on 2026-08-24 an Amsterdam hunt saw
-// 2,707 receptions with an empty sender and no way to filter to them. This is
-// the handle that was missing.
+// 1-byte path hashes names its last hop by one byte, 1-in-256: the app records
+// it as a path_hash sender since 2026-08-25 (#522) and places it on a node only
+// by reach (AGENTS.md §7). Before that classifyReception refused the byte, so on
+// 2026-08-24 an Amsterdam hunt saw 2,707 receptions with an empty sender and no
+// way to filter to them. This is the handle that was missing.
 //
 // Truncated to 16 hex characters. The full digest is a 64-character column on
 // every row for a value only ever compared for equality; 64 bits leaves a

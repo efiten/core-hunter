@@ -79,6 +79,12 @@ and collision-prone even without an attacker (which is why `meshpacket.js`
 refuses 1-byte hashes). Anything reasoning about "the zero-hop rule" needs to
 account for that second branch.
 
+> **Amended 2026-09-15 by `docs/2026-09-15-attribution-by-reach.md` (#661).**
+> `meshpacket.js` no longer refuses a 1-byte last hop: since #522 it records it
+> as `path_hash`. A relay id of 1, 2 or 3 bytes names a registry node only when
+> exactly one positioned node with that prefix is within reach of the
+> reception (AGENTS.md §7). The id stays as forgeable as described here.
+
 ## Options considered
 
 1. **Per-hop authentication.** Every relay would have to sign what it forwards:

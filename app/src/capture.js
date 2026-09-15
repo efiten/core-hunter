@@ -6,15 +6,17 @@ import { isUsableFix } from './gps.js'
 // way to un-see it, so a poor fix is refused here rather than filtered
 // downstream.
 //
-// Attribution is NOT a condition (#454). Three kinds can never be attributed --
-// a TRACE packet (its path bytes are SNR values, not hop hashes), a relayed
-// packet on a DIRECT route, and a FLOOD packet whose last path hash is one byte
-// -- and refusing them threw away an RSSI, an SNR and a fix our own radio
-// produced, because the name on top was missing. That is the wrong half to
-// drop: the measurement is the part nobody can forge, the identity is the part
-// the protocol never authenticated. A reception with no sender says something
-// transmitted here, this strongly, without claiming who; classifyReception
-// leaves its sender null and every identity surface refuses it from there.
+// Attribution is NOT a condition (#454). Two kinds carry no sender at all -- a
+// TRACE packet (its path bytes are SNR values, not hop hashes) and a relayed
+// packet on a DIRECT route -- and a FLOOD packet whose last path hash is one
+// byte carries only that byte (path_hash, #522), which names a node only by
+// reach (attribution.js, AGENTS.md §7). Refusing them threw away an RSSI, an
+// SNR and a fix our own radio produced, because the name on top was missing.
+// That is the wrong half to drop: the measurement is the part nobody can
+// forge, the identity is the part the protocol never authenticated. A
+// reception with no sender says something transmitted here, this strongly,
+// without claiming who; classifyReception leaves its sender null and every
+// identity surface refuses it from there.
 export function shouldCapture(cls, fix) {
   return !!cls && isUsableFix(fix)
 }

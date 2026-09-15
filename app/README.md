@@ -80,16 +80,18 @@ A reception is stored when the phone has a fix good enough to place it. That is 
 (#274): once a reception is binned into the hex grid there is no way to un-see it, so a poor fix is
 refused at the source rather than filtered downstream.
 
-Being able to name the sender is **not** a condition. Three kinds can never be named — a TRACE packet
-(its path bytes are SNR values, not hop hashes), a relayed packet on a DIRECT route, and a FLOOD
-packet whose last path hash is a single byte, which is 1-in-256 and too coarse to attribute to
-anyone. Those receptions are real: our own radio measured an RSSI, an SNR and a position for each.
-Only the identity on top is missing, and that identity is the part MeshCore never authenticated
+Being able to name the sender is **not** a condition. Two kinds carry no sender at all: a TRACE
+packet (its path bytes are SNR values, not hop hashes) and a relayed packet on a DIRECT route. A
+FLOOD packet whose last path hash is a single byte carries only that byte, as a `path_hash` sender
+(#522). One byte is 1-in-256 and no identity on its own, so it names a node only by reach: exactly
+one registry node with that prefix within reach of where it was heard (#661, AGENTS.md §7). Those
+receptions are real: our own radio measured an RSSI, an SNR and a position for each. Only the
+identity on top is missing or uncertain, and that identity is the part MeshCore never authenticated
 anyway. Refusing them would keep the forgeable half and throw away the unforgeable one, and the map
 would go quiet while the radio was hearing something.
 
-Such a record carries a `packet_type` and no sender, so the packet-type filter chips are what show
-and hide it. It can never be selected as a target and never resolves to a name. Locate treats it like
+A record without a sender carries a `packet_type` only, so the packet-type filter chips are what
+show and hide it. It can never be selected as a target and never resolves to a name. Locate treats it like
 any other point in the filtered set, which is the point: a transmitter you cannot name is still one
 you can drive toward.
 

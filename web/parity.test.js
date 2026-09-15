@@ -1279,8 +1279,9 @@ describe('files copied whole from the app (#595)', () => {
   // coverage.js and raylayer.js (#603) join the list: the stars, the hues
   // and the 3D ray buffers are one rule on both maps. fabring.js and
   // nodeposmode.js (#630) join it too: the map's node-positions button is the
-  // app's FAB, with the same stops, labels and ring.
-  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js']) {
+  // app's FAB, with the same stops, labels and ring. attribution.js (#661)
+  // joins it: which node a relay id belongs to is one rule on both surfaces.
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js', 'attribution.js']) {
     it(`web/${name} is app/src/${name}`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')

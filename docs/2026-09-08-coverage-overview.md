@@ -1,7 +1,7 @@
 # The coverage overview: every repeater's reach at once, each in its own hue (#603)
 
 **Date:** 2026-09-08
-**Status:** decided (Kasper, 2026-09-07 and 08, after the design rounds in `design-canvas/` and two renders on the real data), implemented on both maps in the same PR as #549; amended 2026-09-14 for #623 and #624
+**Status:** decided (Kasper, 2026-09-07 and 08, after the design rounds in `design-canvas/` and two renders on the real data), implemented on both maps in the same PR as #549; amended 2026-09-14 for #623 and #624. Decision 8 amended 2026-09-15 by #661 (`docs/2026-09-15-attribution-by-reach.md`).
 **Related:** #549 (the star of one node, which this grew out of), #197 (the node-position layer it rides on), #595 (3D on the map), #481/#482 (the two-way hearings), #320 (the identity is unauthenticated), #374/#554 (other hunters' data, not this)
 
 ## What changed
@@ -22,6 +22,8 @@ Node positions now has a third stop, **Positions + reach**: every repeater in vi
 6. **One selected** (2026-09-08). A tap on a repeater's ▲ or ● selects its star, and so does picking it as a target; both drive one selection. The selected star draws as it is, its name in a pill on the marker; every other star drops to 25% in its own hue, so the hand-over to the neighbours stays readable. A second tap, or a tap on bare map, clears it. With a target picked the plotted set is narrowed to it, so the stars come from the same window without the sender filter.
 7. **3D from the mast** (2026-09-08). Each ray starts 30 m above the ground at the repeater and lands at ground level at the hearing. A MapLibre line layer lies on the ground, so this is a custom WebGL layer (`raylayer.js`): each ray a screen-space quad between two mercator points with altitude, the terrain's height under both ends when the mesh is on. No deck.gl: it would have been the first dependency either map carries for one layer, and the layer is under 200 lines. The quads take 32-bit indices, so on a WebGL1 context without `OES_element_index_uint` the layer is not mounted and the console says so once; the flat rays still draw in 2D.
 8. **Attribution** is `classifyReception`'s rule: the originator at zero hops, or the last relay of a flood. On a record: `sender_role` Repeater, or `sender_kind` relay, discover_pubkey or trace_reply. A relay hash has no registry position, so that star hangs from the RSSI estimate (●); a full pubkey the registry places hangs from its ▲.
+
+   > **Amended 2026-09-15 by `docs/2026-09-15-attribution-by-reach.md` (#661).** A relay id of 1, 2 or 3 bytes (`relay`, and `path_hash` at 1 byte) is placed per hearing by reach: `starKey` in `coverage.js` holds the rule, and both maps take it in the same bundle. A hearing with exactly one positioned registry node of that prefix within reach joins that node's star, keyed by its pubkey and hung from its ▲. A hearing with two or more within reach joins no star. Every other hearing of such an id keys a star of that id, hung from the RSSI estimate (●) over those hearings only.
 
 ## Amended 2026-09-14: selecting, and what a selection dims (#623, #624)
 
