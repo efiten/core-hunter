@@ -35,3 +35,23 @@ export function windowMs(token) {
   const m = /^(\d+)([mhd])$/.exec(String(token ?? ''))
   return m ? Number(m[1]) * UNIT_MS[m[2]] : null
 }
+
+// widerWindowMs is the window to step to when a surface shows something that
+// reaches further back than it draws (#646): the first entry on the list that
+// is wider than the one in use and far enough to take `neededMs`, the oldest
+// thing on show. The smallest step that actually helps, not the widest one
+// there is.
+//
+// null means this list has nothing to offer: the window is already All time,
+// nothing on show falls outside it, or what does reaches past the longest
+// preset — and the app's All time is the step beyond this list, which is its
+// own to offer.
+export function widerWindowMs(neededMs, currentMs) {
+  if (currentMs == null) return null
+  if (!(neededMs > currentMs)) return null
+  for (const w of TIME_WINDOWS) {
+    const ms = windowMs(w.token)
+    if (ms > currentMs && ms >= neededMs) return ms
+  }
+  return null
+}
