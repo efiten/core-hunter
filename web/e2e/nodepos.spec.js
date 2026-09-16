@@ -95,12 +95,12 @@ test('the notice, the readout and the attribution share a phone screen without o
     .toBeGreaterThanOrEqual(ATTRIB_STRIP)
 })
 
-// #630: the readout stood left of the FAB rail's column at every width, and at
-// 320px a guest's readout ("0 cells" and both node counts, 263px) did not fit
-// in the 244px beside it. It wrapped to two lines and grew up under the node
-// positions notice. On a phone the rail stands above the readout, so the
-// readout keeps the screen's right edge there.
-test('a guest\'s readout stays one line under the notice on a 320px phone', async ({ page }) => {
+// #630 and #659: on a phone the rail's column stands at the readout's height,
+// so the readout stops left of it, as on a wide screen. At 320px a guest's
+// readout ("0 cells" and both node counts, 263px) does not fit in the 244px
+// beside the column and wraps to a second line; the notice stands above that
+// second line, not over it (Kasper, 16 September 2026).
+test('a guest\'s readout stands left of the rail and under the notice on a 320px phone', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
   await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
   await page.route('**/sf7/api/nodes/count*', (r) => r.fulfill({ json: { count: 180 } }))
@@ -118,7 +118,7 @@ test('a guest\'s readout stays one line under the notice on a 320px phone', asyn
   })
   const overlaps = (a, c) => a.left < c.right && c.left < a.right && a.top < c.bottom && c.top < a.bottom
   expect(b.readout.width, 'the readout is empty, so this measures nothing').toBeGreaterThan(200)
-  expect(b.readout.height, `the readout wrapped ${JSON.stringify(b)}`).toBeLessThan(30)
+  expect(b.readout.right, `readout into the rail's column ${JSON.stringify(b)}`).toBeLessThanOrEqual(b.rail.left)
   expect(overlaps(b.notice, b.readout), `notice over the readout ${JSON.stringify(b)}`).toBe(false)
   expect(overlaps(b.rail, b.readout), `rail over the readout ${JSON.stringify(b)}`).toBe(false)
   expect(b.readout.left, 'no gutter at the left edge').toBeGreaterThanOrEqual(8)

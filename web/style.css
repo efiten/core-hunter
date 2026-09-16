@@ -973,19 +973,21 @@ body.wb-onboarding-on #bar { z-index:710; }
   #map-notices { left: 8px; right: 8px; width: auto; align-items: flex-start; }
   /* The credit wraps to two lines here, 44px tall: in 3D at 540px and below,
      in 2D at 360px. 64px is the base rule's sum with that second line. Three
-     lines did not occur down to 320px. */
-  #map-readout { right: 8px; bottom: 64px; font-size: 11px; }
+     lines did not occur down to 320px. The rail's column stands at the same
+     height (--rail-bottom below), so the readout stops left of it, as on a
+     wide screen, and wraps to a second line when both node counts do not fit
+     beside it: at 375 and 412px they do not (Kasper, 16 September 2026). */
+  #map-readout { bottom: 64px; font-size: 11px; max-width: calc(100vw - 8px - var(--ch-rail-clear)); }
   /* #641: the notice and the readout each owned a bottom corner, and on a
-     phone there is only one. At 412px the notice's 12 + 300 leaves about 92px
-     for a readout that has to hold a node count, so the two ran into each
-     other. They stack instead of sharing the row: the notice spans the width
-     above the readout. 96px is the readout's own bottom (64, which is where
-     #659 put it to clear the credit's second line) plus its height (11px text
-     at the default line-height ~= 14, plus 4+4 padding and 1+1 border = 24)
-     plus 8px of air. The attribution keeps the strip below both, which is the
-     part that is not cosmetic. The right edge stops short of the FAB rail's
-     column (#630), which stands over this corner at every width. */
-  #nodepos-stack { left: 8px; right: var(--ch-rail-clear); bottom: 96px; max-width: none; }
+     phone there is only one. They stack instead of sharing the row: the
+     notice spans the width above the readout. 120px is the readout's own
+     bottom (64, which is where #659 put it to clear the credit's second line)
+     plus its height on two lines (two 14px lines, the flex row gap of 8, 4+4
+     padding and 1+1 border = 46, measured 48) plus 8px of air. The attribution
+     keeps the strip below both, which is the part that is not cosmetic. The
+     right edge stops short of the FAB rail's column (#630), which stands over
+     this corner at every width. */
+  #nodepos-stack { left: 8px; right: var(--ch-rail-clear); bottom: 120px; max-width: none; }
   /* MapLibre opens the compact attribution expanded, and at a phone's width a
      longer credit (the terrain source's, in 3D) wraps it to two lines, 44px
      tall. 64px is its 10px margin, those two lines and 10px of air, the same

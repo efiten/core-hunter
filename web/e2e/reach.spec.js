@@ -153,6 +153,11 @@ test('a repeater with no hearings is selectable, and its popup says there is not
 test('the popup\'s reach button selects and clears, and the popup stays up with the new state', async ({ page }) => {
   await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  // The ticker's first place is the top left (#630). At 1280x720 its 680x298
+  // box covers the popup this marker opens, so it is closed first: the popup's
+  // own behaviour is what this test pins.
+  await page.locator('#rx-log .rx-close').click()
+  await expect(page.locator('#rx-log')).toBeHidden()
   await page.locator('.np-advert').click()
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
