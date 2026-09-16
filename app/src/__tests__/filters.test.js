@@ -1,11 +1,48 @@
 import { describe, it, expect } from 'vitest'
 import { PayloadType, getPayloadTypeName } from '@michaelhart/meshcore-decoder'
-import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel, FILTER_PACKET_TYPES, senderIdClass } from '../filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER, packetTypeLabel, FILTER_PACKET_TYPES, senderIdClass, mapFilterOpts } from '../filters.js'
 import { undecodableReception } from '../meshpacket.js'
 
 const rec = (o) => ({ sender_id: '4a', packet_type: 'Response', is_direct: true, hops: 0,
   rx_at: '2026-06-29T10:00:00Z', ...o })
 const now = Date.parse('2026-06-29T10:05:00Z')
+
+// #646: flipping the ticker to ALL says you are looking at raw reception, but
+// the map kept drawing the narrowed set, so rows the map left out were tagged
+// "outside filter" in the one stand that promises to leave nothing out. The
+// stand now steers the map too. What it releases is the narrowing the user
+// chose; what it keeps is the time window (the map draws a window by #230) and
+// the ignore list, which exists to keep known noise off the map.
+describe('mapFilterOpts — what the ALL stand releases, and what it keeps', () => {
+  const narrowed = { sender: { ids: ['4a'] }, types: new Set(['Advert']), windowMs: 1800000, directOnly: true, idClasses: new Set(['pubkey']) }
+
+  it('hands back the same narrowing under filtered', () => {
+    expect(mapFilterOpts('filtered', narrowed)).toEqual(narrowed)
+  })
+  it('releases the sender, the traffic types, the id class and the path filter under all', () => {
+    const o = mapFilterOpts('all', narrowed)
+    expect(o.sender).toBeNull()
+    expect(o.types).toBeNull()
+    expect(o.idClasses).toBeNull()
+    expect(o.directOnly).toBe(false)
+  })
+  it('keeps the time window under all, because the map draws a window', () => {
+    expect(mapFilterOpts('all', narrowed).windowMs).toBe(1800000)
+  })
+  // The sharp half of the issue: with a target picked, makeFilter rejects every
+  // record with no sender_id, so all anonymous reception leaves the map at
+  // once — including our own traces whose reply could not be attributed (#481).
+  it('lets anonymous reception back onto the map once the target is released', () => {
+    const anon = rec({ sender_id: null, packet_type: 'Trace', rx_at: '2026-06-29T10:04:00Z' })
+    expect(makeFilter({ ...narrowed, ignore: null })(anon, now)).toBe(false)
+    expect(makeFilter({ ...mapFilterOpts('all', narrowed), ignore: null })(anon, now)).toBe(true)
+  })
+  // Unknown stands land on filtered, the same side nextRxMode falls to: the
+  // map showing more than the user asked for is the wrong way to fail.
+  it('treats an unknown stand as filtered', () => {
+    for (const v of ['', null, undefined, 'both']) expect(mapFilterOpts(v, narrowed), String(v)).toEqual(narrowed)
+  })
+})
 
 describe('makeFilter', () => {
   it('targets a single sender by exact id (case-insensitive)', () => {

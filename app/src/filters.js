@@ -15,6 +15,23 @@ export function isFilterActive(filter) {
   return false
 }
 
+// mapFilterOpts is what the map draws for a given stand (#646). The ticker's
+// filtered/all switch used to be log-only: ALL listed raw reception while the
+// map kept drawing the narrowed set, so the rows the map left out were tagged
+// "outside filter" in the one stand that promises to leave nothing out.
+//
+// ALL releases the narrowing the user chose: the target, the traffic types,
+// the sender-id class and the path filter. It keeps the time window, because
+// the map draws a window rather than the whole store (#230), and the ignore
+// list, which exists to keep known noise off the map. Anything that is not ALL
+// is the filter exactly as it stands — a map showing more than was asked for
+// is the wrong way to fail, and nextRxMode falls to filtered for the same
+// reason.
+export function mapFilterOpts(mode, filter) {
+  if (mode !== 'all') return { ...filter }
+  return { ...filter, sender: null, types: null, idClasses: null, directOnly: false }
+}
+
 // Friendly labels for the decoder's raw packet_type values — shared by the
 // filter chips, the receptions log, and map popups so the same reception
 // reads the same way everywhere (#174).

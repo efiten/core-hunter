@@ -21,6 +21,27 @@
     "body": "Pillars no longer darken as the signal weakens on the light theme. A weaker reception now looks fainter on both themes."
   },
   {
+    "id": "2026-09-13-newest-receptions-selectable",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "The newest receptions can be selected again",
+    "body": "The marker now reaches the last lines of the receptions list, so the readout follows the newest reception."
+  },
+  {
+    "id": "2026-09-13-receptions-counter",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "The receptions counter counts again",
+    "body": "The ticker header says how many receptions you have heard, not the 200 its list can hold."
+  },
+  {
+    "id": "2026-09-13-all-shows-raw-reception",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "ALL now shows raw reception on the map too",
+    "body": "Switching the receptions list to ALL drops the narrowing on the map as well, inside the same time window."
+  },
+  {
     "id": "2026-09-08-coverage-overview",
     "date": "2026-09-08",
     "where": "both",
