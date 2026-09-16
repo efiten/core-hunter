@@ -265,8 +265,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
 /* ---- Reception ticker (#224) ----
    Parity with app's Receptions log (app/src/receptionlog.js, #130): frameless,
-   log-style tail over the map. Newest at the bottom; a fixed playhead lane
+   log-style tail over the map. Newest at the bottom; a playhead lane
    (scroll-padding-top / LANE) that lines snap to like a combination-lock dial.
+   The lane is where the marker starts, not where it is pinned: over the last
+   rows the list cannot scroll to, the marker walks down to them (#619).
    No background panel -- text-shadow carries legibility.
    Ported from app/src/styles/app.css for exact visual parity; parity.test.js
    pins the two copies together. Full-width centred layout and the
@@ -414,7 +416,6 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .rx-id { width: 6ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
-.rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
 .rx-ln.act .rx-gt:before { content: '→'; }
 .rx-ln.act .rx-tm, .rx-ln.act .rx-rs, .rx-ln.act .rx-id, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 

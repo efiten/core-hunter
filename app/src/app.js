@@ -30,7 +30,7 @@ import { createFloatReadout, floatModel, floatSupported } from './floatreadout.j
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
-import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from './filters.js'
+import { makeFilter, isFilterActive, DEFAULT_FILTER, FILTER_PACKET_TYPES, SENDER_ID_CLASSES, mapFilterOpts } from './filters.js'
 import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
 import { filterSheetMarkup } from './filtersheet.js'
 import { activeFilterCount } from './barfilters.js'
@@ -43,7 +43,8 @@ import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
 import { effectivePlotOffset, rssiToPct, rssiTier, tierColorVar } from './signal.js'
-import { createReceptionLog, tickerState, tickerStored, nextRxMode } from './receptionlog.js'
+import { createReceptionLog, tickerState, tickerStored, nextRxMode, outsideWindow, rxView } from './receptionlog.js'
+import { TIME_WINDOWS, windowMs as windowMsOf, widerWindowMs } from './timewindows.js'
 import { createTargetList } from './targetlist.js'
 import { resolveName, cachedName, resolvableKey } from './names.js'
 import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
@@ -412,6 +413,38 @@ function setRxMode(mode) {
   state.hudHidden = 0
   if (state.rxLog) state.rxLog.setMode(mode)
   renderHudTools(); drawFloat()
+  // The map follows the stand as well (#646), and waiting for the next tick
+  // would leave the list and the map disagreeing for up to a second right
+  // after the press that is supposed to change both.
+  drawOnce()
+}
+
+// The window the card last offered to widen to (#646), remembered because the
+// offer is made while the rows are in hand and taken later, on a tap. null is
+// All time, the step past the shared preset list.
+let widenTo = null
+
+// windowLabel names a window for the card's offer. Lowercased because it lands
+// mid-sentence ("show 3 hours"), where the select's own capitalisation reads
+// as a heading rather than a step.
+function windowLabel(ms) {
+  if (ms == null) return 'all time'
+  const w = TIME_WINDOWS.find((t) => windowMsOf(t.token) === ms)
+  return w ? w.label.toLowerCase() : 'all time'
+}
+
+// applyWindowMs is the one way the plot window changes (#646). The filter
+// sheet's select and the card's offer both land here, so the state, the
+// select, the map and the redraw cannot drift apart.
+function applyWindowMs(ms) {
+  state.filter.windowMs = ms
+  const sel = el('fs-window')
+  if (sel) sel.value = String(ms ?? 0)
+  const row = el('fs-row-window')
+  if (row) row.classList.toggle('active', ms !== DEFAULT_FILTER.windowMs)
+  if (state.map) state.map.setTimeWindow(ms)
+  refreshFilterState()
+  drawOnce()
 }
 
 // renderHudTools writes the toggle and the three quick actions from state.
@@ -1076,9 +1109,11 @@ async function processFrame(dv) {
   } else renderHudTools()
   noteTickerTraffic()
   // The reception that just arrived pulses once on the map (#556), and only
-  // when the filter would draw it: a hidden reception must not ping from a
-  // place the map shows nothing at.
-  if (state.map && makeFilter({ ...activeFilter(), ignore: state.ignore })(rec, state.lastPacketAt)) state.map.pulse(rec)
+  // when the map would draw it: a reception the map has no marker for must not
+  // ping from a place it shows nothing at. That is the stand's filter since
+  // #646, not the sheet's, so under ALL the pulse reaches everything the map
+  // now plots rather than only what the narrowing let through.
+  if (state.map && makeFilter({ ...mapFilterOpts(state.rxMode, activeFilter()), ignore: state.ignore })(rec, state.lastPacketAt)) state.map.pulse(rec)
 }
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1169,12 @@ async function drawOnce() {
     // window, not the whole retained store.
     const fn = makeFilter({ ...activeFilter(), ignore: state.ignore })
     const filteredRows = windowRows.filter((r) => fn(r, now))
+    // The ticker's stand drives the map too (#646): under ALL the map plots
+    // what the radio heard, inside the same window. Under filtered it is the
+    // very same set the list's filtered stand shows, so there is one filter
+    // here rather than two answers about one map.
+    const mapFn = makeFilter({ ...mapFilterOpts(state.rxMode, activeFilter()), ignore: state.ignore })
+    const mapRows = state.rxMode === 'all' ? windowRows.filter((r) => mapFn(r, now)) : filteredRows
     const selected = selectedSet()
     if (state.map) {
       // With a target picked the plotted set is narrowed to it, and the
@@ -1144,11 +1185,32 @@ async function drawOnce() {
         const all = makeFilter({ ...activeFilter(), sender: null, ignore: state.ignore })
         reachRows = windowRows.filter((r) => all(r, now))
       }
-      state.map.render(filteredRows, selected, reachRows)
+      state.map.render(mapRows, selected, reachRows)
     }
-    // Receptions log (#130): filtered = the plotted set (one-to-one with the
-    // map); all = every captured reception. The toggle is log-only.
-    if (state.rxLog) { state.rxLog.render(filteredRows, rows, now); syncHudToPlayhead() }
+    // Receptions log (#130): filtered is the narrowed set, all is every
+    // captured reception. The stand stopped being log-only in #646 — the map
+    // is drawn from mapRows above, which follows it — but the list is still
+    // row-bounded where the map is window-bounded, and the note says so.
+    // The ticker's header says how many receptions there are, not how many fit
+    // in its 200-row window (#638). filteredRows is the whole windowed match,
+    // so it counts itself; "all" is the retained store, which only the store
+    // can count — `rows` above is a capped read like the window it feeds.
+    //
+    // Guarded on its own: the count is the header's, and a store that cannot
+    // answer it must not take the rows down with it. Without totals the header
+    // counts what it was handed, which is what it did before this.
+    let totals = null
+    try {
+      totals = { filtered: filteredRows.length, all: await state.queue.count() }
+    } catch (_) { /* header falls back; the list still renders */ }
+    // The list is row-bounded and the map is window-bounded, so the card can
+    // hold receptions the map has no place for (#646). Measured over exactly
+    // what the card renders — rxView, the same call the component makes — and
+    // said once above the list, with the first window that would take them.
+    const gap = outsideWindow(rxView(filteredRows, rows, state.rxMode), state.filter.windowMs, now)
+    widenTo = gap.count ? widerWindowMs(gap.oldestAgeMs, state.filter.windowMs) : null
+    const outside = gap.count ? { count: gap.count, label: windowLabel(widenTo) } : null
+    if (state.rxLog) { state.rxLog.render(filteredRows, rows, now, { totals, outside }); syncHudToPlayhead() }
     if (state.targetList) state.targetList.render(rows, state.ignore, now, selected)
     updateDiscoverBtnVisual()
   } catch (_) {
@@ -1851,11 +1913,7 @@ function buildFilterSheet() {
   syncDirectRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
-  sel.addEventListener('change', () => {
-    state.filter.windowMs = Number(sel.value) || null
-    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
-    syncWindowRow(); refreshFilterState()
-  })
+  sel.addEventListener('change', () => { applyWindowMs(Number(sel.value) || null) })
 
   // Chip rows — the "All" chip (default) means no filter on that dimension.
   // Picking a specific chip turns All off; clearing the last specific one turns
@@ -1928,10 +1986,10 @@ function buildFilterSheet() {
     state.filter.types = null
     state.filter.idClasses = null
     state.filter.directOnly = DEFAULT_FILTER.directOnly
-    state.filter.windowMs = DEFAULT_FILTER.windowMs
     chk.checked = state.filter.directOnly
-    sel.value = String(state.filter.windowMs)
-    if (state.map) state.map.setTimeWindow(state.filter.windowMs)
+    // The window goes back through its one writer (#646), so Clear cannot
+    // leave the state, the select and the map saying different things.
+    applyWindowMs(DEFAULT_FILTER.windowMs)
     paintChipRow('fs-type-chips', 'type', new Set())
     paintChipRow('fs-idclass-chips', 'idclass', new Set())
     syncDirectRow(); syncWindowRow()
@@ -3093,6 +3151,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     onCollapse: (level) => setTickerCollapse(level),
     // The header toggle flips the stand the HUD shares (#555).
     onModeChange: setRxMode,
+    // One tap on the window note widens the plot window to the first preset
+    // that would take what the card is already showing (#646).
+    onWiden: () => applyWindowMs(widenTo),
   })
   if (state.map) state.map.onMarkerFocus((rec) => { if (state.rxLog) state.rxLog.focusRecord(rec.id) })
   el('ticker-btn').addEventListener('click', () => setTickerVisible(true))
