@@ -230,9 +230,17 @@ function viewportParams() {
   const b = wm.getBounds()
   return { bbox: [b.south, b.west, b.north, b.east].join(','), z: String(leafletZoom(wm.getZoom())) }
 }
+// The ticker's filtered/all stand, which drives the map's own layers too
+// (#646): under ALL the map plots what the radio heard, so the narrowing the
+// user chose is released and only the time window and the ignore list remain.
+// Before this the list said "raw reception" while the map kept drawing the
+// narrowed set, and the rows it left out were tagged as being outside a filter
+// the stand had supposedly lifted.
+let rxStand = 'filtered'
+
 function qs() {
   const p = new URLSearchParams(viewportParams())
-  const f = (window.currentFilters && window.currentFilters()) || {}
+  const f = tickerFilters((window.currentFilters && window.currentFilters()) || {}, rxStand)
   for (const [k, v] of Object.entries(f)) {
     // senderPairs is already [key, value][] and may repeat a key (#223), so it
     // appends rather than sets -- URLSearchParams.set would keep only the last.
@@ -725,7 +733,10 @@ async function fetchTickerPage(mode) {
   const r = await fetch(`${API_BASE}/api/points?${p.toString()}`)
   if (!r.ok) throw new Error(`points ${r.status}`)
   const d = await r.json()
-  return d.points || []
+  // truncated travels with the rows: QueryPoints fetches one past the limit to
+  // detect it precisely, and the ticker's header needs it to say whether more
+  // receptions exist behind this page (#638).
+  return { points: d.points || [], truncated: !!d.truncated }
 }
 
 // Snap the map to the selected hunter(s) (#195).
@@ -2421,6 +2432,9 @@ rxTicker = createReceptionTicker('rx-log', {
   fetchAll: () => fetchTickerPage('all'),
   shouldPoll: () => isLiveWindow((window.currentFilters && window.currentFilters().to) || '', Date.now()),
   onActiveChange: setRxHighlight,
+  // The stand is the map's too (#646): the layers redraw against whatever the
+  // ticker is showing, so the two never disagree about what is on screen.
+  onModeChange: (m) => { rxStand = m; refresh() },
 })
 window.__rxTicker = rxTicker // test hook
 // The ticker exists now, so the level restored from the URL can reach it.

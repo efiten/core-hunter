@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-13-receptions-counter",
+  "date": "2026-09-13",
+  "where": "both",
+  "title": "The receptions counter counts again",
+  "body": "The ticker header says how many receptions you have heard, not the 200 its list can hold."
+}
