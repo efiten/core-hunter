@@ -435,7 +435,11 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #map-notices { position:fixed; left:56px; right:12px; top:calc(var(--ch-bar-h) + 8px); z-index:625;
   display:flex; flex-direction:column; align-items:flex-start; gap:6px; pointer-events:none; }
 #map-notices > * { pointer-events:auto; max-width:min(560px, 100%); }
-#map-readout { position:fixed; right:12px; bottom:26px; z-index:610; pointer-events:none;
+/* bottom 44px stands the readout above MapLibre's attribution, which shares
+   this corner: its 10px margin, one 24px line of credit and 10px of air. At
+   26px it covered the open credit by 8px. Wider than 640px the longest credit
+   (3D adds the terrain source's) is one line, measured down to 641px. */
+#map-readout { position:fixed; right:12px; bottom:44px; z-index:610; pointer-events:none;
   display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;
   background:var(--ch-surface-thin); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
   border:1px solid var(--ch-border); border-radius:8px; padding:4px 9px; }
@@ -938,10 +942,12 @@ body.wb-onboarding-on #bar { z-index:710; }
     min-height: 44px; padding: 0 12px; width: 100%; justify-content: space-between; }
   .bf-slot { display: block; }
   .bf-slot > .ms-wrap, .bf-slot > .tr-wrap { display: block; }
-  /* The notices and the readout follow the narrower bar. The readout sits above
-     Leaflet's attribution rather than on it. */
+  /* The notices and the readout follow the narrower bar. The credit wraps to
+     two lines here, 44px tall: in 3D at 540px and below, in 2D at 360px. 64px
+     is the base rule's sum with that second line. Three lines did not occur
+     down to 320px. */
   #map-notices { left: 52px; right: 8px; }
-  #map-readout { right: 8px; bottom: 24px; font-size: 11px; }
+  #map-readout { right: 8px; bottom: 64px; font-size: 11px; }
   /* The ticker does not drag at this width (#561). It is full-bleed here
      (`min(680px, 100vw)`), so every position is the same band at a different
      height and there is no "out of the way" to reach. The chevron's stops and

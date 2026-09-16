@@ -1294,7 +1294,7 @@ describe('files copied whole from the app (#595)', () => {
 // enough for it and because it catches the case a behaviour test cannot: a
 // comment on one side explaining a rule the other side no longer follows.
 describe('the filter modules are one file on both surfaces (#564)', () => {
-  for (const name of ['chiprow.js', 'barfilters.js']) {
+  for (const name of ['chiprow.js', 'barfilters.js', 'basemapswap.js']) {
     it(`${name} is identical in app/src`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
