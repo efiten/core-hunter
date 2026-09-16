@@ -242,3 +242,82 @@ test('the phone layout goes back when the window grows again', async ({ page }) 
   await expect(page.locator('#bar #rx-cta')).toBeVisible()
   await expect(page.locator('#bar #auth-btn')).toBeVisible()
 })
+
+// ---------------------------------------------------------------------------
+// The readout and the attribution share the bottom-right corner
+// ---------------------------------------------------------------------------
+//
+// #map-readout stood 26px up (24 on a phone), and MapLibre's compact
+// attribution is a 24px line on a 10px margin in the same corner: measured
+// with the real OpenFreeMap style on 14 September 2026, the readout covered
+// the credit by 8px at 1280x800 and 844x390, by 10px at 390 and 375, and by
+// all of its 25px in 3D on a phone, where the terrain source's credit wraps
+// the line in two. Folded to its (i) button the credit was still under the
+// readout's right end.
+//
+// The basemap is stubbed here, so the style below carries the real credit on a
+// source a layer draws from: MapLibre then builds the control itself, opens
+// it, and wraps it at the width of the real text. ?view=3d adds the DEM
+// source and its credit, the longer case.
+const CREDIT = '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">&copy; OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
+
+const cornerBoxes = (page) => page.evaluate(() => {
+  const box = (b) => ({ left: b.left, top: b.top, right: b.right, bottom: b.bottom, width: b.width, height: b.height })
+  const attrib = document.querySelector('.maplibregl-ctrl-attrib')
+  const inner = attrib.querySelector('.maplibregl-ctrl-attrib-inner')
+  // The text itself, line by line: a Range's client rects are the glyph runs.
+  const range = document.createRange()
+  range.selectNodeContents(inner)
+  return {
+    open: attrib.classList.contains('maplibregl-compact-show'),
+    attrib: box(attrib.getBoundingClientRect()),
+    button: box(attrib.querySelector('summary').getBoundingClientRect()),
+    text: [...range.getClientRects()].filter((r) => r.width > 0).map(box),
+    readout: box(document.getElementById('map-readout').getBoundingClientRect()),
+  }
+})
+
+const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top
+
+for (const [w, h] of [[1280, 800], [844, 390], [390, 844], [375, 812]]) {
+  for (const view of ['2d', '3d']) {
+    test(`the readout stays off the attribution at ${w}x${h} in ${view}, open and folded`, async ({ page }) => {
+      await page.route('**/tiles.openfreemap.org/**', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ version: 8,
+          sources: { omt: { type: 'geojson', data: { type: 'FeatureCollection', features: [] }, attribution: CREDIT } },
+          layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#111' } }, { id: 'omt', type: 'fill', source: 'omt' }] }) }))
+      // The node counts make the readout as wide as it is in production; with
+      // only the cell count it is too short to reach the credit's text.
+      await page.route('**/corsproxy.on8ar.eu/sf7/**', (r) => r.fulfill({ json: { count: 1234 } }))
+      await page.route('**/corsproxy.on8ar.eu/cs/**', (r) => r.fulfill({ json: { totalNodes: 5678 } }))
+      await page.setViewportSize({ width: w, height: h })
+      await page.goto(view === '3d' ? '/?view=3d' : '/')
+      await expect(page.locator('#sf-counts')).toContainText('SF8')
+      await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('OpenStreetMap')
+      if (view === '3d') await expect(page.locator('.maplibregl-ctrl-attrib-inner')).toContainText('DEM')
+
+      // MapLibre opens the compact credit on load; that is the state the
+      // readout covered, so it is asserted rather than assumed.
+      const open = await cornerBoxes(page)
+      expect(open.open, 'the credit opens on load').toBe(true)
+      // Non-zero first: a 0x0 box is apart from everything.
+      for (const [name, b] of [['readout', open.readout], ['attribution', open.attrib]]) {
+        expect(b.width * b.height, `${name} has a box: ${JSON.stringify(b)}`).toBeGreaterThan(0)
+      }
+      expect(open.text.length, 'the credit has text on screen').toBeGreaterThan(0)
+      expect(apart(open.readout, open.attrib),
+        `readout ${JSON.stringify(open.readout)} over the open credit ${JSON.stringify(open.attrib)}`).toBe(true)
+      for (const line of open.text) {
+        expect(apart(open.readout, line), `readout ${JSON.stringify(open.readout)} over credit text ${JSON.stringify(line)}`).toBe(true)
+      }
+
+      // Folded, the way a drag on the map leaves it: the (i) button alone.
+      await page.locator('.maplibregl-ctrl-attrib summary').click()
+      const folded = await cornerBoxes(page)
+      expect(folded.open, 'the credit folded').toBe(false)
+      expect(folded.button.width * folded.button.height, `the (i) button has a box: ${JSON.stringify(folded.button)}`).toBeGreaterThan(0)
+      expect(apart(folded.readout, folded.button),
+        `readout ${JSON.stringify(folded.readout)} over the (i) button ${JSON.stringify(folded.button)}`).toBe(true)
+    })
+  }
+}

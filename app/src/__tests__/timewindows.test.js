@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { TIME_WINDOWS, windowMs } from '../timewindows.js'
+import { TIME_WINDOWS, windowMs, widerWindowMs } from '../timewindows.js'
 import { DEFAULT_FILTER } from '../filters.js'
 import { RETENTION_MS } from '../queue.js'
 
@@ -32,5 +32,33 @@ describe('TIME_WINDOWS', () => {
   // the store no longer holds. This is why the map's 30 days does not port.
   it('never reaches past retention', () => {
     for (const w of TIME_WINDOWS) expect(windowMs(w.token), w.token).toBeLessThanOrEqual(RETENTION_MS)
+  })
+})
+
+// #646: the receptions list reaches further back than the window the map
+// draws, and the card offers to close that gap in one tap. Which window that
+// tap picks is this: the first one on the list that would take the oldest row
+// on show, so the step is the smallest one that actually helps.
+describe('widerWindowMs — the first window that would include what is on show', () => {
+  const MIN = 60 * 1000
+  const HOUR = 60 * MIN
+
+  it('picks the first preset that covers the oldest row', () => {
+    expect(widerWindowMs(50 * MIN, 30 * MIN)).toBe(HOUR)
+    expect(widerWindowMs(2 * HOUR, 30 * MIN)).toBe(3 * HOUR)
+  })
+  // A step to something no wider than the current window is not a step: the
+  // row it was offered for would still fall outside it.
+  it('never offers a window at or below the one in use', () => {
+    expect(widerWindowMs(50 * MIN, HOUR)).toBeNull()
+    expect(widerWindowMs(HOUR, HOUR)).toBeNull()
+  })
+  // Past the longest preset there is still an answer, because the app offers
+  // All time under the list; null is that answer, not a failure.
+  it('falls through to All time when no preset reaches far enough', () => {
+    expect(widerWindowMs(9 * 24 * HOUR, 30 * MIN)).toBeNull()
+  })
+  it('has nothing wider to offer once the window is All time', () => {
+    expect(widerWindowMs(9 * 24 * HOUR, null)).toBeNull()
   })
 })

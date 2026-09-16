@@ -21,6 +21,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { createRayLayer } from './raylayer.js'
 import { EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
+import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 const STYLES = {
@@ -29,6 +30,30 @@ const STYLES = {
 }
 const EMPTY = { type: 'FeatureCollection', features: [] }
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
+
+// The overlay stack, bottom to top (#626). Every add in addOverlays is guarded
+// with getLayer, so the order used to be whatever the adds happened to run in:
+// a run that landed on a half-applied style added part of the stack and the
+// next run put the rest on top of it. Declared here and applied in one pass at
+// the end of addOverlays.
+//
+// Its own list rather than the app's: the two surfaces do not draw the same
+// set. This one has the hex outline, the Locate cloud and its inliers, the
+// CoreScope sightings and the ticker's playhead ring; the app has the hunter
+// trail, the arrival pulse and its own position. The custom ray layer is not
+// here, mounted through raylayer.js and above everything by construction.
+export const LAYER_ORDER = [
+  'hillshade',
+  'hex', 'hex-outline', 'hex-3d',
+  'buildings-3d',
+  'locate-heat',
+  'reach',          // the reach lines, under the dots so a hub stays readable
+  'points', 'points-3d',
+  'observer-advert', 'observer-rxlog',
+  'locate-out', 'locate-in',
+  'nodedrift', 'nodecircle-search', 'nodecircle-drift',
+  'rxhighlight',    // the ticker's playhead ring, never under a point
+]
 // The sources the data layers read, all GeoJSON, all set through setData.
 const GEO_SOURCES = ['hex', 'reach', 'points', 'points-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle']
 // The app's ceiling (huntmap.js MAX_PITCH): a near-horizontal camera for the
@@ -67,7 +92,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   // Every map error reaches the console except a failed DEM tile, which only
   // leaves the map flat (terrain.js).
   map.on('error', reportMapError)
-  let overlaysReady = false, styleTimer = null
+  let overlaysReady = false, styleTimer = null, styleAttempt = 0
   const readyCbs = []
   // Pending data, applied once the layers exist: a caller that draws before
   // the style has loaded (the first refresh lands before 'load') must not
@@ -79,10 +104,17 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   function armStyleFallback() {
     clearTimeout(styleTimer)
     styleTimer = setTimeout(() => {
-      // Hosted style never mounted the overlays (offline / host down): drop to
-      // a bare background so the data still shows, as the app does.
-      if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
-    }, 12000)
+      if (overlaysReady) return
+      // The hosted style never even parsed (offline / host down). It gets one
+      // more try before the map gives it up (#626): the old net dropped
+      // straight to a flat background and stayed there, which is what a merely
+      // slow style looked like. Past that the bare background mounts the
+      // overlays, so the data still shows, as the app does.
+      if (nextStyleAttempt(styleAttempt++) === 'retry') {
+        map.setStyle(STYLES[currentTheme] || STYLES.dark); afterStyle(addOverlays); armStyleFallback(); return
+      }
+      map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare()
+    }, STYLE_RETRY_MS)
   }
   function applySky() {
     if (typeof map.setSky !== 'function' || !map.isStyleLoaded()) return
@@ -221,6 +253,11 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // The ticker's playhead ring (#224): last, so it is never under a point.
     if (!map.getLayer('rxhighlight')) map.addLayer({ id: 'rxhighlight', type: 'circle', source: 'rxhighlight',
       paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 2 } })
+    // One pass puts the stack in its declared order (#626), whatever order the
+    // adds ran in, and repairs a stack built across two runs on a half-applied
+    // style. The basemap's own layers are not in the list, so they keep their
+    // places underneath.
+    for (const id of LAYER_ORDER) if (map.getLayer(id)) map.moveLayer(id)
     rays.addTo(map)
     rays.setVisible(reachOn && is3D)
     // Terrain rides every style load like the sky: setStyle drops the source.
@@ -228,7 +265,16 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     applyTerrain()
     for (const cb of readyCbs) cb()
   }
-  function afterStyle(cb) { map.once('idle', cb) }
+  // afterStyle runs cb once the new style can take layers: 'styledata', not
+  // 'idle' (#626). Measured against the bundled 4.7.1 with a style whose
+  // sources never answer: 'styledata' fires once at +23..31 ms with
+  // isStyleLoaded() false, and addSource/addLayer there succeed — while
+  // isStyleLoaded() never goes true and 'idle' never fires at all, because both
+  // wait on the sources rather than on the style. No guard against the old
+  // style is needed: 'styledata' cannot fire before setStyle has begun
+  // applying, unlike isStyleLoaded(), which reads true for the previous style
+  // right up until it does.
+  function afterStyle(cb) { map.once('styledata', cb) }
 
   // setView(m, v): the layer mode and the 3D flag together, applied once
   // (the app's #336). Only a change that crosses the 2D/3D line moves the
@@ -409,6 +455,8 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     setTheme(next) {
       currentTheme = next
       overlaysReady = false
+      // This swap gets its own retry before the bare fallback (#626).
+      styleAttempt = 0
       map.setStyle(STYLES[next] || STYLES.dark)
       afterStyle(addOverlays)
       armStyleFallback()

@@ -10,6 +10,26 @@ export function tierColorVar(tier) { return `--ch-sig-${tier}` }
 const OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.26, faint: 0.19, none: 0.15 }
 export function fillOpacity(tier) { return OPACITY[tier] ?? 0.15 }
 
+// What a 3D pillar says about the ride it belongs to (#647). Everything from
+// this ride keeps its tier's own opacity; everything from before takes one flat
+// value, off the tier scale entirely, so within one colour "this ride" is
+// always the more present of the two and nothing from this ride can imitate a
+// backlog pillar.
+//
+// One value rather than a factor per tier, which is what a factor cannot give:
+// tier x 0.5 would put a backlog hot pillar (0.35) exactly where a this-ride
+// cool one sits (0.34), and the whole point is that the ride is a yes or no.
+//
+// 0.12 is below the weakest tier that draws at all. `none` is 0.15 on paper but
+// its extrusion height is 0, so nothing is drawn for it and `faint` at 0.19 is
+// the real floor. Measured against the dark ground on 2026-09-14 (MapLibre
+// 4.7.1, with the #412 style light): 0.12 stands 15 levels off the ground where
+// faint stands 31, present but plainly the weaker of the two.
+export const BACKLOG_PILLAR_ALPHA = 0.12
+export function pillarAlpha(tier, backlog) {
+  return backlog ? BACKLOG_PILLAR_ALPHA : fillOpacity(tier)
+}
+
 // effectivePlotOffset combines the per-device calibration offset with the active
 // attenuator setting. An attenuator lowers the measured RSSI, so its magnitude is
 // added back for plotting — attenuatorDb is the (non-positive) setting (e.g. -20),
@@ -42,19 +62,22 @@ export function rssiToPct(rssi, offset = 0) {
   return Math.round(rssiFrac(rssi, offset) * 100)
 }
 
-// ageFade returns an opacity multiplier for a reception's age within the
-// active time window: 1 when brand-new, linearly down to AGE_FADE_FLOOR at the
-// window edge (#149). Old points fade instead of vanishing hard, so recent
-// versus stale is readable at a glance. With no time window (windowMs null),
-// or an unusable rx_at, nothing fades.
-const AGE_FADE_FLOOR = 0.15
-export function ageFade(rxAt, nowMs, windowMs) {
-  if (windowMs == null || !(windowMs > 0)) return 1
-  const t = Date.parse(rxAt)
-  if (Number.isNaN(t)) return 1
-  const frac = Math.max(0, Math.min(1, (nowMs - t) / windowMs))
-  return 1 - (1 - AGE_FADE_FLOOR) * frac
-}
+// ageFade used to live here (#149): an opacity multiplier for a reception's
+// age within the window, 1 when new and down to a 0.15 floor at the edge. It
+// went in #648, and the reason is worth keeping so it is not reinvented.
+//
+// It measured against the time window rather than against the drive, so a
+// short ride in a wide window sat in the top few percent of its own scale: a
+// 30-minute window with an 8-minute ride faded 1 to 0.77, and All time with a
+// two-hour ride faded 1 to 0.99. The gradient it promised was usually
+// invisible. What it cost was the whole alpha channel, which is the only
+// per-feature channel a pillar has (#302).
+//
+// Both halves of what it encoded are answered elsewhere and on the surface
+// where they are visible: the pulse (#556) says something is arriving now, and
+// the ride step says something is from before. The map never carried the fade
+// at all, so dropping it converges the two surfaces (#644) rather than porting
+// a third rule across.
 
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.
@@ -130,8 +153,13 @@ export function tintOver(color, background, alpha) {
 // cell under it composites to. Measured 2026-09-05 (dark theme): a faint bar
 // used to stand at 85% solid purple on a 19% tint; with this it is within a
 // few levels of its cell at every tier.
-export function pillarTint(tier, tokenColor, background) {
-  return tintOver(tokenColor, background, fillOpacity(tier))
+//
+// `dim` multiplies the tier's opacity (#624): with a coverage star selected, a
+// bar outside it steps back by the same factor as its flat cell, so the two
+// still agree. Pre-mixed, so a dimmed bar moves toward the ground on both
+// themes. 1 leaves it exactly as it was.
+export function pillarTint(tier, tokenColor, background, dim = 1) {
+  return tintOver(tokenColor, background, fillOpacity(tier) * dim)
 }
 
 // The style light MapLibre shades every extrusion face with. Its default

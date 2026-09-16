@@ -188,12 +188,15 @@ same header, same rows, same geometry:
 - **The newest reception sits on the bottom lane** at every size, with nothing padding the list
   below it.
 - **The playhead stays two thirds down**, so lines roll through it with newer receptions below.
-- **The fade** spans the lanes on each side of the playhead and stops at `RX_FADE_FLOOR`, so no
+  That is where the marker *starts*, not where it is pinned: nothing pads the list below the last
+  row, so the scroll runs out three lanes early and the marker walks down those last lanes onto
+  the newest reception instead (#619). Every row can be put under it, at every size.
+- **The fade** spans the lanes on each side of the marker and stops at `RX_FADE_FLOOR`, so no
   row the card has made room for is invisible.
 
 **Guard:** `web/parity.test.js` compares the geometry by *running* both modules over every count
-from 0 to 60, and compares the `.rx-hd`, `.rx-list`, `.rx-ln`, `.rx-tm`, `.rx-rs` and `.rx-gt`
-rules declaration by declaration.
+from 0 to 60 — including which lane the marker lands on for each row — and compares the `.rx-hd`,
+`.rx-list`, `.rx-ln`, `.rx-tm`, `.rx-rs` and `.rx-gt` rules declaration by declaration.
 
 ### Deliberate differences, and why
 

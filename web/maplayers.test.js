@@ -63,16 +63,46 @@ describe('layerVisibility in 3D', () => {
 })
 
 describe('layerVisibility is total', () => {
-  it('always answers for all four layers, so a caller cannot read undefined', () => {
+  it('always answers for every layer it decides, so a caller cannot read undefined', () => {
     for (const m of ['both', 'hex', 'points']) {
       for (const d of [true, false]) {
         const v = vis(m, d)
-        for (const k of ['hex', 'hex-3d', 'points', 'points-3d']) expect(typeof v[k]).toBe('boolean')
+        for (const k of ['hex', 'hex-3d', 'points', 'points-3d', 'hex-labels', 'pulse', 'pulse-3d']) {
+          expect(typeof v[k], `${m}/${d} ${k}`).toBe('boolean')
+        }
       }
     }
   })
   it('treats an unknown mode as the cold default (hex), not as nothing visible', () => {
     expect(vis('', false)).toMatchObject({ hex: true, points: false })
+  })
+})
+
+// #648: with the age fade gone, nothing in 3D said "this one just arrived".
+// The pulse gets a second form there — a flash on the reception's own pillar —
+// because the flat ring would lie on the ground underneath it. The map does not
+// draw either form itself, but the rule is one file on both surfaces, so it is
+// asserted on both.
+describe('the arrival pulse has a form per dimension (#648)', () => {
+  it('rings on the ground in 2D, where the flat dots are', () => {
+    expect(vis('points', false)).toMatchObject({ pulse: true, 'pulse-3d': false })
+    expect(vis('both', false)).toMatchObject({ pulse: true, 'pulse-3d': false })
+  })
+  it('flashes the pillar in 3D, where the dots are pillars', () => {
+    expect(vis('points', true)).toMatchObject({ pulse: false, 'pulse-3d': true })
+    expect(vis('both', true)).toMatchObject({ pulse: false, 'pulse-3d': true })
+  })
+  it('does neither in hex mode, which draws no receptions to mark', () => {
+    expect(vis('hex', false)).toMatchObject({ pulse: false, 'pulse-3d': false })
+    expect(vis('hex', true)).toMatchObject({ pulse: false, 'pulse-3d': false })
+  })
+  it('never shows both forms at once', () => {
+    for (const m of ['both', 'hex', 'points']) {
+      for (const d of [true, false]) {
+        const v = vis(m, d)
+        expect(v.pulse && v['pulse-3d'], `${m}/${d}`).toBe(false)
+      }
+    }
   })
 })
 

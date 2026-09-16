@@ -81,13 +81,24 @@ export const PILLAR_MERGE_M = 10
 // index: a record is dropped when a stronger survivor already sits within
 // cellM, and the 3x3 neighbourhood is what makes the boundary case behave like
 // the middle of a cell. Bounded work per record, unlike an all-pairs scan.
-export function collapsePillars(records, cellM = PILLAR_MERGE_M) {
+// `priority` ranks records above the strength when the caller has a reason to
+// (#647): higher wins, ties fall through to signal. The app passes "is this
+// from the current ride", because the survivor decides what the pillar says and
+// not only where it stands — a louder reception from before standing in for a
+// fresh one reads as "not heard here today" on a place just heard. Optional,
+// since web has no rides to rank by: mapmodel.js draws published points from
+// every hunter, where there is no current ride to be before.
+export function collapsePillars(records, cellM = PILLAR_MERGE_M, priority = null) {
   const placed = records.filter((r) => r.lat != null && r.lon != null)
   if (placed.length < 2) return placed
-  // Strongest first, so the record a cluster collapses onto is decided by
-  // signal rather than by arrival order. Missing rssi sorts weakest instead of
-  // dropping the record — no rssi still means it was heard here.
-  const byStrength = [...placed].sort((a, b) => (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity))
+  // Strongest first within a rank, so the record a cluster collapses onto is
+  // decided by signal rather than by arrival order. Missing rssi sorts weakest
+  // instead of dropping the record — no rssi still means it was heard here.
+  // A priority that answers undefined makes the first term NaN, which is falsy,
+  // so it falls through to strength rather than scrambling the order.
+  const rank = typeof priority === 'function' ? priority : null
+  const byStrength = [...placed].sort((a, b) =>
+    (rank ? rank(b) - rank(a) : 0) || (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity))
   const mPerDegLat = 111320
   const mPerDegLon = 111320 * Math.cos((placed[0].lat * Math.PI) / 180)
   const cellOf = (r) => [Math.round((r.lon * mPerDegLon) / cellM), Math.round((r.lat * mPerDegLat) / cellM)]

@@ -94,6 +94,73 @@ test('a picked target is the selection too, and the other stars stay up dimmed',
   expect(p.find((f) => f.id === R2).dim).toBe(true)
 })
 
+// #624: a selection steps back more than the other stars' rays. Every dot that
+// is not the selected repeater's dims by the rays' own factor, the companion's
+// too, since a companion belongs to no repeater and is never part of a selection.
+test('a selection dims every dot that is not the selected repeater\'s, the companion\'s included', async ({ page }) => {
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  // `i` indexes the served hearings: 0-5 are R1 at -70 dBm (hot, 0.7), 6-10 R2
+  // at -95 (mid, 0.46), 11-13 the companion C1 at -80 (hot, 0.7).
+  const opOf = async () => {
+    const dots = await page.evaluate(() => window.__features('points'))
+    const by = (lo, hi) => dots.filter((d) => d.i >= lo && d.i <= hi).map((d) => d.op)
+    return { r1: by(0, 5), r2: by(6, 10), c1: by(11, 13) }
+  }
+  const near = (ops, want) => ops.length > 0 && ops.every((op) => Math.abs(op - want) < 1e-9)
+  const before = await opOf()
+  expect(near(before.r1, 0.7)).toBe(true)
+  expect(near(before.r2, 0.46)).toBe(true)
+  expect(near(before.c1, 0.7)).toBe(true)
+  await page.locator('.np-advert').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
+  await expect.poll(async () => near((await opOf()).r2, 0.46 * 0.25)).toBe(true)
+  const after = await opOf()
+  expect(near(after.r1, 0.7)).toBe(true)
+  expect(near(after.c1, 0.7 * 0.25)).toBe(true)
+})
+
+// #623: a repeater the registry places but that has no hearings in the window
+// has no star, and its ▲ used to open a popup and do nothing else. It is
+// selectable now: nothing draws from it, everything else dims, and the popup
+// says why there is no reach.
+test('a repeater with no hearings is selectable, and its popup says there is nothing to draw', async ({ page }) => {
+  const R3 = 'dd'.repeat(32)
+  // Only R3 in the registry, so the one ▲ is R3's. R1 keeps its hearings, so
+  // the reach is still on and R1's star hangs from its estimate instead.
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ json: { nodes: [{ pubkey: R3, name: 'Repeater-Noord', lat: 51.001, lon: 4.001 }] } }))
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  await expect(page.locator('.np-advert')).toHaveCount(1)
+  await page.locator('.np-advert').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R3])
+  // No dot belongs to R3, so every one of them steps back.
+  await expect.poll(async () => (await page.evaluate(() => window.__features('points'))).every((d) => d.op < 0.2)).toBe(true)
+  await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
+  await expect(page.locator('.maplibregl-popup-content')).toContainText('No hearings in this window yet')
+})
+
+// #623: the popup offers the action, so selecting a star is no longer an
+// undiscoverable tap, and a press keeps the popup up with the new state. The
+// last press starts from nothing selected on purpose: the button's handler is
+// delegated on the document, so the click also reaches the map, whose tap on
+// bare map clears the selection.
+test('the popup\'s reach button selects and clears, and the popup stays up with the new state', async ({ page }) => {
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  await page.locator('.np-advert').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
+  await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
+  // R1 has hearings, so the popup makes no excuse for it.
+  await expect(page.locator('.maplibregl-popup-content')).not.toContainText('No hearings')
+  await page.locator('.pp-reach').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([])
+  await expect(page.locator('.pp-reach')).toHaveText('Show reach')
+  await page.locator('.pp-reach').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
+  await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
+})
+
 test('in 3D the rays leave the ground: the line layer goes, the ray layer takes the same rays', async ({ page }) => {
   await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex } from '../receptionlog.js'
+import { rxView, rxActiveIndex, rxFade, RX_FADE_FLOOR, rxLineHeight, senderText, senderCell, lineMeta, nextRxMode, rxStepIndex, rxLanes, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane, rxCountLabel, outsideWindow } from '../receptionlog.js'
 
 const rec = (o) => ({ id: 1, rx_at: '2026-06-29T10:00:00Z', ...o })
 
@@ -219,5 +219,147 @@ describe('senderCell — the id stays beside the name it resolved to', () => {
   it('gives a hash id no column: the # in the name cell is all it is', () => {
     expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
     expect(senderCell({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toEqual({ id: '', name: '#4a' })
+  })
+})
+
+// #646: the list is row-bounded and the map is window-bounded, so the newest
+// 200 rows can reach further back than the window the map draws. That gap used
+// to be marked per row as "outside filter", which was true about the map and
+// read as false about the list — in the one stand that promises to leave
+// nothing out. The card now says it once: how many of the rows on show fall
+// outside the window, and how far back you would have to look to include them.
+describe('outsideWindow — the rows the list shows and the map cannot', () => {
+  const at = (agoMs) => ({ rx_at: new Date(1_000_000_000_000 - agoMs).toISOString() })
+  const NOW = 1_000_000_000_000
+  const MIN = 60_000
+
+  it('counts only the rows older than the window', () => {
+    const rows = [at(50 * MIN), at(40 * MIN), at(10 * MIN), at(1 * MIN)]
+    expect(outsideWindow(rows, 30 * MIN, NOW).count).toBe(2)
+  })
+  it('reports the oldest age among them, which is what a wider window has to cover', () => {
+    const rows = [at(50 * MIN), at(40 * MIN), at(10 * MIN)]
+    expect(outsideWindow(rows, 30 * MIN, NOW).oldestAgeMs).toBe(50 * MIN)
+  })
+  // All time has no outside: the map already draws everything retained.
+  it('finds nothing outside when there is no window', () => {
+    expect(outsideWindow([at(50 * MIN), at(9 * 24 * 60 * MIN)], null, NOW)).toEqual({ count: 0, oldestAgeMs: 0 })
+  })
+  it('finds nothing when every row is inside', () => {
+    expect(outsideWindow([at(1 * MIN), at(2 * MIN)], 30 * MIN, NOW)).toEqual({ count: 0, oldestAgeMs: 0 })
+  })
+  // A row whose timestamp cannot be read is not evidence of anything, and must
+  // not push the window wider on its own.
+  it('ignores a row with an unreadable timestamp rather than counting it', () => {
+    expect(outsideWindow([{ rx_at: 'not a date' }, at(40 * MIN)], 30 * MIN, NOW).count).toBe(1)
+  })
+  it('handles an empty list', () => {
+    expect(outsideWindow([], 30 * MIN, NOW)).toEqual({ count: 0, oldestAgeMs: 0 })
+  })
+})
+
+// #638: the header printed `view.length + ' rx'`, and the view is capped at
+// 200 rows, so every session that heard more than that read `200 RX` for the
+// rest of its life — the size of a window, standing where a count belongs.
+// Every screenshot from the 12 September drive shows exactly that.
+//
+// It now says the real total for the stand you are on. The app can count its
+// own store; the map has no store to count, so it says what the server told
+// it — a full page with more rows behind it is a lower bound, not a total.
+describe('rxCountLabel — the header says how many there are, not how many fit', () => {
+  it('prints the total for the stand', () => {
+    expect(rxCountLabel(7)).toBe('7 rx')
+    expect(rxCountLabel(0)).toBe('0 rx')
+  })
+  // The backlog pill already groups thousands (app/src/backlog.js); a count
+  // that reaches four digits on a long drive reads the same way here.
+  it('groups thousands, as the backlog pill does', () => {
+    expect(rxCountLabel(1483)).toBe('1,483 rx')
+  })
+  it('marks a total that is only a lower bound', () => {
+    expect(rxCountLabel(200, true)).toBe('200+ rx')
+    expect(rxCountLabel(1483, true)).toBe('1,483+ rx')
+  })
+  it('leaves a complete total unmarked', () => {
+    expect(rxCountLabel(200, false)).toBe('200 rx')
+  })
+})
+
+// #619: the three newest receptions could not be put under the marker. The
+// list is padded above by the playhead lane and not at all below (#560), so it
+// clamps at count + playhead - lanes lanes of scroll, and an index read off
+// the scroll position alone can never name a row past that. Tapping one of the
+// last three set a scrollTop the browser threw away, so the marker did not
+// move and the tap read as dead; the HUD that shares the marker showed the
+// fourth-newest while the ticker was following.
+//
+// Decided (Kasper, 12 September): the marker moves instead of the list. Once
+// the scroll is clamped the marker walks down the last lanes onto the bottom
+// row and the fade follows it, so no blank lanes come back.
+describe('rxMaxScroll — how far the list can be scrolled, in lanes', () => {
+  it('is the content that does not fit: the rows plus the padding above them', () => {
+    expect(rxMaxScroll(200, 10)).toBe(196)
+    expect(rxMaxScroll(12, 10)).toBe(8)
+  })
+  it('is zero when there is nothing to scroll past', () => {
+    expect(rxMaxScroll(0, 10)).toBe(0)
+    expect(rxMaxScroll(1, 1)).toBe(0)
+  })
+})
+
+describe('rxScrollLane — the scroll that shows a row, never past the clamp', () => {
+  it('scrolls to the row itself while the list can still reach it', () => {
+    expect(rxScrollLane(0, 200, 10)).toBe(0)
+    expect(rxScrollLane(120, 200, 10)).toBe(120)
+  })
+  // The old bug in one assertion: these four rows all sit at the same clamped
+  // scroll, so scroll position cannot tell them apart and the marker has to.
+  it('stops at the clamp rather than asking for scroll that does not exist', () => {
+    for (const i of [196, 197, 198, 199]) expect(rxScrollLane(i, 200, 10), `row ${i}`).toBe(196)
+  })
+})
+
+describe('rxMarkerLane — the marker walks the last lanes once the list clamps (#619)', () => {
+  it('holds the marker on the playhead lane for every row the list can scroll to', () => {
+    for (let i = 0; i <= rxMaxScroll(200, 10); i++) {
+      expect(rxMarkerLane(i, 200, 10), `row ${i}`).toBe(rxPlayhead(10))
+    }
+  })
+  it('walks it down the three lanes below the playhead for the three newest rows', () => {
+    expect(rxMarkerLane(197, 200, 10)).toBe(7)
+    expect(rxMarkerLane(198, 200, 10)).toBe(8)
+    expect(rxMarkerLane(199, 200, 10)).toBe(9)
+  })
+  // The defect itself: before this the newest reception was unreachable on a
+  // full card, which is what took the HUD off it.
+  it('reaches the newest reception at every card size', () => {
+    for (const count of [1, 2, 3, 5, 9, 10, 60, 200]) {
+      const lanes = rxLanes(count, 0)
+      expect(rxMarkerLane(count - 1, count, lanes), `${count} receptions`).toBe(lanes - 1)
+    }
+  })
+  it('never puts the marker off the card', () => {
+    for (const count of [1, 3, 7, 10, 200]) {
+      const lanes = rxLanes(count, 0)
+      for (let i = 0; i < count; i++) {
+        const lane = rxMarkerLane(i, count, lanes)
+        expect(lane, `row ${i} of ${count}`).toBeGreaterThanOrEqual(0)
+        expect(lane, `row ${i} of ${count}`).toBeLessThanOrEqual(lanes - 1)
+      }
+    }
+  })
+})
+
+// The fade is measured from the marker, not from the playhead lane it usually
+// sits on: with the marker walked down to the bottom lane there is nothing
+// under it, and the rows above it span the whole card.
+describe('rxBelow — the lanes under the marker, wherever it is', () => {
+  it('is the playhead geometry while the marker sits on its own lane', () => {
+    expect(rxBelow(10, rxPlayhead(10))).toBe(rxBelow(10))
+    expect(rxBelow(10, 6)).toBe(3)
+  })
+  it('is nothing once the marker has walked onto the bottom lane', () => {
+    expect(rxBelow(10, 9)).toBe(0)
+    expect(rxBelow(10, 8)).toBe(1)
   })
 })

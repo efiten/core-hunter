@@ -262,8 +262,10 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
 /* ---- Reception ticker (#224) ----
    Parity with app's Receptions log (app/src/receptionlog.js, #130): frameless,
-   log-style tail over the map. Newest at the bottom; a fixed playhead lane
+   log-style tail over the map. Newest at the bottom; a playhead lane
    (scroll-padding-top / LANE) that lines snap to like a combination-lock dial.
+   The lane is where the marker starts, not where it is pinned: over the last
+   rows the list cannot scroll to, the marker walks down to them (#619).
    No background panel -- text-shadow carries legibility.
    Ported from app/src/styles/app.css for exact visual parity; parity.test.js
    pins the two copies together. Full-width centred layout and the
@@ -411,7 +413,6 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 .rx-id { width: 6ch; flex: none; color: var(--ch-muted); font-variant-numeric: tabular-nums; }
 .rx-sn { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rx-me { color: var(--ch-muted); }
-.rx-nm { color: var(--ch-muted); font-size: 12px; margin-left: 3px; }
 .rx-ln.act .rx-gt:before { content: '→'; }
 .rx-ln.act .rx-tm, .rx-ln.act .rx-rs, .rx-ln.act .rx-id, .rx-ln.act .rx-sn, .rx-ln.act .rx-me { color: var(--ch-accent); }
 
@@ -431,7 +432,11 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #map-notices { position:fixed; left:56px; right:12px; top:calc(var(--ch-bar-h) + 8px); z-index:625;
   display:flex; flex-direction:column; align-items:flex-start; gap:6px; pointer-events:none; }
 #map-notices > * { pointer-events:auto; max-width:min(560px, 100%); }
-#map-readout { position:fixed; right:12px; bottom:26px; z-index:610; pointer-events:none;
+/* bottom 44px stands the readout above MapLibre's attribution, which shares
+   this corner: its 10px margin, one 24px line of credit and 10px of air. At
+   26px it covered the open credit by 8px. Wider than 640px the longest credit
+   (3D adds the terrain source's) is one line, measured down to 641px. */
+#map-readout { position:fixed; right:12px; bottom:44px; z-index:610; pointer-events:none;
   display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;
   background:var(--ch-surface-thin); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
   border:1px solid var(--ch-border); border-radius:8px; padding:4px 9px; }
@@ -628,6 +633,11 @@ body.wb-onboarding-on #bar { z-index:710; }
 .pp-id { color: var(--ch-muted); font-size: 11px; word-break: break-all; }
 .lc-locate { margin-top: 6px; padding: 3px 9px; border: none; border-radius: 6px; cursor: pointer;
   background: var(--ch-sig-warm); color: var(--ch-bg); font: inherit; font-size: 12px; }
+/* Show reach in a repeater's popup (#623): outlined in the accent, the app's
+   popup action style, so the two maps offer the action the same way. */
+.pp-reach { margin-top: 6px; padding: 3px 9px; border: 1px solid var(--ch-accent-2); border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--ch-accent-2); font: inherit; font-size: 12px; }
+.pp-reach.active { border-color: var(--ch-accent); color: var(--ch-accent); }
 .lc-modal { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1000;
   background: color-mix(in srgb, var(--ch-bg) 60%, transparent); }
 .lc-modal[hidden] { display: none; }
@@ -936,21 +946,22 @@ body.wb-onboarding-on #bar { z-index:710; }
     min-height: 44px; padding: 0 12px; width: 100%; justify-content: space-between; }
   .bf-slot { display: block; }
   .bf-slot > .ms-wrap, .bf-slot > .tr-wrap { display: block; }
-  /* The notices and the readout follow the narrower bar. The readout sits above
-     Leaflet's attribution rather than on it. */
+  /* The notices and the readout follow the narrower bar. The credit wraps to
+     two lines here, 44px tall: in 3D at 540px and below, in 2D at 360px. 64px
+     is the base rule's sum with that second line. Three lines did not occur
+     down to 320px. */
   #map-notices { left: 52px; right: 8px; }
-  #map-readout { right: 8px; bottom: 24px; font-size: 11px; }
+  #map-readout { right: 8px; bottom: 64px; font-size: 11px; }
   /* #641: the notice and the readout each owned a bottom corner, and on a
      phone there is only one. At 412px the notice's 12 + 300 leaves about 92px
      for a readout that has to hold a node count, so the two ran into each
-     other and both sat over the OSM attribution.
-
-     They stack instead of sharing the row: the notice spans the width above
-     the readout. 56px is the readout's own bottom (24) plus its height (11px
-     text at the default line-height ≈ 14, plus 4+4 padding and 1+1 border =
-     24) plus 8px of air. The attribution keeps the strip below both, which is
-     the part that is not cosmetic. */
-  #nodepos-stack { left: 8px; right: 8px; bottom: 56px; max-width: none; }
+     other. They stack instead of sharing the row: the notice spans the width
+     above the readout. 96px is the readout's own bottom (64, which is where
+     #659 put it to clear the credit's second line) plus its height (11px text
+     at the default line-height ~= 14, plus 4+4 padding and 1+1 border = 24)
+     plus 8px of air. The attribution keeps the strip below both, which is the
+     part that is not cosmetic. */
+  #nodepos-stack { left: 8px; right: 8px; bottom: 96px; max-width: none; }
   /* The ticker does not drag at this width (#561). It is full-bleed here
      (`min(680px, 100vw)`), so every position is the same band at a different
      height and there is no "out of the way" to reach. The chevron's stops and

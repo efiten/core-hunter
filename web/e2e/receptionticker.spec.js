@@ -46,9 +46,10 @@ test('filtered/all toggle switches the mode label and refetches without sender/t
   await page.click('#rx-log .rx-tg')
   await expect(page.locator('#rx-log .rx-tg b')).toHaveText('all')
   // Every fetchAndRebuild() re-fetches BOTH filtered and (in 'all' mode) all --
-  // filtered is still needed to annotate "no marker" rows -- so two requests
-  // land after the toggle. Assert at least one omits sender=, not that the
-  // first one does; which of the two resolves/logs first isn't guaranteed.
+  // filtered is the other stand's source, kept current so flipping back does
+  // not show a stale list -- so two requests land after the toggle. Assert at
+  // least one omits sender=, not that the first one does; which of the two
+  // resolves/logs first isn't guaranteed.
   await expect.poll(() => urls.slice(before).some((u) => u.includes('limit=200') && !u.includes('sender='))).toBe(true)
 })
 
@@ -92,6 +93,62 @@ test('clicking a point inside a hex cell in both mode keeps the ticker on that p
     await expect(page.locator('.maplibregl-popup:not(.ch-hover) .maplibregl-popup-content')).toContainText('NEO7HI', { timeout: 1000 })
   }).toPass()
   await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NEO7HI')
+})
+
+// #646: the stand was log-only. Flipping to ALL said you were looking at raw
+// reception while the map kept drawing the narrowed set, so the rows it left
+// out were tagged as outside a filter the stand had supposedly lifted. The map
+// follows the stand now: its own layers re-query without the narrowing. The
+// map's requests carry a bbox (viewportParams); the ticker's page does not.
+test('the map drops the sender narrowing too when the list is flipped to all', async ({ page }) => {
+  const urls = []
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [POINT] } }) })
+  await page.goto('/?mode=points&sender=aa11')
+  await expect(page.locator('#rx-log .rx-tg b')).toHaveText('filtered')
+  // Every map request so far carries the narrowing the user chose.
+  await expect.poll(() => urls.some((u) => u.includes('bbox=') && u.includes('sender='))).toBe(true)
+
+  const before = urls.length
+  await page.click('#rx-log .rx-tg')
+  await expect(page.locator('#rx-log .rx-tg b')).toHaveText('all')
+  await expect.poll(() => urls.slice(before).some((u) => u.includes('bbox=') && !u.includes('sender='))).toBe(true)
+})
+
+// #638: the header printed the length of the list, which stops at 200, so it
+// stopped counting there. The map counts the page the server sent and says so
+// when more rows exist behind it — /api/points fetches one row past the limit
+// precisely so it can answer that (server/internal/store/query.go).
+test('says the count is a lower bound when more rows sit behind the page', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [POINT, POINT2], truncated: true } }))
+  await page.goto('/?mode=points')
+  await expect(page.locator('#rx-log .rx-count')).toHaveText('2+ rx', { timeout: 10000 })
+})
+
+// #619: a full card runs out of scroll three lanes before its newest row, so a
+// marker read off the scroll position alone stopped at the fourth-newest. The
+// last three rows could not be clicked onto the marker, and the map highlight
+// sat on the wrong reception while the ticker was following live traffic.
+test('reaches the newest reception on a full card, and lets the last rows be clicked', async ({ page }) => {
+  // Twelve rows is a full card (ten lanes) with rows to spare above it, so the
+  // scroll really does clamp: maxScroll is 12 + 6 - 10 = 8 lanes, and rows 9,
+  // 10 and 11 sit past it at that same scrollTop.
+  const many = Array.from({ length: 12 }, (_, i) => ({
+    ...POINT,
+    lat: 51 + i / 100, lon: 4 + i / 100,
+    sender_id: `aa11bb${i}`, sender_label: `NODE${i}`,
+    rx_at: new Date(Date.now() - (12 - i) * 1000).toISOString(),
+  }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: many } }))
+  await page.goto('/?mode=points')
+  await expect(page.locator('#rx-log .rx-ln')).toHaveCount(12, { timeout: 10000 })
+  // Following means the newest reception, which is the row the scroll position
+  // cannot name. Before this it was NODE8, four rows off.
+  await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NODE11')
+
+  // NODE10 is also past the clamp: clicking it used to set a scrollTop the
+  // browser threw away, leaving the marker where it was.
+  await page.locator('#rx-log .rx-ln', { hasText: 'NODE10' }).click()
+  await expect(page.locator('#rx-log .rx-ln.act')).toContainText('NODE10')
 })
 
 test('clicking a ticker line highlights the map at that specific reception\'s position (ticker -> marker)', async ({ page }) => {
