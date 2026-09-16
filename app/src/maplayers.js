@@ -78,8 +78,8 @@ export function layerVisibility({ mode, mode3D } = {}) {
 
   if (!mode3D) {
     // The hex labels (#556) ride the flat hex layer, in 2D only; the pulse
-    // rings where the flat points are drawn.
-    return { hex: showHex, 'hex-3d': false, points: showPoints, 'points-3d': false, 'hex-labels': showHex, pulse: showPoints }
+    // rings where the flat points are drawn, and its 3D form stays off here.
+    return { hex: showHex, 'hex-3d': false, points: showPoints, 'points-3d': false, 'hex-labels': showHex, pulse: showPoints, 'pulse-3d': false }
   }
   return {
     // Flat when pillars share the scene, extruded when they don't.
@@ -91,5 +91,10 @@ export function layerVisibility({ mode, mode3D } = {}) {
     // pulse's flat ring would sit on the ground under the reception's pillar.
     'hex-labels': false,
     pulse: false,
+    // So the pulse takes a second form here instead of being dropped (#648):
+    // the reception's own pillar flashes. Before that the age fade was what
+    // said "recent" in 3D, and removing it left the view with nothing that
+    // marks an arrival. One form per dimension, never both at once.
+    'pulse-3d': showPoints,
   }
 }

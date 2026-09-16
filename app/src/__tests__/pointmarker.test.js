@@ -216,3 +216,44 @@ describe('collapsePillars', () => {
     expect(collapsePillars([])).toEqual([])
   })
 })
+
+// #647: which reception survives a collapse decides what the pillar SAYS, not
+// only where it stands. Strength alone answers "how loud was this place", and
+// that was the whole question while every pillar was drawn the same. Once a
+// backlog pillar looks different from a this-ride one, a louder old reception
+// standing in for a fresh one reads as "you have not heard this place today"
+// on a place you just heard — the exact confusion #647 is about, inverted.
+//
+// So the ride ranks above the strength, and the strength still decides within a
+// ride. Optional, because web has no rides at all: mapmodel.js draws published
+// points from every hunter, where there is no current ride to be before.
+describe('collapsePillars ranks the ride above the strength (#647)', () => {
+  // rank 1 = this ride, 0 = backlog, which is what huntmap.js passes via
+  // isBacklog(). Same position for all of them, so the collapse always runs.
+  const at = (id, rssi, rank) => ({ id, lat: 52.0, lon: 4.0, rssi, rank })
+  const byRide = (r) => r.rank
+
+  it('keeps this ride over a louder one from before', () => {
+    const out = collapsePillars([at(1, -60, 0), at(2, -100, 1)], PILLAR_MERGE_M, byRide)
+    expect(out.map((r) => r.id)).toEqual([2])
+  })
+
+  it('keeps this ride whatever order they arrive in', () => {
+    const backlogFirst = collapsePillars([at(1, -60, 0), at(2, -100, 1)], PILLAR_MERGE_M, byRide)
+    const freshFirst = collapsePillars([at(2, -100, 1), at(1, -60, 0)], PILLAR_MERGE_M, byRide)
+    expect(backlogFirst[0].id).toBe(2)
+    expect(freshFirst[0].id).toBe(2)
+  })
+
+  it('still keeps the strongest within one ride', () => {
+    const out = collapsePillars([at(1, -100, 1), at(2, -60, 1)], PILLAR_MERGE_M, byRide)
+    expect(out.map((r) => r.id)).toEqual([2])
+  })
+
+  it('goes on strength alone when no ranking is given, which is what web asks', () => {
+    // The default path, unchanged: web calls this with the records alone and
+    // must keep getting the loudest survivor it always got.
+    const out = collapsePillars([at(1, -60, 0), at(2, -100, 1)])
+    expect(out.map((r) => r.id)).toEqual([1])
+  })
+})

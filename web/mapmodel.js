@@ -2,7 +2,7 @@
 // what the API answers. mapcore.js is the DOM/WebGL glue and stays out of the
 // unit suite, the way huntmap.js does in the app; everything a test can pin
 // lives here.
-import { rssiTier, fillOpacity, extrusionHeight, withAlpha, pillarTint } from './signal.js'
+import { rssiTier, fillOpacity, extrusionHeight, tintOver, pillarTint } from './signal.js'
 import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
 import { PITCH_3D } from './maplayers.js'
 
@@ -26,13 +26,17 @@ export function zoomParam(mapZoom) { return String(Math.round((Number(mapZoom) +
 // index into the array it came from, which is how a click finds its point.
 // colorFor(pt) may answer a colour of its own for a point (#603: the hue of
 // the repeater it belongs to while the reach is on); null keeps the tier.
-export function pointFeatures(points, colorOf, { colorFor = () => null } = {}) {
+// dimFor(pt) answers how far a selection steps the point back (#624): 1 for a
+// point that belongs to a selected repeater or while nothing is selected, less
+// for everything else. Defaults to 1, so a caller that never selects is
+// untouched.
+export function pointFeatures(points, colorOf, { colorFor = () => null, dimFor = () => 1 } = {}) {
   const out = []
   points.forEach((pt, i) => {
     if (pt.lat == null || pt.lon == null) return
     const tier = rssiTier(pt.rssi)
     out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [pt.lon, pt.lat] },
-      properties: { i, color: colorFor(pt) || colorOf(tier), op: fillOpacity(tier) } })
+      properties: { i, color: colorFor(pt) || colorOf(tier), op: fillOpacity(tier) * dimFor(pt) } })
   })
   return fc(out)
 }
@@ -44,34 +48,49 @@ export function pointFeatures(points, colorOf, { colorFor = () => null } = {}) {
 // rule (huntmap.js buildHexFC): the bar's height by tier, and the tint the
 // bar is painted, the tier colour at the tier's opacity pre-mixed over the
 // theme background (#412), opaque, so a bar reads as its own cell does.
-export function hexFeatures(features, colorOf, background = '') {
+// `dim` is one factor for every cell (#624). A cell here is the server's
+// aggregate with no reception of its own, so it cannot be asked whether a
+// selected repeater was heard in it, the way the app asks of its raw records.
+// Under a selection every cell therefore steps back, which is the shared rule
+// for anything that belongs to no repeater (coverage.js selectionDim), while
+// the rays and the dots carry the selection itself.
+export function hexFeatures(features, colorOf, background = '', { dim = 1 } = {}) {
   return fc((features || []).map((f, i) => {
     const tier = rssiTier(f.properties.best_rssi)
     const token = colorOf(tier)
     return { type: 'Feature', geometry: f.geometry,
-      properties: { i, color: token, op: fillOpacity(tier), best: f.properties.best_rssi, count: f.properties.count,
+      properties: { i, color: token, op: fillOpacity(tier) * dim, best: f.properties.best_rssi, count: f.properties.count,
         hunters: Array.isArray(f.properties.hunters) ? f.properties.hunters.length : null,
-        pillar: pillarTint(tier, token, background), height: extrusionHeight(f.properties.best_rssi) } }
+        pillar: pillarTint(tier, token, background, dim), height: extrusionHeight(f.properties.best_rssi) } }
   }))
 }
 
 // The 3D twin of pointFeatures (#595), the app's buildPoints3DFC: an octagon
 // footprint per reception, extruded to the same tier height as the hex bars,
-// so a hotter reception stands taller. Tier opacity rides in the colour's
-// alpha, since fill-extrusion-opacity is one number for the whole layer
-// (#302). Coincident receptions collapse onto the strongest first (#402):
-// coplanar side walls in one depth pass z-fight, and a stationary hunter's
-// samples are exactly that. The footprint is metres, widened to a 4 px floor
-// when the zoom would make 3 m a hairline (pointmarker.js).
+// so a hotter reception stands taller. The tier opacity is pre-mixed over the
+// theme background and drawn opaque, the way the hex bars already are
+// (pillarTint, #412), rather than riding in the colour's alpha. Measured
+// 2026-09-14 (#647): MapLibre composites a translucent fill-extrusion against
+// black instead of against what lies under it, which is invisible on the dark
+// theme, where the ground is nearly black anyway, and inverted on the light
+// one, where a weaker tier then reads as MORE ink on a cream map. Pre-mixing
+// makes a lower opacity mean "closer to the ground" on both.
+//
+// Coincident receptions collapse onto the strongest first (#402): coplanar side
+// walls in one depth pass z-fight, and a stationary hunter's samples are
+// exactly that. No ride ranking here, unlike the app (#647): this map draws
+// published points from every hunter, so there is no current ride to be before.
+// The footprint is metres, widened to a 4 px floor when the zoom would make 3 m
+// a hairline (pointmarker.js).
 const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
-export function pillarFeatures(points, zoom, colorOf) {
+export function pillarFeatures(points, zoom, colorOf, background = '', { dimFor = () => 1 } = {}) {
   const placed = points.map((pt, i) => ({ ...pt, i })).filter((pt) => pt.lat != null && pt.lon != null)
   return fc(collapsePillars(placed).map((pt) => {
     const tier = rssiTier(pt.rssi)
     const ring = octagonRing(pt.lat, pt.lon, pillarRadiusM(pt.lat, zoom, POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
     return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
-      properties: { i: pt.i, color: withAlpha(colorOf(tier), fillOpacity(tier)), height: extrusionHeight(pt.rssi) } }
+      properties: { i: pt.i, color: tintOver(colorOf(tier), background, fillOpacity(tier) * dimFor(pt)), height: extrusionHeight(pt.rssi) } }
   }))
 }
 

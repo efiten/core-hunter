@@ -74,20 +74,75 @@ describe('hexFeatures', () => {
   })
 })
 
+// #624: a coverage selection dims the dots, the cells and the pillars as well
+// as the rays. map.js works out the factor; these pin that each builder applies
+// it where it belongs, and that a map with nothing selected is left alone.
+describe('selection dimming (#624)', () => {
+  const red = () => '#ff0000'
+  const BG = '#000000'
+  const cell = [{ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[4, 51], [4, 51]]] }, properties: { best_rssi: -60, count: 1 } }]
+
+  it('leaves a dot at its tier opacity by default, and multiplies in what dimFor answers', () => {
+    const pts = [{ lat: 51, lon: 4, rssi: -60 }]
+    expect(pointFeatures(pts, color).features[0].properties.op).toBe(0.7)
+    expect(pointFeatures(pts, color, { dimFor: () => 0.25 }).features[0].properties.op).toBeCloseTo(0.175)
+  })
+
+  it('asks dimFor about each dot on its own, so only the unselected ones step back', () => {
+    const pts = [{ lat: 51, lon: 4, rssi: -60, sender_id: 'aa' }, { lat: 52, lon: 5, rssi: -60, sender_id: 'bb' }]
+    const [a, b] = pointFeatures(pts, color, { dimFor: (pt) => (pt.sender_id === 'aa' ? 1 : 0.25) }).features.map((f) => f.properties.op)
+    expect(a).toBe(0.7)
+    expect(b).toBeCloseTo(0.175)
+  })
+
+  it('dims a cell by one factor, its flat tint and its bar alike', () => {
+    // A cell is the server's aggregate with no repeater of its own, so it takes
+    // a single factor rather than a per-reception one; the bar has to follow
+    // the cell or the two stop agreeing under a selection.
+    const lit = hexFeatures(cell, red, BG).features[0].properties
+    const dim = hexFeatures(cell, red, BG, { dim: 0.25 }).features[0].properties
+    expect(lit.op).toBe(0.7); expect(lit.pillar).toBe('#b30000')
+    expect(dim.op).toBeCloseTo(0.175); expect(dim.pillar).toBe('#2d0000')
+  })
+
+  it('dims a pillar toward the ground, per point', () => {
+    const pts = [{ lat: 51, lon: 4, rssi: -60 }]
+    expect(pillarFeatures(pts, 18, red, BG).features[0].properties.color).toBe('#b30000')
+    expect(pillarFeatures(pts, 18, red, BG, { dimFor: () => 0.25 }).features[0].properties.color).toBe('#2d0000')
+  })
+})
+
 // #595: the 3D twin of the point layer, the app's (huntmap.js
 // buildPoints3DFC): an octagon footprint per reception, extruded to the tier
-// height, tier opacity riding in the colour's alpha (#302), coincident
-// receptions collapsed to the strongest (#402).
+// height, coincident receptions collapsed to the strongest (#402). The tier
+// opacity is pre-mixed over the theme background and drawn opaque since #647,
+// rather than riding in the colour's alpha: MapLibre composites a translucent
+// fill-extrusion against black instead of against the map under it, which on a
+// light ground made a weaker tier the DARKER one.
 describe('pillarFeatures', () => {
   const M = 1 / 111320
   const red = () => '#ff0000'
-  it('draws an octagon per placed reception, with the tier height, the alpha in the colour and the source index', () => {
-    const fc = pillarFeatures([{ lat: 51, lon: 4, rssi: -60 }, { lat: null, lon: 4, rssi: -60 }, { lat: 51.01, lon: 4, rssi: -120 }], 18, red)
+  const LIGHT = '#f4f1ea'
+  it('draws an octagon per placed reception, with the tier height, the tier pre-mixed into the colour and the source index', () => {
+    const fc = pillarFeatures([{ lat: 51, lon: 4, rssi: -60 }, { lat: null, lon: 4, rssi: -60 }, { lat: 51.01, lon: 4, rssi: -120 }], 18, red, LIGHT)
     expect(fc.features).toHaveLength(2)
     expect(fc.features[0].geometry.type).toBe('Polygon')
     expect(fc.features[0].geometry.coordinates[0]).toHaveLength(9)
-    expect(fc.features[0].properties).toEqual({ i: 0, color: 'rgba(255,0,0,0.7)', height: 90 })
-    expect(fc.features[1].properties).toEqual({ i: 2, color: 'rgba(255,0,0,0.19)', height: 7 })
+    // Opaque hex, not rgba: red at 0.7 and at 0.19 already composited over the
+    // cream ground, so the GPU never has to blend it.
+    expect(fc.features[0].properties).toEqual({ i: 0, color: '#fc4846', height: 90 })
+    expect(fc.features[1].properties).toEqual({ i: 2, color: '#f6c3be', height: 7 })
+  })
+  it('puts a weaker tier closer to the ground, not further from it', () => {
+    // The invariant the pre-mixing exists for, and the one the alpha version
+    // got backwards on a light theme: a faint pillar must read as less ink than
+    // a hot one, whatever colour the ground is.
+    const distance = (hex, bg) => {
+      const p = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16))
+      return Math.max(...p(hex).map((v, i) => Math.abs(v - p(bg)[i])))
+    }
+    const at = (rssi) => pillarFeatures([{ lat: 51, lon: 4, rssi }], 18, red, LIGHT).features[0].properties.color
+    expect(distance(at(-120), LIGHT)).toBeLessThan(distance(at(-60), LIGHT))
   })
   it('collapses receptions within 10 m onto the strongest, which keeps its own index', () => {
     const fc = pillarFeatures([{ lat: 51, lon: 4, rssi: -90 }, { lat: 51 + 5 * M, lon: 4, rssi: -60 }, { lat: 51 + 70 * M, lon: 4, rssi: -100 }], 18, red)

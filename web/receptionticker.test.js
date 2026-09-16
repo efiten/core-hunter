@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels, senderCell } from './receptionticker.js'
+import { rxView, rxActiveIndex, rxFade, rxLineHeight, receptionKey, tickerFilters, isLiveWindow, relTime, pointInRing, newestInRing , RX_FADE_FLOOR, rxLanes, RX_COLLAPSE_STOPS, collapseLevels, senderCell, rxPlayhead, rxBelow, rxMaxScroll, rxScrollLane, rxMarkerLane, rxCountLabel } from './receptionticker.js'
 
 // rxView/rxActiveIndex/rxFade are ported verbatim from app/src/receptionlog.js
 // (#238 explicitly excludes this file from the shared-core extraction, since
@@ -264,6 +264,95 @@ describe('the map\'s collapse stops', () => {
     expect(collapseLevels(1)).toEqual([0])
     expect(collapseLevels(3)).toEqual([0, 2])
     expect(collapseLevels(50)).toEqual([0, 1, 2])
+  })
+})
+
+// #638, the app's rule in the map's copy: the header used to print the length
+// of the view, which is capped at CAP rows, so it stopped counting at 200. On
+// this surface the total is almost always a lower bound, since the map counts
+// only the page it fetched and the server says whether more exist behind it.
+describe('rxCountLabel — the header says how many there are, not how many fit', () => {
+  it('prints the total for the stand', () => {
+    expect(rxCountLabel(7)).toBe('7 rx')
+    expect(rxCountLabel(0)).toBe('0 rx')
+  })
+  it('groups thousands', () => {
+    expect(rxCountLabel(1483)).toBe('1,483 rx')
+  })
+  it('marks a total that is only a lower bound', () => {
+    expect(rxCountLabel(200, true)).toBe('200+ rx')
+    expect(rxCountLabel(1483, true)).toBe('1,483+ rx')
+  })
+  it('leaves a complete total unmarked', () => {
+    expect(rxCountLabel(200, false)).toBe('200 rx')
+  })
+})
+
+// #619, the app's defect in the map's copy of the same geometry: the list is
+// padded above by the playhead lane and not at all below, so it clamps at
+// count + playhead - lanes lanes of scroll and an index read off the scroll
+// position alone can never name a row past that. The marker moves instead of
+// the list once the scroll is clamped, and the fade follows it.
+describe('rxMaxScroll — how far the list can be scrolled, in lanes', () => {
+  it('is the content that does not fit: the rows plus the padding above them', () => {
+    expect(rxMaxScroll(200, 10)).toBe(196)
+    expect(rxMaxScroll(12, 10)).toBe(8)
+  })
+  it('is zero when there is nothing to scroll past', () => {
+    expect(rxMaxScroll(0, 10)).toBe(0)
+    expect(rxMaxScroll(1, 1)).toBe(0)
+  })
+})
+
+describe('rxScrollLane — the scroll that shows a row, never past the clamp', () => {
+  it('scrolls to the row itself while the list can still reach it', () => {
+    expect(rxScrollLane(0, 200, 10)).toBe(0)
+    expect(rxScrollLane(120, 200, 10)).toBe(120)
+  })
+  // The old bug in one assertion: these four rows all sit at the same clamped
+  // scroll, so scroll position cannot tell them apart and the marker has to.
+  it('stops at the clamp rather than asking for scroll that does not exist', () => {
+    for (const i of [196, 197, 198, 199]) expect(rxScrollLane(i, 200, 10), `row ${i}`).toBe(196)
+  })
+})
+
+describe('rxMarkerLane — the marker walks the last lanes once the list clamps (#619)', () => {
+  it('holds the marker on the playhead lane for every row the list can scroll to', () => {
+    for (let i = 0; i <= rxMaxScroll(200, 10); i++) {
+      expect(rxMarkerLane(i, 200, 10), `row ${i}`).toBe(rxPlayhead(10))
+    }
+  })
+  it('walks it down the three lanes below the playhead for the three newest rows', () => {
+    expect(rxMarkerLane(197, 200, 10)).toBe(7)
+    expect(rxMarkerLane(198, 200, 10)).toBe(8)
+    expect(rxMarkerLane(199, 200, 10)).toBe(9)
+  })
+  it('reaches the newest reception at every card size', () => {
+    for (const count of [1, 2, 3, 5, 9, 10, 60, 200]) {
+      const lanes = rxLanes(count, 0)
+      expect(rxMarkerLane(count - 1, count, lanes), `${count} receptions`).toBe(lanes - 1)
+    }
+  })
+  it('never puts the marker off the card', () => {
+    for (const count of [1, 3, 7, 10, 200]) {
+      const lanes = rxLanes(count, 0)
+      for (let i = 0; i < count; i++) {
+        const lane = rxMarkerLane(i, count, lanes)
+        expect(lane, `row ${i} of ${count}`).toBeGreaterThanOrEqual(0)
+        expect(lane, `row ${i} of ${count}`).toBeLessThanOrEqual(lanes - 1)
+      }
+    }
+  })
+})
+
+describe('rxBelow — the lanes under the marker, wherever it is', () => {
+  it('is the playhead geometry while the marker sits on its own lane', () => {
+    expect(rxBelow(10, rxPlayhead(10))).toBe(rxBelow(10))
+    expect(rxBelow(10, 6)).toBe(3)
+  })
+  it('is nothing once the marker has walked onto the bottom lane', () => {
+    expect(rxBelow(10, 9)).toBe(0)
+    expect(rxBelow(10, 8)).toBe(1)
   })
 })
 

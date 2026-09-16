@@ -1,15 +1,15 @@
 import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
-import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, ageFade, extrusionHeight, withAlpha, pillarTint, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
+import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
-import { octagonRing, pillarRadiusM, collapsePillars } from './pointmarker.js'
-import { recordsKey, lastValueCache } from './rendercache.js'
+import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey } from './rendercache.js'
 import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
 import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
 import { displayName } from './names.js'
@@ -17,6 +17,7 @@ import { NODEPOS_ADVERT_CAVEAT, NODEPOS_ESTIMATE_CAVEAT } from './nodeposnotice.
 import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { followAfter, paddingAction } from './rotation.js'
+import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -36,6 +37,29 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // Bare background-only style — loads with no network, so the signal overlays
 // can mount on it when the hosted basemap style is unreachable (see below).
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
+
+// The overlay stack, bottom to top (#626). Every add in addOverlays is guarded
+// with getLayer, so the order used to be whatever the adds happened to run in:
+// a run that landed on a half-applied style added part of the stack and the
+// next run put the rest on top of it, which is the over/under drawing the issue
+// reports. Declared here and applied in one pass at the end of addOverlays.
+//
+// Exported so the suite can hold it against the layers the module actually
+// adds — a layer added and not declared would silently float to the top.
+// The custom ray layer is not here: it is mounted through raylayer.js and
+// stays above everything by construction.
+export const LAYER_ORDER = [
+  'hillshade',      // terrain shading, under everything we draw
+  'trail',
+  'hex', 'hex-3d',
+  'buildings-3d',
+  'reach',          // the coverage rays, under the dots so a hub stays readable
+  'points', 'pulse', 'points-3d', 'pulse-3d',
+  'highlight', 'here',
+  // The node-position layer sits above the hex heat: it is an explicit opt-in
+  // overlay, and a connector buried under a hot cell defeats drawing it.
+  'nodedrift', 'nodecircle-search', 'nodecircle-drift',
+]
 
 // 3D mode (#147 phase 2): setView() tilts the camera (pitchTransition,
 // maplayers.js) and swaps the flat hex layer for its fill-extrusion twin —
@@ -66,9 +90,12 @@ const POINT_PILLAR_RADIUS_M = 3
 // footprint off sub-pixel when zoomed out (#250). Across the flats that is
 // 4 x cos(pi/8) = 3.70 px, deliberately slimmer than the old square (#308).
 const POINT_PILLAR_MIN_RADIUS_PX = 4
+// The trail's own opacity, named so the layer and the #624 selection dim read
+// the same number rather than two copies of 0.5 that could drift apart.
+const TRAIL_OPACITY = 0.5
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setTimeWindow() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
   // script failed, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -78,7 +105,6 @@ export function createHuntMap(containerId) {
   const calibrationOffset = (cfg && cfg.rssiCalibrationOffset) || 0
   // Plot offset = calibration + attenuator added back (display-only, per tick).
   let attenuatorDb = 0
-  let timeWindowMs = null
   const currentOffset = () => effectivePlotOffset(calibrationOffset, attenuatorDb)
   const styleFor = () => STYLES[cssVar('--ch-basemap') || 'dark'] || STYLES.dark
 
@@ -155,6 +181,10 @@ export function createHuntMap(containerId) {
     if (!coverageHue.size || !isRepeaterHearing(r) || r.sender_id == null) return null
     return coverageHue.get(String(r.sender_id).toLowerCase()) || null
   }
+  // The repeater a reception belongs to, by the same attribution the stars
+  // use, or null when it belongs to none (#624): what selectionDim is asked
+  // about for a dot, a cell or a pillar.
+  const ownerOf = (r) => (isRepeaterHearing(r) && r.sender_id != null ? r.sender_id : null)
   // Builds the stars for this tick, puts the rays up (one setData feeds the
   // 2D line source and the 3D ray layer), a ● hub for a star with no registry
   // position, and remembers the hues. Returns the selection for the markers.
@@ -192,6 +222,10 @@ export function createHuntMap(containerId) {
   let npMeasure = null
   const labelMeasurer = () => npMeasure || (npMeasure = createLabelMeasurer(map.getContainer()))
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
+  // The repeater whose popup comes back after a selecting tap (#623). A tap
+  // that selects redraws the node layer, and the redraw removes every marker,
+  // the tapped one included, so its popup has to be reopened on the rebuilt one.
+  let reopenNodeKey = null
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
   let trail = [], settingBearing = false
@@ -247,22 +281,45 @@ export function createHuntMap(containerId) {
     const sig = recordsKey(records)
     return rideCache.get(sig, () => currentRideStart(records))
   }
-  function buildPointsFC(records, nowMs) {
+  // Cacheable since #648 took the age fade out: what a dot looks like now
+  // depends on the records, whether this zoom draws backlog outlines, the
+  // attenuator offset, the theme's tier colours and the coverage hues — and on
+  // nothing that moves on its own. All six are in the key, because a cache that
+  // misses one input serves the previous tick's answer for a different question.
+  const pointsCache = lastValueCache()
+  function buildPointsFC(records, sel) {
+    const outlines = showBacklogPoints(map.getZoom())
+    const sig = recordsKey(records), hues = hueKey(coverageHue)
+    // Unsignable on either axis means recompute: a key carrying "null" would
+    // match another set that also could not be signed. The selection joined
+    // the key in #624, since it dims every dot outside it: a tap changes no
+    // record, so without it the cache would hand back the undimmed map.
+    const key = sig === null || hues === null
+      ? null
+      : `${sig}|${outlines ? 1 : 0}|${currentOffset()}|${cssVar('--ch-basemap')}|${hues}|${selectionKey(sel)}`
+    return pointsCache.get(key, () => buildPointsFCUncached(records, outlines, sel))
+  }
+  function buildPointsFCUncached(records, outlines, sel) {
     const feats = []
     // Backlog (#556): below BACKLOG_OUTLINE_ZOOM a reception from an earlier
     // ride is coverage only, its hex cell; from that zoom it comes back as an
     // outline, in its tier colour, no fill. The ride itself is drawn filled,
-    // as before. Age fade rides on top of both.
+    // as before.
     const rideStart = rideStartFor(records)
-    const outlines = showBacklogPoints(map.getZoom())
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
       const backlog = isBacklog(r, rideStart)
       if (backlog && !outlines) continue
       const tier = rssiTier(r.rssi, currentOffset())
-      const fade = ageFade(r.rx_at, nowMs, timeWindowMs)   // age-fade within the window (#149)
+      // op is the stroke, fop the fill. The stroke is full since #648: it used
+      // to carry the age fade alone, and it is what keeps a faint reception
+      // findable on the map, so the tier belongs in the fill and not in it.
+      // A selection (#624) steps both back for every dot that is not the
+      // selected repeater's, so the other repeaters' dots no longer sit at full
+      // colour on top of their own dimmed rays.
+      const dim = selectionDim(sel, ownerOf(r))
       feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r.lon, r.lat] },
-        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: fade, fop: fillOpacity(tier) * fade, backlog: backlog ? 1 : 0 } })
+        properties: { id: String(r.id), color: pointHue(r) || cssVar(tierColorVar(tier)), op: dim, fop: fillOpacity(tier) * dim, backlog: backlog ? 1 : 0 } })
     }
     return fc(feats)
   }
@@ -280,25 +337,53 @@ export function createHuntMap(containerId) {
   // loop used to skip itself, so there is no second guard here. The flat 2D
   // layer is deliberately left uncollapsed -- circles have no side walls, so it
   // has overplotting but not this defect.
-  // The collapse is cached, the collection is not (#462): collapsePillars is
-  // the single most expensive thing a tick does — 157 ms of a 193 ms tick at
-  // the largest observed store — and it depends only on the records. What is
-  // built from it carries ageFade, which is a function of the clock, so that
-  // half has to run every tick or the fade freezes on screen.
+  // Two caches, both earning their keep (#462, #648). collapsePillars is the
+  // single most expensive thing a tick does — 157 ms of a 193 ms tick at the
+  // largest observed store — and depends only on the records. The collection
+  // built from it used to carry ageFade, a function of the clock, so it had to
+  // be rebuilt every tick; with the fade gone it depends on the records, the
+  // zoom (the footprint), the offset and the theme, and all four are in the key.
   const collapseCache = lastValueCache()
-  function buildPoints3DFC(records, nowMs) {
+  const pillarsCache = lastValueCache()
+  function buildPoints3DFC(records, sel) {
+    const sig = recordsKey(records)
+    // The selection is in the key since #624, for the reason it is in the flat
+    // points' key: it dims every pillar outside it without changing a record.
+    const key = sig === null ? null : `${sig}|${map.getZoom()}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}`
+    return pillarsCache.get(key, () => buildPoints3DFCUncached(records, sel))
+  }
+  function buildPoints3DFCUncached(records, sel) {
     const feats = []
-    for (const r of collapseCache.get(recordsKey(records), () => collapsePillars(records))) {
+    const rideStart = rideStartFor(records)
+    // The ride outranks the strength in the collapse (#647). The survivor is
+    // what the pillar says, not only where it stands, so a louder reception
+    // from an earlier ride must not stand in for one that just arrived at the
+    // same spot: that would read as "not heard here today" on a place just
+    // heard. rideStart comes from the records, so the collapse still answers to
+    // them alone and its cache key is unchanged.
+    const thisRide = (r) => (isBacklog(r, rideStart) ? 0 : 1)
+    for (const r of collapseCache.get(recordsKey(records), () => collapsePillars(records, PILLAR_MERGE_M, thisRide))) {
       const tier = rssiTier(r.rssi, currentOffset())
-      const fade = ageFade(r.rx_at, nowMs, timeWindowMs)
       const ring = octagonRing(r.lat, r.lon, pillarRadiusM(r.lat, map.getZoom(), POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
-      // Alpha rides in the colour, not in fill-extrusion-opacity, which is a
-      // single layer-wide number (#302). Same tier opacity x age-fade the flat
-      // layer applies, so "still transmitting" still reads differently from
-      // "was here ten minutes ago" in 3D.
+      // Opaque, pre-mixed over the theme background, the way the hex bars are
+      // painted (#412, pillarTint). Not a style choice: MapLibre composites a
+      // translucent fill-extrusion against black rather than against what lies
+      // under it, measured 2026-09-14 with an opaque light layer directly
+      // beneath one. On the dark theme that is invisible, since the ground is
+      // nearly black anyway, which is why it stood this long. On the light
+      // theme it inverts the meaning -- a lower alpha becomes MORE ink on a
+      // cream map, so a backlog pillar would stand out harder than a fresh one,
+      // the exact opposite of what #647 asks for. Pre-mixing makes a lower
+      // alpha mean "closer to the ground" on both themes.
+      //
+      // Which alpha is the ride rule itself (#647): the tier's own opacity for
+      // this ride, one flat value below the weakest tier for everything before.
+      // A selection (#624) multiplies onto that, and because the colour is
+      // pre-mixed a dimmed pillar moves toward the ground on both themes rather
+      // than toward black on the light one.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
         properties: { id: String(r.id),
-          color: withAlpha(cssVar(tierColorVar(tier)), fillOpacity(tier) * fade),
+          color: tintOver(cssVar(tierColorVar(tier)), cssVar('--ch-bg'), pillarAlpha(tier, isBacklog(r, rideStart)) * selectionDim(sel, ownerOf(r))),
           height: extrusionHeight(r.rssi, currentOffset()) } })
     }
     return fc(feats)
@@ -308,7 +393,7 @@ export function createHuntMap(containerId) {
   // offset, so the answer changes only when the records, the zoom resolution or
   // that offset do — all three are in the key (#462).
   const hexCache = lastValueCache()
-  function buildHexFC(records) {
+  function buildHexFC(records, sel) {
     const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
     // An unsignable set must not be cached under the string "null|10|0", which
     // is a perfectly good cache key and exactly the wrong one — the null has to
@@ -316,28 +401,42 @@ export function createHuntMap(containerId) {
     const sig = recordsKey(records)
     // The theme is in the key too (#412): the colours are read from the
     // tokens at build time, so a theme switch on unchanged records must not
-    // serve the other theme's cells and bars from the cache.
-    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}`, () => buildHexFCUncached(records, res))
+    // serve the other theme's cells and bars from the cache. So is the
+    // selection (#624), which dims cells without changing a record.
+    return hexCache.get(sig === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}`, () => buildHexFCUncached(records, res, sel))
   }
-  function buildHexFCUncached(records, res) {
+  function buildHexFCUncached(records, res, sel) {
+    // A cell holds receptions from several repeaters at once, so it cannot ask
+    // selectionDim about one owner. It stays lit when ANY reception in it
+    // belongs to a selected repeater (#624): the cell is where that repeater
+    // was heard, even if a louder one from elsewhere set its colour. With no
+    // selection every reception answers 1, so every cell is lit and nothing
+    // changes from before.
     const cells = new Map()
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
       const id = hexCellAt(r.lat, r.lon, res)
+      const lit = selectionDim(sel, ownerOf(r)) === 1
       const cur = cells.get(id)
-      if (!cur || (r.rssi ?? -999) > (cur.best ?? -999)) cells.set(id, { best: r.rssi })
+      if (!cur) { cells.set(id, { best: r.rssi, lit }); continue }
+      if ((r.rssi ?? -999) > (cur.best ?? -999)) cur.best = r.rssi
+      if (lit) cur.lit = true
     }
     const feats = []
+    const bg = cssVar('--ch-bg')
     for (const [id, c] of cells) {
       const ring = hexBoundary(id); if (!ring) continue // [lat,lon] closed ring → [lon,lat]
       const tier = rssiTier(c.best, currentOffset())
       const token = cssVar(tierColorVar(tier))
+      const alpha = fillOpacity(tier) * (c.lit ? 1 : selectionDim(sel))
       // height and pillar are only read by the 3D fill-extrusion twin (hex-3d);
       // the flat 'hex' layer ignores them. Same source for both, per the
       // decision log. pillar is the cell's tint pre-mixed over the theme
-      // background (#412): opaque, so the bar reads as its cell does.
+      // background (#412): opaque, so the bar reads as its cell does. It takes
+      // the same dimmed alpha as the flat cell, which is what pillarTint would
+      // give undimmed, so a bar and its cell still agree under a selection.
       feats.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring.map(([la, lo]) => [lo, la])] },
-        properties: { color: token, op: fillOpacity(tier), pillar: pillarTint(tier, token, cssVar('--ch-bg')), height: extrusionHeight(c.best, currentOffset()) } })
+        properties: { color: token, op: alpha, pillar: tintOver(token, bg, alpha), height: extrusionHeight(c.best, currentOffset()) } })
     }
     return fc(feats)
   }
@@ -359,16 +458,22 @@ export function createHuntMap(containerId) {
   // overlaysReady flips true once the signal layers are mounted; the fallback
   // timer (armStyleFallback) uses it so a stuck basemap style can't leave the
   // map blank — the overlays must not be gated on a third-party basemap.
-  let overlaysReady = false, styleTimer = null
+  let overlaysReady = false, styleTimer = null, styleAttempt = 0
   function armStyleFallback() {
     clearTimeout(styleTimer)
     styleTimer = setTimeout(() => {
-      // Hosted style never mounted the overlays (offline / host down / cold PWA
-      // cache) → drop to a bare background style and mount them there, so the
-      // signal points/hex/trail/here survive basemap loss (a Leaflet raster 404
-      // used to leave every overlay intact).
-      if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
-    }, 12000)
+      if (overlaysReady) return
+      // The hosted style never even parsed (offline / host down / cold PWA
+      // cache). It gets one more try before the map gives it up (#626): the
+      // old net dropped straight to a flat background and stayed there for the
+      // session, which is what a merely slow style looked like. Past that the
+      // bare style mounts the overlays, so the signal points/hex/trail/here
+      // survive basemap loss.
+      if (nextStyleAttempt(styleAttempt++) === 'retry') {
+        map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback(); return
+      }
+      map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare()
+    }, STYLE_RETRY_MS)
   }
   // Sky (#397). setStyle DROPS the sky — measured against the bundled 4.7.1:
   // getSky() returns null after a style swap — so this cannot be a one-off at
@@ -444,7 +549,7 @@ export function createHuntMap(containerId) {
     // darkened a bar against its own cell (#412). Re-applied here like the
     // sky, since setStyle drops it. Guarded for an older MapLibre.
     if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
-    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse']) {
+    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d']) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -453,7 +558,7 @@ export function createHuntMap(containerId) {
     const vis = layerVisibility({ mode, mode3D })
     const shown = (id) => (vis[id] ? 'visible' : 'none')
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
-      paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': 0.5 } })
+      paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': TRAIL_OPACITY } })
     if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
       layout: { visibility: shown('hex') },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
@@ -513,11 +618,23 @@ export function createHuntMap(containerId) {
       layout: { visibility: shown('pulse') },
       paint: { 'circle-radius': 8, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': ['get', 'color'],
         'circle-stroke-width': 2, 'circle-stroke-opacity': 0.9 } })
+    // The pulse's 3D form (#648): the reception's own pillar, flashed. A ring
+    // would lie on the ground under the pillar it belongs to, which is why
+    // #556 left 3D out.
+    if (!map.getLayer('pulse-3d')) map.addLayer({ id: 'pulse-3d', type: 'fill-extrusion', source: 'pulse-3d',
+      layout: { visibility: shown('pulse-3d') },
+      // 1, for the same reason points-3d is 1: the colour arrives already
+      // composited over the theme background (#412, #647), so there is no alpha
+      // left for a layer-wide value to multiply. The flash animates that colour
+      // and never an opacity, and the measurements for why are in pulse().
+      paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
+        'fill-extrusion-vertical-gradient': false, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     // 3D twin of 'points' (#250): a fill-extrusion pillar per reception, same
     // tier colour/height as hex-3d — reads clearly at pitch instead of a flat
     // circle disappearing under the hex bars/buildings. Separate source (its
     // Polygon footprints can't double as the flat layer's Point geometry, the
-    // way hex/hex-3d share one source), same constant-opacity limitation.
+    // way hex/hex-3d share one source), and painted the way hex-3d is: opaque,
+    // with the tier pre-mixed into the colour (#412, #647).
     if (!map.getLayer('points-3d')) map.addLayer({ id: 'points-3d', type: 'fill-extrusion', source: 'points-3d',
       layout: { visibility: shown('points-3d') },
       paint: { 'fill-extrusion-color': ['get', 'color'], 'fill-extrusion-height': ['get', 'height'],
@@ -525,9 +642,12 @@ export function createHuntMap(containerId) {
         // height and colour always agree on the same tier, and a default-on
         // gradient darkens the sides until they do not.
         'fill-extrusion-vertical-gradient': false,
-        // 1, not 0.9: the per-feature alpha in fill-extrusion-color carries
-        // tier opacity and age-fade, and a layer-wide value would multiply on
-        // top of it (#302).
+        // 1, not 0.9: fill-extrusion-color arrives opaque, with the tier and
+        // the ride (#647) already composited over the theme background, so a
+        // layer-wide opacity has nothing left to multiply. Translucency is what
+        // this layer deliberately stopped using -- MapLibre composites a
+        // translucent extrusion against black rather than against the map under
+        // it, which turned the tier scale upside down on the light theme.
         'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
     if (!map.getLayer('highlight')) map.addLayer({ id: 'highlight', type: 'circle', source: 'highlight',
       paint: { 'circle-radius': 11, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 3 } })
@@ -553,6 +673,12 @@ export function createHuntMap(containerId) {
       filter: ['==', ['get', 'style'], 'drift'],
       layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
+    // One pass puts the stack in its declared order (#626), whatever order the
+    // adds ran in. Moving each present layer to the top in LAYER_ORDER leaves
+    // them exactly as declared, and repairs a stack built across two runs on a
+    // half-applied style. The basemap's own layers are not in the list, so they
+    // keep their places underneath.
+    for (const id of LAYER_ORDER) if (map.getLayer(id)) map.moveLayer(id)
     rays.addTo(map)
     rays.setVisible(coverageOn() && mode3D)
     draw()
@@ -561,10 +687,18 @@ export function createHuntMap(containerId) {
   // switch (setStyle) does NOT re-fire 'load'/'style.load' — only 'styledata' —
   // so applyBasemap re-adds the overlays via afterStyle once the new style
   // finishes. addOverlays is idempotent (guards on existing source/layer).
-  // afterStyle runs cb once a HOSTED (network) style finishes loading after
-  // setStyle. 'idle' fires only after the new style + tiles settle, so it avoids
-  // the race where isStyleLoaded() is briefly true for the OLD style.
-  function afterStyle(cb) { map.once('idle', cb) }
+  // afterStyle runs cb once the new style can take layers. That is 'styledata',
+  // not 'idle' (#626). Measured against the bundled 4.7.1 with a style whose
+  // sources never answer: 'styledata' fires once at +23..31 ms with
+  // isStyleLoaded() false, and addSource/addLayer there succeed — while
+  // isStyleLoaded() never goes true and 'idle' never fires at all, because both
+  // wait on the sources rather than on the style. Waiting for 'idle' is what
+  // left the map on a flat background for twelve seconds on a slow link.
+  //
+  // No guard against the OLD style is needed: 'styledata' cannot fire before
+  // setStyle has begun applying, unlike isStyleLoaded(), which reads true for
+  // the previous style right up until it does.
+  function afterStyle(cb) { map.once('styledata', cb) }
   // mountBare adds the overlays onto the inline bare fallback style. An inline
   // style applies SYNCHRONOUSLY and emits no styledata/idle/style.load event
   // (and the map never reaches 'idle' when it got here stuck mid-load), so poll
@@ -616,7 +750,7 @@ export function createHuntMap(containerId) {
   function draw() {
     syncSize()
     if (!map.getSource('points')) return   // style not ready yet
-    const records = lastRecords, nowMs = Date.now()
+    const records = lastRecords
     // Build only what a visible layer will read (#266). Previously all three
     // were rebuilt and re-uploaded every 1 Hz tick regardless of mode, so one
     // of the two point collections was always tessellated and shipped to the
@@ -624,10 +758,18 @@ export function createHuntMap(containerId) {
     // so it is built when either is on.
     const vis = layerVisibility({ mode, mode3D })
     const cov = drawCoverage(records)
-    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records) : EMPTY)
-    map.getSource('points').setData(vis.points ? buildPointsFC(records, nowMs) : EMPTY)
-    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, nowMs) : EMPTY)
+    // With a star selected, the rest of the map steps back, not only the other
+    // stars (#624). null outside the reach stop, since drawCoverage answers
+    // null there, so nothing dims unless the reach is on.
+    const sel = cov ? cov.selected : null
+    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records, sel) : EMPTY)
+    map.getSource('points').setData(vis.points ? buildPointsFC(records, sel) : EMPTY)
+    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, sel) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
+    // The trail belongs to no repeater, so it is never part of a selection and
+    // always steps back with one. One LineString with no properties, so this
+    // is the layer's paint, not a feature value.
+    if (map.getLayer('trail')) map.setPaintProperty('trail', 'line-opacity', TRAIL_OPACITY * selectionDim(sel))
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
     drawNodeLayer(records, cov)
@@ -681,26 +823,72 @@ export function createHuntMap(containerId) {
   }
 
   // ---- pulse (#556) ----
-  // One ring, about two seconds, on the reception that just arrived, in its
-  // tier colour, whatever the zoom, and only where the flat points are drawn
-  // (layerVisibility): no ring in hex mode or in 3D, and no animation started
-  // for a hidden layer. Driven by a timer rather than requestAnimationFrame so
-  // it also runs while the page is not painting.
+  // About two seconds on the reception that just arrived, in its tier colour,
+  // whatever the zoom, and only where receptions are drawn (layerVisibility):
+  // nothing in hex mode, which draws none, and no animation started for a
+  // hidden layer. Driven by a timer rather than requestAnimationFrame so it
+  // also runs while the page is not painting.
   const PULSE_MS = 1600, PULSE_STEP_MS = 40, PULSE_FROM_PX = 8, PULSE_TO_PX = 24
+  // The 3D flash stands 2% wider than the pillar it marks, and that is not
+  // decoration. Two fill-extrusions with the same footprint share one depth
+  // pass and the pillar wins every pixel of the tie, so a flash on exactly the
+  // pillar's own octagon is invisible -- measured in MapLibre 4.7.1 on
+  // 2026-09-14, at every opacity from 0.05 to 1. 2% clears the depth test
+  // outright and is well under a pixel on screen at any zoom the pillars are
+  // drawn at, so what flashes still reads as the pillar and not as a second
+  // shape around it.
+  const PULSE_3D_SWELL = 1.02
   let pulseTimer = null
   function pulse(rec) {
-    if (!rec || rec.lat == null || rec.lon == null || !map.getSource('pulse') || !map.getLayer('pulse')) return
-    if (!layerVisibility({ mode, mode3D }).pulse) return
+    if (!rec || rec.lat == null || rec.lon == null) return
+    // One form per dimension (#648, maplayers.js): the ring where the flat dots
+    // are, the pillar flash where they are pillars. Neither in hex mode, which
+    // draws no receptions to mark.
+    const vis = layerVisibility({ mode, mode3D })
+    const id = vis.pulse ? 'pulse' : vis['pulse-3d'] ? 'pulse-3d' : null
+    if (!id || !map.getSource(id) || !map.getLayer(id)) return
     if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null }
-    const color = cssVar(tierColorVar(rssiTier(rec.rssi, currentOffset())))
-    map.getSource('pulse').setData(fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [rec.lon, rec.lat] }, properties: { color } }]))
+    const tier = rssiTier(rec.rssi, currentOffset())
+    const color = cssVar(tierColorVar(tier))
+    // Where the flash travels from and where it lands: opaque white the moment
+    // the reception arrives, and by the end the pillar's exact colour -- the
+    // same token, pre-mixed over the same background, at the same tier opacity
+    // buildPoints3DFC paints it with. Ending exactly there is what makes the
+    // handoff invisible: the flash's last frame and the pillar underneath it
+    // are the same colour, so clearing the source changes nothing on screen.
+    // Opaque and pre-mixed for the reason the pillars are (#412, #647), and it
+    // has to move with them or that handoff stops being seamless. A reception
+    // that just arrived belongs to this ride by definition, so it lands on the
+    // tier's own opacity and never on the backlog value.
+    const flash3DColor = (t) => tintOver(tintOver('#ffffff', color, 1 - t), cssVar('--ch-bg'), fillOpacity(tier) + (1 - fillOpacity(tier)) * (1 - t))
+    map.getSource(id).setData(id === 'pulse'
+      ? fc([{ type: 'Feature', geometry: { type: 'Point', coordinates: [rec.lon, rec.lat] }, properties: { color } }])
+      // The octagon the reception's own pillar stands on, swelled by a couple
+      // of percent, so the flash is that pillar lighting up rather than a
+      // second shape beside it. Same height, which needs no swell: the wider
+      // footprint already takes the depth test.
+      : fc([{ type: 'Feature',
+        geometry: { type: 'Polygon', coordinates: [octagonRing(rec.lat, rec.lon, pillarRadiusM(rec.lat, map.getZoom(), POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX) * PULSE_3D_SWELL)] },
+        properties: { color: flash3DColor(0), height: extrusionHeight(rec.rssi, currentOffset()) } }]))
     const started = Date.now()
     const step = () => {
       const t = Math.min(1, (Date.now() - started) / PULSE_MS)
-      if (!map.getLayer('pulse')) { clearInterval(pulseTimer); pulseTimer = null; return }
-      map.setPaintProperty('pulse', 'circle-radius', PULSE_FROM_PX + (PULSE_TO_PX - PULSE_FROM_PX) * t)
-      map.setPaintProperty('pulse', 'circle-stroke-opacity', 0.9 * (1 - t))
-      if (t >= 1) { clearInterval(pulseTimer); pulseTimer = null; map.getSource('pulse').setData(EMPTY) }
+      if (!map.getLayer(id)) { clearInterval(pulseTimer); pulseTimer = null; return }
+      if (id === 'pulse') {
+        map.setPaintProperty('pulse', 'circle-radius', PULSE_FROM_PX + (PULSE_TO_PX - PULSE_FROM_PX) * t)
+        map.setPaintProperty('pulse', 'circle-stroke-opacity', 0.9 * (1 - t))
+      } else {
+        // Colour, not opacity. A fill-extrusion writes depth even where it is
+        // translucent, so fading the flash's alpha never reveals the pillar
+        // behind it: it dissolves the flash toward the background instead,
+        // leaving a hole where the pillar should be, and the pillar snaps back
+        // only when the alpha reaches exactly 0 (measured, same probe as the
+        // swell above). Settling onto the pillar's own colour has none of that.
+        // A constant here replaces the layer's ['get', 'color'], which is what
+        // paints the first frame; the layer only ever holds this one feature.
+        map.setPaintProperty('pulse-3d', 'fill-extrusion-color', flash3DColor(t))
+      }
+      if (t >= 1) { clearInterval(pulseTimer); pulseTimer = null; map.getSource(id).setData(EMPTY) }
     }
     step()
     pulseTimer = setInterval(step, PULSE_STEP_MS)
@@ -740,8 +928,13 @@ export function createHuntMap(containerId) {
     if (selected) inner.classList.add('np-selected')
     if (dim) inner.classList.add('np-dim')
     const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
-    el.addEventListener('click', (e) => { e.stopPropagation(); if (onTap) onTap(); marker.togglePopup() })
+    // A selecting tap redraws the node layer, which removes this very marker,
+    // so toggling its popup afterwards would open it on a marker already gone.
+    // That tap sets reopenNodeKey instead and drawNodeLayer reopens the popup
+    // on the rebuilt marker (#623). A tap with nothing to select just toggles.
+    el.addEventListener('click', (e) => { e.stopPropagation(); if (onTap) onTap(); else marker.togglePopup() })
     nodeMarkers.push(marker)
+    return marker
   }
 
   // Recomputed per tick: the visible node set follows the viewport, and each
@@ -817,11 +1010,25 @@ export function createHuntMap(containerId) {
       // declutter kept the name (#539).
       const key = String(n.pubkey).toLowerCase()
       const hue = coverageHue.get(key) || null
-      addNodeMarker('np-advert', '▲', [n.lon, n.lat], nodePopup(n, p, est), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
-        { color: hue, selected: !!(cov && cov.selected.has(key)), dim: !!(cov && cov.selected.size && !cov.selected.has(key) && hue),
-          onTap: hue ? () => toggleCoverageSelection(key) : null })
+      // Every repeater is selectable in the reach stop, star or no star (#623).
+      // The gate used to be `hue`, which did two jobs: it hid the tap from a
+      // repeater with no hearings this tick, and it stood in for "the reach is
+      // on", since coverageHue is empty outside it. coverageOn() now says the
+      // second directly, and the first is gone. A repeater with no hearings is
+      // a valid selection: nothing draws from it, everything else dims, and its
+      // popup says why. The dim loses its `hue` term for the same reason.
+      const reachOn = coverageOn()
+      const selected = !!(cov && cov.selected.has(key))
+      const tap = reachOn ? () => { reopenNodeKey = key; toggleCoverageSelection(key) } : null
+      const popupFor = () => nodePopup(n, p, est, { key, reachOn, selected, heard: !!hue })
+      const adv = addNodeMarker('np-advert', '▲', [n.lon, n.lat], popupFor(), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
+        { color: hue, selected, dim: !!(cov && cov.selected.size && !selected), onTap: tap })
+      // Only on the ▲, so a tap on the ● does not leave two popups open.
+      if (reopenNodeKey === key) adv.togglePopup()
       if (!est || !est.centroid) continue
-      addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], nodePopup(n, p, est))
+      // The ● is the same repeater, so it selects the same star (coverage log,
+      // decision 6: a tap on a repeater's ▲ or ● selects it).
+      addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], popupFor(), null, { onTap: tap })
       lines.push({ type: 'Feature', properties: { color },
         geometry: { type: 'LineString', coordinates: [[n.lon, n.lat], [est.centroid.lon, est.centroid.lat]] } })
       if (p.circle) {
@@ -830,11 +1037,15 @@ export function createHuntMap(containerId) {
           geometry: { type: 'LineString', coordinates: ring } })
       }
     }
+    // Cleared whether or not it matched: a repeater that scrolled out of view
+    // between the tap and the redraw must not pop its popup open the next time
+    // it comes back.
+    reopenNodeKey = null
     map.getSource('nodedrift').setData(fc(lines))
     map.getSource('nodecircle').setData(fc(circles))
   }
 
-  function nodePopup(n, p, est) {
+  function nodePopup(n, p, est, { key = null, reachOn = false, selected = false, heard = false } = {}) {
     const esc = (s) => String(s ?? '—').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
     const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
     // The popup is where the glyph meaning lives since #631, so it carries the
@@ -860,10 +1071,26 @@ export function createHuntMap(containerId) {
           ? `search radius ~${Math.round(p.circle.radiusM)} m`
           : 'one-sided — radius not trusted'}</span>`
       : ''
-    return new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
+    // The reach action (#623), back in the popup where every other per-node
+    // action lives. #603 retired #549's per-node buttons when the layer began
+    // drawing every star at once, which left selecting a star an undiscoverable
+    // tap. Only in the reach stop, where a selection means something. It says
+    // what a press will do, so a selected repeater offers to hide its reach.
+    const reach = reachOn
+      ? `<br><button class="ch-reach${selected ? ' active' : ''}">${selected ? 'Hide reach' : 'Show reach'}</button>`
+        + (heard ? '' : '<br><span class="np-muted">No hearings in this window yet, so there is no reach to draw.</span>')
+      : ''
+    const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '260px' })
       .setHTML(`<div class="ch-popup">${esc(n.name || n.pubkey)}<br>`
-        + `<span class="np-muted">${markers}</span>${drift}${circle}`
+        + `<span class="np-muted">${markers}</span>${drift}${circle}${reach}`
         + `<br><span class="np-muted np-caveat">${caveats}</span></div>`)
+    // The popup's DOM exists only once it opens, so the button is wired then,
+    // the way wireIsolate wires a reception popup's buttons.
+    if (reachOn && key) popup.on('open', () => {
+      const btn = popup.getElement()?.querySelector('.ch-reach')
+      if (btn) btn.onclick = () => { reopenNodeKey = key; toggleCoverageSelection(key) }
+    })
+    return popup
   }
 
   // ---- public API (unchanged from the Leaflet version) ----
@@ -907,7 +1134,11 @@ export function createHuntMap(containerId) {
   // drawn flat (under the pillars) or extruded (#266).
   function applyLayerVisibility() {
     const vis = layerVisibility({ mode, mode3D })
-    for (const id of ['hex', 'hex-3d', 'points', 'points-3d', 'pulse']) {
+    // Every layer layerVisibility decides, or the FAB and the style load
+    // disagree again — the exact drift #266 pulled the decision out for. The
+    // 3D pulse is the one that shows it: it loads 'none' in 2D, so a tap into
+    // 3D that skipped it would leave the flash off until the next style load.
+    for (const id of ['hex', 'hex-3d', 'points', 'points-3d', 'pulse', 'pulse-3d']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
     }
   }
@@ -957,8 +1188,9 @@ export function createHuntMap(containerId) {
     draw()
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
-  function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
-  function applyBasemap() { overlaysReady = false; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }   // re-add overlays after the style swap (+ fallback if it fails)
+  // Re-add the overlays after the style swap, with the safety net armed again.
+  // styleAttempt resets: this swap gets its own retry before the bare fallback.
+  function applyBasemap() { overlaysReady = false; styleAttempt = 0; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }
   // Pan to a reception, no popup: the ticker row that triggers this (#309) sits
   // over the map on a phone, and a popup on top of it would cover the very list
   // the user is scrubbing. The highlight ring (setHighlight, driven by the
@@ -971,7 +1203,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); if (pulseTimer) clearInterval(pulseTimer); clearHexLabels(); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setTimeWindow, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, releaseFollow, setLookAhead, setNodeLayer, setExaggeration, pulse, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, releaseFollow, setLookAhead, setNodeLayer, setExaggeration, pulse, destroy }
 }
 
 function popupHtml(r, selectedIds) {

@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-13-theme-switch-keeps-the-map",
+  "date": "2026-09-13",
+  "where": "both",
+  "title": "Switching theme no longer blanks the map",
+  "body": "The map keeps its basemap and its layer order through a theme switch, even on a slow connection."
+}

@@ -688,6 +688,39 @@ describe('receptions ticker CSS parity (#322)', () => {
     }
   })
 
+  // #619: which row the marker can be put on is the same question on both
+  // surfaces, because both clamp their scroll the same way. Run rather than
+  // read, for the reason above: the lane the marker lands on is what a reader
+  // sees, and two copies can agree on the constants and still disagree here.
+  it('puts the marker on the same lane on both surfaces, including past the clamp', () => {
+    for (const count of [1, 2, 3, 5, 9, 10, 60, 200]) {
+      const lanes = appTicker.rxLanes(count, 0)
+      expect(webTicker.rxMaxScroll(count, lanes), `${count} receptions`).toBe(appTicker.rxMaxScroll(count, lanes))
+      for (let i = 0; i < count; i++) {
+        expect(webTicker.rxScrollLane(i, count, lanes), `row ${i} of ${count}`).toBe(appTicker.rxScrollLane(i, count, lanes))
+        expect(webTicker.rxMarkerLane(i, count, lanes), `row ${i} of ${count}`).toBe(appTicker.rxMarkerLane(i, count, lanes))
+      }
+    }
+    for (const lanes of [1, 3, 5, 10]) {
+      for (let lane = 0; lane < lanes; lane++) {
+        expect(webTicker.rxBelow(lanes, lane), `lane ${lane} of ${lanes}`).toBe(appTicker.rxBelow(lanes, lane))
+      }
+    }
+  })
+
+  // #638: the header's count reads the same on both surfaces, including the
+  // mark for a total that is only a lower bound. What each surface can count
+  // differs — the app has its own store, the map has the page the server sent
+  // — but how the number is written must not.
+  it('writes the header count identically on both surfaces', () => {
+    for (const total of [0, 7, 200, 1483, 20000]) {
+      for (const truncated of [false, true]) {
+        expect(webTicker.rxCountLabel(total, truncated), `${total}/${truncated}`)
+          .toBe(appTicker.rxCountLabel(total, truncated))
+      }
+    }
+  })
+
   // The stops are the same set on both surfaces, and putting the ticker away is
   // the cross on both. The map used to fold to its header instead, because it
   // had no button in the bar to come back from; it has one now (#424).
@@ -1277,7 +1310,7 @@ describe('files copied whole from the app (#595)', () => {
 // enough for it and because it catches the case a behaviour test cannot: a
 // comment on one side explaining a rule the other side no longer follows.
 describe('the filter modules are one file on both surfaces (#564)', () => {
-  for (const name of ['chiprow.js', 'barfilters.js']) {
+  for (const name of ['chiprow.js', 'barfilters.js', 'basemapswap.js']) {
     it(`${name} is identical in app/src`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')

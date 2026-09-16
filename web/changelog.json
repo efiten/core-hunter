@@ -1,5 +1,47 @@
 [
   {
+    "id": "2026-09-14-readout-off-the-credit",
+    "date": "2026-09-14",
+    "where": "map",
+    "title": "The count no longer covers the map credit",
+    "body": "The cells and points count in the bottom corner now sits above the map credit instead of over it, on a phone too."
+  },
+  {
+    "id": "2026-09-14-receptions-stop-fading",
+    "date": "2026-09-14",
+    "where": "app",
+    "title": "Receptions keep their colour as they age",
+    "body": "Old points no longer fade out. In 3D a new reception flashes its pillar, so an arrival still stands out."
+  },
+  {
+    "id": "2026-09-14-older-receptions-step-back",
+    "date": "2026-09-14",
+    "where": "app",
+    "title": "Older receptions step back in 3D",
+    "body": "A pillar from an earlier ride now stands dimmer than the ones you are hearing now, and the newest one wins where they share a spot."
+  },
+  {
+    "id": "2026-09-14-pillars-read-right-on-light",
+    "date": "2026-09-14",
+    "where": "both",
+    "title": "3D pillars read correctly on the light theme",
+    "body": "Pillars no longer darken as the signal weakens on the light theme. A weaker reception now looks fainter on both themes."
+  },
+  {
+    "id": "2026-09-14-select-any-repeater",
+    "date": "2026-09-14",
+    "where": "both",
+    "title": "Any repeater can show its reach",
+    "body": "A repeater's popup now has a Show reach button, also for a repeater not heard yet in this window."
+  },
+  {
+    "id": "2026-09-14-selection-dims-the-map",
+    "date": "2026-09-14",
+    "where": "both",
+    "title": "A selected reach stands out",
+    "body": "With a repeater's reach selected, the other dots, cells and pillars step back so the selection is easy to follow."
+  },
+  {
     "id": "2026-09-14-ticker-pinned-on-phone",
     "date": "2026-09-14",
     "where": "map",
@@ -14,6 +56,27 @@
     "body": "Zoom, compass, 2D/3D and node positions sit bottom right. The compass turns to north and keeps the tilt."
   },
   {
+    "id": "2026-09-13-newest-receptions-selectable",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "The newest receptions can be selected again",
+    "body": "The marker now reaches the last lines of the receptions list, so the readout follows the newest reception."
+  },
+  {
+    "id": "2026-09-13-receptions-counter",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "The receptions counter counts again",
+    "body": "The ticker header says how many receptions you have heard, not the 200 its list can hold."
+  },
+  {
+    "id": "2026-09-13-all-shows-raw-reception",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "ALL now shows raw reception on the map too",
+    "body": "Switching the receptions list to ALL drops the narrowing on the map as well, inside the same time window."
+  },
+  {
     "id": "2026-09-13-node-marker-explains-itself",
     "date": "2026-09-13",
     "where": "both",
@@ -26,6 +89,13 @@
     "where": "map",
     "title": "One control for where nodes are",
     "body": "CoreScope sightings come on with the node-position layer now, instead of two checkboxes of their own."
+  },
+  {
+    "id": "2026-09-13-theme-switch-keeps-the-map",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "Switching theme no longer blanks the map",
+    "body": "The map keeps its basemap and its layer order through a theme switch, even on a slow connection."
   },
   {
     "id": "2026-09-08-coverage-overview",
