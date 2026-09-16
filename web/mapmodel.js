@@ -26,13 +26,17 @@ export function zoomParam(mapZoom) { return String(Math.round((Number(mapZoom) +
 // index into the array it came from, which is how a click finds its point.
 // colorFor(pt) may answer a colour of its own for a point (#603: the hue of
 // the repeater it belongs to while the reach is on); null keeps the tier.
-export function pointFeatures(points, colorOf, { colorFor = () => null } = {}) {
+// dimFor(pt) answers how far a selection steps the point back (#624): 1 for a
+// point that belongs to a selected repeater or while nothing is selected, less
+// for everything else. Defaults to 1, so a caller that never selects is
+// untouched.
+export function pointFeatures(points, colorOf, { colorFor = () => null, dimFor = () => 1 } = {}) {
   const out = []
   points.forEach((pt, i) => {
     if (pt.lat == null || pt.lon == null) return
     const tier = rssiTier(pt.rssi)
     out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [pt.lon, pt.lat] },
-      properties: { i, color: colorFor(pt) || colorOf(tier), op: fillOpacity(tier) } })
+      properties: { i, color: colorFor(pt) || colorOf(tier), op: fillOpacity(tier) * dimFor(pt) } })
   })
   return fc(out)
 }
@@ -44,14 +48,20 @@ export function pointFeatures(points, colorOf, { colorFor = () => null } = {}) {
 // rule (huntmap.js buildHexFC): the bar's height by tier, and the tint the
 // bar is painted, the tier colour at the tier's opacity pre-mixed over the
 // theme background (#412), opaque, so a bar reads as its own cell does.
-export function hexFeatures(features, colorOf, background = '') {
+// `dim` is one factor for every cell (#624). A cell here is the server's
+// aggregate with no reception of its own, so it cannot be asked whether a
+// selected repeater was heard in it, the way the app asks of its raw records.
+// Under a selection every cell therefore steps back, which is the shared rule
+// for anything that belongs to no repeater (coverage.js selectionDim), while
+// the rays and the dots carry the selection itself.
+export function hexFeatures(features, colorOf, background = '', { dim = 1 } = {}) {
   return fc((features || []).map((f, i) => {
     const tier = rssiTier(f.properties.best_rssi)
     const token = colorOf(tier)
     return { type: 'Feature', geometry: f.geometry,
-      properties: { i, color: token, op: fillOpacity(tier), best: f.properties.best_rssi, count: f.properties.count,
+      properties: { i, color: token, op: fillOpacity(tier) * dim, best: f.properties.best_rssi, count: f.properties.count,
         hunters: Array.isArray(f.properties.hunters) ? f.properties.hunters.length : null,
-        pillar: pillarTint(tier, token, background), height: extrusionHeight(f.properties.best_rssi) } }
+        pillar: pillarTint(tier, token, background, dim), height: extrusionHeight(f.properties.best_rssi) } }
   }))
 }
 
@@ -74,13 +84,13 @@ export function hexFeatures(features, colorOf, background = '') {
 // a hairline (pointmarker.js).
 const POINT_PILLAR_RADIUS_M = 3
 const POINT_PILLAR_MIN_RADIUS_PX = 4
-export function pillarFeatures(points, zoom, colorOf, background = '') {
+export function pillarFeatures(points, zoom, colorOf, background = '', { dimFor = () => 1 } = {}) {
   const placed = points.map((pt, i) => ({ ...pt, i })).filter((pt) => pt.lat != null && pt.lon != null)
   return fc(collapsePillars(placed).map((pt) => {
     const tier = rssiTier(pt.rssi)
     const ring = octagonRing(pt.lat, pt.lon, pillarRadiusM(pt.lat, zoom, POINT_PILLAR_RADIUS_M, POINT_PILLAR_MIN_RADIUS_PX))
     return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] },
-      properties: { i: pt.i, color: tintOver(colorOf(tier), background, fillOpacity(tier)), height: extrusionHeight(pt.rssi) } }
+      properties: { i: pt.i, color: tintOver(colorOf(tier), background, fillOpacity(tier) * dimFor(pt)), height: extrusionHeight(pt.rssi) } }
   }))
 }
 

@@ -8,10 +8,15 @@
 //
 // What may be cached is decided by what each derivation actually reads:
 //
-//   hex features      records + zoom resolution + attenuator offset + theme
+//   hex features      records + zoom resolution + attenuator offset + theme + selection
 //   pillar collapse   records
-//   pillar features   records + zoom + attenuator offset + theme
-//   flat points       records + backlog zoom + offset + theme + coverage hues
+//   pillar features   records + zoom + attenuator offset + theme + selection
+//   flat points       records + backlog zoom + offset + theme + coverage hues + selection
+//
+// The selection joined three rows in #624, when selecting a star started to dim
+// the dots, the cells and the pillars as well as the rays. selectionKey below
+// signs it. The collapse does not read it: which record survives a merge is
+// decided by the ride and the strength, and the dim is applied afterwards.
 //
 // Nothing here reads the clock any more. It used to: the point collections
 // carried ageFade, a continuous function of NOW, so they had to be rebuilt
@@ -82,6 +87,20 @@ export function hueKey(hues) {
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
   })
   return hues.size + ':' + h
+}
+
+// selectionKey signs the coverage selection (#624). Since a selection dims the
+// dots, the cells and the pillars, it is an input to all three collections, and
+// a key that left it out would serve last tick's undimmed map after a tap.
+//
+// Sorted and lower-cased, unlike hueKey's insertion order: a selection is a set
+// the user builds by tapping, so the same repeaters picked in another order, or
+// arriving in another case, are the same selection and must not cost a rebuild.
+// The comma is safe as a separator because the ids are hex pubkeys.
+// An empty or absent selection signs as '', the commonest state by far.
+export function selectionKey(selected) {
+  if (!selected || !selected.size) return ''
+  return [...selected].map((id) => String(id).toLowerCase()).sort().join(',')
 }
 
 // lastValueCache remembers exactly one result. Not an LRU: the caller asks the

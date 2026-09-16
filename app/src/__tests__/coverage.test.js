@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   isRepeaterHearing, isTwoWay, hueSlot, assignHues, HUE_COUNT, NEAR_M,
   rayStrength, rayStyle, ONE_WAY_OPACITY, DIM_OPACITY,
-  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M,
+  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim,
 } from '../coverage.js'
 import { estimateFor } from '../nodelayer.js'
 
@@ -260,5 +260,41 @@ describe('coverageFeatures', () => {
   it('an empty selection dims nobody', () => {
     const fc = coverageFeatures([star(A, 'relay')], { slotOf: () => 0, colorOf, selected: new Set() })
     expect(fc.features[0].properties.dim).toBe(false)
+  })
+})
+
+// #624: the selection used to dim the other stars' rays and nothing else, so
+// the other repeaters' dots kept full colour on top of their own dimmed rays.
+// One factor now answers for every layer that draws receptions, and for the
+// trail, which belongs to no repeater.
+describe('selectionDim', () => {
+  it('dims nothing while there is no selection, whatever it is asked about', () => {
+    for (const id of [A, B, null]) {
+      expect(selectionDim(null, id)).toBe(1)
+      expect(selectionDim(new Set(), id)).toBe(1)
+    }
+  })
+
+  it('keeps what belongs to a selected repeater at full strength', () => {
+    expect(selectionDim(new Set([A]), A)).toBe(1)
+  })
+
+  it('dims what belongs to any other repeater', () => {
+    expect(selectionDim(new Set([A]), B)).toBe(DIM_OPACITY)
+  })
+
+  it('dims what belongs to no repeater at all, the trail and a companion included', () => {
+    // The case that separates "one dim rule for the whole map" from "dim the
+    // other stars": with a selection, a thing with no repeater is not part of
+    // it, so it steps back like everything else rather than staying lit.
+    expect(selectionDim(new Set([A]), null)).toBe(DIM_OPACITY)
+    expect(selectionDim(new Set([A]), undefined)).toBe(DIM_OPACITY)
+  })
+
+  it('matches an upper-cased id to its lower-cased selection', () => {
+    // Some resolvers hand the same pubkey back upper-cased; the selection
+    // holds it lower-cased, so without folding the selected repeater's own
+    // dots would dim along with everything else.
+    expect(selectionDim(new Set([A]), A.toUpperCase())).toBe(1)
   })
 })

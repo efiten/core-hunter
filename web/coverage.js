@@ -118,6 +118,23 @@ export function rayStyle(rssi, { twoWay = true, dimmed = false } = {}) {
   return { w, op: Math.round(op * 1000) / 1000 }
 }
 
+// #624: with a star selected, the rest of the map steps back with it, not only
+// the other stars. Whatever is attributed to a selected repeater keeps its
+// strength. Everything else drops to DIM_OPACITY, including what belongs to no
+// repeater at all: a companion's reception, a hex cell no selected repeater
+// was heard in, the hunter's own trail. One factor for every layer, so a
+// selection reads the same on the dots, the cells, the pillars and the trail
+// as it already does on the rays.
+//
+// `id` is the repeater a thing belongs to, or null when it belongs to none.
+// Lower-cased on the way in, since the selection holds lower-cased ids and the
+// same pubkey arrives upper-cased from some resolvers.
+export function selectionDim(selected, id = null) {
+  if (!selected || !selected.size) return 1
+  if (id == null) return DIM_OPACITY
+  return selected.has(String(id).toLowerCase()) ? 1 : DIM_OPACITY
+}
+
 // The hub: the registry's advertised position when there is one (▲), else the
 // RSSI estimate over the same hearings (●). A 0,0 is no position (the §9 trap).
 export function starOrigin({ advertised, estimate } = {}) {

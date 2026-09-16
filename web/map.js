@@ -1,7 +1,7 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
 import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim } from './coverage.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
@@ -335,10 +335,13 @@ async function drawPoints() {
   // until the new ones are here. The array is kept for the click handler,
   // which gets a feature index back rather than a marker object.
   currentPoints = points
-  wm.setData('points', pointFeatures(points, tierColor, { colorFor: pointHue }))
+  // A selection dims what is not part of it (#624), on a fresh draw as well as
+  // on a tap, or a pan would bring the whole map back to full strength.
+  const { dimFor } = selectionDimmer()
+  wm.setData('points', pointFeatures(points, tierColor, { colorFor: pointHue, dimFor }))
   // The pillars (#595) are rebuilt with the points, and on every move since
   // the footprint floor is a pixel size; only in 3D, where they are drawn.
-  wm.setData('points-3d', view3D ? pillarFeatures(points, wm.getZoom(), tierColor, cssVar('--ch-bg')) : null)
+  wm.setData('points-3d', view3D ? pillarFeatures(points, wm.getZoom(), tierColor, cssVar('--ch-bg'), { dimFor }) : null)
   // Same rule for the points layer. Its cap is the client's own maxTotal and the
   // rows carry rx_at, so the date comes from the data already in hand rather
   // than from a second server field.
@@ -357,6 +360,9 @@ async function drawPoints() {
 // applied server-side in SQL, so it lands before the grid-cell aggregation
 // rather than needing per-point rows the client no longer sees.
 let currentHexRings = []
+// The cells as the server sent them, kept so a selection change can re-dim
+// them without refetching the heatmap for what is only a colour change (#624).
+let currentHexFeatures = []
 // The hunter count is omitted rather than shown as 0 when the server
 // withholds it (#440): a degraded caller gets no identities at all, and
 // "0 hunters" over a cell with receptions in it reads as a bug.
@@ -386,16 +392,17 @@ async function drawHex() {
     if (!r.ok) throw new Error(`heatmap ${r.status}`)
     fc = await r.json()
   } catch (_) {
-    if (mayPaint(isCurrent)) { currentHexRings = []; wm.setData('hex', null); setStatus('heatmap unavailable') }
+    if (mayPaint(isCurrent)) { currentHexRings = []; currentHexFeatures = []; wm.setData('hex', null); setStatus('heatmap unavailable') }
     return
   }
   if (!mayPaint(isCurrent)) return
   // The rings are kept for the click handler: a cell is an aggregate with no
   // reception of its own, so a click matches it against the ticker's rows.
   currentHexRings = (fc.features || []).map((f) => f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]))
+  currentHexFeatures = fc.features || []
   // The background goes in for the bars' tint (#412): read now, so a theme
   // switch, which refreshes, rebuilds them over the new ground.
-  wm.setData('hex', hexFeatures(fc.features, tierColor, cssVar('--ch-bg')))
+  wm.setData('hex', hexFeatures(currentHexFeatures, tierColor, cssVar('--ch-bg'), { dim: selectionDimmer().cellDim }))
   // "cells (capped)" under a range button reading All time is a contradiction a
   // reader cannot resolve. The truncation is the most RECENT n receptions, so
   // the honest report is the date it reaches back to (#440).
@@ -555,7 +562,7 @@ export function refresh() {
     // under the previous mode is obsolete the moment the toggle empties its
     // layer, and would otherwise still be the newest and repaint it.
     if (roleKnown && (mode === 'points' || mode === 'both')) drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
-    if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); currentHexRings = []; wm.setData('hex', null) }
+    if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); currentHexRings = []; currentHexFeatures = []; wm.setData('hex', null) }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
@@ -943,7 +950,7 @@ function activateLocate() {
   // redraw after Locate recomputes the same signature, takes the early return,
   // and never repopulates — the layer would stay empty for the rest of the
   // session. One clear, one reset.
-  currentPoints = []; currentHexRings = []
+  currentPoints = []; currentHexRings = []; currentHexFeatures = []
   wm.setData('points', null); wm.setData('points-3d', null); wm.setData('hex', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
   clearNodePosLayer(); nodePosSig = null
   setRxHighlight(null) // suppress ticker rings in focus mode (#287 blocker 3)
@@ -1204,7 +1211,7 @@ function driftColorVar(p) {
   return '--ch-muted'
 }
 
-function nodePosPopup(name, id, p, est) {
+function nodePosPopup(name, id, p, est, { reachOn = false, selected = false, heard = false } = {}) {
   const markers = p.kind === 'advertised-only' ? '▲ advertised' : '▲ advertised · ● estimated'
   const drift = p.driftM != null ? `<br>drift ${Math.round(p.driftM)} m · ${est ? est.n : 0} points` : ''
   const circle = p.circle
@@ -1212,7 +1219,16 @@ function nodePosPopup(name, id, p, est) {
         ? `search radius ~${Math.round(p.circle.radiusM)} m`
         : 'one-sided — radius not trusted'}`
     : ''
-  return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}`
+  // The reach action (#623), back in the popup where the other per-node
+  // actions live, since #603 retired #549's buttons and left selecting a star
+  // an undiscoverable tap. Only in the reach stop, where a selection means
+  // something. It says what a press will do, so a selected repeater offers to
+  // hide its reach. Delegated below, like "Ignore this ID".
+  const reach = reachOn
+    ? `<br><button class="pp-reach${selected ? ' active' : ''}" data-node="${esc(id)}">${selected ? 'Hide reach' : 'Show reach'}</button>`
+      + (heard ? '' : '<br><span class="np-caveat">No hearings in this window yet, so there is no reach to draw.</span>')
+    : ''
+  return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}${reach}`
     + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
 }
 
@@ -1228,6 +1244,10 @@ let nodePosGen = 0
 // rebuild when the rendered content is identical, mirroring targetlist.js's
 // _lastSig guard in the app.
 let nodePosSig = null
+// The repeater whose popup comes back after a selecting press or tap (#623).
+// A selection redraws the node layer, so the popup is reopened with the
+// button's new state rather than left showing the one from before the press.
+let reopenNodeId = null
 
 // Fetches the registry slice for the current viewport from the server's bulk
 // proxy (#377). Same-origin, member-gated server-side; a failure returns null
@@ -1461,6 +1481,10 @@ async function drawNodePositions() {
   nodePosSig = sig
   clearNodePosLayer()
   drawCoverage(cov)
+  // Taken once and cleared at once (#623), so a repeater that left the view
+  // between the press and this redraw cannot pop its popup open later on.
+  const reopen = reopenNodeId
+  reopenNodeId = null
 
   const lines = [], circles = []
   for (const { id, advertised, est, p, name } of deduped) {
@@ -1470,7 +1494,7 @@ async function drawNodePositions() {
     const hue = coverageHue.get(id)
     const color = hue || cssVar(driftColorVar(p))
     const selected = !!(cov && cov.selected.has(id))
-    const html = nodePosPopup(name, id, p, est)
+    const html = nodePosPopup(name, id, p, est, { reachOn: coverageOn(), selected, heard: !!hue })
     // The name rides on the map next to the ▲, not just in the popup: the
     // layer is opt-in, so it can afford the labels while it is on. Only the ▲
     // is labelled — the ● is the same node.
@@ -1478,15 +1502,26 @@ async function drawNodePositions() {
     // the name is still in the popup, so nothing becomes unreachable (#425).
     const label = labelled.has(id) ? `<span class="np-label">${esc(rawLabel({ id, name }))}</span>` : ''
     const adv = document.createElement('div')
-    adv.className = 'np-advert' + (selected ? ' np-selected' : '') + (cov && cov.selected.size && !selected && hue ? ' np-dim' : '')
+    adv.className = 'np-advert' + (selected ? ' np-selected' : '') + (cov && cov.selected.size && !selected ? ' np-dim' : '')
     adv.style.color = color; adv.innerHTML = `▲${label}`
     // In the reach stop a tap on the ▲ selects the star (and clears it on the
-    // second tap); the popup still opens, from the marker's own handler.
-    if (hue) adv.addEventListener('click', () => toggleCoverageSelection(id))
+    // second tap); the popup still opens, from the marker's own handler. Every
+    // repeater, star or no star (#623). The gate used to be `hue`, which did
+    // two jobs: it hid the tap from a repeater with no hearings, and it stood
+    // in for "the reach is on", since coverageHue is empty outside it.
+    // coverageOn() says the second directly and the first is gone; the dim
+    // loses its `hue` term for the same reason.
+    const select = () => { reopenNodeId = id; toggleCoverageSelection(id) }
+    if (coverageOn()) adv.addEventListener('click', select)
     wm.addMarker('nodepos', adv, [advertised.lat, advertised.lon], { popupHtml: html })
+    // Only on the ▲, so a tap on the ● does not leave two popups open.
+    if (reopen === id) wm.openPopup([advertised.lon, advertised.lat], html)
     if (!est || !est.centroid) continue
     const estEl = document.createElement('div')
     estEl.className = 'np-estimate'; estEl.style.background = color
+    // The ● is the same repeater, so it selects the same star (coverage log,
+    // decision 6: a tap on a repeater's ▲ or ● selects it).
+    if (coverageOn()) estEl.addEventListener('click', select)
     wm.addMarker('nodepos', estEl, [est.centroid.lat, est.centroid.lon], { popupHtml: html })
     lines.push({ type: 'Feature', properties: { color },
       geometry: { type: 'LineString', coordinates: [[advertised.lon, advertised.lat], [est.centroid.lon, est.centroid.lat]] } })
@@ -1503,7 +1538,7 @@ async function drawNodePositions() {
 // a ● hub for a star with no registry position, and recolours the dots of the
 // hearings in the repeater's hue. Null (the stop below reach) clears it.
 function drawCoverage(cov) {
-  if (!cov) { clearCoverageLayer(); recolourPoints(); return }
+  if (!cov) { clearCoverageLayer(); repaintSelection(); return }
   coverageHue = new Map([...cov.hues].map(([id, slot]) => [id, cov.colorOf(slot)]))
   wm.setData('reach', cov.fc)
   wm.clearMarkers('reach')
@@ -1518,13 +1553,35 @@ function drawCoverage(cov) {
     el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
     wm.addMarker('reach', el, [st.origin.lat, st.origin.lon])
   }
-  recolourPoints()
+  repaintSelection()
 }
 // The dots of the points layer take the repeater's hue while the reach is on
 // (#603), the tier colour otherwise; the pillars keep the tier.
-function recolourPoints() {
-  if (!currentPoints.length) return
-  wm.setData('points', pointFeatures(currentPoints, tierColor, { colorFor: pointHue }))
+//
+// A selection also dims the dots, the pillars and the cells, not only the rays
+// (#624). drawCoverage puts up the rays and the markers; this repaints the
+// other three from the data already in hand, since a tap changes the selection
+// and nothing else. A selection toggle used to reach only the dots, so the
+// cells and pillars kept their old strength until the next pan. This was
+// recolourPoints while it touched the dots alone.
+function repaintSelection() {
+  const { dimFor, cellDim } = selectionDimmer()
+  if (currentPoints.length) {
+    wm.setData('points', pointFeatures(currentPoints, tierColor, { colorFor: pointHue, dimFor }))
+    if (view3D) wm.setData('points-3d', pillarFeatures(currentPoints, wm.getZoom(), tierColor, cssVar('--ch-bg'), { dimFor }))
+  }
+  if (currentHexFeatures.length) wm.setData('hex', hexFeatures(currentHexFeatures, tierColor, cssVar('--ch-bg'), { dim: cellDim }))
+}
+// The selection that dims the map, read once per paint rather than once per
+// point (coverageSelected builds a fresh Set each call). Only in the reach
+// stop, where a selection means something, so a target picked with the reach
+// off leaves the map at full strength. dimFor asks about a reception's
+// repeater by the stars' own attribution; cellDim is the single factor every
+// aggregate cell takes, since a cell carries no repeater (hexFeatures).
+function selectionDimmer() {
+  const sel = coverageOn() ? coverageSelected() : null
+  const owner = (pt) => (isRepeaterHearing(pt) && pt.sender_id != null ? pt.sender_id : null)
+  return { dimFor: (pt) => selectionDim(sel, owner(pt)), cellDim: selectionDim(sel) }
 }
 function pointHue(pt) {
   if (!coverageHue.size || !isRepeaterHearing(pt) || pt.sender_id == null) return null
@@ -2177,6 +2234,16 @@ document.addEventListener('click', (e) => {
   if (!btn) return
   wm.closePopup()
   applyIgnore(toggleIgnore(ignored, btn.dataset.sender))
+})
+
+// "Show reach" in a repeater's popup (#623), delegated the same way. Not
+// closed first, unlike Ignore: the redraw reopens it on the same repeater with
+// the button's new state, so the press has feedback where it was made.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.pp-reach')
+  if (!btn) return
+  reopenNodeId = btn.dataset.node
+  toggleCoverageSelection(btn.dataset.node)
 })
 
 document.getElementById('ss-ignore-clear').addEventListener('click', () => applyIgnore(new Set()))

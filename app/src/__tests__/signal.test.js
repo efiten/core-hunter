@@ -148,6 +148,20 @@ describe('pillarAlpha — which ride a 3D pillar belongs to (#647)', () => {
   })
 })
 
+// #624: with a coverage star selected, a 3D bar outside it steps back by the
+// same factor as its flat cell, so the two still agree under a selection.
+describe('pillarTint takes a selection dim (#624)', () => {
+  it('leaves a bar exactly as it was when nothing dims it', () => {
+    expect(pillarTint('hot', '#ff0000', '#000000')).toBe('#b30000')      // 255 x 0.7 over black
+    expect(pillarTint('hot', '#ff0000', '#000000', 1)).toBe('#b30000')
+  })
+
+  it('pre-mixes the dimmed opacity, so a dimmed bar moves toward the ground', () => {
+    // 255 x 0.7 x 0.25 over black is 44.6, which rounds to 0x2d.
+    expect(pillarTint('hot', '#ff0000', '#000000', 0.25)).toBe('#2d0000')
+  })
+})
+
 describe('withAlpha — pillars carry fade in the colour (#302)', () => {
   it('converts a 6-digit hex token to rgba', () => {
     expect(withAlpha('#ff453a', 0.5)).toBe('rgba(255,69,58,0.5)')

@@ -1,14 +1,14 @@
 # The coverage overview: every repeater's reach at once, each in its own hue (#603)
 
 **Date:** 2026-09-08
-**Status:** decided (Kasper, 2026-09-07 and 08, after the design rounds in `design-canvas/` and two renders on the real data), implemented on both maps in the same PR as #549
+**Status:** decided (Kasper, 2026-09-07 and 08, after the design rounds in `design-canvas/` and two renders on the real data), implemented on both maps in the same PR as #549; amended 2026-09-14 for #623 and #624
 **Related:** #549 (the star of one node, which this grew out of), #197 (the node-position layer it rides on), #595 (3D on the map), #481/#482 (the two-way hearings), #320 (the identity is unauthenticated), #374/#554 (other hunters' data, not this)
 
 ## What changed
 
 The map answered "where did I hear something" in one palette: every cell and point took the tier colour of its best RSSI, whoever was heard there. With five repeaters along one road that was one red band, and the question at the end of a drive, which repeater covers what and where one hands over to the next, had no view.
 
-Node positions now has a third stop, **Positions + reach**: every repeater in view draws its star at once, one ray from its position to each reception attributed to it, in a hue fixed per id. The app's FAB cycles off / positions / positions + reach with the ring showing the stop; the map's filter panel has the same three as a segmented control. The star of one node (#549, `docs/2026-09-06-reach-of-a-node.md`) is this drawing for one repeater, and its popup buttons are gone: the layer draws all of them.
+Node positions now has a third stop, **Positions + reach**: every repeater in view draws its star at once, one ray from its position to each reception attributed to it, in a hue fixed per id. The app's FAB cycles off / positions / positions + reach with the ring showing the stop; the map's filter panel has the same three as a segmented control. The star of one node (#549, `docs/2026-09-06-reach-of-a-node.md`) is this drawing for one repeater, and its popup buttons went when the layer began drawing all of them. #623 brought one back as "Show reach" in a repeater's popup, since without it selecting a star had become an undiscoverable tap (see the amendment below).
 
 ## The decisions
 
@@ -20,6 +20,15 @@ Node positions now has a third stop, **Positions + reach**: every repeater in vi
 6. **One selected** (2026-09-08). A tap on a repeater's ▲ or ● selects its star, and so does picking it as a target; both drive one selection. The selected star draws as it is, its name in a pill on the marker; every other star drops to 25% in its own hue, so the hand-over to the neighbours stays readable. A second tap, or a tap on bare map, clears it. With a target picked the plotted set is narrowed to it, so the stars come from the same window without the sender filter.
 7. **3D from the mast** (2026-09-08). Each ray starts 30 m above the ground at the repeater and lands at ground level at the hearing. A MapLibre line layer lies on the ground, so this is a custom WebGL layer (`raylayer.js`): each ray a screen-space quad between two mercator points with altitude, the terrain's height under both ends when the mesh is on. No deck.gl: it would have been the first dependency either map carries for one layer, and the layer is under 200 lines. The quads take 32-bit indices, so on a WebGL1 context without `OES_element_index_uint` the layer is not mounted and the console says so once; the flat rays still draw in 2D.
 8. **Attribution** is `classifyReception`'s rule: the originator at zero hops, or the last relay of a flood. On a record: `sender_role` Repeater, or `sender_kind` relay, discover_pubkey or trace_reply. A relay hash has no registry position, so that star hangs from the RSSI estimate (●); a full pubkey the registry places hangs from its ▲.
+
+## Amended 2026-09-14: selecting, and what a selection dims (#623, #624)
+
+Decision 6 left two gaps, both decided by Kasper on 12 and 14 September:
+
+- **Every repeater is selectable** (#623). The tap on a ▲ was gated on the repeater having a star this tick, so a repeater from the registry with no hearings attributed to it opened a popup and did nothing else; on the road that is most of them. The gate also stood in for "the reach is on", and now says so directly. A repeater with no hearings is a valid selection: nothing draws from it, the rest dims, and its popup says there is no reach to draw. The popup offers the action too, as "Show reach" or "Hide reach", so it is found where the other per-node actions are; a press reopens the popup with the new state rather than leaving it stale.
+- **A selection dims everything outside it** (#624). Decision 6 dimmed only the other stars' rays, so the other repeaters' dots kept full colour on top of their own dimmed rays. Now the dots, the hex cells, the 3D pillars and the app's trail step back by the same `DIM_OPACITY` as the rays (`coverage.js` `selectionDim`), and so does anything that belongs to no repeater, a companion's reception or the trail, since it is never part of a selection. In the app a cell stays lit when any reception in it belongs to a selected repeater. The map's cells are the server's aggregates with no reception of their own, so there every cell steps back under a selection while the rays and dots carry it.
+
+**The ray count (#621) is not changed here.** A solid band at a city zoom was considered together with #624. Kasper chose to leave the rays as they are and lean on this dimming, since every hearing keeping its own ray is decision 5. That fixes the view with a selection and leaves the view without one as it was, which is why #621 stays open.
 
 ## What it claims, and what it does not
 

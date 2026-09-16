@@ -635,6 +635,11 @@ body.wb-onboarding-on #bar { z-index:710; }
 .pp-id { color: var(--ch-muted); font-size: 11px; word-break: break-all; }
 .lc-locate { margin-top: 6px; padding: 3px 9px; border: none; border-radius: 6px; cursor: pointer;
   background: var(--ch-sig-warm); color: var(--ch-bg); font: inherit; font-size: 12px; }
+/* Show reach in a repeater's popup (#623): outlined in the accent, the app's
+   popup action style, so the two maps offer the action the same way. */
+.pp-reach { margin-top: 6px; padding: 3px 9px; border: 1px solid var(--ch-accent-2); border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--ch-accent-2); font: inherit; font-size: 12px; }
+.pp-reach.active { border-color: var(--ch-accent); color: var(--ch-accent); }
 .lc-modal { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1000;
   background: color-mix(in srgb, var(--ch-bg) 60%, transparent); }
 .lc-modal[hidden] { display: none; }

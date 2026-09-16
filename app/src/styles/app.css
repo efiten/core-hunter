@@ -825,10 +825,13 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 .maplibregl-popup-anchor-left .maplibregl-popup-tip { border-right-color: var(--ch-surface); }
 .maplibregl-popup-anchor-right .maplibregl-popup-tip { border-left-color: var(--ch-surface); }
 
-/* Map popup isolate/ignore buttons */
-.ch-isolate, .ch-ignore { border: 1px solid var(--ch-accent-2); border-radius: 8px; padding: 4px 8px;
+/* Map popup buttons: isolate and ignore on a reception, show reach on a
+   repeater (#623). One look, so a per-node action reads as the same kind of
+   control wherever the popup is. */
+.ch-isolate, .ch-ignore, .ch-reach { border: 1px solid var(--ch-accent-2); border-radius: 8px; padding: 4px 8px;
   background: transparent; color: var(--ch-accent-2); font-size: 12px; cursor: pointer; }
-.ch-isolate.active { border-color: var(--ch-accent); color: var(--ch-accent); cursor: default; }
+.ch-isolate.active, .ch-reach.active { border-color: var(--ch-accent); color: var(--ch-accent); }
+.ch-isolate.active { cursor: default; }
 .ch-isolate:disabled:not(.active), .ch-ignore:disabled { border-color: var(--ch-muted); color: var(--ch-muted); cursor: not-allowed; }
 
 /* ---- Target dropdown ---- */
