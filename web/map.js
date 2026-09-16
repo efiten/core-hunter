@@ -338,7 +338,7 @@ async function drawPoints() {
   wm.setData('points', pointFeatures(points, tierColor, { colorFor: pointHue }))
   // The pillars (#595) are rebuilt with the points, and on every move since
   // the footprint floor is a pixel size; only in 3D, where they are drawn.
-  wm.setData('points-3d', view3D ? pillarFeatures(points, wm.getZoom(), tierColor) : null)
+  wm.setData('points-3d', view3D ? pillarFeatures(points, wm.getZoom(), tierColor, cssVar('--ch-bg')) : null)
   // Same rule for the points layer. Its cap is the client's own maxTotal and the
   // rows carry rx_at, so the date comes from the data already in hand rather
   // than from a second server field.

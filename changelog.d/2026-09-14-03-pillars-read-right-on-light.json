@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-14-pillars-read-right-on-light",
+  "date": "2026-09-14",
+  "where": "both",
+  "title": "3D pillars read correctly on the light theme",
+  "body": "Pillars no longer darken as the signal weakens on the light theme. A weaker reception now looks fainter on both themes."
+}

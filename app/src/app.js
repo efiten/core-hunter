@@ -435,14 +435,14 @@ function windowLabel(ms) {
 
 // applyWindowMs is the one way the plot window changes (#646). The filter
 // sheet's select and the card's offer both land here, so the state, the
-// select, the map and the redraw cannot drift apart.
+// select and the redraw cannot drift apart. The map keeps no window of its
+// own since #648 dropped the age fade: it draws the rows this window hands it.
 function applyWindowMs(ms) {
   state.filter.windowMs = ms
   const sel = el('fs-window')
   if (sel) sel.value = String(ms ?? 0)
   const row = el('fs-row-window')
   if (row) row.classList.toggle('active', ms !== DEFAULT_FILTER.windowMs)
-  if (state.map) state.map.setTimeWindow(ms)
   refreshFilterState()
   drawOnce()
 }
@@ -3132,7 +3132,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   state.map = createHuntMap('map')
   state.map.setAttenuator(state.attenuatorDb)
   applyExaggeration()
-  state.map.setTimeWindow(state.filter.windowMs)
 
   // Initialise the receptions log (#130) — replaces the Messages panel. The
   // playhead reception highlights its map marker and is what the HUD shows
