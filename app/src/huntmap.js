@@ -16,6 +16,7 @@ import { displayName } from './names.js'
 import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { followAfter, paddingAction } from './rotation.js'
+import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -35,6 +36,29 @@ const fc = (features) => ({ type: 'FeatureCollection', features })
 // Bare background-only style — loads with no network, so the signal overlays
 // can mount on it when the hosted basemap style is unreachable (see below).
 const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': bg } }] })
+
+// The overlay stack, bottom to top (#626). Every add in addOverlays is guarded
+// with getLayer, so the order used to be whatever the adds happened to run in:
+// a run that landed on a half-applied style added part of the stack and the
+// next run put the rest on top of it, which is the over/under drawing the issue
+// reports. Declared here and applied in one pass at the end of addOverlays.
+//
+// Exported so the suite can hold it against the layers the module actually
+// adds — a layer added and not declared would silently float to the top.
+// The custom ray layer is not here: it is mounted through raylayer.js and
+// stays above everything by construction.
+export const LAYER_ORDER = [
+  'hillshade',      // terrain shading, under everything we draw
+  'trail',
+  'hex', 'hex-3d',
+  'buildings-3d',
+  'reach',          // the coverage rays, under the dots so a hub stays readable
+  'points', 'pulse', 'points-3d',
+  'highlight', 'here',
+  // The node-position layer sits above the hex heat: it is an explicit opt-in
+  // overlay, and a connector buried under a hot cell defeats drawing it.
+  'nodedrift', 'nodecircle-search', 'nodecircle-drift',
+]
 
 // 3D mode (#147 phase 2): setView() tilts the camera (pitchTransition,
 // maplayers.js) and swaps the flat hex layer for its fill-extrusion twin —
@@ -358,16 +382,22 @@ export function createHuntMap(containerId) {
   // overlaysReady flips true once the signal layers are mounted; the fallback
   // timer (armStyleFallback) uses it so a stuck basemap style can't leave the
   // map blank — the overlays must not be gated on a third-party basemap.
-  let overlaysReady = false, styleTimer = null
+  let overlaysReady = false, styleTimer = null, styleAttempt = 0
   function armStyleFallback() {
     clearTimeout(styleTimer)
     styleTimer = setTimeout(() => {
-      // Hosted style never mounted the overlays (offline / host down / cold PWA
-      // cache) → drop to a bare background style and mount them there, so the
-      // signal points/hex/trail/here survive basemap loss (a Leaflet raster 404
-      // used to leave every overlay intact).
-      if (!overlaysReady) { map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare() }
-    }, 12000)
+      if (overlaysReady) return
+      // The hosted style never even parsed (offline / host down / cold PWA
+      // cache). It gets one more try before the map gives it up (#626): the
+      // old net dropped straight to a flat background and stayed there for the
+      // session, which is what a merely slow style looked like. Past that the
+      // bare style mounts the overlays, so the signal points/hex/trail/here
+      // survive basemap loss.
+      if (nextStyleAttempt(styleAttempt++) === 'retry') {
+        map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback(); return
+      }
+      map.setStyle(bareStyle(cssVar('--ch-bg'))); mountBare()
+    }, STYLE_RETRY_MS)
   }
   // Sky (#397). setStyle DROPS the sky — measured against the bundled 4.7.1:
   // getSky() returns null after a style swap — so this cannot be a one-off at
@@ -552,6 +582,12 @@ export function createHuntMap(containerId) {
       filter: ['==', ['get', 'style'], 'drift'],
       layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
+    // One pass puts the stack in its declared order (#626), whatever order the
+    // adds ran in. Moving each present layer to the top in LAYER_ORDER leaves
+    // them exactly as declared, and repairs a stack built across two runs on a
+    // half-applied style. The basemap's own layers are not in the list, so they
+    // keep their places underneath.
+    for (const id of LAYER_ORDER) if (map.getLayer(id)) map.moveLayer(id)
     rays.addTo(map)
     rays.setVisible(coverageOn() && mode3D)
     draw()
@@ -560,10 +596,18 @@ export function createHuntMap(containerId) {
   // switch (setStyle) does NOT re-fire 'load'/'style.load' — only 'styledata' —
   // so applyBasemap re-adds the overlays via afterStyle once the new style
   // finishes. addOverlays is idempotent (guards on existing source/layer).
-  // afterStyle runs cb once a HOSTED (network) style finishes loading after
-  // setStyle. 'idle' fires only after the new style + tiles settle, so it avoids
-  // the race where isStyleLoaded() is briefly true for the OLD style.
-  function afterStyle(cb) { map.once('idle', cb) }
+  // afterStyle runs cb once the new style can take layers. That is 'styledata',
+  // not 'idle' (#626). Measured against the bundled 4.7.1 with a style whose
+  // sources never answer: 'styledata' fires once at +23..31 ms with
+  // isStyleLoaded() false, and addSource/addLayer there succeed — while
+  // isStyleLoaded() never goes true and 'idle' never fires at all, because both
+  // wait on the sources rather than on the style. Waiting for 'idle' is what
+  // left the map on a flat background for twelve seconds on a slow link.
+  //
+  // No guard against the OLD style is needed: 'styledata' cannot fire before
+  // setStyle has begun applying, unlike isStyleLoaded(), which reads true for
+  // the previous style right up until it does.
+  function afterStyle(cb) { map.once('styledata', cb) }
   // mountBare adds the overlays onto the inline bare fallback style. An inline
   // style applies SYNCHRONOUSLY and emits no styledata/idle/style.load event
   // (and the map never reaches 'idle' when it got here stuck mid-load), so poll
@@ -951,7 +995,9 @@ export function createHuntMap(containerId) {
   }
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   function setTimeWindow(ms) { timeWindowMs = ms == null ? null : Number(ms) || null }
-  function applyBasemap() { overlaysReady = false; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }   // re-add overlays after the style swap (+ fallback if it fails)
+  // Re-add the overlays after the style swap, with the safety net armed again.
+  // styleAttempt resets: this swap gets its own retry before the bare fallback.
+  function applyBasemap() { overlaysReady = false; styleAttempt = 0; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }
   // Pan to a reception, no popup: the ticker row that triggers this (#309) sits
   // over the map on a phone, and a popup on top of it would cover the very list
   // the user is scrubbing. The highlight ring (setHighlight, driven by the
