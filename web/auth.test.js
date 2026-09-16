@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { roleRank, atLeast, canSeeLocate, canSeeObserverPoints, isDegradedFor, guestNotice, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
+import { roleRank, atLeast, canSeeLocate, canSeeObserverPoints, isDegradedFor, guestNotice, canSeePointLayer, modeForRole, pointLayerReason, nodePosReason } from './auth.js'
 
 describe('role helpers', () => {
   it('ranks roles', () => {
@@ -101,6 +101,36 @@ describe('modeForRole — a deep link cannot open a gated layer', () => {
   })
   it('leaves a member on the mode they picked', () => {
     for (const m of ['points', 'both', 'hex']) expect(modeForRole(m, 'member'), m).toBe(m)
+  })
+})
+
+// #629 folded the two CoreScope overlays into the node-position layer, and
+// #631's guest handling with it: the control used to be hidden outright below
+// member, so the only thing that ever said why was a deep link. It is disabled
+// with a reason under it now, the way the layer segments have been since #493 —
+// a control you can see and cannot use tells you an account exists to be had.
+describe('nodePosReason', () => {
+  it('names both things the account switches on, not just that it is off', () => {
+    const msg = nodePosReason('guest')
+    expect(msg).toMatch(/node position/i)
+    expect(msg).toMatch(/log in|account/i)
+  })
+  // A hunter is logged in already: telling them to log in is a dead end, they
+  // need an admin to verify them (#174), exactly as pointLayerReason has it.
+  it('tells a hunter what they actually need', () => {
+    expect(nodePosReason('hunter')).toMatch(/member/i)
+    expect(nodePosReason('hunter')).not.toMatch(/log in/i)
+  })
+  it('has nothing to say to a member', () => {
+    expect(nodePosReason('member')).toBe(null)
+    expect(nodePosReason('admin')).toBe(null)
+  })
+  // One account state, one remedy. Two surfaces describing the same missing
+  // account in different terms reads as two different problems, which is the
+  // reason NODEPOS_GUEST_TEXT was written against guestNotice in the first place.
+  it('offers a guest the same remedy the rest of the map does', () => {
+    expect(nodePosReason('guest')).toMatch(/log in/i)
+    expect(pointLayerReason('guest')).toMatch(/log in/i)
   })
 })
 

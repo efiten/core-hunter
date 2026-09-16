@@ -2752,13 +2752,13 @@ let nodePosFadeTimer = null
 
 function applyNodePosNotices({ glanceExpired = false } = {}) {
   // registryEmpty is only meaningful once the fetch has finished; until then
-  // the glyph key is the honest line, since positions may still arrive (#307).
-  // "Nothing came back" and "nobody answered" both mean nothing can be drawn,
-  // and both are only knowable once a load attempt has finished.
+  // saying nothing is the honest answer, since positions may still arrive
+  // (#307). "Nothing came back" and "nobody answered" both mean nothing can be
+  // drawn, and both are only knowable once a load attempt has finished.
   const registryEmpty = nodePosAttempted && nodePosCount === 0
-  // registryEmpty reaches nodePosNotice too, not only the text: that line is the
-  // one thing here that does not fade, because it explains why the map is blank
-  // rather than labelling glyphs that are on it (#413).
+  // Since #631 it is the only thing this surface carries: the glyph meaning
+  // moved into the marker popup, and what is left explains why the map is
+  // blank. That does not fade, because the reason has to outlast a glance.
   const { note, key } = nodePosNotice({ on: nodePosOn(), glanceExpired, registryEmpty })
   const noteEl = el('nodepos-note')
   const keyEl = el('nodepos-key')

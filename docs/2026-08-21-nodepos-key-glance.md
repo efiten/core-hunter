@@ -1,7 +1,9 @@
 # The node-position glyph key becomes a glance (#413)
 
 **Date:** 2026-08-21
-**Status:** decided, implemented
+**Status:** superseded by #631 (2026-09-13) — the key is gone from both surfaces and the glyph
+meaning now lives only in the marker popup. What follows is the round before that, kept because the
+reasoning it records is why the key could not simply be made permanent again.
 **Amends:** AGENTS.md §7 "Position disclaimer in all position-bearing output"
 **Supersedes the permanence half of:** #306
 

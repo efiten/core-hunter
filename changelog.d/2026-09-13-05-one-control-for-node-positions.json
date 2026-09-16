@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-13-one-control-for-node-positions",
+  "date": "2026-09-13",
+  "where": "map",
+  "title": "One control for where nodes are",
+  "body": "CoreScope sightings come on with the node-position layer now, instead of two checkboxes of their own."
+}

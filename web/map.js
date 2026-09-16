@@ -8,7 +8,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, reso
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPoints, circleRing, isRegistryIdKind, nodeRows } from './nodelayer.js'
-import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS } from './nodeposnotice.js'
+import { nodePosPresentation, registryStatusFor, NODEPOS_GLANCE_MS, NODEPOS_ADVERT_CAVEAT, NODEPOS_ESTIMATE_CAVEAT } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { latestWins } from './latestwins.js'
@@ -16,7 +16,7 @@ import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { startBarWatch, onBarChange } from './barwatch.js'
 import { initAuthBar } from './login.js'
-import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe, canSeePointLayer, modeForRole, pointLayerReason } from './auth.js'
+import { guestNotice, canSeeLocate, canSeeObserverPoints, isDegradedFor, fetchMe, canSeePointLayer, modeForRole, pointLayerReason, nodePosReason } from './auth.js'
 import { packetTypeLabel, FILTER_PACKET_TYPES } from './packettypes.js'
 import { createTargetPicker, encodeSelection, decodeSelection, withoutSenderFilters, withoutIgnoreFilter, senderList, targetParts, relTime, targetChipLabel } from './targetpicker.js'
 import { loadIgnore, saveIgnore, toggleIgnore, isIgnored, ignoreParams } from './ignorelist.js'
@@ -448,22 +448,31 @@ function applyLocateGate() {
   if (btn) btn.hidden = !show
   if (!show && locateActive) deactivateLocate()
 }
-// Hides the CS-layer toggle control (and drops its layers) for non-members;
-// the server returns 403 for /api/observer-points below member so there is
-// nothing useful to show or fetch.
+// One member gate for one layer (#629): the resolve proxy strips lat/lon below
+// member and /api/observer-points answers 403, so neither of the layer's two
+// sources can draw for a guest.
+//
+// The control stays on screen and says why, the way the layer segments have
+// since #493. It used to be hidden outright, which is true to the data and
+// hopeless as an answer: a guest never learned the layer existed, and the only
+// thing that ever explained it was a deep link somebody else had shared.
 function applyObserverGate() {
   const show = canSeeObserverPoints(currentRole)
-  const toggle = document.querySelector('.cs-layer-toggle')
-  if (toggle) toggle.hidden = !show
-  // Node positions ride the same member gate: the resolve proxy strips lat/lon
-  // below member, so the layer could only ever be empty for a guest — hide the
-  // control rather than offering a toggle that does nothing.
-  const npToggle = document.querySelector('.np-layer-toggle')
-  if (npToggle) npToggle.hidden = !show
+  const reason = nodePosReason(currentRole)
+  for (const b of document.querySelectorAll('#nodepos-seg button')) {
+    b.disabled = !show
+    // The note below carries the reason visually; this hands it to a reader
+    // landing on a disabled stop.
+    if (reason) b.setAttribute('aria-describedby', 'nodepos-gate-note')
+    else b.removeAttribute('aria-describedby')
+  }
+  const note = document.getElementById('nodepos-gate-note')
+  if (note) { note.textContent = reason || ''; note.hidden = !reason }
   if (!show) {
-    // Read before clearing: ?nodepos=1 binds the checkbox even for a guest,
-    // whose control is hidden, and that ask is the only thing separating "you
-    // cannot see this layer" from a line about a layer nobody wanted. Kept
+    // Read before clearing: ?nodepos=1 restores the stop even for a guest,
+    // whose control is disabled rather than absent since #629, and that ask is
+    // the only thing separating "you cannot see this layer" from a line about
+    // a layer nobody wanted. Kept
     // (nodePosAskedBelowMember): the next refresh redraws from the checkbox,
     // which is now off, and used to take the key back 250 ms after this put
     // it up (the #376 test caught it only when its poll fell in that window).
@@ -476,12 +485,10 @@ function applyObserverGate() {
     clearObserverLayers()
   } else {
     nodePosAskedBelowMember = false
-    // Deferred CS-layer deep-link restore (mirrors the Locate restore below):
-    // the ?adv=1/?rel=1 checkbox state was applied at module-eval time, before
-    // the real role was known, so drawObserverPoints() early-returned then.
-    // Redraw only the checked layers now that the gate is open.
-    if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
-    if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+    // Deferred deep-link restore (mirrors the Locate restore below): ?nodepos=
+    // was applied at module-eval time, before the real role was known, so the
+    // draws early-returned then. Redraw now that the gate is open.
+    if (csOn.checked) drawObserverLayers()
   }
 }
 
@@ -928,8 +935,12 @@ async function drawLocate() {
     const hk = encodeURIComponent(sender)
     const extra = []
     if (canSeeObserverPoints(currentRole)) {
-      if (csAdvertCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
-      if (csRelayCb.checked) extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+      // One question since #629: both sources belong to the node-position
+      // layer, so they are in this merge together or not at all.
+      if (csOn.checked) {
+        extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=advert${tf}`)
+        extra.push(`${API_BASE}/api/observer-points?heard_key=${hk}&src=rxlog${tf}`)
+      }
     }
     if (extra.length) {
       const res = await Promise.all(extra.map((u) => fetch(u).then((r) => (r.ok ? r.json() : { points: [] })).catch(() => ({ points: [] }))))
@@ -966,8 +977,7 @@ function deactivateLocate() {
   document.getElementById('locate-info').hidden = true
   urlstate.save()
   refresh() // restore points/hex per mode
-  if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
-  if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+  if (csOn.checked) { drawObserverPoints('advert', csAdvertLayer, false); drawObserverPoints('rxlog', csRelayLayer, true) }
 }
 locateBtn.addEventListener('click', () => (locateActive ? deactivateLocate() : activateLocate()))
 
@@ -1123,7 +1133,7 @@ async function drawObserverPoints(src, layer, ring) {
   // response would repaint into it and stay there. Reachable deterministically
   // from the popup's own "Locate this sender" button, which closes the popup
   // (releasing a held redraw) before activating Locate.
-  if (!csCbForSrc(src).checked || locateActive) { observerPoints[src] = []; wm.setData(layer, null); return }
+  if (!csOn.checked || locateActive) { observerPoints[src] = []; wm.setData(layer, null); return }
   // Two draws of the same layer can overlap — a held redraw released by a
   // popupclose while an explicit one (filter change, checkbox) is mid-fetch.
   // The layer is cleared before the fetch, so both responses would append and
@@ -1147,7 +1157,7 @@ async function drawObserverPoints(src, layer, ring) {
       // are never redrawn by a pan or a filter change, so sharing one slot
       // would drop one of them silently rather than defer it.
       nameRedraw.run(`cs:${src}`, () => {
-        if (csCbForSrc(src).checked && !locateActive) drawObserverPoints(src, layer, ring)
+        if (csOn.checked && !locateActive) drawObserverPoints(src, layer, ring)
       })
     })
   }
@@ -1196,6 +1206,10 @@ function setNodePosStop(stop, { restore = false } = {}) {
   if (restore) return
   if (!wasOn || next === '') restartNodePosGlance()
   drawNodePositions()
+  // The CoreScope sightings are this layer's other source (#629), so they come
+  // on and go off with the stops instead of with two checkboxes beside them.
+  if (next === '') clearObserverLayers()
+  else drawObserverLayers()
   urlstate.save()
 }
 // A guest's ?nodepos=1 ask, held past the gate's uncheck (applyObserverGate)
@@ -1219,6 +1233,12 @@ function nodePosPopup(name, id, p, est, { reachOn = false, selected = false, hea
         ? `search radius ~${Math.round(p.circle.radiusM)} m`
         : 'one-sided — radius not trusted'}`
     : ''
+  // The popup is where the glyph meaning lives since #631, so it carries the
+  // sentence for each glyph it actually drew. Explaining a ● that is not on
+  // this node is the same mistake the old key made on an empty map.
+  const caveats = p.kind === 'advertised-only'
+    ? NODEPOS_ADVERT_CAVEAT
+    : NODEPOS_ADVERT_CAVEAT + ' ' + NODEPOS_ESTIMATE_CAVEAT
   // The reach action (#623), back in the popup where the other per-node
   // actions live, since #603 retired #549's buttons and left selecting a star
   // an undiscoverable tap. Only in the reach stop, where a selection means
@@ -1229,7 +1249,7 @@ function nodePosPopup(name, id, p, est, { reachOn = false, selected = false, hea
       + (heard ? '' : '<br><span class="np-caveat">No hearings in this window yet, so there is no reach to draw.</span>')
     : ''
   return `${esc(name || id)}<br><span class="pp-id">${esc(id)}</span><br>${markers}${drift}${circle}${reach}`
-    + `<br><span class="np-caveat">Advertised position is self-reported by the operator and may be stale.</span>`
+    + `<br><span class="np-caveat">${caveats}</span>`
 }
 
 // Generation token: a draw can be re-entered while its /api/points fetch is in
@@ -1599,31 +1619,33 @@ for (const b of document.querySelectorAll('#nodepos-seg button')) {
 }
 syncNodePosSeg()
 
-const csAdvertCb = document.getElementById('cs-adverts')
-const csRelayCb = document.getElementById('cs-relays')
-const csCbForSrc = (src) => (src === 'advert' ? csAdvertCb : csRelayCb)
-// Drops both CS observer layers and resets their checkboxes — used when the
-// gate hides the toggle so a later role change doesn't reveal a stale-checked
-// control with a cleared layer.
+// The CoreScope sightings follow the node-position stops since #629. They were
+// two checkboxes answering the question this layer already answers — where
+// nodes are — so they are sources it draws rather than overlays of their own,
+// and "is this source on" is now a question about nodePosStop. csOn keeps the
+// `.checked` shape the draw path reads, the way nodePosCb does for the stops.
+const csOn = { get checked() { return nodePosCb.checked } }
+// Drops both CS observer layers — used when the gate turns the layer off, so a
+// later role change cannot reveal a stale one. The stop is the state now, and
+// applyObserverGate clears that itself.
 function clearObserverLayers() {
   observerPoints.advert = []; observerPoints.rxlog = []
   wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
-  csAdvertCb.checked = false; csRelayCb.checked = false
 }
-function toggleCsLayer(cb, src, layer, ring) {
-  if (locateActive) { drawLocate(); return } // focus mode: feed Locate, not the all-nodes layer
-  if (cb.checked) drawObserverPoints(src, layer, ring); else { observerPoints[src] = []; wm.setData(layer, null) }
+// Draws both sources for the stop the layer is on. Locate takes precedence:
+// its focus view feeds on the same observer rows (#176) and clears these.
+function drawObserverLayers() {
+  if (locateActive) { drawLocate(); return }
+  drawObserverPoints('advert', csAdvertLayer, false)
+  drawObserverPoints('rxlog', csRelayLayer, true)
 }
-csAdvertCb.addEventListener('change', () => toggleCsLayer(csAdvertCb, 'advert', csAdvertLayer, false))
-csRelayCb.addEventListener('change', () => toggleCsLayer(csRelayCb, 'rxlog', csRelayLayer, true))
 // On timeframe change: feed Locate if active, else redraw the all-nodes CS layers
 // (they are timeframe-scoped, not bbox-scoped — so no redraw on pan/zoom).
 for (const id of ['f-from', 'f-to']) {
   const el = document.getElementById(id)
   if (el) el.addEventListener('change', () => {
     if (locateActive) { drawLocate(); return }
-    if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
-    if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+    if (csOn.checked) drawObserverLayers()
   })
 }
 
@@ -1861,8 +1883,6 @@ urlstate.bindControl('sender', 'f-sender', { events: ['change', 'input'] })
 // something other than today. Still reflected into the URL for sharing.
 urlstate.bindControl('from', 'f-from', { urlOnly: true })
 urlstate.bindControl('to', 'f-to', { urlOnly: true })
-urlstate.bindControl('adv', 'cs-adverts', { checkbox: true })
-urlstate.bindControl('rel', 'cs-relays', { checkbox: true })
 urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 
 // Ticker placement, drag and fold (#424).
@@ -2051,8 +2071,6 @@ if (barFilters && filterPill) {
       directOnly: on('f-direct'),
       types: String(types || '').split(',').filter(Boolean),
       idClasses: String((window.currentIdClasses ? window.currentIdClasses() : '') || '').split(',').filter(Boolean),
-      csAdverts: on('cs-adverts'),
-      csRelays: on('cs-relays'),
       nodePos: nodePosCb.checked,   // either on-stop of the three (#603)
     })
     const pillCount = document.getElementById('filter-pill-count')
@@ -2138,8 +2156,7 @@ updateSenderTitle() // tooltip for a sender restored from the URL/storage
 // default at this point (initAuthBar()'s fetchMe() below hasn't resolved yet),
 // so activateLocate()'s role gate would always block it. That restore is
 // deferred into applyRole(), once the real role is known.
-if (csAdvertCb.checked) drawObserverPoints('advert', csAdvertLayer, false)
-if (csRelayCb.checked) drawObserverPoints('rxlog', csRelayLayer, true)
+if (csOn.checked) drawObserverLayers()
 if (!hasSavedView) snapToLatestPoints() // #218 -- only when nothing to restore
 syncTimeUi() // label the picker button from the restored/default range (#285)
 refresh()

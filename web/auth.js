@@ -45,6 +45,23 @@ export function pointLayerReason(role) {
   }
   return 'Individual receptions need an account. Log in to switch layers.'
 }
+
+// nodePosReason is the same line under the node-position stops (#629). The
+// control used to be hidden outright below member, on the grounds that the
+// proxy strips lat/lon and the layer could only come up empty — which is true,
+// and is why a guest never learned the layer existed. It is disabled with this
+// underneath instead, the way the layer segments have been since #493: a
+// control you can see and cannot use says an account is what switches it on.
+//
+// Same two audiences as above, and deliberately the same remedy: one missing
+// account described two ways reads as two problems.
+export function nodePosReason(role) {
+  if (canSeeObserverPoints(role)) return null
+  if (role === 'hunter') {
+    return 'Node positions and CoreScope sightings need a verified member account. An admin verifies you.'
+  }
+  return 'Node positions and CoreScope sightings need an account. Log in to switch the layer on.'
+}
 // Server-side gating (degradeFilter/applyGuestWindowCap, httpapi/api.go +
 // degrade.go) windows, caps, coarsens and pseudonymises everything a
 // sub-member caller sees. A caller's own linked companions are exempt, but

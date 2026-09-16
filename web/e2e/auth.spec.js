@@ -1,4 +1,4 @@
-import { test, expect, openFilters } from './fixtures.js'
+import { test, expect, openFilters, closeFilters, setNodePos } from './fixtures.js'
 
 async function mockRole(page, me) {
   await page.route('**/api/auth/me', r => r.fulfill({ json: me }))
@@ -135,47 +135,57 @@ test('guest ?locate=1 does not restore Locate', async ({ page }) => {
   await expect(page.locator('.lc-strongest')).toHaveCount(0)
 })
 
-test('observer-point layers are hidden for guests and a 403 does not break the map', async ({ page }) => {
+// #629: the layer and its CoreScope sources ride one member gate, and the
+// control no longer disappears under it. Hiding it was true to the data and
+// hopeless as an answer — a guest never learned the layer existed, so the only
+// thing that ever explained it was a deep link somebody else had shared.
+test('the node-position stops are disabled for a guest and say what switches them on', async ({ page }) => {
   await mockRole(page, { role: 'guest' })
   await page.route('**/api/observer-points*', r => r.fulfill({ status: 403, json: { error: 'forbidden' } }))
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e))
   await page.goto('/')
   await openFilters(page) // asserted with the panel open, or hidden is vacuous
-  // the CS-layer toggle must not be shown for guests
-  await expect(page.locator('.cs-layer-toggle')).toBeHidden()
+  await expect(page.locator('#np-pos')).toBeDisabled()
+  await expect(page.locator('#np-reach')).toBeDisabled()
+  const note = page.locator('#nodepos-gate-note')
+  await expect(note).toBeVisible()
+  await expect(note).toContainText(/account/i)
   // map still renders (no unhandled rejection breaking the app)
   await expect(page.locator('#map')).toBeVisible()
   expect(pageErrors).toHaveLength(0)
 })
 
-test('observer-point (CS) layers are available for members', async ({ page }) => {
+test('a member can switch the layer on, and its CoreScope sources are fetched with it', async ({ page }) => {
   await mockRole(page, { role: 'member', username: 'm' })
   await page.route('**/api/observer-points*', r => r.fulfill({ json: { points: [] } }))
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e))
   await page.goto('/')
-  await openFilters(page) // the CS toggles live in the filter panel (#539)
-  await expect(page.locator('.cs-layer-toggle')).toBeVisible()
+  await openFilters(page) // the layer control lives in the filter panel (#539)
+  await expect(page.locator('#np-pos')).toBeEnabled()
+  await expect(page.locator('#nodepos-gate-note')).toBeHidden()
+  await closeFilters(page)
   const req = page.waitForRequest((r) => r.url().includes('/observer-points'))
-  await page.check('#cs-adverts')
+  await setNodePos(page, '1')
   await req
   await expect(page.locator('#map')).toBeVisible()
   expect(pageErrors).toHaveLength(0)
 })
 
-// Regression: the CS-layer deep-link restore (?adv=1/?rel=1) runs at module-eval
-// time, before /api/auth/me resolves — currentRole is still 'guest' then, so
-// drawObserverPoints() early-returns and the checkbox ends up checked with an
-// empty layer. Once the real (member) role lands, applyObserverGate() must
-// redraw any checked CS layers, not just unhide the toggle.
-test('member deep-link ?adv=1 draws the CS advert layer on load', async ({ page }) => {
+// Regression: the deep-link restore runs at module-eval time, before
+// /api/auth/me resolves — currentRole is still 'guest' then, so
+// drawObserverPoints() early-returns and the layer ends up on with nothing in
+// it. Once the real (member) role lands, applyObserverGate() must redraw the
+// layer's sources, not just enable the control. Since #629 that is one key,
+// ?nodepos=, rather than ?adv= and ?rel= beside it.
+test('member deep-link ?nodepos=1 draws the CS advert layer on load', async ({ page }) => {
   await mockRole(page, { role: 'member', username: 'm' })
   await page.route('**/api/observer-points*', r => r.fulfill({ json: { points: [
     { lat: 51.0, lon: 4.0, rssi: -60, snr: 8, heard_key: 'aa', observer: 'obs1', rx_at: '2026-07-03T10:00:00Z' }
   ] } }))
-  await page.goto('/?adv=1')
-  await expect(page.locator('#cs-adverts')).toBeChecked()
+  await page.goto('/?nodepos=1')
+  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
   // mode defaults to 'hex' with an empty heatmap and no points; the advert
   // layer's own source is what carries the one point (#465: canvas, no DOM).
   await expect.poll(() => page.evaluate(() => window.__featureCount && window.__featureCount('observer-advert'))).toBe(1)

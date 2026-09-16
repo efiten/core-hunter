@@ -1,4 +1,4 @@
-import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setFilter, setLayerMode, typeSenderPrefix } from './fixtures.js'
+import { clickMapAt, test, expect, mapSettled, openPicker, openSettings, openFilters, closeFilters, setLayerMode, setNodePos, typeSenderPrefix } from './fixtures.js'
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'm' } }))
@@ -338,7 +338,7 @@ test('"Locate this sender" drops an active pick and locates the node clicked', a
   expect(urls.some((u) => new URL(u).searchParams.get('sender') === PICKED)).toBe(false)
 })
 
-test('CoreScope relays checkbox (off by default) draws observer points with resolved name', async ({ page }) => {
+test('the node-position layer (off by default) draws CoreScope relay points with a resolved name', async ({ page }) => {
   await page.route('**/api/observer-points*', (route) => {
     const src = new URL(route.request().url()).searchParams.get('src')
     const pts = src === 'rxlog'
@@ -349,10 +349,12 @@ test('CoreScope relays checkbox (off by default) draws observer points with reso
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
 
-  await openFilters(page) // the CS toggles live in the filter panel (#539)
-  await expect(page.locator('#cs-relays')).not.toBeChecked() // off by default
-  await page.check('#cs-relays')
+  // #629: the CoreScope sightings are a source of the node-position layer, so
+  // the stops are what switch them on.
+  await openFilters(page)
+  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true') // off by default
   await closeFilters(page)
+  await setNodePos(page, '1')
 
   await mapSettled(page)
   await expect(async () => {
@@ -382,7 +384,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   })
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
-  await setFilter(page, '#cs-relays')
+  await setNodePos(page, '1')
 
   const locateReq = page.waitForRequest((r) => r.url().includes('/observer-points') && r.url().includes('heard_key=1d6f'))
   await mapSettled(page)
@@ -402,7 +404,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   await expect(page.locator('#locate-info')).toBeVisible()
 })
 
-test('unchecking a CS layer clears it even if a name-resolution redraw is in flight', async ({ page }) => {
+test('switching the layer off clears the CS points even if a name-resolution redraw is in flight', async ({ page }) => {
   await page.route('**/api/observer-points*', (route) => {
     const src = new URL(route.request().url()).searchParams.get('src')
     const pts = src === 'rxlog'
@@ -419,11 +421,11 @@ test('unchecking a CS layer clears it even if a name-resolution redraw is in fli
   await page.goto('/')
 
   const relays = () => page.evaluate(() => window.__featureCount('observer-rxlog'))
-  await setFilter(page, '#cs-relays')
+  await setNodePos(page, '1')
   await expect.poll(relays).toBe(1) // point drawn
-  await setFilter(page, '#cs-relays', false)
+  await setNodePos(page, '')
   await expect.poll(relays).toBe(0) // cleared now
-  await expect(page).toHaveURL((u) => !u.searchParams.has('rel'))
+  await expect(page).toHaveURL((u) => !u.searchParams.has('nodepos'))
   // Wait past the resolver delay: the pending redraw must NOT re-add the point.
   await page.waitForTimeout(700)
   expect(await relays()).toBe(0)
@@ -431,15 +433,15 @@ test('unchecking a CS layer clears it even if a name-resolution redraw is in fli
 
 test('Clear button resets filters, drops CS layers, and leaves the URL clean', async ({ page }) => {
   await page.route('**/api/observer-points*', (r) => r.fulfill({ json: { points: [] } }))
-  await page.goto('/?sender=4a2b&adv=1&direct=1&types=Advert')
+  await page.goto('/?sender=4a2b&nodepos=1&direct=1&types=Advert')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
-  await openFilters(page) // the CS toggles and Clear live in the panel (#539)
-  await expect(page.locator('#cs-adverts')).toBeChecked()
+  await openFilters(page) // the layer control and Clear live in the panel (#539)
+  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('#f-direct')).toBeChecked()
 
   await page.click('#clear-filters')
   await expect(page.locator('#f-sender')).toHaveValue('')
-  await expect(page.locator('#cs-adverts')).not.toBeChecked()
+  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true')
   // The panel dimensions too (#539): Clear's label counts them, so it has to
   // clear them — before this it silently left every chip and checkbox standing.
   await expect(page.locator('#f-direct')).not.toBeChecked()
@@ -449,7 +451,7 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
   await expect(page.locator('#f-types .f-chip.active')).toHaveAttribute('data-type', 'all')
   await expect(page.locator('#filter-pill-count')).toBeHidden()
   await closeFilters(page)
-  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('adv')
+  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('nodepos')
     && !u.searchParams.has('direct') && !u.searchParams.has('types'))
 })
 
@@ -506,7 +508,7 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
     r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
   })
   await page.goto('/')
-  await setFilter(page, '#cs-relays')
+  await setNodePos(page, '1')
   await expect.poll(() => page.evaluate(() => window.__featureCount('observer-rxlog')), { timeout: 10000 }).toBe(1)
   await mapSettled(page)
 

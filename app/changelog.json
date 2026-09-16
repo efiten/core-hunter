@@ -63,6 +63,20 @@
     "body": "Switching the receptions list to ALL drops the narrowing on the map as well, inside the same time window."
   },
   {
+    "id": "2026-09-13-node-marker-explains-itself",
+    "date": "2026-09-13",
+    "where": "both",
+    "title": "Node markers explain themselves in their popup",
+    "body": "The legend over the map is gone. Tap a node marker and it says what its triangle and dot mean."
+  },
+  {
+    "id": "2026-09-13-one-control-for-node-positions",
+    "date": "2026-09-13",
+    "where": "map",
+    "title": "One control for where nodes are",
+    "body": "CoreScope sightings come on with the node-position layer now, instead of two checkboxes of their own."
+  },
+  {
     "id": "2026-09-13-theme-switch-keeps-the-map",
     "date": "2026-09-13",
     "where": "both",

@@ -34,9 +34,14 @@
 // The union of both surfaces' dimensions since #564, so one function answers
 // for both panels. Each surface passes what it has and the rest default off:
 // `plotWindow` is the app's "Plot last" (the map's timeframe is a bar control
-// and travels in the URL, so Clear has never reset it either); the three
-// overlay flags are the map's alone.
-export function activeFilterCount({ directOnly = false, types = null, idClasses = null, plotWindow = false, csAdverts = false, csRelays = false, nodePos = false } = {}) {
+// and travels in the URL, so Clear has never reset it either); `nodePos` is
+// the map's alone.
+//
+// It took csAdverts and csRelays as well until #629, which folded those two
+// overlays into the node-position layer: they are sources that layer draws
+// now, not dimensions of their own. A caller still passing them counts nothing
+// extra, the same way a Sender-unknown flag has since #535.
+export function activeFilterCount({ directOnly = false, types = null, idClasses = null, plotWindow = false, nodePos = false } = {}) {
   let n = 0
   if (directOnly) n++
   // An empty/absent set means "no type filter" -- same convention as the app's
@@ -45,8 +50,6 @@ export function activeFilterCount({ directOnly = false, types = null, idClasses 
   // Same convention for the sender-id class dimension (#475).
   if (idClasses && [...idClasses].length > 0) n++
   if (plotWindow) n++
-  if (csAdverts) n++
-  if (csRelays) n++
   if (nodePos) n++
   return n
 }

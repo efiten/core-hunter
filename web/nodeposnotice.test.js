@@ -1,15 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import {
   nodePosPresentation, nodePosKeyText, registryStatusFor,
-  NODEPOS_KEY_TEXT, NODEPOS_EMPTY_TEXT, NODEPOS_GUEST_TEXT, NODEPOS_UNCONFIGURED_TEXT,
-  NODEPOS_UNAVAILABLE_TEXT, NODEPOS_NONE_IN_VIEW_TEXT, NODEPOS_STALE_SUFFIX,
+  NODEPOS_EMPTY_TEXT, NODEPOS_GUEST_TEXT, NODEPOS_UNCONFIGURED_TEXT,
+  NODEPOS_UNAVAILABLE_TEXT, NODEPOS_NONE_IN_VIEW_TEXT, NODEPOS_STALE_TEXT,
 } from './nodeposnotice.js'
 
 const on = (over) => nodePosPresentation({ on: true, ...over })
 
 describe('nodePosPresentation — every way to draw nothing says which one it was', () => {
-  it('names the glyphs, and only then shows the disclaimer', () => {
-    expect(on({ registry: { status: 'ok' }, drawn: 3 })).toEqual({ note: true, key: NODEPOS_KEY_TEXT })
+  // #631: with markers on screen the layer writes no key at all. What a ▲ and
+  // a ● are is answered by the popup, which is where a reader goes to ask.
+  it('writes no key over the map once there are markers to explain', () => {
+    expect(on({ registry: { status: 'ok' }, drawn: 3 })).toEqual({ note: true, key: '' })
   })
 
   it('gives each empty state its own line', () => {
@@ -48,12 +50,25 @@ describe('nodePosPresentation — every way to draw nothing says which one it wa
   })
 
   it('marks a stale registry, on both of the states that drew from one', () => {
-    expect(on({ registry: { status: 'ok', stale: true }, drawn: 2 }).key)
-      .toBe(NODEPOS_KEY_TEXT + NODEPOS_STALE_SUFFIX)
+    // With the key gone (#631) the stale warning is the whole line here, so it
+    // must read as a sentence rather than as something appended to a legend.
+    expect(on({ registry: { status: 'ok', stale: true }, drawn: 2 }).key).toBe(NODEPOS_STALE_TEXT)
     expect(on({ registry: { status: 'ok', stale: true }, drawn: 0 }).key)
-      .toBe(NODEPOS_NONE_IN_VIEW_TEXT + NODEPOS_STALE_SUFFIX)
+      .toBe(NODEPOS_NONE_IN_VIEW_TEXT + ' · ' + NODEPOS_STALE_TEXT)
     // Not on a state that drew from no registry at all.
     expect(on({ registry: { status: 'unavailable', stale: true } }).key).toBe(NODEPOS_UNAVAILABLE_TEXT)
+  })
+
+  // The separator belongs to the join, not to the text. Carrying it inside the
+  // constant is what made the line start with " · " the moment the key it was
+  // written to follow went away.
+  it('never opens a line with a separator', () => {
+    for (const over of [{ registry: { status: 'ok', stale: true }, drawn: 2 },
+      { registry: { status: 'ok', stale: true }, drawn: 0 }]) {
+      expect(on(over).key.startsWith(' ')).toBe(false)
+      expect(on(over).key.startsWith('·')).toBe(false)
+    }
+    expect(NODEPOS_STALE_TEXT.startsWith(' ')).toBe(false)
   })
 
   it('says nothing at all while the layer is off', () => {
@@ -81,10 +96,10 @@ describe('registryStatusFor — the server distinguishes these deliberately', ()
 })
 
 describe('nodePosKeyText — kept in step with the app copy', () => {
-  it('chooses between the two shared lines', () => {
-    expect(nodePosKeyText({ registryEmpty: false })).toBe(NODEPOS_KEY_TEXT)
+  it('says the registry is empty, and otherwise says nothing', () => {
     expect(nodePosKeyText({ registryEmpty: true })).toBe(NODEPOS_EMPTY_TEXT)
-    expect(nodePosKeyText()).toBe(NODEPOS_KEY_TEXT)
+    expect(nodePosKeyText({ registryEmpty: false })).toBe('')
+    expect(nodePosKeyText()).toBe('')
   })
 })
 
@@ -104,11 +119,12 @@ describe('nodePosPresentation — the prose is a glance on a narrow screen', () 
     expect(nodePosPresentation({ ...drawn, narrow: true, glanceExpired: true }).note).toBe(false)
   })
 
-  // §7: the key is the half that must stay, so the glance must not reach it.
-  it('never takes the key with it', () => {
+  // #631: there is no key left in this state to take, and the glance must not
+  // resurrect one by any route.
+  it('leaves no key behind in either direction', () => {
     for (const glanceExpired of [true, false]) {
       const r = nodePosPresentation({ ...drawn, narrow: true, glanceExpired })
-      expect(r.key, String(glanceExpired)).toContain('▲')
+      expect(r.key, String(glanceExpired)).toBe('')
     }
   })
 

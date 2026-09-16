@@ -141,12 +141,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    `#bar select, #bar input, #bar button` above sets colour at (1,0,1), and
    it also outranks `.bf-seg button.active` (0,2,1) should both ever apply. */
 #bar button:disabled { color:var(--ch-muted); opacity:.65; cursor:not-allowed; }
-.cs-cb { color:var(--ch-text); font-size:12px; display:inline-flex; align-items:center; gap:3px; cursor:pointer; }
-/* Checked state highlights the label, mirroring app's .fs-row.active pattern
-   for its own direct-only row (#225) -- .active is toggled by filters.js. */
-.cs-cb.active { color:var(--ch-accent); }
-.cs-layer-toggle { display:inline-flex; gap:8px; }
-.cs-layer-toggle[hidden] { display:none; }
+/* .cs-cb and .cs-layer-toggle went with the checkboxes in #629: the CoreScope
+   sightings are a source the node-position layer draws, so there is no control
+   of their own left to style. */
 /* Packet-type toggle chips -- data/semantics parity with the app's filter
    sheet chips already existed (#142); this brings the visual language in line
    too (#225): full pill shape and the actual accent color instead of a
@@ -584,9 +581,10 @@ body.wb-onboarding-on #bar { z-index:710; }
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
-/* Node-position layer (#197). The disclaimer stays on screen for as long as the
-   layer is drawn — it implies node locations, so a popup-only note is not
-   enough (AGENTS.md §7). Sits left so it never covers #locate-info. */
+/* Node-position layer (#197). Since #631 the glyph meaning lives in the marker
+   popup and nothing about it is written here: what this stack carries is the
+   disclaimer prose and, in the states that drew nothing, the line saying which
+   of those it was (AGENTS.md §7). Sits left so it never covers #locate-info. */
 /* One anchored stack, column-reverse: the key is first in the DOM and last in
    the visual order, so it holds the bottom corner while the note (hidden in
    every state that drew nothing, #376) grows upward above it. Neither box
@@ -795,9 +793,10 @@ body.wb-onboarding-on #bar { z-index:710; }
   padding: 4px; cursor: pointer; margin-left: auto; }
 #bar-filters.bf-open > * { flex: 0 0 auto; }
 /* Named groups (F15): the strip without groups is what the panel replaces. */
-/* The Overlays group is role-gated content under a static heading: with every
-   toggle hidden (guest), the heading would sit over nothing. */
-#bf-overlays:not(:has(.cs-layer-toggle:not([hidden]), .np-layer-toggle:not([hidden]))) { display: none; }
+/* The Overlays group used to hide itself when every toggle in it was hidden,
+   which below member was all of them. Since #629 the one control left stays on
+   screen and is disabled with a reason underneath, so the heading always has
+   something under it and the group needs no rule of its own. */
 .bf-group { display: flex; flex-direction: column; gap: 8px; }
 .bf-group + .bf-group { border-top: 1px solid var(--ch-border); padding-top: 10px; }
 .bf-group-head { font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
@@ -837,7 +836,7 @@ body.wb-onboarding-on #bar { z-index:710; }
      which is what the "+N more" button counts against -- change one and the
      button lies about the other. */
   #bar-filters:not(.bf-types-all) #f-types .f-chip:nth-child(n+8):not(.active) { display: none; }
-  #bar-filters.bf-open .cs-cb, #bar-filters.bf-open .bf-seg button,
+  #bar-filters.bf-open .bf-seg button,
   #bar-filters.bf-open #f-types .f-chip, #bar-filters.bf-open .bf-chips .f-chip { min-height: 44px; }
 }
 
@@ -953,6 +952,16 @@ body.wb-onboarding-on #bar { z-index:710; }
      down to 320px. */
   #map-notices { left: 52px; right: 8px; }
   #map-readout { right: 8px; bottom: 64px; font-size: 11px; }
+  /* #641: the notice and the readout each owned a bottom corner, and on a
+     phone there is only one. At 412px the notice's 12 + 300 leaves about 92px
+     for a readout that has to hold a node count, so the two ran into each
+     other. They stack instead of sharing the row: the notice spans the width
+     above the readout. 96px is the readout's own bottom (64, which is where
+     #659 put it to clear the credit's second line) plus its height (11px text
+     at the default line-height ~= 14, plus 4+4 padding and 1+1 border = 24)
+     plus 8px of air. The attribution keeps the strip below both, which is the
+     part that is not cosmetic. */
+  #nodepos-stack { left: 8px; right: 8px; bottom: 96px; max-width: none; }
   /* The ticker does not drag at this width (#561). It is full-bleed here
      (`min(680px, 100vw)`), so every position is the same band at a different
      height and there is no "out of the way" to reach. The chevron's stops and
