@@ -58,9 +58,9 @@ at 360x740 and 412x915, in light and dark.
 | HUD height, hunting and at the gate | 114.4 and 113 px | 114.4 and 113 px |
 | Clearance to `#layer-toggle` | 32 and 33 px | 32 and 33 px |
 
-In every case the pill is whole and `via ~` survives the cut. A note on the sender line (`No reception
-yet`, `Trace, no sender id`) is cut from its end beside the pill the same way as a name. The FAB offsets (146 to 362 px) stay:
-32 px is above the 27 px #264 measured.
+In every case the pill is whole and `via ~` survives the cut. A note on the sender line (`No
+reception yet`, `Trace, no sender id`) is cut from its end beside the pill the same way as a name.
+The FAB offsets (146 to 362 px) stay: 32 px is above the 27 px #264 measured.
 
 Before, on the same branch and the same probe: the empty HUD was 86.4 px. With the long relay name
 the SNR was cut at both widths, and even `1 queued · not connected` wrapped inside the row (HUD
@@ -77,3 +77,27 @@ oldest reception in its list on the HUD: a closed card is `display: none`, so it
 `scrollTop` 0, and the playhead was read from the scroll position. #652 keeps the row on the
 playhead explicitly, the newest while the ticker follows, so the HUD follows the newest reception
 with the ticker closed or open. The HUD rows here do not change that.
+
+## How the float readout leaves the page (#616)
+
+The float button promises a floating window, so that is what it asks for first.
+
+1. **Picture-in-picture**, where `document.pictureInPictureEnabled` says the API is on. Android
+   Chrome's video has `requestPictureInPicture` with the API switched off, so there this step is
+   skipped, and a video with the method alone no longer counts as a way out (`floatSupported`).
+2. **Fullscreen** otherwise, with `screen.orientation.lock('portrait')` once fullscreen is up, since a
+   lock is only allowed then. The 16:9 canvas would turn the phone sideways without it. A refused
+   lock still leaves the readout out. The lock is released as soon as fullscreen ends, and the
+   600 ms wait for Android's fullscreen-to-window hand-over stays as it was.
+3. **The video's own player** (`webkitEnterFullscreen`) on iPhone Safari, which has no element
+   fullscreen.
+
+The reading goes in with the tap: the canvas draws it before any window is asked for, because a
+window shows the canvas's current frame the moment it opens. A second tap while the first is still
+asking gets the same attempt. When every path is refused the button does not say the readout is
+out, and the stream stops.
+
+The order, the lock timing, the hand-over, the refusals and the in-flight guard are unit-tested
+against fakes of the video, its document and `screen.orientation`. Not verified: a real Android
+phone, including whether Chrome's own rotation for fullscreen video or the portrait lock wins, and
+whether a refused picture-in-picture request uses up the tap that fullscreen then needs.

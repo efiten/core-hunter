@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-15-float-opens-as-window",
+  "date": "2026-09-15",
+  "where": "app",
+  "title": "The float readout opens as a window",
+  "body": "Where the browser allows it the readout floats straight away. Otherwise it goes fullscreen, kept upright."
+}

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { floatModel, floatSupported } from '../floatreadout.js'
+import { createFloatReadout, floatModel, floatSupported } from '../floatreadout.js'
 import { senderReadout } from '../hudsender.js'
 
 const rec = { sender_kind: 'advert_pubkey', sender_id: 'ab12cd34ef56', sender_label: 'alpha', rssi: -85, snr: 8.5 }
@@ -75,6 +75,242 @@ describe('floatSupported', () => {
   })
   it('is false with no window at all', () => {
     expect(floatSupported(undefined)).toBe(false)
+  })
+  // Android Chrome's video has requestPictureInPicture, but the document
+  // says the API is off (#616): that alone is no way out of the page.
+  it('is false when picture-in-picture is the only path and it is disabled', () => {
+    expect(floatSupported(win({
+      document: { pictureInPictureEnabled: false },
+      HTMLVideoElement: { prototype: { requestPictureInPicture() {} } },
+    }))).toBe(false)
+  })
+})
+
+// A promise the test settles by hand. Every window request below is one, on
+// purpose: a fake that resolves at once hides the ordering under test
+// (AGENTS.md 5.1).
+function deferred() {
+  let resolve, reject
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej })
+  return { promise, resolve, reject }
+}
+
+// Lets every promise continuation that is already due run, without timers,
+// so it also works under vi.useFakeTimers.
+async function settle() {
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+}
+
+// The float readout against fakes of the canvas, the video, its document and
+// screen.orientation. `calls` is one ordered log: the window requests, play
+// and pause, the lock, and every text the canvas drew ('draw -85').
+function makeFloat({ pip = true, fullscreen = true, webkit = false } = {}) {
+  const calls = []
+  const pending = {}
+  const ask = (name) => {
+    calls.push(name)
+    const d = deferred()
+    ;(pending[name] ||= []).push(d)
+    return d.promise
+  }
+  const listeners = { doc: {}, video: {} }
+  const on = (who) => (type, fn) => { (listeners[who][type] ||= []).push(fn) }
+  const doc = {
+    pictureInPictureEnabled: pip,
+    fullscreenElement: null,
+    pictureInPictureElement: null,
+    addEventListener: on('doc'),
+    exitFullscreen: async () => { calls.push('exitFullscreen') },
+    exitPictureInPicture: async () => { calls.push('exitPictureInPicture') },
+  }
+  const video = {
+    ownerDocument: doc,
+    addEventListener: on('video'),
+    play: async () => { calls.push('play') },
+    pause: () => { calls.push('pause') },
+    requestPictureInPicture: () => ask('requestPictureInPicture'),
+  }
+  if (fullscreen) video.requestFullscreen = () => ask('requestFullscreen')
+  if (webkit) video.webkitEnterFullscreen = () => { calls.push('webkitEnterFullscreen') }
+  // A 2D context that takes any drawing call; only the text is recorded.
+  const ctx = new Proxy({}, {
+    get(target, key) {
+      if (key in target) return target[key]
+      if (key === 'fillText') return (text) => { calls.push('draw ' + text) }
+      if (key === 'measureText') return (text) => ({ width: String(text).length * 10 })
+      if (key === 'createLinearGradient') return () => ({ addColorStop() {} })
+      return () => {}
+    },
+    set(target, key, value) { target[key] = value; return true },
+  })
+  const canvas = {
+    width: 0, height: 0,
+    getContext: () => ctx,
+    captureStream: () => ({ getVideoTracks: () => [{ requestFrame() {} }] }),
+  }
+  const orientation = { lock: (o) => ask('lock ' + o), unlock: () => { calls.push('unlock') } }
+  const next = (name) => {
+    if (!pending[name] || !pending[name].length) throw new Error('nothing asked for ' + name + '; calls: ' + calls.join(', '))
+    return pending[name].shift()
+  }
+  const opened = []
+  const float = createFloatReadout({ canvas, video, colors: () => '#000000', onChange: (v) => opened.push(v), orientation })
+  return {
+    float, calls, opened, doc, video,
+    count: (name) => calls.filter((c) => c === name).length,
+    resolve: (name) => next(name).resolve(),
+    reject: (name) => next(name).reject(new Error(name + ' refused')),
+    fire: (type) => (listeners.doc[type] || []).forEach((fn) => fn()),
+  }
+}
+
+// #616: the button promises a floating window. Picture-in-picture is that
+// window, so it is asked for first; fullscreen is the fallback Android Chrome
+// needs (its video PiP API is off), and it stays upright.
+describe('createFloatReadout open path (#616)', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  // Up to the window request, then through the fullscreen step to open.
+  async function openFullscreen(h) {
+    h.float.open()
+    await settle()
+    h.doc.fullscreenElement = h.video
+    h.resolve('requestFullscreen')
+    await settle()
+    h.resolve('lock portrait')
+    await settle()
+  }
+
+  it('asks for picture-in-picture first where the browser has it enabled', async () => {
+    const h = makeFloat()
+    h.float.open()
+    await settle()
+    expect(h.count('requestPictureInPicture')).toBe(1)
+    expect(h.count('requestFullscreen')).toBe(0)
+    expect(h.float.isOpen()).toBe(false)
+    h.resolve('requestPictureInPicture')
+    await settle()
+    expect(h.float.isOpen()).toBe(true)
+    expect(h.opened).toEqual([true])
+  })
+
+  it('goes fullscreen when picture-in-picture is disabled, and locks portrait only once fullscreen is up', async () => {
+    const h = makeFloat({ pip: false })
+    h.float.open()
+    await settle()
+    expect(h.count('requestPictureInPicture')).toBe(0)
+    expect(h.count('requestFullscreen')).toBe(1)
+    expect(h.calls.some((c) => c.startsWith('lock'))).toBe(false)
+    h.doc.fullscreenElement = h.video
+    h.resolve('requestFullscreen')
+    await settle()
+    expect(h.count('lock portrait')).toBe(1)
+    h.resolve('lock portrait')
+    await settle()
+    expect(h.float.isOpen()).toBe(true)
+  })
+
+  it('falls back to fullscreen when picture-in-picture is refused', async () => {
+    const h = makeFloat()
+    h.float.open()
+    await settle()
+    h.reject('requestPictureInPicture')
+    await settle()
+    expect(h.count('requestFullscreen')).toBe(1)
+    expect(h.float.isOpen()).toBe(false)
+    h.resolve('requestFullscreen')
+    await settle()
+    h.resolve('lock portrait')
+    await settle()
+    expect(h.float.isOpen()).toBe(true)
+  })
+
+  // iOS has no orientation lock, and a desktop browser refuses one: the
+  // readout is out either way.
+  it('still opens when the orientation lock is refused', async () => {
+    const h = makeFloat({ pip: false })
+    h.float.open()
+    await settle()
+    h.resolve('requestFullscreen')
+    await settle()
+    h.reject('lock portrait')
+    await settle()
+    expect(h.float.isOpen()).toBe(true)
+    expect(h.opened).toEqual([true])
+  })
+
+  // iPhone Safari: no element fullscreen, only the video's own player.
+  it('uses webkitEnterFullscreen where that is the only way out', async () => {
+    const h = makeFloat({ pip: false, fullscreen: false, webkit: true })
+    h.float.open()
+    await settle()
+    expect(h.count('webkitEnterFullscreen')).toBe(1)
+    expect(h.float.isOpen()).toBe(true)
+  })
+
+  it('does not report open when every path failed', async () => {
+    const h = makeFloat()
+    const done = h.float.open()
+    await settle()
+    h.reject('requestPictureInPicture')
+    await settle()
+    h.reject('requestFullscreen')
+    await expect(done).resolves.toBeUndefined()
+    expect(h.float.isOpen()).toBe(false)
+    expect(h.opened).not.toContain(true)
+    expect(h.calls.at(-1)).toBe('pause')
+  })
+
+  it('unlocks the orientation as soon as fullscreen ends', async () => {
+    vi.useFakeTimers()
+    const h = makeFloat({ pip: false })
+    await openFullscreen(h)
+    expect(h.count('unlock')).toBe(0)
+    h.doc.fullscreenElement = null
+    h.fire('fullscreenchange')
+    expect(h.count('unlock')).toBe(1)
+  })
+
+  // Android hands a fullscreen video to its floating window in two steps:
+  // fullscreen ends, and pictureInPictureElement is set a moment later. The
+  // check waits for that instead of reading the gap as a close.
+  it('keeps the window open through the fullscreen-to-window hand-over', async () => {
+    vi.useFakeTimers()
+    const h = makeFloat({ pip: false })
+    await openFullscreen(h)
+    h.doc.fullscreenElement = null
+    h.fire('fullscreenchange')
+    await vi.advanceTimersByTimeAsync(400)
+    h.doc.pictureInPictureElement = h.video
+    await vi.advanceTimersByTimeAsync(700)
+    expect(h.float.isOpen()).toBe(true)
+    expect(h.count('pause')).toBe(0)
+  })
+
+  // The window shows its first frame the moment it opens, so that frame has
+  // to be the reading the HUD shows, not the placeholders.
+  it('draws the given reading before asking for a window', async () => {
+    const h = makeFloat()
+    h.float.open(floatModel(base))
+    await settle()
+    const drew = h.calls.indexOf('draw -85')
+    expect(drew).toBeGreaterThanOrEqual(0)
+    expect(drew).toBeLessThan(h.calls.indexOf('requestPictureInPicture'))
+  })
+
+  it('starts one open at a time', async () => {
+    const h = makeFloat()
+    h.float.open()
+    h.float.open()
+    await settle()
+    expect(h.count('requestPictureInPicture')).toBe(1)
+    expect(h.count('play')).toBe(1)
+    h.resolve('requestPictureInPicture')
+    await settle()
+    await h.float.close()
+    h.float.open()
+    await settle()
+    expect(h.count('requestPictureInPicture')).toBe(2)
   })
 })
 

@@ -1,12 +1,14 @@
 // The float readout (#555): the HUD's reading drawn onto a canvas, streamed
-// into a <video>, and shown fullscreen. That is the one way a web page has to
-// keep a live readout on top of another app on Android: Chrome moves a
-// fullscreen video into a picture-in-picture window by itself when the user
-// presses Home or switches apps. Chrome's automatic PiP through the Media
-// Session API is desktop-only, so fullscreen is the path.
+// into a <video>, and taken out of the page (#616). Where the browser has the
+// picture-in-picture API on, the video goes straight into its floating
+// window. Android Chrome has that API off, so there the video goes fullscreen
+// instead, locked upright, and Chrome moves the fullscreen video into its
+// floating window by itself when the user presses Home or switches apps.
+// Chrome's automatic PiP through the Media Session API is desktop-only.
 //
-// floatModel and floatSupported are pure and unit-tested; createFloatReadout
-// is DOM glue, verified by build and in the browser like huntmap.js.
+// floatModel, floatSupported and createFloatReadout's open path are
+// unit-tested against fakes; the drawing is canvas glue, verified by build
+// and in the browser like huntmap.js.
 import { senderReadout } from './hudsender.js'
 import { rssiTier } from './signal.js'
 
@@ -31,7 +33,9 @@ export function floatModel({ rec, sinceText, mode, hidden, ble, mqtt, offsetDb =
 
 // floatSupported: can this browser stream a canvas into a video and take that
 // video out of the page? Element fullscreen is the Android path; iOS has only
-// webkitEnterFullscreen, which still shows the readout big.
+// webkitEnterFullscreen, which still shows the readout big. Picture-in-picture
+// counts only where the document says it is enabled: Android Chrome's video
+// has the method with the API switched off.
 export function floatSupported(win) {
   if (!win || !win.document) return false
   const canvas = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype
@@ -39,7 +43,7 @@ export function floatSupported(win) {
   if (!canvas || typeof canvas.captureStream !== 'function') return false
   if (!video) return false
   return typeof video.requestFullscreen === 'function' || typeof video.webkitEnterFullscreen === 'function'
-    || typeof video.requestPictureInPicture === 'function'
+    || (!!win.document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function')
 }
 
 // Canvas size. 4:3, so the PiP window Android cuts from it is squarer than a
@@ -49,8 +53,9 @@ const W = 800, H = 600
 
 // createFloatReadout owns the canvas, the video and the drawing. `colors`
 // resolves a --ch-* token to a colour at draw time, so the window follows the
-// theme without this module reading the stylesheet.
-export function createFloatReadout({ canvas, video, colors, onChange }) {
+// theme without this module reading the stylesheet. `orientation` is
+// screen.orientation, passed in so the lock can be tested.
+export function createFloatReadout({ canvas, video, colors, onChange, orientation = globalThis.screen && globalThis.screen.orientation }) {
   if (!canvas || !video || !canvas.captureStream) return { supported: false, draw() {}, open() {}, close() {}, isOpen: () => false }
   canvas.width = W
   canvas.height = H
@@ -62,8 +67,10 @@ export function createFloatReadout({ canvas, video, colors, onChange }) {
   const track = stream.getVideoTracks()[0]
   video.srcObject = stream
   video.muted = true
+  const doc = video.ownerDocument
   let model = null
   let out = false
+  let opening = null
 
   function draw(next) {
     if (next) model = next
@@ -124,25 +131,47 @@ export function createFloatReadout({ canvas, video, colors, onChange }) {
     if (track && track.requestFrame) track.requestFrame()
   }
 
-  // open: draw, play, and take the video fullscreen. Must run inside a tap:
-  // both play() on a fresh stream and requestFullscreen need the gesture.
-  async function open() {
-    draw()
+  // open: draw the given reading, play, and take the video out of the page.
+  // Must run inside a tap: play() on a fresh stream, requestPictureInPicture
+  // and requestFullscreen all need the gesture. The reading is drawn first,
+  // because the window shows the canvas's current frame the moment it opens.
+  // A second tap while the first is still asking gets the same attempt.
+  function open(next) {
+    if (!opening) opening = openOnce(next).finally(() => { opening = null })
+    return opening
+  }
+
+  async function openOnce(next) {
+    draw(next)
     try { await video.play() } catch (_) {}
-    try {
-      if (video.requestFullscreen) await video.requestFullscreen()
-      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen()
-      else if (video.requestPictureInPicture) await video.requestPictureInPicture()
-    } catch (_) {
-      // Fullscreen refused (no gesture, or a platform that denies it): fall
-      // back to a plain floating window where that exists.
-      try { if (video.requestPictureInPicture) await video.requestPictureInPicture() } catch (_) {}
+    if (await floatWindow() || await fullscreen()) { setOpen(true); return }
+    // Every path was refused: nothing left the page, so the button must not
+    // say it did, and the stream stops.
+    try { video.pause() } catch (_) {}
+  }
+
+  // The floating window itself, where the browser has the API on.
+  async function floatWindow() {
+    if (!doc.pictureInPictureEnabled || !video.requestPictureInPicture) return false
+    try { await video.requestPictureInPicture(); return true } catch (_) { return false }
+  }
+
+  // Fullscreen, the Android path. The canvas is landscape, so Chrome would
+  // turn the phone's screen sideways; the portrait lock keeps the readout
+  // upright. A lock is only allowed while fullscreen, so it waits for that,
+  // and a refused lock still leaves the readout out. iPhone Safari has no
+  // element fullscreen, only the video's own player.
+  async function fullscreen() {
+    if (video.requestFullscreen) {
+      try { await video.requestFullscreen() } catch (_) { return false }
+      try { if (orientation && orientation.lock) await orientation.lock('portrait') } catch (_) {}
+      return true
     }
-    setOpen(true)
+    if (!video.webkitEnterFullscreen) return false
+    try { video.webkitEnterFullscreen(); return true } catch (_) { return false }
   }
 
   async function close() {
-    const doc = video.ownerDocument
     try { if (doc.fullscreenElement === video && doc.exitFullscreen) await doc.exitFullscreen() } catch (_) {}
     try { if (doc.pictureInPictureElement === video && doc.exitPictureInPicture) await doc.exitPictureInPicture() } catch (_) {}
     try { video.pause() } catch (_) {}
@@ -161,7 +190,6 @@ export function createFloatReadout({ canvas, video, colors, onChange }) {
   // window in two steps: fullscreen ends first, and pictureInPictureElement is
   // set a moment later. Checking on the same tick would read that hand-over
   // as a close and pause the stream under the window.
-  const doc = video.ownerDocument
   let syncTimer = null
   const sync = () => {
     clearTimeout(syncTimer)
@@ -170,7 +198,12 @@ export function createFloatReadout({ canvas, video, colors, onChange }) {
       if (!stillOut && out) { try { video.pause() } catch (_) {} setOpen(false) }
     }, 600)
   }
-  doc.addEventListener('fullscreenchange', sync)
+  // The portrait lock belongs to the fullscreen step only, so it is released
+  // the moment fullscreen ends, not after the hand-over wait.
+  doc.addEventListener('fullscreenchange', () => {
+    if (doc.fullscreenElement !== video) { try { if (orientation && orientation.unlock) orientation.unlock() } catch (_) {} }
+    sync()
+  })
   video.addEventListener('leavepictureinpicture', sync)
   video.addEventListener('webkitendfullscreen', sync)
   video.addEventListener('enterpictureinpicture', () => { clearTimeout(syncTimer); setOpen(true) })

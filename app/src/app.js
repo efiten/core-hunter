@@ -232,7 +232,7 @@ const state = {
   hudHidden: 0,
   lastRec: null,
   // The float readout (#555), or null where the browser cannot stream a
-  // canvas into a fullscreen video.
+  // canvas into a video and take that video out of the page.
   float: null,
   filter: { ...DEFAULT_FILTER },
   // Resolved name per selected target id (lowercased) — for the chip label
@@ -374,26 +374,29 @@ function syncHudToPlayhead() {
   showOnHud(rec, Number.isNaN(at) ? state.hudAt : at)
 }
 
-// drawFloat repaints the float readout when it is out. It shows the HUD's
-// reception, which is the ticker's playhead (#453): the PiP window's
+// floatModelNow is what the float readout shows right now: the HUD's
+// reception, which is the ticker's playhead (#453). The PiP window's
 // previous/next buttons scrub that playhead, and the HUD moves with it. The
 // hidden count only means something while the ticker follows; a scrubbed
 // playhead is a choice, not something the filter kept off.
-function drawFloat() {
-  if (!state.float || !state.float.isOpen()) return
-  const now = Date.now()
+function floatModelNow() {
   const following = !state.rxLog || state.rxLog.following()
-  const rec = state.hudRec
   const at = state.hudAt
-  state.float.draw(floatModel({
-    rec,
-    sinceText: sinceLabel(now, at == null || Number.isNaN(at) ? null : at),
+  return floatModel({
+    rec: state.hudRec,
+    sinceText: sinceLabel(Date.now(), at == null || Number.isNaN(at) ? null : at),
     mode: state.rxMode,
     hidden: following ? state.hudHidden : 0,
     ble: state.connected,
     mqtt: Boolean(state.publisher && state.publisher.connected()),
     offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb),
-  }))
+  })
+}
+
+// drawFloat repaints the float readout when it is out.
+function drawFloat() {
+  if (!state.float || !state.float.isOpen()) return
+  state.float.draw(floatModelNow())
 }
 
 // initFloatReadout builds the float readout where the browser can, and wires
@@ -414,7 +417,9 @@ function initFloatReadout() {
     },
   })
   btn.hidden = !state.float.supported
-  btn.addEventListener('click', () => { if (state.float.isOpen()) state.float.close(); else state.float.open() })
+  // The reading goes in with the tap: the window opens on the canvas's
+  // current frame, and nothing draws there while the readout is in (#616).
+  btn.addEventListener('click', () => { if (state.float.isOpen()) state.float.close(); else state.float.open(floatModelNow()) })
   if (!('mediaSession' in navigator)) return
   try {
     navigator.mediaSession.metadata = new MediaMetadata({ title: APP_NAME, artist: 'Float readout' })
