@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/efiten/core-hunter/compare/server-v1.9.0...server-v1.10.0) (2026-09-17)
+
+
+### Features
+
+* **app,web:** a reading layer that points at the node you heard ([#667](https://github.com/efiten/core-hunter/issues/667)) ([23c823d](https://github.com/efiten/core-hunter/commit/23c823d6b50e871c0220419248f24eba38719f1c))
+
 ## [1.9.0](https://github.com/efiten/core-hunter/compare/server-v1.8.0...server-v1.9.0) (2026-09-12)
 
 
