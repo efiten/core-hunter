@@ -152,9 +152,11 @@
     </div>
   </section>
   <!-- The float readout's canvas and video (#555). Off-screen until the video
-       floats or goes fullscreen; the canvas is only ever a source. -->
-  <canvas id="float-canvas" aria-hidden="true"></canvas>
-  <video id="float-video" muted playsinline aria-label="Float readout"></video>
+       floats or goes fullscreen; the canvas is only ever a source. Both carry
+       the dark palette whatever the app's theme: the window hangs over other
+       apps, often a dark navigation app (#615). -->
+  <canvas id="float-canvas" data-theme="dark" aria-hidden="true"></canvas>
+  <video id="float-video" data-theme="dark" muted playsinline aria-label="Float readout"></video>
   <button id="layer-toggle" aria-label="View"></button>
   <button id="discover-btn" aria-label="Auto-discover: off" disabled>
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">

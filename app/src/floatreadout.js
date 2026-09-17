@@ -10,25 +10,43 @@
 // unit-tested against fakes; the drawing is canvas glue, verified by build
 // and in the browser like huntmap.js.
 import { senderReadout } from './hudsender.js'
+import { hudToggleText } from './hudmode.js'
 import { rssiTier } from './signal.js'
 
 // floatModel is everything the window draws, as plain values. It follows the
-// HUD's rules: senderReadout for the name, rssiTier with the plot offset for
-// the colour, the stand and the eye from hudmode.
+// HUD's rules: senderReadout for the sender line, rssiTier with the plot
+// offset for the colour, hudToggleText for the stand and the eye. Before the
+// first reception there is nothing to show, and the window says so (empty)
+// instead of drawing placeholders.
 export function floatModel({ rec, sinceText, mode, hidden, ble, mqtt, offsetDb = 0 } = {}) {
   const has = !!rec
-  const all = mode === 'all'
+  const { prefix, name, note } = senderReadout(rec)
+  const toggle = hudToggleText(mode, hidden)
   return {
-    rssi: has && rec.rssi != null ? String(rec.rssi) : '—',
-    snr: has && rec.snr != null ? 'SNR ' + Number(rec.snr).toFixed(1) + ' dB' : 'SNR —',
-    since: sinceText || '—',
-    who: senderReadout(rec).text,
+    empty: !has,
+    rssi: has && rec.rssi != null ? String(rec.rssi) : '',
+    snr: has && rec.snr != null ? 'SNR ' + Number(rec.snr).toFixed(1) + ' dB' : '',
+    since: has ? sinceText || '' : '',
     tier: has ? rssiTier(rec.rssi, offsetDb) : 'none',
-    stand: all ? 'ALL' : 'FILTERED',
-    eye: !all && (Number(hidden) || 0) > 0,
-    dots: { ble: !!ble, mqtt: !!mqtt },
-    warning: ble ? '' : 'Disconnected',
+    sender: { prefix, name, note },
+    stand: toggle.label,
+    eye: toggle.eye,
+    links: { ble: !!ble, mqtt: !!mqtt },
+    status: ble ? '' : 'Disconnected',
   }
+}
+
+// fitName cuts a name to maxWidth by whole graphemes, ending in an ellipsis,
+// so an emoji in a node's name is never split into a replacement glyph.
+// `measure` is the canvas's text width; the numbers never pass through here.
+export function fitName(text, maxWidth, measure) {
+  const s = String(text ?? '')
+  if (measure(s) <= maxWidth) return s
+  const g = typeof Intl !== 'undefined' && Intl.Segmenter
+    ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].map((x) => x.segment)
+    : Array.from(s)
+  while (g.length > 1 && measure(g.join('') + '\u2026') > maxWidth) g.pop()
+  return g.join('') + '\u2026'
 }
 
 // floatSupported: can this browser stream a canvas into a video and take that
@@ -46,14 +64,20 @@ export function floatSupported(win) {
     || (!!win.document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function')
 }
 
-// Canvas size. 4:3, so the PiP window Android cuts from it is squarer than a
-// film frame and holds four lines; fullscreen letterboxes, and app.css paints
-// those bars with --ch-bg, the same ground this canvas fills below.
-const W = 800, H = 600
+// Canvas size. 16:9, the shape of the window Android gives a video: measured
+// at 548x308 and 505x284 device px on a 1080px phone (1.78). The old 4:3
+// canvas filled 75% of that width and left a band on each side (#615). The
+// text sizes stayed, so the sender line holds about 25 characters, not 18.
+// Fullscreen letterboxes an upright phone, and app.css paints those bars with
+// --ch-bg, the same dark ground this canvas fills below.
+const W = 1067, H = 600
+// The text's left edge, past the 28px tier bar, and its right edge.
+const L = 72, R = W - 56
 
 // createFloatReadout owns the canvas, the video and the drawing. `colors`
-// resolves a --ch-* token to a colour at draw time, so the window follows the
-// theme without this module reading the stylesheet. `orientation` is
+// resolves a --ch-* token to a colour at draw time, read from the canvas,
+// which carries data-theme="dark": the window is dark whatever the app's
+// theme, without this module reading the stylesheet (#615). `orientation` is
 // screen.orientation, passed in so the lock can be tested.
 export function createFloatReadout({ canvas, video, colors, onChange, orientation = globalThis.screen && globalThis.screen.orientation }) {
   if (!canvas || !video || !canvas.captureStream) return { supported: false, draw() {}, open() {}, close() {}, isOpen: () => false }
@@ -78,56 +102,85 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
     const tier = colors(`--ch-sig-${m.tier}`)
     const text = colors('--ch-text')
     const muted = colors('--ch-muted')
-    const bg = colors('--ch-bg')
     const alert = colors('--ch-accent-2')
     const accent = colors('--ch-accent')
     ctx.clearRect(0, 0, W, H)
-    ctx.fillStyle = bg
+    ctx.fillStyle = colors('--ch-bg')
     ctx.fillRect(0, 0, W, H)
-    // The tier is the window: a tint from the top and a bar down the left, so
-    // from the corner of an eye the colour alone says closer or further.
-    const g = ctx.createLinearGradient(0, 0, 0, H)
-    g.addColorStop(0, withAlpha(tier, 0.28))
-    g.addColorStop(1, withAlpha(tier, 0.08))
-    ctx.fillStyle = g
-    ctx.fillRect(0, 0, W, H)
+    // The tier bar down the left: from the corner of an eye the colour alone
+    // says closer or further. The number wears the same colour, as on the HUD.
     ctx.fillStyle = tier
     ctx.fillRect(0, 0, 28, H)
-    const mono = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace'
-    // Hero RSSI, white, with the unit small beside it.
-    ctx.fillStyle = text
     ctx.textBaseline = 'alphabetic'
-    ctx.font = `700 190px ${mono}`
-    ctx.fillText(m.rssi, 64, 230)
-    const w = ctx.measureText(m.rssi).width
-    ctx.font = `500 52px ${mono}`
-    ctx.fillStyle = muted
-    ctx.fillText('dBm', 64 + w + 22, 230)
-    // SNR left, age right.
-    ctx.font = `500 54px ${mono}`
-    ctx.fillStyle = muted
-    ctx.fillText(m.snr, 64, 320)
-    ctx.textAlign = 'right'
-    ctx.fillText(m.since, W - 48, 320)
     ctx.textAlign = 'left'
-    // Sender.
-    ctx.font = `600 62px ${mono}`
-    ctx.fillStyle = text
-    fitText(ctx, m.who, 64, 440, W - 112)
-    // Footer: the stand with the eye, the two link dots, and the warning.
-    ctx.font = `700 36px ${mono}`
-    let x = 64
-    if (m.eye) { dot(ctx, x + 14, 526, 14, alert); x += 44 }
-    ctx.fillStyle = accent
-    ctx.fillText(m.stand, x, 540)
-    dot(ctx, W - 176, 526, 13, m.dots.ble ? accent : muted)
-    dot(ctx, W - 132, 526, 13, m.dots.mqtt ? accent : muted)
-    if (m.warning) {
-      ctx.fillStyle = alert
+    if (m.empty) {
+      ctx.fillStyle = text
+      ctx.font = `700 92px ${MONO}`
+      ctx.fillText('No reception yet', L, 210)
+      ctx.fillStyle = muted
+      ctx.font = `500 50px ${MONO}`
+      ctx.fillText('The reading appears here', L, 320)
+      ctx.fillText('when a packet comes in.', L, 382)
+    } else {
+      if (m.rssi) {
+        ctx.fillStyle = tier
+        ctx.font = `700 190px ${MONO}`
+        ctx.fillText(m.rssi, L, 230)
+        const w = ctx.measureText(m.rssi).width
+        ctx.fillStyle = muted
+        ctx.font = `500 52px ${MONO}`
+        ctx.fillText('dBm', L + w + 22, 230)
+      }
+      // SNR left, age right. Numbers are never cut.
+      ctx.fillStyle = muted
+      ctx.font = `500 54px ${MONO}`
+      ctx.fillText(m.snr, L, 322)
       ctx.textAlign = 'right'
-      ctx.fillText(m.warning.toUpperCase(), W - 216, 540)
+      ctx.fillText(m.since, R, 322)
       ctx.textAlign = 'left'
+      // The sender line: "via ~" muted and whole, the name cut from its end,
+      // or the note ("Trace, no sender id") muted.
+      ctx.font = `600 62px ${MONO}`
+      const measure = (s) => ctx.measureText(s).width
+      if (m.sender.note) {
+        ctx.fillStyle = muted
+        ctx.fillText(fitName(m.sender.note, R - L, measure), L, 442)
+      } else {
+        let x = L
+        if (m.sender.prefix) {
+          ctx.fillStyle = muted
+          ctx.fillText(m.sender.prefix, x, 442)
+          x += measure(m.sender.prefix)
+        }
+        ctx.fillStyle = text
+        ctx.fillText(fitName(m.sender.name, R - x, measure), x, 442)
+      }
     }
+    // Footer: the stand in the HUD's word with its closed eye when the filter
+    // kept receptions off, the status when BLE is gone, and the two links by
+    // name on the right, a filled dot when up and a hollow one when down.
+    const y = 548
+    ctx.fillStyle = accent
+    ctx.font = `700 38px ${MONO}`
+    ctx.fillText(m.stand, L, y)
+    let sx = L + ctx.measureText(m.stand).width
+    if (m.eye) { drawEye(ctx, sx + 16, y - 32, 36, accent); sx += 16 + 36 }
+    if (m.status) {
+      ctx.fillStyle = alert
+      ctx.font = `600 36px ${MONO}`
+      ctx.fillText(m.status, sx + 34, y)
+    }
+    ctx.font = `600 36px ${MONO}`
+    ctx.textAlign = 'right'
+    let rx = R
+    for (const [word, up] of [['MQTT', m.links.mqtt], ['BLE', m.links.ble]]) {
+      ctx.fillStyle = up ? muted : alert
+      ctx.fillText(word, rx, y)
+      rx -= ctx.measureText(word).width + 22
+      linkDot(ctx, rx, y - 13, 11, up ? accent : alert, !up)
+      rx -= 11 + 40
+    }
+    ctx.textAlign = 'left'
     if (track && track.requestFrame) track.requestFrame()
   }
 
@@ -211,27 +264,29 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
   return { supported: true, draw, open, close, isOpen: () => out }
 }
 
-function dot(ctx, cx, cy, r, color) {
-  ctx.fillStyle = color
+const MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace'
+
+function linkDot(ctx, cx, cy, r, color, hollow) {
   ctx.beginPath()
   ctx.arc(cx, cy, r, 0, Math.PI * 2)
-  ctx.fill()
+  if (hollow) { ctx.lineWidth = 5; ctx.strokeStyle = color; ctx.stroke() } else { ctx.fillStyle = color; ctx.fill() }
 }
 
-// fitText draws a line and shortens it with an ellipsis when it would run past
-// maxWidth: the name is the one line whose length the app does not control.
-function fitText(ctx, s, x, y, maxWidth) {
-  let t = String(s)
-  if (ctx.measureText(t).width <= maxWidth) { ctx.fillText(t, x, y); return }
-  while (t.length > 1 && ctx.measureText(t + '…').width > maxWidth) t = t.slice(0, -1)
-  ctx.fillText(t + '…', x, y)
-}
-
-// withAlpha turns a #rrggbb token value into rgba(); a token that is not hex
-// (rgba() already) is used as-is, and the tint then simply is that colour.
-function withAlpha(hex, a) {
-  const m = /^#([0-9a-f]{6})$/i.exec(String(hex || '').trim())
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
+// The HUD's closed eye (index.html .hud-eye), on its 20-unit grid, drawn at
+// `size` px with its top left at (x, y).
+const EYE_PATHS = [
+  'M3 3l14 14',
+  'M8.5 5.3A8.6 8.6 0 0 1 10 5.2c4.2 0 7.3 3.4 8.3 4.8-.5.7-1.4 1.8-2.6 2.8M6.2 6.8C4 8 2.4 9.5 1.7 10c1 1.4 4.1 4.8 8.3 4.8 1.2 0 2.3-.3 3.3-.7',
+  'M8.2 8.2a2.5 2.5 0 0 0 3.6 3.6',
+]
+function drawEye(ctx, x, y, size, color) {
+  if (typeof Path2D !== 'function') return
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.scale(size / 20, size / 20)
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.7
+  ctx.lineCap = 'round'
+  for (const d of EYE_PATHS) ctx.stroke(new Path2D(d))
+  ctx.restore()
 }

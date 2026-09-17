@@ -215,10 +215,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .hud-btn-icon { padding: 5px 8px; }
 #hud-float.active { border-color: var(--ch-accent-2); color: var(--ch-accent-2); background: transparent; }
 #hud-float[hidden] { display: none; }
-/* The float readout's source and player. The video is a 1px dot until it goes
-   fullscreen, where it fills the screen on --ch-bg: the canvas is 4:3 and a
-   phone screen is not, so the bars above and below it are the page's own
-   ground in either theme. The canvas itself is never shown. */
+/* The float readout's source and player. The video is a 1px dot until it
+   floats or goes fullscreen, where it fills the screen on --ch-bg: the canvas
+   is 16:9 and an upright phone is not, so there are bars above and below it.
+   The video carries data-theme="dark" (#615), so they are the same dark
+   ground the canvas fills, in either app theme. The canvas is never shown. */
 #float-canvas { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #float-video { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #float-video:fullscreen { opacity: 1; width: 100%; height: 100%; object-fit: contain; background: var(--ch-bg); pointer-events: auto; }

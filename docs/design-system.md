@@ -39,6 +39,11 @@ Both themes are declared for every token. `--ch-basemap` is a hint, not a colour
 **Signal tiers are for readings, never for UI state.** A selected chip is `--ch-accent`, not
 `--ch-sig-cool`. That confusion is what #225 fixed on the map.
 
+**Surface rule: the float readout is always dark** (#615). It is a window over other apps, not a
+part of the page, and it sits over whatever that app draws, most often a dark navigation app.
+The app's theme does not reach it: its canvas and video carry `data-theme="dark"`, which
+`tokens.css` declares on any element, so the dark values apply without a token of their own.
+
 **Guard:** `web/parity.test.js` pins that `--ch-rx-line-h`, `--ch-rx-head-h` and `--ch-surface-thin`
 are declared on `:root` on both surfaces with the same values. The two ticker ones together are
 the card's geometry, which the map computes before the card exists, so a surface that misses one

@@ -409,7 +409,8 @@ function initFloatReadout() {
   state.float = createFloatReadout({
     canvas: el('float-canvas'),
     video: el('float-video'),
-    colors: (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim(),
+    // Read from the canvas, which carries data-theme="dark" (#615).
+    colors: (v) => getComputedStyle(el('float-canvas')).getPropertyValue(v).trim(),
     onChange: (open) => {
       btn.classList.toggle('active', open)
       btn.setAttribute('aria-pressed', String(open))

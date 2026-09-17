@@ -1,7 +1,7 @@
 # The HUD follows the filter, and acts on what it shows (#555)
 
 **Date:** 2026-09-04
-**Status:** decided (Kasper, 2026-09-04), implemented
+**Status:** decided (Kasper, 2026-09-04), implemented; float readout amended 2026-09-15 (#615, #616)
 **Related:** #453 (the HUD name frozen at capture time, stays open), #301 (sound while hidden, unchanged), #408 (native PiP)
 
 ## What changed
@@ -75,6 +75,13 @@ Decided in the same round (Kasper, 2026-09-04, artboards R8 and R9): the row get
 - **What it shows.** The tier colour as tint and left bar, the RSSI in white, SNR and age, the
   sender through `senderReadout`, the stand with the eye, the BLE and MQTT dots, and `Disconnected`
   in amber when BLE is gone. It follows the shared stand like the HUD.
+
+  > **Amended 2026-09-15 by `docs/2026-09-15-reading-layer.md` (#615, #616).** The canvas is 16:9
+  > (1067x600) and always dark. The tint is gone: the left bar and the RSSI carry the tier colour, as
+  > the RSSI does on the HUD. The stand reads the HUD's `Filtered` / `All`, and the dots are named
+  > `BLE` and `MQTT`, hollow and in `--ch-accent-2` when down. Before the first reception the window
+  > says `No reception yet`. The button asks for picture-in-picture first and falls back to
+  > fullscreen, locked upright.
 - **The two buttons Android puts on the window.** Previous and next (Media Session `previoustrack`
   / `nexttrack`) scrub the ticker's playhead, so the window steps through the same list the ticker
   shows, with each reception's own age. Stepping onto the newest row makes it follow again.

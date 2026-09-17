@@ -78,6 +78,31 @@ oldest reception in its list on the HUD: a closed card is `display: none`, so it
 playhead explicitly, the newest while the ticker follows, so the HUD follows the newest reception
 with the ticker closed or open. The HUD rows here do not change that.
 
+## The float readout (#615)
+
+Android cuts a 16:9 window for a video: 548x308 and 505x284 device px on a 1080px phone. The 4:3
+canvas filled 75% of that width and left a band on each side, so the canvas is 1067x600 now, at
+the same text sizes. The sender line holds about 25 characters instead of 18.
+
+- **Always dark.** The window hangs over other apps, often a dark navigation app, and a cream
+  window over one reads badly. The canvas and the video carry `data-theme="dark"`, which
+  `tokens.css` declares on any element, and the colours are read from the canvas. No token of its
+  own; the fullscreen bars stay `--ch-bg`, now the dark one.
+- **The reading.** A 28px tier bar, the RSSI at 190px in its tier colour with a muted `dBm`, SNR left
+  and age right on one line. Numbers are never cut.
+- **The sender line.** The HUD's `senderReadout` parts: `via ~` muted and whole, the name in the
+  text colour cut from its end by whole graphemes (`fitName`), so an emoji is never split. A
+  reception without a sender shows the note, muted.
+- **The footer.** The stand in the HUD's word, `Filtered` or `All`, with the HUD's closed eye when
+  the filter kept receptions off; `Disconnected` in `--ch-accent-2` when BLE is gone; `BLE` and
+  `MQTT` by name on the right, with a filled `--ch-accent` dot when up and a hollow `--ch-accent-2`
+  one when down.
+- **Before the first reception** the window reads `No reception yet` and `The reading appears here
+  when a packet comes in.`
+
+`floatModel` and `fitName` are unit-tested; the drawing is canvas glue, checked by drawing the real
+canvas for six states with the app in its light theme.
+
 ## How the float readout leaves the page (#616)
 
 The float button promises a floating window, so that is what it asks for first.
