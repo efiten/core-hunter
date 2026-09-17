@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.27.0](https://github.com/efiten/core-hunter/compare/app-v1.26.0...app-v1.27.0) (2026-09-17)
+
+
+### Features
+
+* **app,web:** a reading layer that points at the node you heard ([#667](https://github.com/efiten/core-hunter/issues/667)) ([23c823d](https://github.com/efiten/core-hunter/commit/23c823d6b50e871c0220419248f24eba38719f1c))
+* **app,web:** one control for where nodes are, and a glyph key that lives in the popup ([#653](https://github.com/efiten/core-hunter/issues/653)) ([640d5ae](https://github.com/efiten/core-hunter/commit/640d5aea4bfc1fe2e7a3dffb848786c95232feda))
+* **map:** select any repeater's reach, and dim the rest of the map with it ([#656](https://github.com/efiten/core-hunter/issues/656)) ([1142292](https://github.com/efiten/core-hunter/commit/114229213c1f2031ac603e1dc9452f3e74bb7482))
+* **web:** one control rail on the map, and the ticker pinned on a phone ([#657](https://github.com/efiten/core-hunter/issues/657)) ([5360f70](https://github.com/efiten/core-hunter/commit/5360f70cd9d568cc2ef63eca10f96690d779b59c))
+
+
+### Bug Fixes
+
+* **app,web:** make the receptions card and the map agree on what is on show ([#652](https://github.com/efiten/core-hunter/issues/652)) ([c44bcfc](https://github.com/efiten/core-hunter/commit/c44bcfc7b5814c7be444fc11e992aa1716641fb0))
+* **app,web:** mount the overlays when the style is ready, not when its tiles are ([#654](https://github.com/efiten/core-hunter/issues/654)) ([4f9fef2](https://github.com/efiten/core-hunter/commit/4f9fef27f8913506fa654732819782c8314679bc))
+* **map:** show when a reception arrived and which ride it belongs to ([#655](https://github.com/efiten/core-hunter/issues/655)) ([7d476bd](https://github.com/efiten/core-hunter/commit/7d476bda9e309504cc7329c25c060c2d3553520a))
+* **web:** stand the map readout above the attribution, not on it ([#659](https://github.com/efiten/core-hunter/issues/659)) ([8b9d47d](https://github.com/efiten/core-hunter/commit/8b9d47df87de5194cbab64596239bc84e1fd63fb))
+
 ## [1.26.0](https://github.com/efiten/core-hunter/compare/app-v1.25.1...app-v1.26.0) (2026-09-12)
 
 
