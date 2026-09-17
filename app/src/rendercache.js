@@ -8,15 +8,17 @@
 //
 // What may be cached is decided by what each derivation actually reads:
 //
-//   hex features      records + zoom resolution + attenuator offset + theme + selection
+//   hex features      records + zoom resolution + attenuator offset + theme + selection + owners
 //   pillar collapse   records
-//   pillar features   records + zoom + attenuator offset + theme + selection
-//   flat points       records + backlog zoom + offset + theme + coverage hues + selection
+//   pillar features   records + zoom + attenuator offset + theme + selection + owners
+//   flat points       records + backlog zoom + offset + theme + coverage hues + selection + owners
 //
 // The selection joined three rows in #624, when selecting a star started to dim
 // the dots, the cells and the pillars as well as the rays. selectionKey below
 // signs it. The collapse does not read it: which record survives a merge is
 // decided by the ride and the strength, and the dim is applied afterwards.
+// The owners joined in #661, when a reception's star began to follow its
+// attribution by reach rather than its id alone; ownersKey below signs them.
 //
 // Nothing here reads the clock any more. It used to: the point collections
 // carried ageFade, a continuous function of NOW, so they had to be rebuilt
@@ -103,6 +105,24 @@ export function selectionKey(selected) {
   return [...selected].map((id) => String(id).toLowerCase()).sort().join(',')
 }
 
+// ownersKey signs which star each record belongs to (#661). While the reach is
+// on, a dot takes its star's hue and a selection keeps lit what belongs to a
+// selected star, and the star is the attribution by reach: the node a relay id
+// was placed on, its own id, or none after a collision. That answer moves when
+// the registry lands or the companion's SF is set, with every record the same,
+// so recordsKey cannot see it. Same fold as hueKey, one owner per record in
+// record order, with a separator so "ab","c" and "a","bc" differ. ownerOf
+// answers a string or null; null signs as its own value.
+export function ownersKey(records, ownerOf) {
+  if (!Array.isArray(records)) return null
+  let h = 0
+  for (const r of records) {
+    const s = String(ownerOf(r)) + '|'
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+  }
+  return records.length + ':' + h
+}
+
 // lastValueCache remembers exactly one result. Not an LRU: the caller asks the
 // same question repeatedly and the answer changes when new receptions land, so
 // a second slot would only ever hold the previous second's map.
@@ -121,5 +141,37 @@ export function lastValueCache() {
     },
     // For tests and for a caller that wants to force a rebuild.
     clear() { has = false; key = undefined; value = undefined },
+  }
+}
+
+// rowCache remembers one answer per row for a derivation that reads only the
+// row's stored fields and a few inputs that rarely change. The attribution by
+// reach (#661) is one: it reads a reception's id, position and RSSI, the
+// registry index and the plot offset, and it runs for every row in the window
+// on every tick (5.4 ms for 20 000 rows against 2 500 nodes, measured on a
+// laptop; 1.2 ms from this cache). A stored row never changes, so its answer
+// holds while every input is the same (===) as on the previous tick.
+//
+// tick(inputs) starts a tick; get(row, compute) answers from the cache or
+// computes. A row the previous tick did not read is dropped, so the cache holds
+// the rows in hand rather than every row since the inputs last changed. Keyed
+// by the store's row id, which every row read from the store carries.
+export function rowCache() {
+  let inputs = null
+  let prev = new Map()
+  let next = new Map()
+  return {
+    tick(now) {
+      const same = inputs !== null && now.length === inputs.length && now.every((v, i) => v === inputs[i])
+      prev = same ? next : new Map()
+      next = new Map()
+      inputs = now
+    },
+    get(row, compute) {
+      if (next.has(row.id)) return next.get(row.id)
+      const v = prev.has(row.id) ? prev.get(row.id) : compute(row)
+      next.set(row.id, v)
+      return v
+    },
   }
 }

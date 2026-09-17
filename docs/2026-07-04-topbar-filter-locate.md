@@ -46,3 +46,7 @@ shipped together:
   change here. Whether Locate (and/or the default map view) should force `hops=0` is the separate
   open question in issue #173 (see also #138).
 - The §7 position disclaimer is unchanged: it is still appended to every locate readout branch.
+
+> **Amended 2026-09-15 by `docs/2026-09-15-position-notices.md` (#662).** The locate readout no longer
+> carries a position disclaimer: #662 removed it together with the §7 rule. The readout's own line
+> about the estimate (driven area, hundreds of metres, no TX calibration) stays.

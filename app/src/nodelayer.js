@@ -96,11 +96,13 @@ export function driftPresentation({ advertised, estimate }) {
 // senderIdMatches checks if a sender_id (from a reception) matches a pubkey
 // (from registry position). Full advert_pubkey must match exactly (64-hex).
 // Discover pubkey prefix matches if it's a prefix of the full key. Relay,
-// direct_hash, and channel_name do not match registry nodes.
-// Which sender kinds can name a registry node at all. advert carries the full
-// pubkey and discover carries a prefix of it; relay path-hashes, 1-byte direct
-// hashes and channel names are different namespaces entirely (see meshpacket.js)
-// and must never be matched against a pubkey.
+// direct_hash, and channel_name are not matched here.
+// Which sender kinds this matcher compares against a pubkey. advert carries the
+// full pubkey and discover carries a prefix of it. A channel name is another
+// namespace entirely. A relay, path or direct hash is a short prefix of the
+// sending node's key, but whether it names one node depends on where it was
+// heard, which a comparison with one key cannot see: it reaches a node only
+// through its attribution by reach (#661, attribution.js), never through here.
 export function isRegistryIdKind(senderKind) {
   return senderKind === 'advert_pubkey' || senderKind === 'discover_pubkey'
 }
@@ -112,8 +114,8 @@ export function senderIdMatches(senderId, senderKind, nodePubkey) {
   const key = String(nodePubkey).toLowerCase()
   // An advert carries the whole key, so it must match exactly.
   if (senderKind === 'advert_pubkey') return id === key
-  // A discover reply carries a prefix. >= 2 bytes only; shorter is too
-  // collision-prone to attribute at all.
+  // A discover reply carries a prefix, matched from 2 bytes. A discover key
+  // keeps this rule; attribution by reach covers relay ids only (#661).
   return id.length >= 4 && key.startsWith(id)
 }
 
@@ -130,46 +132,51 @@ export function senderIdMatches(senderId, senderKind, nodePubkey) {
 // ambiguous id contributes to nothing. Same rule the target-list merge settled
 // on in #267, and the same thing resolve.go's `ambiguous` flag means.
 //
+// A relay, path or direct hash takes the other road (#661): attributionOf(r)
+// answers its attribution by reach (attribution.js), worked out by the caller
+// against every candidate node rather than the ones passed in. Placed on a
+// node, the reception joins that node when it was passed in; a collision or an
+// estimate joins nothing, since this layer draws registry nodes. Without
+// attributionOf no such reception lands anywhere.
+//
+// A reception is compared only with the nodes whose key starts with the same
+// two bytes (HEAD_HEX): an advert id is the whole key and a discover prefix is
+// at least two bytes of it, so no other node can match. Comparing with every
+// node passed in took 1.7 s for 25 000 synthetic receptions against 3 000
+// nodes, 7 ms this way (2026-09-15); a zoomed-out map passes a slice that big.
+//
 // Returns Map<pubkey, points[]>, with an entry for every node passed in.
-export function groupSenderPointsForNodes(records, nodes) {
+const HEAD_HEX = 4
+export function groupSenderPointsForNodes(records, nodes, { attributionOf = () => null } = {}) {
   const out = new Map()
-  const keys = []
+  const byHead = new Map()
   for (const n of nodes || []) {
     const k = n && n.pubkey ? String(n.pubkey).toLowerCase() : null
     if (!k) continue
     out.set(k, [])
-    keys.push(k)
+    const head = k.slice(0, HEAD_HEX)
+    if (!byHead.has(head)) byHead.set(head, [])
+    byHead.get(head).push(k)
   }
-  if (!Array.isArray(records) || keys.length === 0) return out
+  if (!Array.isArray(records) || out.size === 0) return out
 
   for (const r of records) {
     if (!r || r.sender_id == null) continue
     if (!isCoord(r.lat) || !isCoord(r.lon)) continue
+    const attr = attributionOf(r)
+    if (attr) {
+      const bucket = attr.rule === 'node' ? out.get(String(attr.node.pubkey).toLowerCase()) : null
+      if (bucket) bucket.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+      continue
+    }
     if (!isRegistryIdKind(r.sender_kind)) continue
     let matched = null
-    for (const k of keys) {
+    for (const k of byHead.get(String(r.sender_id).toLowerCase().slice(0, HEAD_HEX)) || []) {
       if (!senderIdMatches(r.sender_id, r.sender_kind, k)) continue
       if (matched !== null) { matched = null; break }   // ambiguous -> drop it
       matched = k
     }
     if (matched) out.get(matched).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
-  }
-  return out
-}
-
-
-// groupSenderPoints buckets located receptions by sender so each node can be
-// estimated independently. Receptions without a sender or a GPS fix carry no
-// location information and are dropped.
-export function groupSenderPoints(records) {
-  const out = new Map()
-  if (!Array.isArray(records)) return out
-  for (const r of records) {
-    if (r.sender_id == null) continue
-    if (!isCoord(r.lat) || !isCoord(r.lon)) continue
-    const key = String(r.sender_id).toLowerCase()
-    if (!out.has(key)) out.set(key, [])
-    out.get(key).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
   }
   return out
 }

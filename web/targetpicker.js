@@ -22,9 +22,10 @@
 // with", so it holds for any of these lengths.
 const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
 const HEX_ID = /^[0-9a-f]+$/
-// 2 bytes is where merging starts: a 1-byte path hash is 1-in-256, far too
-// coarse to attribute to a node just because one candidate happens to be in the
-// window.
+// 2 bytes is where merging starts: a 1-byte path hash is 1-in-256, too coarse to
+// fold picker rows on because one longer id happens to be in the window. That
+// floor is for merging rows only; placing a reception on a node follows reach
+// (attribution.js, AGENTS.md §7).
 const MIN_MERGE_HEX_CHARS = 4
 
 // Two rows are name-incompatible only when BOTH resolve and disagree — that is

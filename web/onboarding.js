@@ -27,8 +27,8 @@ export const ONBOARDING_BASICS = [
   'Nothing here is live radio — it is what mappers have already logged',
 ]
 
-// AGENTS.md §7: the map implies node locations, so the disclaimer is part of the
-// onboarding, not only of the node-position layer. Same wording as #nodepos-note.
+// AGENTS.md §1: the map implies node locations, so the onboarding says once
+// what a position is. Since #662 it and the About sheet are where the map says it.
 export const ONBOARDING_DISCLAIMER =
   'Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. The coordinates are the hunter’s own position when it heard the node. Advertised positions are self-reported by their operators.'
 

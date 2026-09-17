@@ -39,6 +39,11 @@ Both themes are declared for every token. `--ch-basemap` is a hint, not a colour
 **Signal tiers are for readings, never for UI state.** A selected chip is `--ch-accent`, not
 `--ch-sig-cool`. That confusion is what #225 fixed on the map.
 
+**Surface rule: the float readout is always dark** (#615). It is a window over other apps, not a
+part of the page, and it sits over whatever that app draws, most often a dark navigation app.
+The app's theme does not reach it: its canvas and video carry `data-theme="dark"`, which
+`tokens.css` declares on any element, so the dark values apply without a token of their own.
+
 **Guard:** `web/parity.test.js` pins that `--ch-rx-line-h`, `--ch-rx-head-h` and `--ch-surface-thin`
 are declared on `:root` on both surfaces with the same values. The two ticker ones together are
 the card's geometry, which the map computes before the card exists, so a surface that misses one
@@ -360,6 +365,13 @@ They also may not take the place a map control is in. The notice moved out of
 the bar and straight over Leaflet's zoom control, which is the same defect in a
 new place — `elementFromPoint` on the `+` returned `#guest-notice`. Overlays
 clear the controls.
+
+**An explanation stays for as long as its state** (#307). A line saying why
+nothing could be drawn (an empty registry, an unreachable resolver, an account
+below member) is an explanation, not a label, and it stays up while that state
+lasts. Fading it makes "we got nothing" and "there is nothing here" look alike.
+A notice that only repeats what the splash or About already says does not go
+over the map at all (#662, `docs/2026-09-15-position-notices.md`).
 
 **Where the notices sit** (#630). On a desktop, at the top centre under the bar,
 between the ticker's first-visit corner at the top left and the FAB rail on the

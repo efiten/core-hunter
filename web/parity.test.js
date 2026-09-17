@@ -36,6 +36,7 @@ import { readFileSync } from 'node:fs'
 import { buildChangelog, readEntryFiles } from '../scripts/build-changelog.mjs'
 import * as webLayer from './nodelayer.js'
 import * as appLayer from '../app/src/nodelayer.js'
+import * as attrRule from './attribution.js'
 import * as webNotice from './nodeposnotice.js'
 import * as appNotice from '../app/src/nodeposnotice.js'
 import * as webTicker from './receptionticker.js'
@@ -832,7 +833,8 @@ describe('calloutPosition — parity between the app and web copies', () => {
 // functions the other has no use for, and only the shared core is pinned here.
 describe('nodelayer — parity of the shared core', () => {
   const SHARED = ['TIGHT_DRIFT_M', 'TRUSTED_ENCIRCLEMENT', 'circleRing', 'drawableNodes',
-    'driftPresentation', 'estimateFor', 'groupSenderPoints', 'inBounds', 'isRegistryIdKind', 'nodesInView']
+    'driftPresentation', 'estimateFor', 'groupSenderPointsForNodes', 'inBounds',
+    'isRegistryIdKind', 'nodesInView', 'senderIdMatches']
 
   it('keeps the shared core present on both sides, and the divergence deliberate', () => {
     const names = (m) => Object.keys(m).sort()
@@ -842,9 +844,39 @@ describe('nodelayer — parity of the shared core', () => {
     }
     // Named, so growing a copy is a decision and not an accident: a new export
     // on one side lands here or in SHARED, and either way this test says so.
-    expect(names(appLayer).filter((n) => !SHARED.includes(n)))
-      .toEqual(['groupSenderPointsForNodes', 'senderIdMatches'])
-    expect(names(webLayer).filter((n) => !SHARED.includes(n))).toEqual(['nodeRows'])
+    expect(names(appLayer).filter((n) => !SHARED.includes(n))).toEqual([])
+    expect(names(webLayer).filter((n) => !SHARED.includes(n))).toEqual(['nodeRows', 'padBounds'])
+  })
+
+  // #661 retires the map's own pairing rule (#296): both layers pair a
+  // reception with a registry node the same way. An advert by its whole key, a
+  // discover prefix from 2 bytes when it starts one key only, and a relay, path
+  // or direct hash through its attribution by reach, never by comparing keys.
+  it('attributes relays through attribution and refuses an ambiguous discover prefix the same way on both surfaces', () => {
+    const key = (head, fill) => head + fill.repeat((64 - head.length) / 2)
+    const P = { pubkey: key('cc', 'cc'), name: 'Advertiser', lat: 51.01, lon: 4 }
+    const D1 = { pubkey: key('dd00ee', '11'), name: 'Discover-1', lat: 51.02, lon: 4 }
+    const D2 = { pubkey: key('dd00ff', '22'), name: 'Discover-2', lat: 51.03, lon: 4 }
+    const Q = { pubkey: key('4a', '33').toUpperCase(), name: 'Heumensoord-RPT', lat: 51.0004, lon: 4 }
+    const R1 = { pubkey: key('7b7b01', '44'), name: 'Relay-1', lat: 51, lon: 4 + 2000 * M }
+    const R2 = { pubkey: key('7b7b02', '55'), name: 'Relay-2', lat: 51, lon: 4 - 2000 * M }
+    const nodes = [P, D1, D2, Q, R1, R2]
+    const rec = (sender_id, sender_kind, rssi = -90) => ({ sender_id, sender_kind, rssi, lat: 51, lon: 4 })
+    const recs = [
+      rec(P.pubkey, 'advert_pubkey'),
+      rec('CCCC', 'discover_pubkey'),       // 2 bytes, starts P only
+      rec('dd00ee11', 'discover_pubkey'),   // starts D1 only
+      rec('dd00', 'discover_pubkey'),       // starts D1 and D2: neither
+      rec('4a', 'path_hash'),               // Q is the one 4a node in reach
+      rec('7b7b', 'relay'),                 // R1 and R2 both in reach: a collision
+      rec(key('7b7b01', '44'), 'relay'),    // a 32-byte relay id is not attributed, nor matched
+    ]
+    const index = attrRule.registryIndex(nodes)
+    const attributionOf = (r) => attrRule.attributeReception(r, { index })
+    const webOut = webLayer.groupSenderPointsForNodes(recs, nodes, { attributionOf })
+    expect([...webOut]).toEqual([...appLayer.groupSenderPointsForNodes(recs, nodes, { attributionOf })])
+    const count = (n) => webOut.get(n.pubkey.toLowerCase()).length
+    expect([P, D1, D2, Q, R1, R2].map(count)).toEqual([2, 1, 0, 1, 0, 0])
   })
 
   it('agrees on the drift threshold, at the boundary', () => {
@@ -925,20 +957,6 @@ describe('nodelayer — parity of the shared core', () => {
     expect(webLayer.nodesInView(pts, null)).toEqual(appLayer.nodesInView(pts, null))
   })
 
-  it('buckets receptions by sender identically, case folded, unlocated dropped', () => {
-    const recs = [
-      { sender_id: 'AA', lat: 51, lon: 4, rssi: -70 },
-      { sender_id: 'aa', lat: 51.001, lon: 4, rssi: -80 },   // same node, other case
-      { sender_id: 'bb', lat: 51, lon: 4, rssi: -60 },
-      { sender_id: 'cc', lat: null, lon: 4, rssi: -60 },     // no fix: no information
-      { lat: 51, lon: 4, rssi: -60 },
-    ]
-    const webOut = webLayer.groupSenderPoints(recs)
-    expect([...webOut]).toEqual([...appLayer.groupSenderPoints(recs)])
-    expect(webOut.get('aa')).toHaveLength(2)
-    expect(webOut.has('cc')).toBe(false)
-  })
-
   it('estimates identically, including the too-few-inliers floor', () => {
     // Two points is below the 3-inlier floor; the third crosses it. A fixture
     // with only a big cluster would pass whatever the floor became.
@@ -969,22 +987,10 @@ describe('nodelayer — parity of the shared core', () => {
 })
 
 // nodeposnotice.js is a partial port (#376): web needs states the app cannot
-// have — an unconfigured server, a role the server refuses — so only the lines
-// both surfaces show are shared. Those two are what AGENTS.md §7 requires on
-// screen, which is exactly why they must not drift apart.
-describe('nodeposnotice — parity of the two shared lines', () => {
-  // Since #631 what §7 requires on screen is the popup's two sentences, so
-  // those are what must not drift. Pin the content as well as the equality: a
-  // caveat that lost the claim it exists to make would still be "identical on
-  // both sides".
-  it('says the same thing in the marker popup, glyph for glyph', () => {
-    expect(webNotice.NODEPOS_ADVERT_CAVEAT).toBe(appNotice.NODEPOS_ADVERT_CAVEAT)
-    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toBe(appNotice.NODEPOS_ESTIMATE_CAVEAT)
-    expect(webNotice.NODEPOS_ADVERT_CAVEAT).toMatch(/operator/i)
-    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toMatch(/rssi/i)
-    expect(webNotice.NODEPOS_ESTIMATE_CAVEAT).toMatch(/not from gps/i)
-  })
-
+// have (an unconfigured server, a role the server refuses), so only the line
+// both surfaces show is shared. It explains why the layer drew nothing, and
+// the same state must not read as two different problems.
+describe('nodeposnotice: parity of the shared line', () => {
   it('shows the same empty-registry line', () => {
     expect(webNotice.NODEPOS_EMPTY_TEXT).toBe(appNotice.NODEPOS_EMPTY_TEXT)
   })
@@ -1000,7 +1006,7 @@ describe('nodeposnotice — parity of the two shared lines', () => {
   })
 
   it('keeps web a strict superset — the app has no server to be unconfigured', () => {
-    for (const n of ['NODEPOS_ADVERT_CAVEAT', 'NODEPOS_ESTIMATE_CAVEAT', 'NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
+    for (const n of ['NODEPOS_EMPTY_TEXT', 'nodePosKeyText']) {
       expect(appNotice[n], n).toBeDefined()
       expect(webNotice[n], n).toBeDefined()
     }
@@ -1291,8 +1297,9 @@ describe('files copied whole from the app (#595)', () => {
   // coverage.js and raylayer.js (#603) join the list: the stars, the hues
   // and the 3D ray buffers are one rule on both maps. fabring.js and
   // nodeposmode.js (#630) join it too: the map's node-positions button is the
-  // app's FAB, with the same stops, labels and ring.
-  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js']) {
+  // app's FAB, with the same stops, labels and ring. attribution.js (#661)
+  // joins it: which node a relay id belongs to is one rule on both surfaces.
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js', 'attribution.js']) {
     it(`web/${name} is app/src/${name}`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')

@@ -122,6 +122,20 @@ describe('sameReadout', () => {
   it('is a new readout once the name has landed', () => {
     expect(sameReadout(row(), row({ sender_label: 'repeater_3_' }))).toBe(false)
   })
+  // #661: the registry lands after the reception, or the attenuator moves the
+  // reach, and the same reception is then placed on a node or refused.
+  it("reads differently once the reception's attribution changes", () => {
+    const node = { pubkey: 'ABCD' + '11'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+    const other = { ...node, pubkey: 'abcd' + '22'.repeat(30) }
+    expect(sameReadout(row({ _attr: { rule: 'estimate', prefixKnown: false } }), row({ _attr: { rule: 'node', node } }))).toBe(false)
+    expect(sameReadout(row({ _attr: { rule: 'node', node } }), row({ _attr: { rule: 'node', node: other } }))).toBe(false)
+    expect(sameReadout(row({ _attr: { rule: 'node', node } }), row({ _attr: { rule: 'collision', count: 2 } }))).toBe(false)
+    expect(sameReadout(row(), row({ _attr: { rule: 'estimate', prefixKnown: false } }))).toBe(false)
+  })
+  it('is the same readout for the same node on two row objects', () => {
+    const node = { pubkey: 'abcd' + '11'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+    expect(sameReadout(row({ _attr: { rule: 'node', node } }), row({ _attr: { rule: 'node', node: { ...node, pubkey: node.pubkey.toUpperCase() } } }))).toBe(true)
+  })
   it('is a new readout for another reception, and for the first one', () => {
     expect(sameReadout(row(), row({ id: 'r2' }))).toBe(false)
     expect(sameReadout(null, row())).toBe(false)

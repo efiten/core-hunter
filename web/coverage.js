@@ -5,16 +5,20 @@
 // Copied whole between app/src/ and web/ (parity.test.js), since neither
 // deploy path can ship a file outside its own directory (#238).
 import { estimateFor } from './nodelayer.js'
+import { withinReach } from './attribution.js'
 
 // Attribution is classifyReception's rule (AGENTS.md §1): the originator at
 // zero hops, or the last relay of a flood. On the record that is a Repeater
-// role, a relay hash, a Discover reply or a trace reply. The same test as the
-// feed's repeater rule, plus the Discover reply, which is the node itself
-// answering our ask. Same caveat as Locate (#320): the identity is
-// unauthenticated, and a forged sender id inflates that repeater's star.
+// role, a relay hash, a flood's 1-byte last hop (path_hash), a Discover reply
+// or a trace reply. The feed's repeater rule plus the Discover reply, which is
+// the node itself answering our ask, and the path hash, which the feed keeps
+// out of its target list but which reach can place on its node (#661,
+// attribution.js). A direct hash is not one: zero hops is the originator. Same
+// caveat as Locate (#320): the identity is unauthenticated, and a forged sender
+// id inflates that repeater's star.
 export function isRepeaterHearing(pt) {
   if (!pt) return false
-  return pt.sender_role === 'Repeater' || pt.sender_kind === 'relay'
+  return pt.sender_role === 'Repeater' || pt.sender_kind === 'relay' || pt.sender_kind === 'path_hash'
     || pt.sender_kind === 'discover_pubkey' || pt.sender_kind === 'trace_reply'
 }
 
@@ -150,9 +154,59 @@ export function starOrigin({ advertised, estimate } = {}) {
 // 2026-09-08), so the star reads as the signal coming down.
 export const RAY_ALT_M = 30
 
-// coverageStars groups the repeater hearings by id and hangs each star from
-// its origin. positionOf(id) answers the registry's advertised position or
-// null; estimate(points) is the node layer's estimateFor unless a test says
+// starKey is the star a hearing hangs from (#661). attr is the hearing's
+// attribution (attribution.js): a hearing placed on one registry node belongs
+// to that node's star, keyed by its pubkey, which is also the key of the
+// node's own Repeater adverts; a collided hearing belongs to no star (null);
+// every other hearing keys a star of its own id. So an id heard near its node
+// and again where no node can be it makes two stars, and the second one's
+// estimate is over its own hearings only (Kasper, 2026-09-15).
+export function starKey(pt, attr) {
+  if (attr && attr.rule === 'node') return String(attr.node.pubkey).toLowerCase()
+  if (attr && attr.rule === 'collision') return null
+  return String(pt.sender_id).toLowerCase()
+}
+
+// starSelected: a selection holds raw ids (the app's selected senders, the
+// map's picker), while a star is keyed by its node once a hearing is
+// attributed. A star is selected by its own id or by the id of any hearing in it.
+export function starSelected(star, selected) {
+  return selected.has(star.id) || star.points.some((p) => p.sender_id != null && selected.has(String(p.sender_id).toLowerCase()))
+}
+
+// starLabel is how a star names itself in a tooltip, where its hub has no
+// other text (#661). A star keyed by one byte reads '#' and the id: a 2-hex
+// hash is an id, never a name (AGENTS.md §5.4 item 6). A star of a short relay
+// id holds the hearings no node could be placed on (rule 2), so a resolver's
+// name for it wears the guess mark (#452), and gives way to the id when the
+// registry holds a node with that prefix out of reach (prefixKnown): that name
+// belongs to a node not heard here. nameAt(id) is where the lookup places the
+// node behind its name ({ lat, lon }), if it says, and a place out of the
+// hearing's reach is the same evidence. The map needs it: its registry slice
+// ends at the reach around the view, so a node further out never makes
+// prefixKnown there. The reach is from the raw RSSI, as the map's is; the app
+// passes no names. Any other star keeps its name as it is, or the first 8 hex
+// of its id. nameOf(id) is the surface's name lookup, if any.
+export function starLabel(star, { nameOf = () => undefined, nameAt = () => null, attributionOf = () => null } = {}) {
+  const id = String(star.id)
+  if (/^[0-9a-f]{2}$/i.test(id)) return '#' + id
+  const pt = star.points && star.points.length ? star.points[0] : null
+  const attr = pt ? attributionOf(pt) : null
+  if (attr && attr.rule === 'estimate') {
+    const at = nameAt(id)
+    const elsewhere = attr.prefixKnown || (!!at && !withinReach(pt, at))
+    const name = elsewhere ? '' : nameOf(id)
+    return name ? '~' + name : id
+  }
+  return nameOf(id) || id.slice(0, 8)
+}
+
+// coverageStars groups the repeater hearings by starKey and hangs each star
+// from its origin. attributionOf(pt) answers a hearing's attribution, or null
+// where none was worked out, which groups by id as before. A star keyed by an
+// attributed node hangs from that node's advertised position; otherwise
+// positionOf(id) answers the registry's advertised position or null.
+// estimate(points) is the node layer's estimateFor unless a test says
 // otherwise. A star with no origin at all (no position, too few hearings for
 // an estimate) is left out: there is nothing to draw it from.
 //
@@ -162,18 +216,22 @@ export const RAY_ALT_M = 30
 // hear nothing new. So a star's estimate is reused while its hearings are the
 // same positions and RSSIs in the same order, and the cache keeps only the
 // stars of this call. The registry position is read every call.
-export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null } = {}) {
+export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null, attributionOf = () => null } = {}) {
   const byId = new Map()
+  const nodeOf = new Map()
   for (const pt of points || []) {
     if (!isRepeaterHearing(pt) || pt.sender_id == null) continue
     if (!Number.isFinite(pt.lat) || !Number.isFinite(pt.lon)) continue
-    const id = String(pt.sender_id).toLowerCase()
+    const attr = attributionOf(pt)
+    const id = starKey(pt, attr)
+    if (id == null) continue
+    if (attr && attr.rule === 'node') nodeOf.set(id, attr.node)
     if (!byId.has(id)) byId.set(id, [])
     byId.get(id).push(pt)
   }
   const out = []
   for (const [id, pts] of byId) {
-    const advertised = positionOf(id) || null
+    const advertised = nodeOf.get(id) || positionOf(id) || null
     const est = cache ? cachedEstimate(cache, id, pts, estimate) : estimate(pts.map((p) => ({ lat: p.lat, lon: p.lon, rssi: p.rssi })))
     const origin = starOrigin({ advertised, estimate: est })
     if (!origin) continue
@@ -193,13 +251,13 @@ function cachedEstimate(cache, id, pts, estimate) {
 
 // coverageFeatures: one LineString per hearing, hub to hearing, with the
 // repeater's hue and the ray's strength on the feature. `selected` is the set
-// of selected ids; empty or absent means nothing is dimmed.
+// of selected ids (starSelected); empty or absent means nothing is dimmed.
 export function coverageFeatures(stars, { slotOf, colorOf, selected = null } = {}) {
   const dimming = !!(selected && selected.size)
   const features = []
   for (const s of stars || []) {
     const color = colorOf(slotOf(s.id))
-    const dim = dimming && !selected.has(s.id)
+    const dim = dimming && !starSelected(s, selected)
     for (const pt of s.points) {
       const two = isTwoWay(pt)
       const { w, op } = rayStyle(pt.rssi, { twoWay: two, dimmed: dim })

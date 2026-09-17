@@ -28,6 +28,10 @@ test.beforeEach(async ({ page }) => {
 })
 const rays = (page) => page.evaluate(() => window.__featureCount && window.__featureCount('reach'))
 const props = (page) => page.evaluate(() => window.__features('reach'))
+// #661: a flood's 1-byte last hop, 'aa', heard around R1. Reach at -85 dBm is
+// the full 15 km, and R1 is the one registry node whose key starts with it.
+const lastHops = ring(51.003, 4.003, 4, (lat, lon) => at(lat, lon, -85, 'aa', 'path_hash', null))
+const withLastHops = (page) => page.route('**/api/points*', (r) => r.fulfill({ json: { points: [...hearings, ...lastHops] } }))
 
 test('the reach stop draws one ray per repeater hearing, from ▲ or ●, and leaves the companion out', async ({ page }) => {
   await page.goto('/?mode=points&lat=51&lon=4&z=13')
@@ -57,6 +61,112 @@ test('the reach stop draws one ray per repeater hearing, from ▲ or ●, and le
   const dots = await page.evaluate(() => window.__features('points'))
   expect(dots.filter((d) => d.color === r1[0].color)).toHaveLength(6)
   expect(dots.filter((d) => d.color === r2[0].color)).toHaveLength(5)
+  // R2's id is one byte, so its ● names it as an id (#661, AGENTS.md 5.4 item 6).
+  await expect(page.locator('.rc-hub.rc-estimate')).toHaveAttribute('title', /^#b7: reach from its RSSI estimate/)
+})
+
+test('a 1-byte last hop joins the star of the one node it can be, and takes its hue (#661)', async ({ page }) => {
+  await withLastHops(page)
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(15)
+  const p = await props(page)
+  const r1 = p.filter((f) => f.id === R1)
+  expect(r1).toHaveLength(10)
+  // No star of its own: R2's is still the only ●.
+  await expect(page.locator('.rc-hub.rc-estimate')).toHaveCount(1)
+  const dots = await page.evaluate(() => window.__features('points'))
+  expect(dots.filter((d) => d.color === r1[0].color)).toHaveLength(10)
+})
+
+test('a 1-byte last hop with two nodes in reach draws no ray (#661)', async ({ page }) => {
+  await withLastHops(page)
+  // A second node whose key starts with 'aa', 4 km from the hearings.
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ json: { nodes: [
+    { pubkey: R1, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0005 },
+    { pubkey: 'aa11' + '00'.repeat(30), name: 'Elders-aa', lat: 51.04, lon: 4.003 },
+  ] } }))
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect(page.locator('.np-advert').first()).toBeVisible({ timeout: 10000 })
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  expect((await props(page)).filter((f) => f.id === R1)).toHaveLength(6)
+  await expect(page.locator('.rc-hub.rc-estimate')).toHaveCount(1)
+})
+
+test('a picked 1-byte last hop selects the star of the node it was placed on, ▲ included (#661)', async ({ page }) => {
+  await withLastHops(page)
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach&senders=' + encodeURIComponent(JSON.stringify(['aa'])))
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(15)
+  const p = await props(page)
+  expect(p.filter((f) => f.id === R1).every((f) => !f.dim)).toBe(true)
+  expect(p.filter((f) => f.id === R2).every((f) => f.dim)).toBe(true)
+  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
+  await expect(page.locator('.np-advert.np-dim')).toHaveCount(0)
+  await expect(page.locator('.rc-hub.np-dim')).toHaveCount(1)
+})
+
+// #661 with #624: a selection keeps lit what belongs to the selected star, and
+// a 1-byte last hop placed on R1 belongs to R1's star, not to a star of 'aa'.
+// So a pick of R1, by its ▲ or by the id 'aa', leaves those dots as they were
+// and dims R2's.
+test('a selection keeps the dots of the last hops placed on its node lit, picked by ▲ or by id (#661)', async ({ page }) => {
+  await withLastHops(page)
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(15)
+  // `i` indexes the served points: 6-10 are R2, 14-17 the last hops 'aa'.
+  const opOf = async () => {
+    const dots = await page.evaluate(() => window.__features('points'))
+    const by = (lo, hi) => dots.filter((d) => d.i >= lo && d.i <= hi).map((d) => d.op)
+    return { r2: by(6, 10), hops: by(14, 17) }
+  }
+  const before = await opOf()
+  expect(before.hops).toHaveLength(4)
+  await page.locator('.np-advert').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
+  await expect.poll(async () => (await opOf()).r2.every((op, k) => Math.abs(op - before.r2[k] * 0.25) < 1e-9)).toBe(true)
+  expect((await opOf()).hops).toEqual(before.hops)
+  // Picked the other way round, as the id 'aa' in the list: the hops belong to
+  // R1's star, which the pick selects (starSelected), so they stay lit too.
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach&senders=' + encodeURIComponent(JSON.stringify(['aa'])))
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(15)
+  await expect.poll(async () => (await opOf()).r2.every((op, k) => Math.abs(op - before.r2[k] * 0.25) < 1e-9)).toBe(true)
+  expect((await opOf()).hops).toEqual(before.hops)
+})
+
+// #661: a 2 or 3-byte relay id no node in reach can be keeps its resolver name
+// on the ●, with ~, unless a positioned node with that prefix is out of reach.
+// The registry here answers its bbox, as the server does, so FAR sits beyond
+// the slice and only the resolver's position for the name can say where it is.
+// The names are held back until the hubs are up, so the title has to follow
+// data that arrives after the draw.
+test('a 2-byte ● wears its resolver name with ~, or its id when the named node is out of reach (#661)', async ({ page }) => {
+  const FAR = '4a4a' + 'be'.repeat(30)
+  const registry = [{ pubkey: R1, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0005 }, { pubkey: FAR, name: 'Far-4a4a', lat: 51.5, lon: 4.05 }]
+  const shortIds = [
+    ...ring(51.03, 4.05, 5, (lat, lon) => at(lat, lon, -95, '4a4a', 'relay', null)),   // FAR is 52 km north
+    ...ring(50.97, 3.97, 5, (lat, lon) => at(lat, lon, -95, '5b5b', 'relay', null)),   // no position known
+  ]
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [...hearings, ...shortIds] } }))
+  const boxes = []
+  await page.route('**/api/nodes/positions*', (r) => {
+    const [s, w, n, e] = new URL(r.request().url()).searchParams.get('bbox').split(',').map(Number)
+    boxes.push(n)
+    return r.fulfill({ json: { nodes: registry.filter((x) => x.lat >= s && x.lat <= n && x.lon >= w && x.lon <= e) } })
+  })
+  let release
+  const held = new Promise((done) => { release = done })
+  await page.route('**/api/resolve*', async (r) => {
+    await held
+    const prefix = new URL(r.request().url()).searchParams.get('prefix')
+    if (prefix === '4a4a') return r.fulfill({ json: { pubkey: FAR, name: 'Far-4a4a', ambiguous: false, lat: 51.5, lon: 4.05 } })
+    if (prefix === '5b5b') return r.fulfill({ json: { pubkey: '5b5b' + 'cd'.repeat(30), name: 'Relay-Oost', ambiguous: false } })
+    return r.fulfill({ json: { pubkey: R1, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0005 } })
+  })
+  const titles = () => page.locator('.rc-hub.rc-estimate').evaluateAll((els) => els.map((el) => el.title.split(':')[0]).sort())
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(titles, { timeout: 10000 }).toEqual(['#b7', '4a4a', '5b5b'])
+  expect(Math.max(...boxes)).toBeLessThan(51.5)   // FAR is never in the slice
+  release()
+  await expect.poll(titles, { timeout: 10000 }).toEqual(['#b7', '4a4a', '~Relay-Oost'])
 })
 
 test('a tap on ▲ selects that star and dims the others; a second tap or a tap on the map clears it', async ({ page }) => {
@@ -169,6 +279,26 @@ test('the popup\'s reach button selects and clears, and the popup stays up with 
   await page.locator('.pp-reach').click()
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
+})
+
+// #623 with #661: a press adds or removes the repeater's own key, and nothing
+// else. A pick of the id 'aa' in the list selects R1's star through the last
+// hops placed on it, so the ▲ stays selected, but the popup offers "Show
+// reach": "Hide reach" would promise a press that cannot undo the list's pick.
+test('a relay id pick keeps the ▲ selected, and its popup offers the node\'s own pick (#661)', async ({ page }) => {
+  await withLastHops(page)
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach&senders=' + encodeURIComponent(JSON.stringify(['aa'])))
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(15)
+  await page.locator('#rx-log .rx-close').click()
+  await expect(page.locator('#rx-log')).toBeHidden()
+  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
+  await page.locator('.np-advert').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
+  await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
+  await page.locator('.pp-reach').click()
+  await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([])
+  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
+  await expect(page.locator('.pp-reach')).toHaveText('Show reach')
 })
 
 test('in 3D the rays leave the ground: the line layer goes, the ray layer takes the same rays', async ({ page }) => {

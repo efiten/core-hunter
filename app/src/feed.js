@@ -1,4 +1,13 @@
-import { displayName } from './names.js'
+import { displayName, GUESS_MARK, isHashIdKind } from './names.js'
+// shownName is the name a row shows (displayName, as targetParts prints it)
+// without the guess mark: the mark says how sure the name is, not what it is,
+// so it is left out where names are compared or sorted. Sorted as a character
+// it would put every ~ name ahead of the letters.
+function shownName(r) {
+  const name = displayName(r)
+  return name.startsWith(GUESS_MARK) ? name.slice(GUESS_MARK.length) : name
+}
+
 // Kinds that name a directly-heard node, so they can be selected as a target.
 // discover_pubkey is a DISCOVER_RESP reply (#129); relay is a last-hop repeater
 // attributed via path[last] of a relayed FLOOD packet (see meshpacket.js).
@@ -20,19 +29,35 @@ const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
 // (meshpacket.js); discover and relay ids are shorter prefixes of that space.
 const FULL_PUBKEY = /^[0-9a-f]{64}$/
 
-// Two rows only merge once a resolved name is present on both sides and it
-// matches — an unresolved (null) label never counts as a match, and a shared
-// prefix alone isn't enough (the name is the safety margin against two real
-// nodes that happen to share a display name).
+// Two rows only merge once a name is present on both sides and it matches:
+// no name never counts as a match, and a shared prefix alone isn't enough (the
+// name is the safety margin against two real nodes that happen to share a
+// display name).
 function sameResolvedName(a, b) {
   if (!a || !b) return false
   return String(a).trim().toLowerCase() === String(b).trim().toLowerCase()
+}
+
+// placedElsewhere: a reception placed by reach (#661) is that node's, so its
+// name is no proof it came from the anchor when two nodes share a name and a
+// prefix (#268). It joins only the row of the pubkey it was placed on.
+function placedElsewhere(rec, anchorId) {
+  const attr = rec._attr
+  if (!attr || attr.rule !== 'node') return false
+  return !attr.node || String(attr.node.pubkey).toLowerCase() !== anchorId.toLowerCase()
 }
 
 // mergePrefixGroups clusters the per-exact-id rows that name the same physical
 // node into a single row, keeping the most recent reception as the display
 // record. `merged_ids` carries every id in the cluster (lowercased) so a
 // target-list selection catches receptions tagged with any prefix variant.
+//
+// The names compared are the ones the two rows show (shownName), so a relay's
+// attribution by reach (#661) decides for its row: a collision shows no name,
+// and neither it nor a placement on another node merges (Kasper, 2026-09-15),
+// even when that other node shares the anchor's name (placedElsewhere). A
+// relay placed on the anchor's own node merges under that name, with or
+// without a resolver label.
 //
 // Anchored, never transitive (#268). "id A is a prefix of id B" is NOT a
 // transitive relation, so it must not be closed over: a 2-byte relay id can be
@@ -41,12 +66,12 @@ function sameResolvedName(a, b) {
 // physically separate transmitters into one target's map view, which for a
 // direction-finding tool is the wrong answer in the worst possible place.
 //
-// So each prefix attaches to at most ONE anchor — a full 64-hex pubkey with a
-// matching resolved name — and a prefix that matches two or more anchors stays
-// on its own row. Ambiguity is evidence against merging, not for it; that is
-// the same meaning the name resolver's own `ambiguous` flag carries. Anchors
-// never merge with each other: two distinct full pubkeys are two nodes by
-// definition. The pass is O(n·k) in anchors rather than O(n²).
+// So each prefix attaches to at most ONE anchor (a full 64-hex pubkey with a
+// matching shown name, shownName), and a prefix that matches two or more
+// anchors stays on its own row. Ambiguity is evidence against merging, not
+// for it; that is the same meaning the name resolver's own `ambiguous` flag
+// carries. Anchors never merge with each other: two distinct full pubkeys are
+// two nodes by definition. The pass is O(n·k) in anchors rather than O(n²).
 function mergePrefixGroups(entries) {
   const anchors = []      // indices of full-pubkey rows
   const attached = new Map()  // anchor index -> [entry indices]
@@ -74,11 +99,14 @@ function mergePrefixGroups(entries) {
     // resolver cannot rescue that either: it answers unambiguously whenever it
     // knows only one of the two.
     const matches = anchors.filter((a) => entries[a][0].toLowerCase().startsWith(lower))
-    if (matches.length === 1 && sameResolvedName(rec.sender_label, entries[matches[0]][1].sender_label)) {
+    const anchor = matches.length === 1 ? entries[matches[0]] : null
+    if (anchor && !placedElsewhere(rec, anchor[0]) && sameResolvedName(shownName(rec), shownName(anchor[1]))) {
       attached.get(matches[0]).push(i)
-    } else solo.push(i)   // 0 anchors, ambiguous across 2+, or the name disagrees
+    } else solo.push(i)   // 0 anchors, ambiguous across 2+, placed on another node, or the name disagrees
   })
 
+  // Every row in a group shows the anchor's name (the gate above), so the
+  // newest one names the merged row, attribution and all.
   const groups = [...attached.values(), ...solo.map((i) => [i])]
   return groups.map((idxs) => {
     const group = idxs.map((i) => entries[i])
@@ -130,8 +158,10 @@ export function rowIds(rec) {
 export function matchesTarget(rec, query) {
   const q = String(query == null ? '' : query).trim().toLowerCase()
   if (!q) return true
-  const label = rec && rec.sender_label ? String(rec.sender_label).toLowerCase() : ''
-  if (label.includes(q)) return true
+  // The name the row shows (targetParts): for a relay that is the attribution
+  // by reach of its newest reception (#661), so a name the row refuses to show
+  // on a collision is not found either.
+  if (rec && displayName(rec).toLowerCase().includes(q)) return true
   return rowIds(rec).some((id) => id.startsWith(q))
 }
 
@@ -140,11 +170,13 @@ export function matchesTarget(rec, query) {
 // batches, and `query` narrows the set BEFORE that slice — paging the matches
 // rather than filtering a page, so a match sorting past the first page is
 // still reachable.
+// The name is the one the row shows (targetParts), so a relay placed on a node
+// by reach sorts under that node's name and a refused one under its id (#661).
+const sortName = (r) => shownName(r) || String(r.sender_id)
 export function senderList(records, { ignore, limit = Infinity, query = '' } = {}) {
   return dedupeSenders(records, ignore)
     .filter((r) => matchesTarget(r, query))
-    .sort((a, b) =>
-      String(a.sender_label || a.sender_id).localeCompare(String(b.sender_label || b.sender_id), undefined, { sensitivity: 'base' }))
+    .sort((a, b) => sortName(a).localeCompare(sortName(b), undefined, { sensitivity: 'base' }))
     .slice(0, limit)
 }
 
@@ -183,12 +215,56 @@ export function idPrefix(id) {
 // name-first even before resolution completes.
 export function targetParts(rec) {
   const id = rec.sender_id != null ? String(rec.sender_id) : ''
-  // The guess mark on a name resolved for a short prefix (#452, names.js).
-  const label = rec.sender_label ? displayName(rec) : ''
+  // The guess mark on a name resolved for a short prefix (#452), and a relay's
+  // attribution by reach before its label (#661): both are names.js's. A row
+  // is its newest reception (dedupeSenders), so it reads by that one's.
+  const label = displayName(rec)
   if (!id) return { primary: label || '—', secondary: '' }
   const prefix = idPrefix(id)
   if (label) return { primary: label, secondary: prefix }
   return { primary: `${prefix} (name not resolved)`, secondary: prefix }
+}
+
+// rememberTargetName keeps the target chip's name for a selected node key in
+// `labels`: the name the node's row shows (displayName, as targetParts), so the
+// chip does not name what the row refuses (#661). The HUD and the map popup
+// pick a reception rather than a row, so the row in hand decides.
+// `fallback` is the name the pick carried, used only when no row claims the
+// key. With no name the key is forgotten, and the chip falls back to the id
+// prefix instead of a name kept from an earlier pick.
+export function rememberTargetName(labels, rows, key, fallback) {
+  const row = (rows || []).find((r) => clusterKey(r) === key)
+  const name = row ? displayName(row) : String(fallback || '')
+  if (name) labels.set(key, name)
+  else labels.delete(key)
+  return name
+}
+
+// refreshTargetNames runs rememberTargetName for every selected key against
+// the rows of one tick, keeping a name when no row claims its key. A row
+// changes after the pick (the registry lands after start-up, the SF is set on
+// connect, the attenuator moves the reach), and the chip follows it (AGENTS.md
+// §5.4 item 3). True when a name changed, so the caller paints the chip again.
+export function refreshTargetNames(labels, rows, keys) {
+  let changed = false
+  for (const key of keys || []) {
+    const before = labels.get(key)
+    rememberTargetName(labels, rows, key, before)
+    if (labels.get(key) !== before) changed = true
+  }
+  return changed
+}
+
+// pickName is the name a pick of one reception carries onto the target chip
+// (the map popup's Isolate). The selection is the reception's id, and for a
+// 1-byte hash that is every reception with that id, wherever each one was
+// placed (a hash is no target kind, so no row narrows it). So a hash carries
+// '#' and its id, never the node this one reception was placed on (AGENTS.md
+// §5.4 item 6); any other kind carries the name it shows.
+export function pickName(rec) {
+  if (!rec) return ''
+  if (isHashIdKind(rec.sender_kind) && rec.sender_id) return '#' + String(rec.sender_id)
+  return displayName(rec)
 }
 
 // clusterKey names the NODE a target-list row stands for, stably across

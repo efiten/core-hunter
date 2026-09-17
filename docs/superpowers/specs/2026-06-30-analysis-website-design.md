@@ -15,6 +15,10 @@ can locate a target (e.g. a public-channel spammer) from the bundled data.
 State in any position-bearing output: radio (RSSI/SNR) via mesh topology, **not** GPS tracking of the target.
 DB is UTC; the UI is used in local CEST (UTC+2) — the timeframe filter must make the UTC/local mapping explicit.
 
+> **Amended 2026-09-15 by `docs/2026-09-15-position-notices.md` (#662).** The site states the first
+> line above in its onboarding and About sheet, not in every position-bearing output; the rule was
+> removed from AGENTS.md §7.
+
 ## Decisions (locked)
 
 1. **Two map layers with a toggle (points / hex / both)** — like the mobile hunter map. **Points (dots) are

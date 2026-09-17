@@ -323,16 +323,13 @@
     <span id="sf-counts"></span>
   </div>
   <div id="locate-info" hidden></div>
-  <!-- Two surfaces for one layer (#376). The key names the glyphs while markers
-       are drawn, and otherwise says which way the layer came up empty; the note
-       is the disclaimer, which only appears when there are positions to
-       disclaim. column-reverse in the stylesheet keeps the key pinned to the
-       bottom corner whether or not the note above it is showing, so neither
-       needs to know the other's height. role=status so a screen reader hears
-       the state change without the focus moving. -->
+  <!-- The node-position layer's one line (#376): which way the layer came up
+       empty, or that the registry could not be refreshed. Nothing here names
+       the glyphs (#631, the marker popup does) or repeats that positions are
+       inferred (#662). role=status so a screen reader hears the state change
+       without the focus moving. -->
   <div id="nodepos-stack">
     <div id="nodepos-key" role="status" hidden></div>
-    <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>
   </div>
   <!-- The FAB rail (#630): the app's rail on the map, one column at the bottom
        right in place of MapLibre's zoom and compass and the 2D/3D button beside

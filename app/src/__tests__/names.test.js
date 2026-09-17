@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { resolversFor, consensusName, isGuessedName, displayName, GUESS_MARK, resolvableKey, isFullPubkey, isResolvableId, cachedName, cachedPosition, resolveName } from '../names.js'
+import { resolversFor, consensusName, isGuessedName, displayName, nameParts, GUESS_MARK, resolvableKey, isFullPubkey, isResolvableId, cachedName, cachedPosition, resolveName } from '../names.js'
 import { setConfig } from '../config.js'
 
 const PUBKEY = 'ab'.repeat(32) // 64 hex chars
@@ -195,6 +195,67 @@ describe('guessed names', () => {
     expect(isGuessedName({ sender_kind: 'relay', sender_id: '2beb', sender_label: '' })).toBe(false)
     expect(isGuessedName({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: '4a' })).toBe(false)
     expect(displayName({ sender_kind: 'relay', sender_id: '2beb', sender_label: null })).toBe('')
+  })
+})
+
+// #661: a relay id is placed on a registry node by reach (attribution.js), and
+// the name follows the placement. The app sets the attribution on the row as
+// _attr; the resolver's sender_label stays what the resolver said.
+describe('displayName follows attribution', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  it('names an attributed reception by its node, marked as a guess, whatever the kind', () => {
+    const attr = { rule: 'node', node: HEUMEN }
+    expect(displayName({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: attr })).toBe('~Heumensoord-RPT')
+    expect(displayName({ sender_kind: 'direct_hash', sender_id: '64', sender_label: '64', _attr: attr })).toBe('~Heumensoord-RPT')
+    expect(displayName({ sender_kind: 'relay', sender_id: '64aa', sender_label: null, _attr: attr })).toBe('~Heumensoord-RPT')
+    // The node's own name wins over whatever the resolver said for the prefix.
+    expect(displayName({ sender_kind: 'relay', sender_id: '64aa', sender_label: 'repeater-3', _attr: attr })).toBe('~Heumensoord-RPT')
+  })
+  it('refuses any name on a collision, even a resolved one', () => {
+    expect(displayName({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } })).toBe('')
+  })
+  it('gives no name for an attributed node that has none', () => {
+    expect(displayName({ sender_kind: 'relay', sender_id: '64aa', sender_label: 'repeater-3', _attr: { rule: 'node', node: { ...HEUMEN, name: '' } } })).toBe('')
+  })
+  // meshpacket.js carries a 1-byte hash as its own label, so a label is no
+  // name there: only a placement names it. The map popup prints this without
+  // a kind guard of its own.
+  it('gives a 1-byte hash no name unless it is placed on a node', () => {
+    expect(displayName({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64' })).toBe('')
+    expect(displayName({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: { rule: 'estimate', prefixKnown: false } })).toBe('')
+    expect(displayName({ sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' })).toBe('')
+  })
+  // Kasper, 2026-09-15: under rule 2 a 2 or 3-byte relay keeps the resolver's
+  // name, unless a positioned node with that prefix sits out of reach, which
+  // is evidence the name belongs to that node.
+  it("keeps the resolver's name on an estimate, unless a node with that prefix is out of reach", () => {
+    const relay = { sender_kind: 'relay', sender_id: '4a4abe', sender_label: 'repeater-3' }
+    expect(displayName({ ...relay, _attr: { rule: 'estimate', prefixKnown: false } })).toBe('~repeater-3')
+    expect(displayName({ ...relay, _attr: { rule: 'estimate', prefixKnown: true } })).toBe('')
+  })
+})
+
+// #618: the HUD mutes the guess mark and prints the name in the text colour,
+// so the mark and the name come apart. displayName is the two joined, which
+// keeps every other surface printing what it printed before.
+describe('nameParts', () => {
+  const HEUMEN = { pubkey: '64aa' + 'aa'.repeat(30), name: 'Heumensoord-RPT', lat: 51.8, lon: 5.9 }
+  it('splits the guess mark from the name', () => {
+    const relay = { sender_kind: 'relay', sender_id: '4a4abe', sender_label: 'repeater-3' }
+    const advert = { sender_kind: 'advert_pubkey', sender_id: PUBKEY, sender_label: 'alpha' }
+    const placed = { sender_kind: 'path_hash', sender_id: '64', sender_label: '64', _attr: { rule: 'node', node: HEUMEN } }
+    expect(nameParts(relay)).toEqual({ mark: '~', name: 'repeater-3' })
+    expect(nameParts(advert)).toEqual({ mark: '', name: 'alpha' })
+    expect(nameParts(placed)).toEqual({ mark: '~', name: 'Heumensoord-RPT' })
+    for (const rec of [relay, advert, placed]) {
+      const { mark, name } = nameParts(rec)
+      expect(displayName(rec)).toBe(mark + name)
+    }
+  })
+  it('has no mark without a name', () => {
+    expect(nameParts({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } })).toEqual({ mark: '', name: '' })
+    expect(nameParts({ sender_kind: 'path_hash', sender_id: '64', sender_label: '64' })).toEqual({ mark: '', name: '' })
+    expect(nameParts(null)).toEqual({ mark: '', name: '' })
   })
 })
 

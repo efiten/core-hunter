@@ -1,10 +1,12 @@
 # The node-position glyph key becomes a glance (#413)
 
 **Date:** 2026-08-21
-**Status:** superseded by #631 (2026-09-13) — the key is gone from both surfaces and the glyph
-meaning now lives only in the marker popup. What follows is the round before that, kept because the
+**Status:** superseded by #631 (2026-09-13), which took the key off both surfaces and moved the
+glyph meaning into the marker popup, and by #662 (decided 2026-09-14, amended here 2026-09-15),
+which removed the prose note, the popup caveats and the §7 rule itself
+(`docs/2026-09-15-position-notices.md`). What follows is the round before that, kept because the
 reasoning it records is why the key could not simply be made permanent again.
-**Amends:** AGENTS.md §7 "Position disclaimer in all position-bearing output"
+**Amends:** AGENTS.md §7 "Position disclaimer in all position-bearing output" (removed by #662)
 **Supersedes the permanence half of:** #306
 
 ## What changed
@@ -46,6 +48,12 @@ tests, not in §7's text.
 The meaning stays reachable after the glance: every node-position marker popup carries the
 disclaimer in `.np-caveat`. A reader who wonders what a ▲ means taps it and is told. §7 has been
 amended to say this explicitly, so the requirement is now written where it is enforced.
+
+> **Amended 2026-09-15 by `docs/2026-09-15-position-notices.md` (#662).** The §7 rule this section
+> answers to is gone, and so are `.np-caveat` and the glance. The popup keeps its glyph line
+> `▲ advertised · ● estimated`; the statement that positions are inferred lives in the app's splash,
+> the About sheet and the map's onboarding. The rule that an explanation for an empty layer stays up
+> moved to `docs/design-system.md`.
 
 ## Why the empty-registry line is exempt
 

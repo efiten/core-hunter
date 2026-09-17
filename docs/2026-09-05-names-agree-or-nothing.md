@@ -1,7 +1,7 @@
 # A short id gets a name only when the registries agree, and wears a mark (#452)
 
 **Date:** 2026-09-05
-**Status:** decided (Kasper, 2026-09-05), implemented
+**Status:** decided (Kasper, 2026-09-05), implemented. Point 4's 1-byte clause and the map bullet under "Left out" amended 2026-09-15 by #661 (`docs/2026-09-15-attribution-by-reach.md`).
 **Related:** #296 (the same per-registry argument on the map's node-position layer), #136 (where relayed traffic first got a repeater name), #451 (the id beside the name in the ticker), #369 (the hash itself is forgeable; separate), `docs/2026-08-15-hop-count-trust.md`
 
 ## What changed
@@ -12,6 +12,8 @@
 2. **A name only on agreement** (`consensusName`). One registry knowing the prefix, or several agreeing, is a name. Two different names for one prefix is a refusal: no name, cached as such, because no retry can turn disagreement into a name, even when a third registry was unreachable at the time. Silence with a registry unreachable is not cached, as before. Names are compared exactly after trimming surrounding whitespace, so letter case counts: `Repeater-Zuid` and `repeater-zuid` are a refusal (Kasper, 2026-09-11). Folding case would make an agreement out of two different answers, and a refusal costs only a name on an id the surfaces still show. `sameResolvedName` in `feed.js` folds case to merge rows; that rule does not carry over.
 3. **The position comes from the first agreeing registry in config order that carries one** (Kasper, 2026-09-11). The answers arrive in whatever order the network returns them. Taking the first to answer would give a different position from run to run whenever two agreeing registries both carry one; config order gives the same position for the same answers. The position is cached with the name, as since #197.
 4. **A name on a 2- or 3-byte id wears `~`** (`isGuessedName`, `displayName`), on the ticker, the HUD, the target list and the map popup. It keeps the name: it is usually right and the field reads by it, and #451 puts the prefix beside it. An advert's own name on its full key, a channel sender's name and an 8-byte discover prefix are not guesses and carry no mark; a 1-byte hash never carries a name at all.
+
+> **Amended 2026-09-15 by `docs/2026-09-15-attribution-by-reach.md` (#661).** A short id of 1, 2 or 3 bytes (`relay`, `path_hash` or `direct_hash`) is now placed per reception by reach (AGENTS.md §7). When exactly one positioned registry node with that prefix is within reach, the reception takes that node's name with `~`, a 1-byte hash included. Two or more within reach is a collision: no name, at any length. Otherwise a 2 or 3-byte id keeps the resolver's name with `~` as above, unless the registry holds a positioned node with that prefix out of reach, and then the id is shown instead; a 1-byte id still carries no name there.
 
 ## What is deliberately still a guess
 
@@ -24,4 +26,7 @@ One request per registry of the SF per unknown id, instead of one per id, bounde
 ## Left out
 
 - The map (`web/names.js`) still resolves a prefix on its own terms; the website's rule for identities is #296's and unchanged here.
+
+  > **Amended 2026-09-15 by `docs/2026-09-15-attribution-by-reach.md` (#661).** #296's refusal to resolve a prefix to a node on the map's node-position layer is replaced by the reach rule, on that layer and on the reach stars. The map's ticker and point popup still take `web/names.js`'s names without `~`; that is a separate issue.
+
 - Whether the resolvers return the matched pubkey; agreement is on the name, which is what the surfaces show.

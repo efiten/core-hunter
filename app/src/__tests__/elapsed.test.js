@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest'
 import { sinceLabel } from '../elapsed.js'
 
 describe('sinceLabel — time since last packet', () => {
-  it('shows an em dash when no packet has been heard', () => {
-    expect(sinceLabel(1000, null)).toBe('—')
-    expect(sinceLabel(1000, undefined)).toBe('—')
+  // #618: the HUD's age slot stays empty before the first reception, rather
+  // than holding a placeholder dash.
+  it('shows nothing when no packet has been heard', () => {
+    expect(sinceLabel(1000, null)).toBe('')
+    expect(sinceLabel(1000, undefined)).toBe('')
   })
 
   it('shows whole seconds under a minute', () => {

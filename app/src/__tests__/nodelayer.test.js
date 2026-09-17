@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, groupSenderPoints, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
 import { haversineM } from '../geometry.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -166,6 +166,17 @@ describe('groupSenderPointsForNodes', () => {
     expect(out.get(C)).toHaveLength(1)
   })
 
+  it('attributes a discover prefix from 2 bytes and in either case', () => {
+    const recs = [
+      rec({ sender_id: 'ffee', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: 'AABBCCDD', sender_kind: 'discover_pubkey' }),
+      rec({ sender_id: A.toUpperCase() }),
+    ]
+    const out = groupSenderPointsForNodes(recs, nodes(A, C))
+    expect(out.get(A)).toHaveLength(2)
+    expect(out.get(C)).toHaveLength(1)
+  })
+
   // The reason this function takes the whole node set instead of one node.
   it('refuses a prefix that matches two nodes, rather than giving it to both', () => {
     // 'aabb' starts both A and B. There is no way to tell which one sent it,
@@ -196,14 +207,46 @@ describe('groupSenderPointsForNodes', () => {
     expect(out.get(B)).toHaveLength(0)
   })
 
-  it('ignores relay, direct_hash and channel_name kinds entirely', () => {
+  // #661: a relay id is not matched against the pubkeys here; it lands on a
+  // node only through its attribution by reach (attribution.js), which the
+  // caller works out against every candidate, not only the nodes in view.
+  it('takes a relay, path hash or direct hash only through its attribution', () => {
+    const N = nodes(A)[0]
+    const recs = [
+      rec({ sender_id: 'aabb', sender_kind: 'relay' }),
+      rec({ sender_id: 'aa', sender_kind: 'path_hash', rssi: -91 }),
+      rec({ sender_id: 'aa', sender_kind: 'direct_hash' }),
+    ]
+    // No attribution worked out: nothing lands, as before.
+    expect(groupSenderPointsForNodes(recs, [N]).get(A)).toHaveLength(0)
+    // Placed on N: every one of them lands on N.
+    const onN = groupSenderPointsForNodes(recs, [N], { attributionOf: () => ({ rule: 'node', node: { ...N, pubkey: A.toUpperCase() } }) })
+    expect(onN.get(A)).toHaveLength(3)
+    expect(onN.get(A)[1]).toEqual({ lat: 51.2, lon: 4.4, rssi: -91 })
+    // A collision or an estimate: nowhere, since this layer draws registry nodes.
+    expect(groupSenderPointsForNodes(recs, [N], { attributionOf: () => ({ rule: 'collision', count: 2 }) }).get(A)).toHaveLength(0)
+    expect(groupSenderPointsForNodes(recs, [N], { attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) }).get(A)).toHaveLength(0)
+  })
+
+  it('drops a reception placed on a node that was not passed in (out of view)', () => {
+    const out = groupSenderPointsForNodes([rec({ sender_id: 'ffee', sender_kind: 'relay' })], nodes(A),
+      { attributionOf: () => ({ rule: 'node', node: { pubkey: C, lat: 51, lon: 4 } }) })
+    expect(out.get(A)).toHaveLength(0)
+    expect(out.has(C)).toBe(false)
+  })
+
+  it('never matches a relay or a channel name against the pubkeys', () => {
     const recs = [
       rec({ sender_id: 'aabbccdd', sender_kind: 'relay' }),
-      rec({ sender_id: 'aa', sender_kind: 'direct_hash' }),
       rec({ sender_id: 'Repeater-Zuid', sender_kind: 'channel_name' }),
     ]
-    const out = groupSenderPointsForNodes(recs, nodes(A))
+    const out = groupSenderPointsForNodes(recs, nodes(A), { attributionOf: () => null })
     expect(out.get(A)).toHaveLength(0)
+  })
+
+  it('keeps matching an advert by its key when the attribution has nothing to say about it', () => {
+    const out = groupSenderPointsForNodes([rec({ sender_id: A })], nodes(A), { attributionOf: () => null })
+    expect(out.get(A)).toHaveLength(1)
   })
 
   it('rejects a discover prefix shorter than 2 bytes', () => {
@@ -226,31 +269,6 @@ describe('groupSenderPointsForNodes', () => {
   it('is case-insensitive on both sides', () => {
     const out = groupSenderPointsForNodes([rec({ sender_id: A.toUpperCase() })], nodes(A.toUpperCase()))
     expect(out.get(A)).toHaveLength(1)
-  })
-})
-
-describe('groupSenderPoints', () => {
-  const rec = (o) => ({ sender_id: 'aa', lat: 51.2, lon: 4.4, rssi: -70, ...o })
-
-  it('groups located receptions by lowercased sender id', () => {
-    const g = groupSenderPoints([
-      rec({ sender_id: 'AA', rssi: -60 }),
-      rec({ sender_id: 'aa', rssi: -70 }),
-      rec({ sender_id: 'bb' }),
-    ])
-    expect(g.get('aa')).toHaveLength(2)
-    expect(g.get('bb')).toHaveLength(1)
-  })
-  it('drops receptions without a sender or without a GPS fix', () => {
-    const g = groupSenderPoints([
-      rec({ sender_id: null }),
-      rec({ sender_id: 'cc', lat: null }),
-      rec({ sender_id: 'dd' }),
-    ])
-    expect([...g.keys()]).toEqual(['dd'])
-  })
-  it('returns an empty map for missing input', () => {
-    expect(groupSenderPoints(null).size).toBe(0)
   })
 })
 

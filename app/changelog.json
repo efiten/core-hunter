@@ -1,5 +1,47 @@
 [
   {
+    "id": "2026-09-15-direction-arrow",
+    "date": "2026-09-15",
+    "where": "app",
+    "title": "An arrow toward the node you heard",
+    "body": "The HUD and the float readout point at the last hop, relative to where you are heading."
+  },
+  {
+    "id": "2026-09-15-float-readout-fills-window",
+    "date": "2026-09-15",
+    "where": "app",
+    "title": "A float readout that fills its window",
+    "body": "Wider and always dark, the signal in its colour, with BLE and MQTT named."
+  },
+  {
+    "id": "2026-09-15-float-opens-as-window",
+    "date": "2026-09-15",
+    "where": "app",
+    "title": "The float readout opens as a window",
+    "body": "Where the browser allows it the readout floats straight away. Otherwise it goes fullscreen, kept upright."
+  },
+  {
+    "id": "2026-09-15-hud-sender-line",
+    "date": "2026-09-15",
+    "where": "app",
+    "title": "The HUD's SNR keeps its digits",
+    "body": "The sender has its own line, so a long name no longer cuts off the SNR."
+  },
+  {
+    "id": "2026-09-15-relay-placed-by-reach",
+    "date": "2026-09-15",
+    "where": "both",
+    "title": "A relay heard by a short id gets a place",
+    "body": "Even a 1-byte id joins the one known node with that id in reach; the app also names it with ~. Two in reach: neither."
+  },
+  {
+    "id": "2026-09-15-no-position-notices",
+    "date": "2026-09-15",
+    "where": "both",
+    "title": "Fewer position notices",
+    "body": "Node popups and the node-positions note no longer repeat that positions are inferred. About still says it."
+  },
+  {
     "id": "2026-09-14-readout-off-the-credit",
     "date": "2026-09-14",
     "where": "map",

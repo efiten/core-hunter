@@ -592,22 +592,20 @@ body.wb-onboarding-on #bar { z-index:710; }
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
-/* Node-position layer (#197). Since #631 the glyph meaning lives in the marker
-   popup and nothing about it is written here: what this stack carries is the
-   disclaimer prose and, in the states that drew nothing, the line saying which
-   of those it was (AGENTS.md §7). Sits left so it never covers #locate-info. */
-/* One anchored stack, column-reverse: the key is first in the DOM and last in
-   the visual order, so it holds the bottom corner while the note (hidden in
-   every state that drew nothing, #376) grows upward above it. Neither box
-   needs a magic offset for the other's height. */
+/* Node-position layer (#197). The glyph meaning lives in the marker popup
+   (#631) and nothing here repeats that positions are inferred (#662): what
+   this stack carries is the line saying which way the layer drew nothing, or
+   that the registry is old (#376). That line is an explanation, so it stays
+   for as long as the state does (#307). Sits left so it never covers
+   #locate-info. The stack is the anchor the phone rule and the e2e overlap
+   checks position and measure. */
 #nodepos-stack { position: fixed; left: 12px; bottom: 12px; z-index: 625; max-width: 300px;
-  display: flex; flex-direction: column-reverse; gap: 6px; pointer-events: none; }
-#nodepos-note, #nodepos-key { background: var(--ch-surface); border: 1px solid var(--ch-border);
-  border-radius: 8px; font-size: 11px; line-height: 1.45; backdrop-filter: blur(8px); }
-#nodepos-note { color: var(--ch-muted); padding: 8px 10px; }
-/* Brighter than the note: it is the line AGENTS.md §7 requires on screen, and
-   in the empty states it is the only thing explaining what happened. */
-#nodepos-key { color: var(--ch-text); padding: 6px 10px; }
+  pointer-events: none; }
+/* In text colour, not muted: in the empty states it is the only thing
+   explaining what happened. */
+#nodepos-key { background: var(--ch-surface); border: 1px solid var(--ch-border);
+  border-radius: 8px; font-size: 11px; line-height: 1.45; backdrop-filter: blur(8px);
+  color: var(--ch-text); padding: 6px 10px; }
 .np-advert-icon { background: none; border: none; }
 .np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; cursor: pointer; }
 /* Everything that decides how wide a name comes out, shared with the hidden
@@ -626,7 +624,6 @@ body.wb-onboarding-on #bar { z-index:710; }
    width to read. Its own class, not .np-label: a probe that answered
    document.querySelectorAll('.np-label') would be counted as a drawn name. */
 .np-label-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
-.np-caveat { color: var(--ch-muted); font-size: 11px; }
 #locate-info .lc-warn { color: var(--ch-sig-warm); }
 #locate-info .lc-muted { color: var(--ch-muted); }
 #locate-info .lc-help { margin-left: 4px; width: 16px; height: 16px; padding: 0; line-height: 14px;
@@ -642,6 +639,9 @@ body.wb-onboarding-on #bar { z-index:710; }
 .lc-strongest { font-size: 16px; line-height: 18px; text-align: center; color: var(--ch-sig-warm);
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
 .pp-id { color: var(--ch-muted); font-size: 11px; word-break: break-all; }
+/* A muted line under a popup action, such as why a repeater has no reach to
+   draw. An explanation, not a caveat (#662). */
+.pp-note { color: var(--ch-muted); font-size: 11px; }
 .lc-locate { margin-top: 6px; padding: 3px 9px; border: none; border-radius: 6px; cursor: pointer;
   background: var(--ch-sig-warm); color: var(--ch-bg); font: inherit; font-size: 12px; }
 /* Show reach in a repeater's popup (#623): outlined in the accent, the app's

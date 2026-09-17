@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-15-float-readout-fills-window",
+  "date": "2026-09-15",
+  "where": "app",
+  "title": "A float readout that fills its window",
+  "body": "Wider and always dark, the signal in its colour, with BLE and MQTT named."
+}

@@ -6,6 +6,7 @@
 // stand, flipped from either place — so with a filter set you look at the
 // filtered set on both. The rules below are pure so app.js's glue stays thin.
 import { isTargetKind } from './feed.js'
+import { attributionSignature } from './attribution.js'
 
 // hudShows: does this reception replace what the HUD shows? `matches` is
 // makeFilter's verdict for it. Anything that is not an explicit true counts
@@ -61,8 +62,11 @@ export function hudActions(rec, { selected, ignored } = {}) {
 // the reception on the ticker's playhead (#453), and the tick hands it a
 // fresh row object every second, so identity is no test. What a reader can
 // see is the reception (its id) and the sender line, which changes when the
-// resolver's answer lands on a later tick.
+// resolver's answer lands on a later tick, or when the reception's attribution
+// by reach does (#661): the registry arrives after it, or the attenuator moves
+// the reach, and the relay is then placed on a node or refused.
 export function sameReadout(shown, row) {
   if (!shown || !row) return false
   return shown.id === row.id && (shown.sender_label || '') === (row.sender_label || '')
+    && attributionSignature(shown._attr) === attributionSignature(row._attr)
 }

@@ -75,15 +75,15 @@ describe('SPLASH_ERRORS', () => {
 })
 
 describe('SPLASH_DISCLAIMER', () => {
-  it('states we map radio signal, not GPS tracking of the target (AGENTS.md §7)', () => {
+  it('states we map radio signal, not GPS tracking of the target (AGENTS.md §1)', () => {
     expect(SPLASH_DISCLAIMER).toMatch(/RSSI|signal/i)
     expect(SPLASH_DISCLAIMER).toMatch(/not GPS tracking/i)
     expect(SPLASH_DISCLAIMER).toMatch(/where you were/i)
   })
 })
 
-// The gate's own disclaimer is one sentence (#413 allows a glance-length
-// form); the full AGENTS.md wording stays in About via SPLASH_DISCLAIMER.
+// The gate's own statement is one sentence; the full AGENTS.md §1 wording stays
+// in About via SPLASH_DISCLAIMER. Since #662 these two are where the app says it.
 describe('SPLASH_DISCLAIMER_SHORT', () => {
   it('keeps the listens-only claim and the where-YOU-were rule in one line', () => {
     expect(SPLASH_DISCLAIMER_SHORT).toMatch(/listens only/i)

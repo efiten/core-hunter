@@ -31,6 +31,10 @@ test('__locateRender draws centroid, strongest marker, heatmap and info card', a
   await expect(info).toContainText('search radius')
   await expect(info).toContainText('strongest -52 dBm')
   await expect(info).toContainText('1-byte ID') // senderId '4a' (< 64 chars) -> hash note
+  // #662: the card explains its own numbers and repeats no position notice.
+  await expect(info).toContainText('no TX calibration')
+  await expect(page.locator('#locate-info .lc-disclaimer')).toHaveCount(0)
+  await expect(info).not.toContainText(/GPS tracking/i)
 })
 
 // #630: the card clears the FAB rail's column, and its 264px did not fit left
@@ -124,6 +128,8 @@ test('Locate with no sender still fetches, using the current filters', async ({ 
   await toggleLocate(page) // Locate lives in the filter panel (#539)
   await req
   await expect(page.locator('#locate-info')).toContainText('too few to estimate')
+  // #662: the empty branch repeats no position notice either.
+  await expect(page.locator('#locate-info')).not.toContainText(/GPS tracking/i)
 })
 
 test('Locate with no sender but a type filter locates over that filtered set (#176)', async ({ page }) => {

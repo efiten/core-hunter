@@ -8,8 +8,9 @@
 // its own directory, since the app image builds with `app/` as its Docker
 // context and the website deploys as a flat file list. So the copies stay, and
 // parity.test.js is what makes a silent drift impossible rather than merely
-// unlikely. It pins what the two share; each side also has functions the other
-// does not (app: senderIdMatches, groupSenderPointsForNodes — web: nodeRows),
+// unlikely. It pins what the two share, including how a reception pairs with a
+// registry node (senderIdMatches, groupSenderPointsForNodes, since #661). The
+// web side also has functions the app has no use for (nodeRows, padBounds),
 // and those are intentional, not drift.
 //
 // The registry position is what the node itself advertised (appData.location),
@@ -49,6 +50,20 @@ export function inBounds(pos, bounds) {
 export function nodesInView(nodes, bounds) {
   if (!Array.isArray(nodes) || !bounds) return []
   return nodes.filter((n) => inBounds(n, bounds))
+}
+
+// padBounds widens a map box by km on every side, in the map's own shape
+// ({ south, west, north, east }, mapcore.js getBounds). The registry slice a
+// draw asks for is the view padded by the reach (#661): a node just outside
+// the view can be the one candidate for a reception inside it, or the second
+// one that makes it a collision. A kilometre spans the most degrees of
+// longitude nearest a pole, so the east-west pad is worked out at the padded
+// box's poleward edge.
+export function padBounds({ south, west, north, east }, km) {
+  const dLat = (km * 1000) / M_PER_DEG_LAT
+  const poleward = Math.max(Math.abs(south - dLat), Math.abs(north + dLat))
+  const dLon = (km * 1000) / (M_PER_DEG_LAT * Math.cos((poleward * Math.PI) / 180))
+  return { south: south - dLat, west: west - dLon, north: north + dLat, east: east + dLon }
 }
 
 // drawableNodes keeps the registry rows that can actually be plotted: a pubkey
@@ -103,27 +118,90 @@ export function driftPresentation({ advertised, estimate }) {
   }
 }
 
-// groupSenderPoints buckets located receptions by sender so each node can be
-// estimated independently. Receptions without a sender or a GPS fix carry no
-// location information and are dropped.
-// Which sender kinds can name a registry node at all. advert carries the full
-// pubkey and discover carries a prefix of it; relay path-hashes, 1-byte direct
-// hashes and channel names are different namespaces entirely and must never be
-// matched against a pubkey. Kept identical to app/src/nodelayer.js (#296) — the
-// two files are a sync-required pair, see the header.
+// senderIdMatches checks if a sender_id (from a reception) matches a pubkey
+// (from registry position). Full advert_pubkey must match exactly (64-hex).
+// Discover pubkey prefix matches if it's a prefix of the full key. Relay,
+// direct_hash, and channel_name are not matched here.
+// Which sender kinds this matcher compares against a pubkey. advert carries the
+// full pubkey and discover carries a prefix of it. A channel name is another
+// namespace entirely. A relay, path or direct hash is a short prefix of the
+// sending node's key, but whether it names one node depends on where it was
+// heard, which a comparison with one key cannot see: it reaches a node only
+// through its attribution by reach (#661, attribution.js), never through here.
 export function isRegistryIdKind(senderKind) {
   return senderKind === 'advert_pubkey' || senderKind === 'discover_pubkey'
 }
 
-export function groupSenderPoints(records) {
+export function senderIdMatches(senderId, senderKind, nodePubkey) {
+  if (!senderId || !nodePubkey) return false
+  if (!isRegistryIdKind(senderKind)) return false
+  const id = String(senderId).toLowerCase()
+  const key = String(nodePubkey).toLowerCase()
+  // An advert carries the whole key, so it must match exactly.
+  if (senderKind === 'advert_pubkey') return id === key
+  // A discover reply carries a prefix, matched from 2 bytes. A discover key
+  // keeps this rule; attribution by reach covers relay ids only (#661).
+  return id.length >= 4 && key.startsWith(id)
+}
+
+// groupSenderPointsForNodes attributes receptions to registry nodes in ONE pass,
+// and refuses any reception whose id matches more than one of them.
+//
+// The refusal is the point. A discover prefix is only 2+ bytes, so it can be a
+// prefix of two different registry pubkeys at once: with a few hundred
+// positioned nodes that is roughly even odds somewhere in the set. Asking each
+// node independently "does this prefix start my key?" makes both of them answer
+// yes, so the same receptions feed two estimates, two connectors and two drift
+// figures, one of which measures a different node. There is no way to tell from
+// the reception which node it came from, so the honest answer is neither: an
+// ambiguous id contributes to nothing. Same rule the target-list merge settled
+// on in #267, and the same thing resolve.go's `ambiguous` flag means.
+//
+// A relay, path or direct hash takes the other road (#661): attributionOf(r)
+// answers its attribution by reach (attribution.js), worked out by the caller
+// against every candidate node rather than the ones passed in. Placed on a
+// node, the reception joins that node when it was passed in; a collision or an
+// estimate joins nothing, since this layer draws registry nodes. Without
+// attributionOf no such reception lands anywhere.
+//
+// A reception is compared only with the nodes whose key starts with the same
+// two bytes (HEAD_HEX): an advert id is the whole key and a discover prefix is
+// at least two bytes of it, so no other node can match. Comparing with every
+// node passed in took 1.7 s for 25 000 synthetic receptions against 3 000
+// nodes, 7 ms this way (2026-09-15); a zoomed-out map passes a slice that big.
+//
+// Returns Map<pubkey, points[]>, with an entry for every node passed in.
+const HEAD_HEX = 4
+export function groupSenderPointsForNodes(records, nodes, { attributionOf = () => null } = {}) {
   const out = new Map()
-  if (!Array.isArray(records)) return out
+  const byHead = new Map()
+  for (const n of nodes || []) {
+    const k = n && n.pubkey ? String(n.pubkey).toLowerCase() : null
+    if (!k) continue
+    out.set(k, [])
+    const head = k.slice(0, HEAD_HEX)
+    if (!byHead.has(head)) byHead.set(head, [])
+    byHead.get(head).push(k)
+  }
+  if (!Array.isArray(records) || out.size === 0) return out
+
   for (const r of records) {
-    if (r.sender_id == null) continue
+    if (!r || r.sender_id == null) continue
     if (!isCoord(r.lat) || !isCoord(r.lon)) continue
-    const key = String(r.sender_id).toLowerCase()
-    if (!out.has(key)) out.set(key, [])
-    out.get(key).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+    const attr = attributionOf(r)
+    if (attr) {
+      const bucket = attr.rule === 'node' ? out.get(String(attr.node.pubkey).toLowerCase()) : null
+      if (bucket) bucket.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+      continue
+    }
+    if (!isRegistryIdKind(r.sender_kind)) continue
+    let matched = null
+    for (const k of byHead.get(String(r.sender_id).toLowerCase().slice(0, HEAD_HEX)) || []) {
+      if (!senderIdMatches(r.sender_id, r.sender_kind, k)) continue
+      if (matched !== null) { matched = null; break }   // ambiguous -> drop it
+      matched = k
+    }
+    if (matched) out.get(matched).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
   }
   return out
 }
@@ -163,17 +241,12 @@ export function circleRing(centre, radiusM, steps = 48) {
 // map draws: one per registry node, paired with an estimate where we have
 // heard that node ourselves (#377).
 //
-// Which receptions may pair is deliberately NOT the app's rule. The app owns
-// the whole registry, so groupSenderPointsForNodes can attribute a discover
-// PREFIX to a node and refuse the ambiguous ones by checking the prefix against
-// every node it knows. This side is handed a viewport slice, so "unique here"
-// is a weaker claim than "unique in the registry" — a prefix ambiguous two
-// towns over would look unique on screen. AGENTS.md §7 settles it: the website
-// never resolves a prefix to a node identity (#296), and bulk-fetching a slice
-// does not license loosening that. So only a full-pubkey reception pairs, which
-// is exactly what this side already did before it had any registry at all.
-//
-// `bySender` is groupSenderPoints()'s Map, keyed by the raw sender_id.
+// Which receptions pair is the app's rule since #661, which replaced the map's
+// refusal to resolve a prefix to a node (#296). `bySender` is
+// groupSenderPointsForNodes()'s Map, keyed by the lowercased pubkey: map.js
+// builds it over the registry slice of the view padded by the reach
+// (padBounds), so a second candidate just outside the view still refuses a
+// relay id or a discover prefix, and hands this function the nodes in view.
 export function nodeRows(nodes, bySender, estimate = estimateFor) {
   const rows = []
   for (const n of drawableNodes(nodes)) {

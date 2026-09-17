@@ -97,16 +97,30 @@
       <span>Keep the screen on and the app in the foreground — screen-off/background pauses capture.</span>
       <button type="button" id="bg-hint-close" aria-label="Dismiss">✕</button>
     </div>
-    <div id="nodepos-note" role="status" hidden></div>
-    <div id="nodepos-key" hidden></div>
+    <div id="nodepos-key" role="status" hidden></div>
   </div>
   <div id="rx-log" aria-label="Receptions"></div>
   <section id="hud">
+    <!-- Row 1 is the reading, row 2 the sender line (#618). Before the first
+         reception the reading is empty and the sender line says so, here in
+         the markup, so a slow config.json or module never shows two blank
+         rows. The line is senderReadout(null) as paintSender draws a note
+         (hudlayout.test.js). -->
     <div id="hud-readout-row">
-      <div id="hud-rssi">—</div>
-      <div id="hud-snr">—</div>
-      <div id="hud-sender" title="Sender of the reception the ticker points at, or the repeater it was heard via">—</div>
-      <div id="hud-since" title="Age of the reception the ticker points at">—</div>
+      <!-- The direction arrow (#660): which way the sender is, relative to
+           where you are heading. Filled for an advertised position, outlined
+           for an estimate, in the reading's tier colour; absent, with nothing
+           in its place, when there is no position, heading or recent fix. A
+           span around the SVG, because hidden does nothing on an SVG. -->
+      <span id="hud-dir" role="img" aria-label="Direction to the sender" hidden>
+        <svg viewBox="-12 -12 24 24" aria-hidden="true"><polygon points="0,-10.6 6.57,8.27 0,4.45 -6.57,8.27" stroke-linejoin="round"/></svg>
+      </span>
+      <div id="hud-rssi"></div>
+      <div id="hud-snr"></div>
+      <div id="hud-since" title="Age of the reception the ticker points at"></div>
+    </div>
+    <div id="hud-sender-row">
+      <div id="hud-sender" class="empty" title="Sender of the reception the ticker points at, or the repeater it was heard via">No reception yet</div>
       <!-- Receptions captured but not yet sent on. The MQTT dot answers
            "is the socket open", which is a different question (#454). -->
       <div id="hud-backlog" role="status" hidden></div>
@@ -118,8 +132,9 @@
       <button type="button" id="hud-target" class="hud-btn" disabled aria-pressed="false" aria-label="Select as target">Target</button>
       <button type="button" id="hud-add" class="hud-btn" disabled aria-pressed="false" aria-label="Add to targets">Add</button>
       <button type="button" id="hud-ignore" class="hud-btn" disabled aria-pressed="false">Ignore</button>
-      <!-- The float readout: the HUD's reading as a fullscreen video, which
-           Android moves into a floating window when you leave the app. -->
+      <!-- The float readout: the HUD's reading as a video in a floating
+           window, or fullscreen where the browser has no such window, which
+           Android moves into one when you leave the app (#616). -->
       <button type="button" id="hud-float" class="hud-btn hud-btn-icon" aria-label="Float readout" aria-pressed="false" hidden>
         <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
           <rect x="3" y="4" width="14" height="11" rx="1.5"/>
@@ -145,9 +160,11 @@
     </div>
   </section>
   <!-- The float readout's canvas and video (#555). Off-screen until the video
-       goes fullscreen; the canvas is only ever a source. -->
-  <canvas id="float-canvas" aria-hidden="true"></canvas>
-  <video id="float-video" muted playsinline aria-label="Float readout"></video>
+       floats or goes fullscreen; the canvas is only ever a source. Both carry
+       the dark palette whatever the app's theme: the window hangs over other
+       apps, often a dark navigation app (#615). -->
+  <canvas id="float-canvas" data-theme="dark" aria-hidden="true"></canvas>
+  <video id="float-video" data-theme="dark" muted playsinline aria-label="Float readout"></video>
   <button id="layer-toggle" aria-label="View"></button>
   <button id="discover-btn" aria-label="Auto-discover: off" disabled>
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">

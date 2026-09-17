@@ -55,18 +55,17 @@ export const SPLASH_ERRORS = {
   'ble-error': 'Could not connect. Retry to try again.',
 }
 
-// Pinned in the glass panel: the AGENTS.md §7 position statement. The splash
-// implies locating a transmitter, so it must state we map radio signal, not the
-// target's GPS — the map shows where the hunter was when it heard the target.
+// The About sheet's position statement (AGENTS.md §1). The app implies locating
+// a transmitter, so it says once that we map radio signal, not the target's
+// GPS: the map shows where the hunter was when it heard the target.
 // The node-position layer (▲ markers) also displays self-reported advertised
 // positions, which may be stale; drift from our estimate indicates the
 // difference between the node's last report and current radio measurements.
 export const SPLASH_DISCLAIMER =
   'Mapping radio signals (RSSI/SNR), not GPS tracking of the target: the map shows where you were when you heard it. Advertised positions are self-reported by the operator and may be stale.'
 
-// The gate's own one-sentence form (#539), allowed since the #413 amendment:
-// shown when position output is switched on and reachable afterwards, not
-// permanent — and the gate shows no position output itself. Injected as HTML
+// The gate's own one-sentence form (#539). The splash and About are where the
+// app says this since #662; nothing position-bearing repeats it. Injected as HTML
 // (the emphasis on "you" is the sentence's whole point), so it must never
 // carry user data.
 export const SPLASH_DISCLAIMER_SHORT =
