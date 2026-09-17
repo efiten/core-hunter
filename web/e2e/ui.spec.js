@@ -351,10 +351,8 @@ test('the node-position layer (off by default) draws CoreScope relay points with
 
   // #629: the CoreScope sightings are a source of the node-position layer, so
   // the stops are what switch them on.
-  await openFilters(page)
-  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true') // off by default
-  await closeFilters(page)
-  await setNodePos(page, '1')
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-label', 'Node positions: off') // off by default
+  await setNodePos(page, 'positions')
 
   await mapSettled(page)
   await expect(async () => {
@@ -384,7 +382,7 @@ test('Locate from a CoreScope relay popup uses observer-points (heard_key) for t
   })
   await page.route('**/api/resolve*', (r) => r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } }))
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
 
   const locateReq = page.waitForRequest((r) => r.url().includes('/observer-points') && r.url().includes('heard_key=1d6f'))
   await mapSettled(page)
@@ -421,9 +419,9 @@ test('switching the layer off clears the CS points even if a name-resolution red
   await page.goto('/')
 
   const relays = () => page.evaluate(() => window.__featureCount('observer-rxlog'))
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect.poll(relays).toBe(1) // point drawn
-  await setNodePos(page, '')
+  await setNodePos(page, 'off')
   await expect.poll(relays).toBe(0) // cleared now
   await expect(page).toHaveURL((u) => !u.searchParams.has('nodepos'))
   // Wait past the resolver delay: the pending redraw must NOT re-add the point.
@@ -431,17 +429,24 @@ test('switching the layer off clears the CS points even if a name-resolution red
   expect(await relays()).toBe(0)
 })
 
-test('Clear button resets filters, drops CS layers, and leaves the URL clean', async ({ page }) => {
+test('Clear button resets filters, keeps node positions, and leaves the URL clean', async ({ page }) => {
   await page.route('**/api/observer-points*', (r) => r.fulfill({ json: { points: [] } }))
-  await page.goto('/?sender=4a2b&nodepos=1&direct=1&types=Advert')
+  let sightingFetches = 0
+  page.on('request', (r) => { if (r.url().includes('/api/observer-points')) sightingFetches++ })
+  await page.goto('/?sender=4a2b&nodepos=positions&direct=1&types=Advert')
   await expect(page.locator('#f-sender')).toHaveValue('4a2b')
-  await openFilters(page) // the layer control and Clear live in the panel (#539)
-  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
+  await openFilters(page) // Clear lives in the panel (#539)
   await expect(page.locator('#f-direct')).toBeChecked()
 
+  // #630: node positions is a view choice, like the layer mode, so Clear
+  // leaves it standing. Its CoreScope sightings are timeframe-scoped and Clear
+  // restores today's range, so they are fetched again rather than dropped.
+  const fetchedBefore = sightingFetches
   await page.click('#clear-filters')
+  await expect.poll(() => sightingFetches, 'sightings fetched again').toBeGreaterThan(fetchedBefore)
   await expect(page.locator('#f-sender')).toHaveValue('')
-  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
   // The panel dimensions too (#539): Clear's label counts them, so it has to
   // clear them — before this it silently left every chip and checkbox standing.
   await expect(page.locator('#f-direct')).not.toBeChecked()
@@ -451,7 +456,7 @@ test('Clear button resets filters, drops CS layers, and leaves the URL clean', a
   await expect(page.locator('#f-types .f-chip.active')).toHaveAttribute('data-type', 'all')
   await expect(page.locator('#filter-pill-count')).toBeHidden()
   await closeFilters(page)
-  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && !u.searchParams.has('nodepos')
+  await expect(page).toHaveURL((u) => !u.searchParams.has('sender') && u.searchParams.get('nodepos') === 'positions'
     && !u.searchParams.has('direct') && !u.searchParams.has('types'))
 })
 
@@ -508,7 +513,7 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
     r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
   })
   await page.goto('/')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect.poll(() => page.evaluate(() => window.__featureCount('observer-rxlog')), { timeout: 10000 }).toBe(1)
   await mapSettled(page)
 
@@ -579,7 +584,7 @@ test("the map's own controls follow the theme instead of keeping their defaults"
   const read = () => page.evaluate(() => {
     const root = getComputedStyle(document.documentElement)
     const px = (v) => root.getPropertyValue(v).trim()
-    const zoom = getComputedStyle(document.querySelector('.maplibregl-ctrl-zoom-in'))
+    const zoom = getComputedStyle(document.querySelector('#zoom-in'))
     const attr = getComputedStyle(document.querySelector('.maplibregl-ctrl-attrib'))
     // Whitespace-stripped: the token ships as rgba(18,23,33,0.92) and
     // getComputedStyle normalises it to rgba(18, 23, 33, 0.92). Same colour,
@@ -622,12 +627,12 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
 
   const forceHover = async (on) => {
     const { root } = await cdp.send('DOM.getDocument')
-    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.maplibregl-ctrl-zoom-in' })
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#zoom-in' })
     await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: on ? ['hover'] : [] })
   }
 
   const swatch = () => page.evaluate(() => {
-    const el = document.querySelector('.maplibregl-ctrl-zoom-in')
+    const el = document.querySelector('#zoom-in')
     const cs = getComputedStyle(el)
     return { bg: cs.backgroundColor, fg: cs.color, page: getComputedStyle(document.body).backgroundColor,
       theme: document.documentElement.getAttribute('data-theme') || 'dark' }
@@ -635,7 +640,13 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
 
   // Composited over the page, because --ch-surface is translucent: the whole
   // point is that two different rgba() strings can land on the same pixel.
-  const parse = (c) => { const m = c.match(/[\d.]+/g).map(Number); return m.length === 3 ? [...m, 1] : m }
+  // The rail's hover is a color-mix() (#630), which computes to
+  // color(srgb r g b / a) with channels from 0 to 1 rather than rgb()'s 0 to 255.
+  const parse = (c) => {
+    const m = c.match(/[\d.]+/g).map(Number)
+    const rgba = m.length === 3 ? [...m, 1] : m
+    return c.startsWith('color(') ? [...rgba.slice(0, 3).map((v) => v * 255), rgba[3]] : rgba
+  }
   const over = (fg, bg) => fg.slice(0, 3).map((c, i) => Math.round(c * fg[3] + bg[i] * (1 - fg[3])))
   const lum = (rgb) => {
     const f = rgb.map((c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 })
@@ -663,18 +674,16 @@ test('the zoom buttons have a hover a user can actually see, in both themes', as
     // And the glyph has to survive the state it appears in.
     expect(ratio(glyph, hover), `glyph contrast on hover, ${detail}`).toBeGreaterThan(4.5)
 
-    // A visible hover is a new way to get this wrong: at min or max zoom
-    // Leaflet marks the button .leaflet-disabled, and lighting it under the
-    // cursor would offer feedback for a click that does nothing. Our disabled
-    // rule and the hover rule have equal specificity, so this is decided by
-    // which is written last.
+    // A visible hover is a new way to get this wrong: at min or max zoom the
+    // rail disables the button (#630), and lighting it under the cursor would
+    // offer feedback for a click that does nothing.
     await forceHover(false)
-    await page.evaluate(() => { document.querySelector('.maplibregl-ctrl-zoom-in').disabled = true })
+    await page.evaluate(() => { document.querySelector('#zoom-in').disabled = true })
     const disabledRest = await swatch()
     await forceHover(true)
     const disabledHover = await swatch()
     expect(disabledHover.bg, `disabled hover in ${rest.theme}`).toBe(disabledRest.bg)
-    await page.evaluate(() => { document.querySelector('.maplibregl-ctrl-zoom-in').disabled = false })
+    await page.evaluate(() => { document.querySelector('#zoom-in').disabled = false })
 
     await forceHover(false)
     await flipTheme(page)

@@ -28,21 +28,16 @@ const box = (page) => page.evaluate(() => {
     vw: innerWidth, vh: innerHeight, barBottom: Math.round(bar.bottom) }
 })
 
-test('starts in the top right, clear of the zoom control and the centre', async ({ page }) => {
+test('starts in the top left under the bar, clear of the centre', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   const b = await box(page)
-  // The two things the issue names: not spanning the map, and not at the left
-  // where Leaflet's zoom control lives.
+  // Not spanning the map, which is what the issue names.
   expect(b.w).toBeLessThan(b.vw)
-  // Right-anchored: its RIGHT edge hugs the viewport. Asserting the left edge
-  // is past the midpoint would be wrong -- a 680px box on a 1280px screen
-  // starts at 588 however hard it is pushed right.
-  expect(b.right).toBeLessThanOrEqual(b.vw)
-  expect(b.vw - b.right, 'not anchored to the right edge').toBeLessThanOrEqual(16)
-  // And clear of the left, where Leaflet's zoom control lives -- the collision
-  // the issue names.
-  expect(b.x, 'still overlapping the zoom control').toBeGreaterThan(100)
+  // Left-anchored since #630: the zoom control it used to avoid at the top
+  // left went into the FAB rail, and the rail owns the right-hand side.
+  expect(b.x, 'not anchored to the left edge').toBeGreaterThanOrEqual(0)
+  expect(b.x, 'not anchored to the left edge').toBeLessThanOrEqual(16)
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom)
 })
 
@@ -71,6 +66,8 @@ test('drags by its frame and remembers where it was left', async ({ page }) => {
 test('a ticker left at the edge of a wide screen is still reachable on a narrow one', async ({ page }) => {
   // The safety net the issue asks for: dragging replaces the anchor, so there
   // is no "put it back" and an off-screen ticker would be lost for good.
+  // 720, not a phone: below 640px the card is pinned rather than clamped
+  // (#643), and that has its own case below.
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.goto('/')
   const strip = page.locator('.rx-grab-t')
@@ -80,16 +77,56 @@ test('a ticker left at the edge of a wide screen is still reachable on a narrow 
   await page.mouse.move(1380, 860, { steps: 8 })
   await page.mouse.up()
 
-  await page.setViewportSize({ width: 480, height: 700 })
+  await page.setViewportSize({ width: 720, height: 700 })
   // Polled: the clamp runs from the resize handler, so asserting on the first
   // measurement races it. Polling also proves it actually settles rather than
   // happening to be right at one instant.
-  await expect.poll(async () => (await box(page)).x, { timeout: 5000 }).toBeLessThanOrEqual(480)
+  await expect.poll(async () => (await box(page)).right, { timeout: 5000 }).toBeLessThanOrEqual(720)
   const b = await box(page)
   expect(b.x).toBeGreaterThanOrEqual(0)
   expect(b.right, 'stranded off the right edge').toBeLessThanOrEqual(b.vw)
   expect(b.y).toBeLessThanOrEqual(b.vh)
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
+})
+
+// #643: below 640px the card is pinned under the bar like the app's, and the
+// position dragged on a wide screen is kept for when it is wide again. The
+// stored x,y is the part that used to be lost: urlstate writes the placement
+// back on every load, so clamping it against the phone overwrote it for good.
+test('pins under the bar on a narrow screen, and keeps the wide position for later', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const s = await page.locator('.rx-grab-t').boundingBox()
+  await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(900, 500, { steps: 10 })
+  await page.mouse.up()
+  const dragged = await box(page)
+  const storedXY = () => page.evaluate(() => (new URLSearchParams(location.search).get('rx') || '').split(',').slice(0, 2).join(','))
+  const wideXY = await storedXY()
+  expect(wideXY, 'the drag was not stored').toBe(`${dragged.x},${dragged.y}`)
+
+  // Centred at the app's width, straight under the bar. Polled for the same
+  // reason as the clamp above: the resize handler is what lands it.
+  const pinned = async () => {
+    const b = await box(page)
+    return b.w === b.vw - 20 && b.x === 10 && b.y >= b.barBottom && b.y <= b.barBottom + 5
+  }
+  await page.setViewportSize({ width: 390, height: 780 })
+  await expect.poll(pinned, { timeout: 5000 }).toBe(true)
+  // Removed, not left stale. The narrow rule's `left: 50%` hides a stale
+  // --rx-x from every geometry check, so only the inline style can show it.
+  expect(await page.locator('#rx-log').evaluate((el) => [el.style.getPropertyValue('--rx-x'), el.style.getPropertyValue('--rx-y')]))
+    .toEqual(['', ''])
+  // A reload is the load-time save that used to overwrite the position.
+  await page.reload()
+  await expect(page.locator('#rx-log')).toBeVisible()
+  await expect.poll(pinned, { timeout: 5000 }).toBe(true)
+  expect(await storedXY(), 'a narrow load rewrote the wide position').toBe(wideXY)
+
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect.poll(async () => { const b = await box(page); return `${b.x},${b.y}` }, { timeout: 5000 })
+    .toBe(`${dragged.x},${dragged.y}`)
 })
 
 // A height-only resize does not change the bar's size, so the bar's
@@ -170,6 +207,80 @@ test('the cross puts the ticker away, and the bar brings it back', async ({ page
   await page.locator('#ticker-btn').click()
   await expect(page.locator('#rx-log')).toBeVisible()
   await expect(page.locator('#ticker-btn')).toBeHidden()
+})
+
+// #630 put the notices at the top centre and the ticker's first visit in the
+// top left. At 1280 a guest's notice lay over the ticker's header, over it in z
+// too, and took the click on the cross: a guest, whose notice cannot be
+// dismissed, could not put the ticker away. 1280 has room beside the ticker,
+// 1024 does not, and a phone pins the ticker across the width (#643).
+for (const [w, h] of [[1280, 800], [1024, 768], [375, 812]]) {
+  test(`a guest's notice keeps clear of the ticker at ${w}px, and comes back up when it goes`, async ({ page }) => {
+    await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/')
+    const notice = page.locator('#guest-notice')
+    await expect(notice).toBeVisible()
+    await expect(page.locator('#rx-log .rx-ln').first()).toBeVisible()
+    const rects = () => page.evaluate(() => {
+      const r = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom } }
+      return { notice: r(document.getElementById('guest-notice')), card: r(document.getElementById('rx-log')),
+        barBottom: document.getElementById('bar').getBoundingClientRect().bottom }
+    })
+    const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top
+    await expect.poll(async () => { const { notice: n, card } = await rects(); return apart(n, card) },
+      { message: 'the notice overlaps the ticker' }).toBe(true)
+
+    // Not intercepted: this is the click that timed out.
+    await page.locator('#rx-log .rx-close').click({ timeout: 3000 })
+    await expect(page.locator('#rx-log')).toBeHidden()
+    // With the card away, back under the bar where it belongs.
+    await expect.poll(async () => { const r = await rects(); return Math.round(r.notice.top - r.barBottom) }).toBeLessThanOrEqual(10)
+  })
+}
+
+// The card also grows on its own: each poll that brings receptions in adds a
+// lane (receptionticker.js writes --rx-lanes), with no move, fold or resize to
+// go through. At 1024 there is no band beside the ticker, so the notice sits
+// under the card and has to follow its lower edge down. The lane count is set
+// by hand the way the component sets it, rather than waiting on a 10s poll.
+test("a guest's notice moves down when the ticker grows under it", async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: RX.slice(0, 2) } }))
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await page.goto('/')
+  await expect(page.locator('#guest-notice')).toBeVisible()
+  await expect(page.locator('#rx-log .rx-ln').first()).toBeVisible()
+  const below = () => page.evaluate(() => {
+    const n = document.getElementById('guest-notice').getBoundingClientRect()
+    return n.top >= document.getElementById('rx-log').getBoundingClientRect().bottom
+  })
+  await expect.poll(below).toBe(true)
+  const before = (await page.locator('#rx-log').boundingBox()).height
+  await page.evaluate(() => document.querySelector('#rx-log .rx-list').style.setProperty('--rx-lanes', '10'))
+  expect((await page.locator('#rx-log').boundingBox()).height, 'the card did not grow').toBeGreaterThan(before)
+  await expect.poll(below, { message: 'the notice lies over the lanes that were added' }).toBe(true)
+})
+
+// A drag changes where the card is and not its size, so no ResizeObserver sees
+// it: the notice has to follow the move itself.
+test("a guest's notice goes back to the centre when the ticker is dragged away", async ({ page }) => {
+  await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'guest' } }))
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto('/')
+  const notice = page.locator('#guest-notice')
+  await expect(notice).toBeVisible()
+  await expect(page.locator('#rx-log .rx-ln').first()).toBeVisible()
+  const centreOffset = async () => { const b = await notice.boundingBox(); return Math.round(b.x + b.width / 2 - 640) }
+  // Beside the ticker at first: right of the page's centre.
+  await expect.poll(centreOffset).toBeGreaterThan(100)
+
+  const s = await page.locator('.rx-grab-t').boundingBox()
+  await page.mouse.move(s.x + s.width / 2, s.y + s.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(s.x + s.width / 2, 700, { steps: 10 })
+  await page.mouse.up()
+  await expect.poll(centreOffset).toBe(0)
 })
 
 // Two receptions are a one-lane card already, so no stop would make it smaller
@@ -259,9 +370,9 @@ test('the frame is invisible at rest and never covers the map', async ({ page })
   }
 })
 
-// Dragging is a wide-screen affordance (#561). The card is full-bleed below
-// 640px, so every position is the same band at a different height -- there is
-// no "out of the way" to drag it to. Shrinking and dismissing are what move it
+// Dragging is a wide-screen affordance (#561). The card is pinned below 640px
+// at the app's width (#643), spanning the map -- there is no "out of the way"
+// to drag it to. Shrinking and dismissing are what move it
 // aside there, which is what the app does at every width.
 test.describe('in mobile view', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })

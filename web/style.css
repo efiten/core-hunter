@@ -289,8 +289,12 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    across the middle-top of the map, over the content, colliding with Leaflet's
    zoom control at the top-left. It is now a box the user drags, positioned from
    --rx-x/--rx-y which tickerplace.js clamps into the viewport on load and on
-   resize. The 680px width is what .rx-hd/.rx-list already constrained
-   themselves to, so the rows are unchanged; only the box around them moved. */
+   resize. Below 640px it is pinned instead (#643), in the narrow block. The
+   680px width is what .rx-hd/.rx-list already constrained themselves to, so
+   the rows are unchanged; only the box around them moved. Short of the FAB
+   rail's column since #630: below 760px a 680px card from its first-visit 12px
+   ran under the rail, whose top reaches the card on a phone held sideways, and
+   the rail painted over the cross and the chevron at the card's right end. */
 /* The backing plate (#424, F3 of the 26 August review). The app got one in
    #539; here the rows lay straight on the tiles, which is unreadable over a
    light basemap. pointer-events stays none on the box: the plate paints, and
@@ -298,7 +302,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    #287/#322 set up. */
 #rx-log { position: fixed; z-index: 620;
   top: var(--rx-y, calc(var(--ch-bar-h) + 4px)); left: var(--rx-x, 0px);
-  width: min(680px, 100vw); pointer-events: none;
+  width: min(680px, calc(100vw - 12px - var(--ch-rail-clear))); pointer-events: none;
   background: var(--ch-surface-thin); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
   border: 1px solid var(--ch-border); border-radius: 10px; overflow: hidden;
   box-shadow: 0 6px 20px rgba(0,0,0,.18);
@@ -421,22 +425,26 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    interactive, which is only the role notice's dismiss button. The same bargain
    #rx-log makes (#287/#322): the box paints, and the drag underneath it still
    reaches Leaflet. z 610 puts them under the ticker's 620 and the bar's 630. */
-/* left clears Leaflet's zoom control, which sits at left:10 directly under the
-   bar. Moving the notices out of the bar and leaving them at the left edge
-   would have swapped one occlusion for another: measured at 1280x760 with the
-   notice there, elementFromPoint on the + returned #guest-notice. */
-/* z 625: under the bar (630), over the ticker (620). The ticker's first-visit
-   position is the top right, which is where a centred notice lands, and a
-   notice that a log tail paints over is not a notice. Left-aligned for the same
-   reason -- it starts where reading starts, and stays out of that corner. */
-#map-notices { position:fixed; left:56px; right:12px; top:calc(var(--ch-bar-h) + 8px); z-index:625;
-  display:flex; flex-direction:column; align-items:flex-start; gap:6px; pointer-events:none; }
-#map-notices > * { pointer-events:auto; max-width:min(560px, 100%); }
+/* z 625: under the bar (630), over the ticker (620): a notice that a log tail
+   paints over is not a notice. At the top centre since #630, between the
+   ticker's first-visit corner at the top left and the FAB rail on the right. It
+   sat at left:56px before, and only to clear MapLibre's zoom control in the top
+   left corner, which went into the rail. The values below are the centred
+   column; map.js writes --nt-left/--nt-w/--nt-top over them when the ticker is
+   in the way (noticeplace.js), so the notice never covers the ticker's buttons.
+   The column keeps the rail's clearance on both sides, so it stays centred and
+   never reaches the rail's column: on a short screen the rail stands as high as
+   the notices, and at 667x375 a 560px column ran 7px into it. */
+#map-notices { position:fixed; width:var(--nt-w, min(560px, calc(100vw - 2 * var(--ch-rail-clear))));
+  left:var(--nt-left, calc((100vw - min(560px, calc(100vw - 2 * var(--ch-rail-clear)))) / 2));
+  top:var(--nt-top, calc(var(--ch-bar-h) + 8px)); z-index:625;
+  display:flex; flex-direction:column; align-items:center; gap:6px; pointer-events:none; }
+#map-notices > * { pointer-events:auto; max-width:100%; }
 /* bottom 44px stands the readout above MapLibre's attribution, which shares
    this corner: its 10px margin, one 24px line of credit and 10px of air. At
    26px it covered the open credit by 8px. Wider than 640px the longest credit
    (3D adds the terrain source's) is one line, measured down to 641px. */
-#map-readout { position:fixed; right:12px; bottom:44px; z-index:610; pointer-events:none;
+#map-readout { position:fixed; right:var(--ch-rail-clear); bottom:44px; z-index:610; pointer-events:none;
   display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;
   background:var(--ch-surface-thin); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
   border:1px solid var(--ch-border); border-radius:8px; padding:4px 9px; }
@@ -577,7 +585,10 @@ body.wb-onboarding-on #bar { z-index:710; }
    which is a stacking context, so against the page it is at the bar's 630.
    The cards sit at the bottom and the bar at the top, so nothing is lost by
    keeping them under it, and the panel is the topmost thing on the map. */
-#locate-info { position: fixed; right: 12px; bottom: 12px; z-index: 625; max-width: 264px;
+/* The max-width leaves an 8px gutter at the left edge where 264px does not fit
+   beside the rail's column (#630): at 320px the card ran flush to the edge. */
+#locate-info { position: fixed; right: var(--ch-rail-clear); bottom: 12px; z-index: 625;
+  max-width: min(264px, calc(100vw - 8px - var(--ch-rail-clear)));
   background: var(--ch-surface); color: var(--ch-text); border: 1px solid var(--ch-border);
   border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.45; backdrop-filter: blur(8px); }
 #locate-info h4 { margin: 0 0 6px; font-size: 13px; }
@@ -669,52 +680,67 @@ body.wb-onboarding-on #bar { z-index:710; }
 /* Links are accent-2 on every surface (#539). */
 .lc-signup a, .lc-signup a:visited { color: var(--ch-accent-2); text-decoration: underline; }
 
-/* MapLibre's own controls (#427, #465). Neither stylesheet had a rule for the
-   map's controls, so the zoom buttons and the attribution strip kept the
-   library defaults: white on an #0b0e14 page, the least important element
-   with the highest contrast. Tokens only, so both themes follow the same
-   switch as everything else. The same specificity as MapLibre's own rules,
-   landing later in the cascade; no !important. */
-.maplibregl-ctrl-group { background: var(--ch-surface); border: 1px solid var(--ch-border); box-shadow: none; border-radius: 4px; }
-.maplibregl-ctrl-group button { background: var(--ch-surface); color: var(--ch-text); border-bottom: 1px solid var(--ch-border); }
-/* --ch-border, not --ch-input-bg: composited over the page the two land within
-   one 8-bit step of each other in both palettes, so a hover changed nothing a
-   user could see (#427 review). On a desktop the hover is the button's only
-   affordance. */
-.maplibregl-ctrl-group button:not(:disabled):hover { background: var(--ch-border); }
-.maplibregl-ctrl-group button:last-child { border-bottom: none; }
-/* A visible hover is a new way to get this wrong: at min or max zoom the
-   button is disabled, and lighting it under the cursor would offer feedback
-   for a click that does nothing. Written after the hover rule on purpose. */
-.maplibregl-ctrl-group button:disabled, .maplibregl-ctrl-group button:disabled:hover { background: var(--ch-surface); color: var(--ch-muted); }
-.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: none; }
-.maplibregl-ctrl-zoom-in .maplibregl-ctrl-icon, .maplibregl-ctrl-zoom-out .maplibregl-ctrl-icon { background-image: none; }
-.maplibregl-ctrl-zoom-in::before { content: "+"; }
-.maplibregl-ctrl-zoom-out::before { content: "\2212"; }
-.maplibregl-ctrl-zoom-in::before, .maplibregl-ctrl-zoom-out::before { font-size: 18px; line-height: 29px; display: block; }
+/* MapLibre's attribution strip (#427, #465), the one control of the library's
+   left on the map: without a rule it kept the library default, white on an
+   #0b0e14 page, the least important element with the highest contrast. Tokens
+   only, so both themes follow the same switch as everything else. */
 /* Two classes, matching MapLibre's own `.maplibregl-ctrl.maplibregl-ctrl-attrib`
    (the compact form too): a single-class rule loses on specificity however
    late it lands, the same lesson #427 recorded for Leaflet. */
 .maplibregl-ctrl.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib.maplibregl-compact, .maplibregl-ctrl-attrib.maplibregl-compact-show { background: var(--ch-surface); color: var(--ch-muted); }
 .maplibregl-ctrl-attrib a { color: var(--ch-accent-2); }
 .maplibregl-ctrl-attrib-button { background-color: var(--ch-surface); }
-/* The view button (#595), a control group of one under the zoom and the
-   compass (mapcore.js addButton). On = the accent, the ring drawn inside the
-   button since the group clips its edge; the app's FAB draws it outside. */
-.maplibregl-ctrl-group button svg { display: block; margin: 0 auto; pointer-events: none; }
-.maplibregl-ctrl-group button.on { color: var(--ch-accent); box-shadow: inset 0 0 0 2px var(--ch-accent); }
-/* MapLibre's compass ships as a dark needle in a background image, invisible
-   on the dark surface, and the filter that lightens it is the library's own
-   white-on-white idiom. The needle is a mask over currentColor instead, so
-   it takes the button's token in both themes; the north half is solid, the
-   south half at 45%, and MapLibre's inline rotate on the icon turns the
-   mask with it. */
-.maplibregl-ctrl-compass .maplibregl-ctrl-icon { background-image: none; background-color: currentColor;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 2l3.6 8H6.4z'/%3E%3Cpath d='M10 18l-3.6-8h7.2z' opacity='.45'/%3E%3C/svg%3E") center / 20px 20px no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M10 2l3.6 8H6.4z'/%3E%3Cpath d='M10 18l-3.6-8h7.2z' opacity='.45'/%3E%3C/svg%3E") center / 20px 20px no-repeat; }
-/* The controls sit under the bar and the panels (bar 630). */
-.maplibregl-ctrl-top-left { top: 8px; left: 8px; }
+/* The attribution sits under the bar and the panels (bar 630). */
 .maplibregl-control-container { z-index: 500; }
+
+/* The FAB rail (#630): the app's rail (app.css, FABs) on the map, in place of
+   MapLibre's zoom and compass and the 2D/3D button beside them. 46px circles,
+   8px apart, 14px from the right edge, bottom-right at every width.
+   bottom 44px holds the column clear of the attribution, which is MapLibre's
+   bottom-right control: 10px margin plus its 24px button, plus 10px of air.
+   z 624: over #rx-log (620) and the map's popups (610), under #bf-scrim (626),
+   so an open filter panel still paints over the rail (#590).
+   A screen too short for five 46px buttons between the bar and that bottom
+   (a phone held sideways: 568x320, or 660x360 where the bar wraps to 90px)
+   shrinks them to what fits, 8px under the bar, down to 36px. The 5 is the
+   number of buttons. */
+:root { --ch-rail-clear: calc(14px + 46px + 8px); }
+#map-rail { --rail-bottom: 44px; --rail-gap: 8px;
+  --rail-btn: clamp(36px, calc((100dvh - var(--ch-bar-h) - 8px - var(--rail-bottom) - 4 * var(--rail-gap)) / 5), 46px);
+  position: fixed; right: 14px; bottom: var(--rail-bottom); z-index: 624;
+  display: flex; flex-direction: column; gap: var(--rail-gap); }
+#map-rail button { position: relative; width: var(--rail-btn); height: var(--rail-btn); padding: 0;
+  border-radius: 50%; border: none; background: var(--ch-surface);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  color: var(--ch-text); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+#map-rail button svg { pointer-events: none; }
+/* A hover, like web's other buttons: on a desktop it is the only affordance an
+   icon button gives before the click. Not while disabled, which would offer
+   feedback for a press that does nothing. 14%, not the 10% .tr-item uses: on
+   the light surface 10% lands on a 1.2 contrast step, the floor below which
+   #427 measured a hover as not seen. */
+#map-rail button:not(:disabled):hover { background: color-mix(in srgb, var(--ch-text) 14%, var(--ch-surface)); }
+#map-rail button:focus-visible { outline: 2px solid var(--ch-accent-2); outline-offset: 3px; }
+/* On = the accent ring outside the button, the app's idiom for a FAB that is
+   doing something (#nodepos-toggle.on, #sound-toggle.on). */
+#map-rail button.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
+/* The app's disabled FAB (#discover-btn:disabled): zoom at the map's exact min
+   or max, where a press would do nothing. */
+#map-rail button:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
+/* A phone held sideways shorter than about 380px (740x360, 667x375) ran the
+   262px column up under the bar. Half the gap buys 16px before the buttons
+   have to shrink; 844x390 fits either way. */
+@media (max-height: 400px) {
+  #map-rail { --rail-gap: 4px; }
+}
+/* The compass needle turns with the bearing (map.js), around its own centre. */
+#compass-needle { transform-origin: 50% 50%; }
+/* The segmented ring around the node-positions button (fabring.js), as in the
+   app: an overlay behind the centred icon. */
+.fab-ring { position: absolute; inset: 0; pointer-events: none; }
+.fab-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 
 /* MapLibre popup themed to the surface, as in the app (app/src/styles/app.css). */
 .maplibregl-popup { z-index: 610; }
@@ -743,7 +769,6 @@ body.wb-onboarding-on #bar { z-index:710; }
 .rc-hub { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg); background: var(--ch-muted); cursor: pointer; }
 .np-dim { opacity: 0.35; }
 .np-advert.np-selected .np-label { font-size: 12px; font-weight: 600; padding: 2px 8px; border: 1.5px solid currentColor; border-radius: 999px; background: var(--ch-surface); }
-.bf-seg-label { display: block; font-size: 11px; color: var(--ch-muted); margin: 0 0 4px; }
 /* The prefix search inside the sender picker (#498), the app's .tl-search. */
 .tl-search { width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 7px 10px; background: var(--ch-input-bg); color: var(--ch-text);
   border: 1px solid var(--ch-border); border-radius: 8px; font: inherit; font-size: 13px; }
@@ -793,10 +818,6 @@ body.wb-onboarding-on #bar { z-index:710; }
   padding: 4px; cursor: pointer; margin-left: auto; }
 #bar-filters.bf-open > * { flex: 0 0 auto; }
 /* Named groups (F15): the strip without groups is what the panel replaces. */
-/* The Overlays group used to hide itself when every toggle in it was hidden,
-   which below member was all of them. Since #629 the one control left stays on
-   screen and is disabled with a reason underneath, so the heading always has
-   something under it and the group needs no rule of its own. */
 .bf-group { display: flex; flex-direction: column; gap: 8px; }
 .bf-group + .bf-group { border-top: 1px solid var(--ch-border); padding-top: 10px; }
 .bf-group-head { font-size: 12px; letter-spacing: .05em; text-transform: uppercase;
@@ -946,37 +967,54 @@ body.wb-onboarding-on #bar { z-index:710; }
     min-height: 44px; padding: 0 12px; width: 100%; justify-content: space-between; }
   .bf-slot { display: block; }
   .bf-slot > .ms-wrap, .bf-slot > .tr-wrap { display: block; }
-  /* The notices and the readout follow the narrower bar. The credit wraps to
-     two lines here, 44px tall: in 3D at 540px and below, in 2D at 360px. 64px
-     is the base rule's sum with that second line. Three lines did not occur
-     down to 320px. */
-  #map-notices { left: 52px; right: 8px; }
-  #map-readout { right: 8px; bottom: 64px; font-size: 11px; }
+  /* The notices span the width under the narrower bar, left-aligned, since a
+     centred 560px column is the whole screen here. Only --nt-top still applies:
+     under the pinned ticker, not over it. */
+  #map-notices { left: 8px; right: 8px; width: auto; align-items: flex-start; }
+  /* The credit wraps to two lines here, 44px tall: in 3D at 540px and below,
+     in 2D at 360px. 64px is the base rule's sum with that second line. Three
+     lines did not occur down to 320px. The rail's column stands at the same
+     height (--rail-bottom below), so the readout stops left of it, as on a
+     wide screen, and wraps to a second line when both node counts do not fit
+     beside it: at 375 and 412px they do not (Kasper, 16 September 2026). */
+  #map-readout { bottom: 64px; font-size: 11px; max-width: calc(100vw - 8px - var(--ch-rail-clear)); }
   /* #641: the notice and the readout each owned a bottom corner, and on a
-     phone there is only one. At 412px the notice's 12 + 300 leaves about 92px
-     for a readout that has to hold a node count, so the two ran into each
-     other. They stack instead of sharing the row: the notice spans the width
-     above the readout. 96px is the readout's own bottom (64, which is where
-     #659 put it to clear the credit's second line) plus its height (11px text
-     at the default line-height ~= 14, plus 4+4 padding and 1+1 border = 24)
-     plus 8px of air. The attribution keeps the strip below both, which is the
-     part that is not cosmetic. */
-  #nodepos-stack { left: 8px; right: 8px; bottom: 96px; max-width: none; }
-  /* The ticker does not drag at this width (#561). It is full-bleed here
-     (`min(680px, 100vw)`), so every position is the same band at a different
-     height and there is no "out of the way" to reach. The chevron's stops and
-     the cross are what move it aside, which is what the app does at every
-     width. Removing the strips rather than making them inert: they are 6px of
+     phone there is only one. They stack instead of sharing the row: the
+     notice spans the width above the readout. 120px is the readout's own
+     bottom (64, which is where #659 put it to clear the credit's second line)
+     plus its height on two lines (two 14px lines, the flex row gap of 8, 4+4
+     padding and 1+1 border = 46, measured 48) plus 8px of air. The attribution
+     keeps the strip below both, which is the part that is not cosmetic. The
+     right edge stops short of the FAB rail's column (#630), which stands over
+     this corner at every width. */
+  #nodepos-stack { left: 8px; right: var(--ch-rail-clear); bottom: 120px; max-width: none; }
+  /* MapLibre opens the compact attribution expanded, and at a phone's width a
+     longer credit (the terrain source's, in 3D) wraps it to two lines, 44px
+     tall. 64px is its 10px margin, those two lines and 10px of air, the same
+     sum as the base rule's 44px for one line. */
+  #map-rail { --rail-bottom: 64px; }
+  /* The ticker is pinned here, as in the app (#643): centred, 10px from each
+     edge, under the bar. Only the box is the app's; its top is not the app's
+     literal 52px but the base rule's fallback, calc(var(--ch-bar-h) + 4px),
+     because this bar's height varies. map.js removes --rx-x/--rx-y at this
+     width so that fallback applies, and keeps the stored position for when the
+     screen is wide again. */
+  #rx-log { left: 50%; transform: translateX(-50%); width: calc(100vw - 20px); }
+  /* The ticker does not drag at this width (#561). It spans the map here, so
+     there is no "out of the way" to reach. The chevron's stops and the cross
+     are what move it aside, which is what the app does at every width.
+     Removing the strips rather than making them inert: they are 6px of
      invisible hit area, and an invisible target that does nothing is worse
      than no target. */
   .rx-grab { display: none; }
-  /* Zoom moves to the bottom left. At this width the ticker is full-bleed
-     (`min(680px, 100vw)`) and starts under the bar, so the top-left corner is
-     the one place a map control cannot be: measured at 375x812 with the control
-     up there, elementFromPoint on the + returned #rx-log. Bottom is also where
-     a thumb is, which is the same reason the app's FABs sit low (#257). */
-  .maplibregl-ctrl-top-left { top: auto; bottom: 44px; }
-  .maplibregl-ctrl-top-left .maplibregl-ctrl { margin-top: 0; margin-bottom: 10px; }
+}
+/* A phone held sideways (#630): the rail's column stands from under the bar to
+   the bottom, so the pinned ticker and the notices, which span the screen above
+   on a phone held upright, stop at the rail instead. At 640x360 the rail stood
+   on the ticker's cross and the compass was under the guest notice. */
+@media (max-width: 640px) and (max-height: 400px) {
+  #rx-log { left: 10px; transform: none; width: calc(100vw - 10px - var(--ch-rail-clear)); }
+  #map-notices { right: var(--ch-rail-clear); }
 }
 
 /* The id-class chips (#475) sit inline in the filter panel since #539

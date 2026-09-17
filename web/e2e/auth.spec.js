@@ -1,4 +1,4 @@
-import { test, expect, openFilters, closeFilters, setNodePos } from './fixtures.js'
+import { test, expect, openFilters, setNodePos } from './fixtures.js'
 
 async function mockRole(page, me) {
   await page.route('**/api/auth/me', r => r.fulfill({ json: me }))
@@ -139,21 +139,87 @@ test('guest ?locate=1 does not restore Locate', async ({ page }) => {
 // control no longer disappears under it. Hiding it was true to the data and
 // hopeless as an answer — a guest never learned the layer existed, so the only
 // thing that ever explained it was a deep link somebody else had shared.
-test('the node-position stops are disabled for a guest and say what switches them on', async ({ page }) => {
+// #630 moved the control into the FAB rail and kept it enabled: a disabled
+// button says nothing about why, so a guest's tap says it instead, and the
+// layer and its member sources stay off.
+test('a guest can tap the node-positions button, and the tap says what switches the layer on', async ({ page }) => {
   await mockRole(page, { role: 'guest' })
-  await page.route('**/api/observer-points*', r => r.fulfill({ status: 403, json: { error: 'forbidden' } }))
+  const memberFetches = []
+  page.on('request', (r) => { if (/\/api\/(observer-points|nodes\/positions)/.test(r.url())) memberFetches.push(r.url()) })
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e))
   await page.goto('/')
-  await openFilters(page) // asserted with the panel open, or hidden is vacuous
-  await expect(page.locator('#np-pos')).toBeDisabled()
-  await expect(page.locator('#np-reach')).toBeDisabled()
-  const note = page.locator('#nodepos-gate-note')
-  await expect(note).toBeVisible()
-  await expect(note).toContainText(/account/i)
+  const fab = page.locator('#nodepos-toggle')
+  await expect(fab).toBeVisible()
+  await expect(fab).toBeEnabled()
+  await expect(page.locator('#nodepos-key')).toBeHidden()
+  await fab.click()
+  // The guest's own reason (nodePosReason): logging in is the step (#174).
+  await expect(page.locator('#nodepos-key')).toHaveText('Node positions and CoreScope sightings need an account. Log in to switch the layer on.')
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
+  await expect(fab).toHaveAttribute('aria-pressed', 'false')
+  expect(memberFetches, 'a guest tap fetched a member source').toEqual([])
   // map still renders (no unhandled rejection breaking the app)
   await expect(page.locator('#map')).toBeVisible()
   expect(pageErrors).toHaveLength(0)
+})
+
+// A hunter is logged in already, so "log in" is a dead end: the tap names the
+// admin instead, which is the split #174 made and the gate note carried before
+// #630 took the stops out of the panel.
+test('a hunter tapping the node-positions button is told an admin verifies them', async ({ page }) => {
+  await mockRole(page, { role: 'hunter', username: 'h' })
+  await page.goto('/')
+  const fab = page.locator('#nodepos-toggle')
+  await expect(page.locator('#guest-notice')).toContainText('Hunter view')
+  await fab.click()
+  await expect(page.locator('#nodepos-key')).toHaveText('Node positions and CoreScope sightings need a verified member account. An admin verifies you.')
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
+})
+
+// Answers /api/auth/me only when the test says so, so a tap is certain to land
+// before the role does.
+async function heldMe(page, me) {
+  let release
+  const held = new Promise((resolve) => { release = resolve })
+  await page.route('**/api/auth/me', async (r) => { await held; await r.fulfill({ json: me }) })
+  return release
+}
+
+// #630: a tap before the role is known used to cycle, so a guest got a
+// member-only stop and ?nodepos=positions in the URL until the gate took it
+// back. It waits for the role instead, in both directions.
+test('a guest tap before the role is known never turns the layer on', async ({ page }) => {
+  await mockRole(page, { role: 'guest' })
+  const release = await heldMe(page, { role: 'guest' })
+  await page.goto('/')
+  // map.js is a script index.html inserts, so the tap waits for its wiring
+  // rather than for the load event.
+  await page.waitForFunction(() => window.__rxTicker)
+  const fab = page.locator('#nodepos-toggle')
+  await fab.click()
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
+  expect(new URL(page.url()).searchParams.get('nodepos')).toBe(null)
+  release()
+  await expect(page.locator('#nodepos-key')).toContainText('Log in to switch the layer on')
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
+  expect(new URL(page.url()).searchParams.get('nodepos')).toBe(null)
+})
+
+test('a member tap before the role is known lands once it is', async ({ page }) => {
+  await mockRole(page, { role: 'member', username: 'm' })
+  await page.route('**/api/observer-points*', r => r.fulfill({ json: { points: [] } }))
+  const release = await heldMe(page, { role: 'member', username: 'm' })
+  await page.goto('/')
+  // map.js is a script index.html inserts, so the tap waits for its wiring
+  // rather than for the load event.
+  await page.waitForFunction(() => window.__rxTicker)
+  const fab = page.locator('#nodepos-toggle')
+  await fab.click()
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: off')
+  release()
+  await expect(fab).toHaveAttribute('aria-label', 'Node positions: advertised positions')
+  await expect(page.locator('#nodepos-key')).not.toContainText(/log in/i)
 })
 
 test('a member can switch the layer on, and its CoreScope sources are fetched with it', async ({ page }) => {
@@ -162,13 +228,11 @@ test('a member can switch the layer on, and its CoreScope sources are fetched wi
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(e))
   await page.goto('/')
-  await openFilters(page) // the layer control lives in the filter panel (#539)
-  await expect(page.locator('#np-pos')).toBeEnabled()
-  await expect(page.locator('#nodepos-gate-note')).toBeHidden()
-  await closeFilters(page)
+  await expect(page.locator('#nodepos-toggle')).toBeEnabled()
   const req = page.waitForRequest((r) => r.url().includes('/observer-points'))
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await req
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('#map')).toBeVisible()
   expect(pageErrors).toHaveLength(0)
 })
@@ -179,13 +243,13 @@ test('a member can switch the layer on, and its CoreScope sources are fetched wi
 // it. Once the real (member) role lands, applyObserverGate() must redraw the
 // layer's sources, not just enable the control. Since #629 that is one key,
 // ?nodepos=, rather than ?adv= and ?rel= beside it.
-test('member deep-link ?nodepos=1 draws the CS advert layer on load', async ({ page }) => {
+test('member deep-link ?nodepos=positions draws the CS advert layer on load', async ({ page }) => {
   await mockRole(page, { role: 'member', username: 'm' })
   await page.route('**/api/observer-points*', r => r.fulfill({ json: { points: [
     { lat: 51.0, lon: 4.0, rssi: -60, snr: 8, heard_key: 'aa', observer: 'obs1', rx_at: '2026-07-03T10:00:00Z' }
   ] } }))
-  await page.goto('/?nodepos=1')
-  await expect(page.locator('#np-pos')).toHaveAttribute('aria-pressed', 'true')
+  await page.goto('/?nodepos=positions')
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-label', 'Node positions: advertised positions')
   // mode defaults to 'hex' with an empty heatmap and no points; the advert
   // layer's own source is what carries the one point (#465: canvas, no DOM).
   await expect.poll(() => page.evaluate(() => window.__featureCount && window.__featureCount('observer-advert'))).toBe(1)

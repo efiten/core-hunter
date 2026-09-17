@@ -568,7 +568,8 @@ describe('receptions ticker CSS parity (#322)', () => {
   // has a drawn button. None of that is visible to a test that only checks
   // lane counts, so it drifted until someone looked at the two side by side.
   // This pins the chrome itself. What is deliberately per-surface is #rx-log's
-  // own box, which is placed and draggable on the map and centred in the app.
+  // own box, which is placed and draggable on a wide map and centred in the app
+  // (and on a map below 640px, #643).
   it('draws the same card on both surfaces', () => {
     const decls = (block, selector) => {
       const found = declBlock(block, selector)
@@ -1218,10 +1219,12 @@ describe('--ch-* token parity (#407)', () => {
     '--ch-building',
     ...Array.from({ length: 12 }, (_, i) => `--ch-hue-${i}`)]
   // Owned by one surface: the app's basemap flag, its bar track, its thin
-  // surface and (with #596) its buildings; the web's bar height and input
-  // ground. Named so an addition to either list is a decision, not drift.
+  // surface and (with #596) its buildings; the web's bar height, input
+  // ground and (#630) the width the FAB rail's column takes from the right
+  // edge, which the readouts beside it keep clear. Named so an addition to
+  // either list is a decision, not drift.
   const APP_ONLY = ['--ch-basemap', '--ch-bar-track']
-  const WEB_ONLY = ['--ch-bar-h', '--ch-input-bg']
+  const WEB_ONLY = ['--ch-bar-h', '--ch-input-bg', '--ch-rail-clear']
   for (const theme of ['dark', 'light']) {
     it(`${theme}: the shared tokens carry one value`, () => {
       const a = tokensOf(APP_TOKENS, theme), w = tokensOf(WEB_CSS, theme)
@@ -1286,8 +1289,10 @@ describe('sky.js — parity between the app and web copies', () => {
 // what drifts.
 describe('files copied whole from the app (#595)', () => {
   // coverage.js and raylayer.js (#603) join the list: the stars, the hues
-  // and the 3D ray buffers are one rule on both maps.
-  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js']) {
+  // and the 3D ray buffers are one rule on both maps. fabring.js and
+  // nodeposmode.js (#630) join it too: the map's node-positions button is the
+  // app's FAB, with the same stops, labels and ring.
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js']) {
     it(`web/${name} is app/src/${name}`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
@@ -1340,11 +1345,13 @@ describe('--ch-building matches the app in both themes (#595)', () => {
 // map opened with the chips and reached the checkboxes third, and one said
 // "Types" where the other said "Traffic types".
 //
-// The map adds Overlays and View after the shared five, and Hunters and Time
-// carry the controls the bar hands over below 640px (#561). Those are the
-// deliberate difference: analysis is map-only, because the map is the superset.
+// The map adds View after the shared five, and Hunters and Time carry the
+// controls the bar hands over below 640px (#561). Those are the deliberate
+// difference: analysis is map-only, because the map is the superset. Overlays
+// went with #630: node positions, its one control, is a button in the map's FAB
+// rail now, as it is in the app's.
 describe('the filter panels are one panel (#564)', () => {
-  const MAP_ONLY = ['Overlays', 'View', 'Hunters']
+  const MAP_ONLY = ['View', 'Hunters']
 
   const mapGroups = () => {
     const html = readFileSync(new URL('./index.html', import.meta.url), 'utf8')
@@ -1366,12 +1373,10 @@ describe('the filter panels are one panel (#564)', () => {
       .toEqual(appFilterGroups)
   })
 
-  it('keeps Overlays and View after the shared groups, not among them', () => {
+  it('keeps View after the shared groups, not among them', () => {
     const groups = mapGroups()
     const lastShared = Math.max(...groups.map((g, i) => (MAP_ONLY.includes(g) ? -1 : i)))
-    for (const name of ['Overlays', 'View']) {
-      expect(groups.indexOf(name), `${name} comes after the shared groups`).toBeGreaterThan(lastShared - 1)
-    }
-    expect(groups.indexOf('Overlays')).toBeGreaterThan(groups.indexOf('Ignored senders'))
+    expect(groups.indexOf('View'), 'View comes after the shared groups').toBeGreaterThan(lastShared - 1)
+    expect(groups.indexOf('View')).toBeGreaterThan(groups.indexOf('Ignored senders'))
   })
 })

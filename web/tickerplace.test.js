@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { clampToViewport, topRight, initialPlacement, serialise, parse, EDGE_GAP, COLLAPSE_LEVELS } from './tickerplace.js'
+import { clampToViewport, clampUnlessNarrow, firstVisitPosition, initialPlacement, serialise, parse, EDGE_GAP, COLLAPSE_LEVELS } from './tickerplace.js'
 
 const SIZE = { w: 680, h: 200 }
 const DESKTOP = { vw: 1280, vh: 800, top: 48 }
@@ -37,19 +37,34 @@ describe('clampToViewport', () => {
   })
 })
 
-describe('topRight', () => {
-  it('sits clear of the right edge and below the bar', () => {
-    expect(topRight(SIZE, DESKTOP)).toEqual({ x: 1280 - 680 - EDGE_GAP, y: 48 + EDGE_GAP })
+describe('clampUnlessNarrow', () => {
+  // #643: below 640px the CSS pins the card under the bar, so x,y are not where
+  // it is. They are where it was left on a wide screen, and urlstate saves them
+  // on every load: clamping them here would overwrite that position with one
+  // measured against a phone.
+  it('keeps a stored position untouched while narrow', () => {
+    expect(clampUnlessNarrow({ x: 1100, y: 700 }, SIZE, PHONE, true)).toEqual({ x: 1100, y: 700 })
   })
-  it('does not go negative on a screen narrower than the ticker', () => {
-    expect(topRight(SIZE, PHONE).x).toBe(0)
+
+  it('clamps as before when wide', () => {
+    expect(clampUnlessNarrow({ x: 5000, y: 5000 }, SIZE, DESKTOP, false))
+      .toEqual(clampToViewport({ x: 5000, y: 5000 }, SIZE, DESKTOP))
+  })
+})
+
+describe('firstVisitPosition', () => {
+  // #630: the top left, since the zoom control it used to avoid there is gone
+  // and the FAB rail owns the right-hand side of the map.
+  it('sits a gap in from the left edge and below the bar', () => {
+    expect(firstVisitPosition(DESKTOP)).toEqual({ x: EDGE_GAP, y: 48 + EDGE_GAP })
+    expect(firstVisitPosition(PHONE)).toEqual({ x: EDGE_GAP, y: 96 + EDGE_GAP })
   })
 })
 
 describe('initialPlacement', () => {
-  it('starts top-right on a first visit', () => {
+  it('starts top-left on a first visit', () => {
     const p = initialPlacement({ size: SIZE, viewport: DESKTOP })
-    expect(p).toMatchObject(topRight(SIZE, DESKTOP))
+    expect(p).toMatchObject({ x: EDGE_GAP, y: 48 + EDGE_GAP })
   })
 
   it('restores a remembered position, clamped to this screen', () => {
@@ -58,6 +73,14 @@ describe('initialPlacement', () => {
     expect(p.x).toBe(0)
     expect(p.y).toBe(580)
     expect(p.collapse).toBe(0)
+  })
+
+  it('leaves a desktop position alone when it loads on a phone', () => {
+    // The reload that used to lose it (#643): saved at 1100,700 on a monitor,
+    // opened below 640px, written back to the link and to storage as 0,580.
+    const saved = { x: 1100, y: 700, collapse: 0, hidden: false }
+    const p = initialPlacement({ saved, size: SIZE, viewport: PHONE, narrow: true })
+    expect(serialise(p)).toBe(serialise(saved))
   })
 
   it('collapses by default on a phone and not on a desktop', () => {
@@ -102,7 +125,7 @@ describe('initialPlacement', () => {
 
   it('ignores a saved value that is not a position', () => {
     for (const saved of [{ x: null, y: 5 }, { x: NaN, y: 5 }, {}]) {
-      expect(initialPlacement({ saved, size: SIZE, viewport: DESKTOP })).toMatchObject(topRight(SIZE, DESKTOP))
+      expect(initialPlacement({ saved, size: SIZE, viewport: DESKTOP })).toMatchObject(firstVisitPosition(DESKTOP))
     }
   })
 })

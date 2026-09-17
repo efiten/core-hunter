@@ -51,7 +51,7 @@ export const ONBOARDING_CALLOUTS = [
     targets: ['hp-toggle', 'sp-toggle', 'tr-toggle', 'filter-pill'],
     side: 'below',
     align: 'left',
-    text: 'Choose hunters, a sender and a time range. Everything else — packet types, sender classes, zero-hop only, the overlays, the points/hex view, and (for members) Locate — lives behind Filters. Filtering changes what you see, not what is kept.',
+    text: 'Choose hunters, a sender and a time range. Everything else — packet types, sender classes, zero-hop only, the points/hex view, and (for members) Locate — lives behind Filters. Filtering changes what you see, not what is kept.',
   },
   // One box per control, not one box for both (#490). #bar is flex-wrap, so
   // Start mapping and Log in are neighbours at some widths and on separate rows

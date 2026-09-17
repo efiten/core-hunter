@@ -252,31 +252,6 @@
           <button id="ss-ignore-clear" type="button">Clear ignore-list</button>
         </div>
       </div>
-      <div class="bf-group" id="bf-overlays">
-        <div class="bf-group-head">Overlays</div>
-        <!-- Node positions has three stops (#603): off, the ▲/● layer, and
-             that layer plus every repeater's reach. A segmented control like
-             the layer choice below, since a checkbox has two states.
-
-             Since #629 it is the only control here. CS adverts and CS relays
-             were two more checkboxes for the question this layer already
-             answers -- where nodes are -- so the observer sightings are a
-             source this layer draws rather than an overlay of their own. -->
-        <span class="np-layer-toggle">
-          <span class="bf-seg-label">Node positions</span>
-          <span id="nodepos-seg" class="bf-seg" role="group" aria-label="Node positions">
-            <button id="np-off" type="button" data-nodepos="" aria-pressed="false">Off</button>
-            <button id="np-pos" type="button" data-nodepos="1" aria-pressed="false">Positions</button>
-            <button id="np-reach" type="button" data-nodepos="reach" aria-pressed="false">Positions + reach</button>
-          </span>
-        </span>
-        <!-- Why the stops are off below member (#629), filled and shown by
-             applyObserverGate. A line under the group rather than a title, for
-             the same reason as the layer gate: on a phone a tooltip is nothing
-             at all. The control used to be hidden here instead, which is why a
-             guest never learned the layer existed. -->
-        <span id="nodepos-gate-note" class="bf-gate-note" hidden></span>
-      </div>
       <div class="bf-group">
         <div class="bf-group-head">View</div>
         <span id="layer-seg" class="bf-seg" role="group" aria-label="Layer mode">
@@ -358,6 +333,50 @@
   <div id="nodepos-stack">
     <div id="nodepos-key" role="status" hidden></div>
     <div id="nodepos-note" hidden>Positions are inferred from radio measurements (RSSI/SNR) via mesh topology — not GPS tracking of the node. Advertised positions are self-reported by their operators.</div>
+  </div>
+  <!-- The FAB rail (#630): the app's rail on the map, one column at the bottom
+       right in place of MapLibre's zoom and compass and the 2D/3D button beside
+       them. Labels only, no title, like the app's FABs. After the readouts in
+       the DOM, so the tab order reaches the rail once the bar and the notices
+       are done and before the map canvas. map.js wires every button; node
+       positions keeps the app's icon, and map.js adds the ring around it. -->
+  <div id="map-rail">
+    <button id="zoom-in" type="button" aria-label="Zoom in">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <path d="M10 4v12M4 10h12"/>
+      </svg>
+    </button>
+    <button id="zoom-out" type="button" aria-label="Zoom out">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 10h12"/>
+      </svg>
+    </button>
+    <!-- The needle points at north on screen and turns with the bearing; the
+         south half at 45% so its direction reads at a glance. -->
+    <button id="compass-btn" type="button" aria-label="Reset bearing to north">
+      <svg id="compass-needle" width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path d="M10 2l3.6 8H6.4z"/>
+        <path d="M10 18l-3.6-8h7.2z" opacity=".45"/>
+      </svg>
+    </button>
+    <!-- 2D or 3D (#595). In 3D the hex cells stand as bars, the receptions as
+         pillars, the buildings rise, and the terrain comes with it. -->
+    <button id="view-toggle" type="button" aria-label="View: 2D" aria-pressed="false">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+        <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7z"/>
+        <path d="M4 6.5l6 3.5 6-3.5M10 10v7"/>
+      </svg>
+    </button>
+    <!-- Out of the filter panel since #630: a view choice, cycled like the
+         app's FAB (off, positions, positions and reach). -->
+    <button id="nodepos-toggle" type="button" aria-label="Node positions: off" aria-pressed="false">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10 17V9"/>
+        <path d="M7 17h6l-3-4z" fill="currentColor"/>
+        <path d="M6.8 7.2a4.5 4.5 0 0 1 6.4 0"/>
+        <path d="M4.6 4.8a7.6 7.6 0 0 1 10.8 0"/>
+      </svg>
+    </button>
   </div>
   <div id="login-modal" class="lc-modal" hidden>
     <form id="login-form" class="lc-card" role="dialog" aria-modal="true" aria-labelledby="login-title">

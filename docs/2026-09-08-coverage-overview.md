@@ -10,6 +10,8 @@ The map answered "where did I hear something" in one palette: every cell and poi
 
 Node positions now has a third stop, **Positions + reach**: every repeater in view draws its star at once, one ray from its position to each reception attributed to it, in a hue fixed per id. The app's FAB cycles off / positions / positions + reach with the ring showing the stop; the map's filter panel has the same three as a segmented control. The star of one node (#549, `docs/2026-09-06-reach-of-a-node.md`) is this drawing for one repeater, and its popup buttons went when the layer began drawing all of them. #623 brought one back as "Show reach" in a repeater's popup, since without it selecting a star had become an undiscoverable tap (see the amendment below).
 
+> **Amended 2026-09-14 (#630, `docs/2026-09-14-map-rail.md`).** The map's segmented control is gone from the filter panel. The map has the app's FAB in its rail, with the same three stops, ring and labels, and `?nodepos=` takes the app's values, `positions` and `reach`; the positions stop was `?nodepos=1`.
+
 ## The decisions
 
 1. **Rays, not cells or clouds** (2026-09-06, kept from #549). They show the density per direction and the gaps where nobody drove, which one shape hides.

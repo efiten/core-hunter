@@ -63,7 +63,7 @@ test('the panel does not re-parent anything out of the bar', async ({ page }) =>
   await page.goto('/')
   await page.click('#filter-pill')
   const inBar = await page.evaluate(() =>
-    ['f-types', 'f-direct', 'layer-seg', 'nodepos-seg', 'clear-filters']
+    ['f-types', 'f-direct', 'layer-seg', 'clear-filters']
       .every((id) => !!document.getElementById(id)?.closest('#bar')))
   expect(inBar, 'a control left #bar').toBe(true)
 })
@@ -173,7 +173,7 @@ test('an open panel paints over the Locate readout and the node-position notice 
   await page.setViewportSize({ width: 375, height: 740 })
   await page.route('**/api/nodes/positions*', (r) => r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
   await page.goto('/?mode=points')
-  await setNodePos(page, '1')
+  await setNodePos(page, 'positions')
   await expect(page.locator('#nodepos-key')).toContainText('Node registry unreachable', { timeout: 10000 })
   await page.waitForFunction(() => typeof window.__locateRender === 'function')
   await page.evaluate(() => window.__locateRender([
@@ -203,9 +203,11 @@ test('an open panel paints over the Locate readout and the node-position notice 
   await expect(page.locator('#nodepos-key')).toBeVisible()
 
   // Tappable: Playwright refuses a click on a covered element. Last, since
-  // Clear ends Locate and drops the layer, and with them both cards.
+  // Clear ends Locate and with it the Locate card. Node positions stays on
+  // since #630, a view choice Clear does not reset.
   await openFilters(page)
   await foot.scrollIntoViewIfNeeded()
   await page.click('#clear-filters', { timeout: 3000 })
-  await expect(page.locator('#np-off')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#locate-info')).toBeHidden()
+  await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
 })

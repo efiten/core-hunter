@@ -46,12 +46,13 @@ export function pointLayerReason(role) {
   return 'Individual receptions need an account. Log in to switch layers.'
 }
 
-// nodePosReason is the same line under the node-position stops (#629). The
-// control used to be hidden outright below member, on the grounds that the
-// proxy strips lat/lon and the layer could only come up empty — which is true,
-// and is why a guest never learned the layer existed. It is disabled with this
-// underneath instead, the way the layer segments have been since #493: a
-// control you can see and cannot use says an account is what switches it on.
+// nodePosReason is what a tap on the rail's node-positions button says below
+// member (#630), in the node-positions line (nodeposnotice.js). The control
+// used to be hidden outright below member, on the grounds that the proxy strips
+// lat/lon and the layer could only come up empty, which is true, and is why a
+// guest never learned the layer existed (#629). The button stays visible and
+// enabled instead, and the tap answers with this: an account is what switches
+// the layer on.
 //
 // Same two audiences as above, and deliberately the same remedy: one missing
 // account described two ways reads as two problems.

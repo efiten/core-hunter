@@ -6,10 +6,11 @@
 // There was no way to put it away.
 //
 // Decided on the issue (2026-08-21): dragging REPLACES the anchor rather than
-// overriding it. The ticker starts top-right on a first visit and afterwards
-// sits wherever it was left. That makes "put it back" not free, so the clamp
-// below is the safety net rather than a nicety -- a ticker dragged to the edge
-// of a wide screen has to still be reachable on a narrow one.
+// overriding it. The ticker starts top-left on a first visit (top-right until
+// #630) and afterwards sits wherever it was left. That makes "put it back" not
+// free, so the clamp below is the safety net rather than a nicety -- a ticker
+// dragged to the edge of a wide screen has to still be reachable on a narrow
+// one.
 //
 // Pure so the geometry can be tested without a browser: the caller measures.
 
@@ -33,11 +34,23 @@ export function clampToViewport({ x, y }, { w, h }, { vw, vh, top = 0 }) {
   }
 }
 
-// topRight is the first-visit position: out of the centre where the map content
-// is, and clear of the zoom control at the top-left, which is the collision the
-// issue names.
-export function topRight({ w }, { vw, top = 0 }) {
-  return { x: Math.max(0, vw - w - EDGE_GAP), y: top + EDGE_GAP }
+// clampUnlessNarrow is the clamp for a position that is stored, not just drawn.
+// Below 640px the stylesheet pins the card centred under the bar, as in the app
+// (#643), so x,y are not where the card is: they are where it was left on a wide
+// screen. urlstate writes them back on every load and every save, so clamping
+// them against a phone would overwrite that position for good. The wide screen
+// clamps again the moment it is wide.
+export function clampUnlessNarrow(at, size, viewport, narrow) {
+  return narrow ? { x: at.x, y: at.y } : clampToViewport(at, size, viewport)
+}
+
+// firstVisitPosition is where a ticker nobody has dragged starts: out of the
+// centre where the map content is, in the top-left corner under the bar. It
+// was the top right until #630, to stay clear of the zoom control at the top
+// left; that control went into the FAB rail, and the rail owns the right-hand
+// side of the map now.
+export function firstVisitPosition({ top = 0 }) {
+  return { x: EDGE_GAP, y: top + EDGE_GAP }
 }
 
 // How much of the ticker is on screen, as one field (#424): full, three lanes,
@@ -51,8 +64,8 @@ export const HIDDEN = 'hidden'
 // under the bar? That, not the width, is what "it covers the map" means.
 //
 // `narrow` is the other half of the same question and stays a width test,
-// because below 640px the card is full-bleed (`min(680px, 100vw)`) and covers
-// the map from edge to edge whatever its height.
+// because below 640px the card is pinned at `calc(100vw - 20px)` (#643) and
+// covers the map from edge to edge whatever its height.
 //
 // The width alone was the whole rule until a phone was held sideways: 844x390
 // is wider than every phone breakpoint, so the card opened at ten lanes over
@@ -78,7 +91,7 @@ export function coversTheMap(cardHeight, { vh, top = 0 }) {
 export function initialPlacement({ saved = null, size, viewport, narrow = false }) {
   const at = saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
     ? { x: saved.x, y: saved.y }
-    : topRight(size, viewport)
+    : firstVisitPosition(viewport)
   // A remembered choice always wins. Without one, a phone starts at the
   // smallest stop rather than away: the reason the default is per-surface is
   // that the card should not cover the map there, and a ticker nobody can see
@@ -86,7 +99,7 @@ export function initialPlacement({ saved = null, size, viewport, narrow = false 
   const remembered = saved && (saved.hidden === true || Number.isInteger(saved.collapse))
   const cramped = narrow || coversTheMap(size.h, viewport)
   return {
-    ...clampToViewport(at, size, viewport),
+    ...clampUnlessNarrow(at, size, viewport, narrow),
     hidden: remembered ? !!saved.hidden : false,
     collapse: remembered ? (saved.collapse || 0) : (cramped ? COLLAPSE_LEVELS - 1 : 0),
   }

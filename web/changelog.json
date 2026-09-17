@@ -42,6 +42,20 @@
     "body": "With a repeater's reach selected, the other dots, cells and pillars step back so the selection is easy to follow."
   },
   {
+    "id": "2026-09-14-ticker-pinned-on-phone",
+    "date": "2026-09-14",
+    "where": "map",
+    "title": "The ticker sits under the bar on a phone",
+    "body": "Centred under the bar on a narrow screen, like the app. A position dragged on a wide screen is kept."
+  },
+  {
+    "id": "2026-09-14-map-control-rail",
+    "date": "2026-09-14",
+    "where": "map",
+    "title": "The map's buttons are one column, like the app",
+    "body": "Zoom, compass, 2D/3D and node positions sit bottom right. The compass turns to north and keeps the tilt."
+  },
+  {
     "id": "2026-09-13-newest-receptions-selectable",
     "date": "2026-09-13",
     "where": "both",

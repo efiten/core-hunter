@@ -162,32 +162,103 @@ for (const [w, h, label] of [[375, 812, 'a phone'], [768, 1024, 'a tablet'], [12
     // And --ch-bar-h agrees with it, which is what everything else hangs off.
     expect(Math.abs(s.barVar - s.height), '--ch-bar-h matches the real bar').toBeLessThanOrEqual(1)
   })
+}
 
-  test(`every map control is reachable on ${label}, as a guest`, async ({ page }) => {
+// Every map control is in the FAB rail since #630, so every rail button is
+// measured, not just zoom. The measurement the old test was built on:
+// elementFromPoint at the centre of each button. On master at 375 as a guest,
+// + returned #auth-btn and − returned #guest-notice, because the whole control
+// was under the bar. Both roles, since the guest notice and the member's bar
+// are different heights, and the sideways phone as well as the upright ones.
+for (const [w, h] of [[375, 812], [390, 844], [768, 1024], [1280, 800], [844, 390]]) {
+  for (const role of ['guest', 'member']) {
+    test(`every rail button is reachable at ${w}x${h}, as a ${role}`, async ({ page }) => {
+      if (role === 'guest') await asGuest(page)
+      await page.setViewportSize({ width: w, height: h })
+      await page.goto('/')
+      if (role === 'guest') await expect(page.locator('#guest-notice')).toBeVisible()
+      await expect(page.locator('#rx-log')).toBeVisible()
+      const hits = await page.evaluate(() => [...document.querySelectorAll('#map-rail button')].map((btn) => {
+        const b = btn.getBoundingClientRect()
+        const top = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)
+        return { id: btn.id, hit: top ? (top.closest('[id]')?.id || top.tagName) : null }
+      }))
+      expect(hits.map((x) => x.id)).toEqual(['zoom-in', 'zoom-out', 'compass-btn', 'view-toggle', 'nodepos-toggle'])
+      for (const { id, hit } of hits) expect(hit, `#${id} is covered by ${hit}`).toBe(id)
+    })
+  }
+}
+
+// #630: the FAB rail is a column of five 46px buttons at the bottom right,
+// 262px tall with 8px gaps. 844x390 holds it; a phone held sideways
+// that is shorter than that ran it up under the bar (740x360: the bar's lower
+// edge at 62, the rail's top at 54), and narrower than 760 its column stood on
+// the right end of the ticker, where the cross and the chevron are. Narrower
+// than 641 the ticker and the notices span the screen (#643), so the column
+// stood on both: at 568x320 #zoom-in was under #settings-btn and the compass
+// under the guest notice, and at 667x375 the notice's right end reached into
+// the column. Every button is hit at its centre, not only the column's box.
+// The buttons take the space left under the bar, between 36px and the app's
+// 46px, and that is what is asserted, measured against the bar as it actually
+// renders. Not a size per viewport: at 667x375 the space is within a pixel of
+// 46, so a font that makes the bar taller (CI's system-ui does) shrinks the
+// buttons there, which is the rule working. Only 844x390, with room to spare,
+// is held to the full 46px.
+for (const [w, h, fullSize] of [[844, 390, true], [740, 360], [667, 375], [640, 360], [568, 320]]) {
+  test(`the rail fits a phone held sideways at ${w}x${h}, clear of the bar, the ticker and the notices`, async ({ page }) => {
     await asGuest(page)
     await page.setViewportSize({ width: w, height: h })
     await page.goto('/')
+    await expect(page.locator('#rx-log')).toBeVisible()
     await expect(page.locator('#guest-notice')).toBeVisible()
-    // The measurement the issue is built on: elementFromPoint at the centre of
-    // each zoom button. On master at 375 as a guest, + returned #auth-btn and
-    // − returned #guest-notice -- the whole control was under the bar.
-    const hits = await page.evaluate(() => {
-      const at = (el) => {
-        const b = el.getBoundingClientRect()
-        const top = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)
-        return top ? (top.closest('[id]')?.id || top.tagName) : null
-      }
-      return {
-        in: at(document.querySelector('.maplibregl-ctrl-zoom-in')),
-        out: at(document.querySelector('.maplibregl-ctrl-zoom-out')),
-      }
+    const g = await page.evaluate(() => {
+      const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom } }
+      const hits = [...document.querySelectorAll('#map-rail button')].map((btn) => {
+        const b = btn.getBoundingClientRect()
+        const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)
+        return { id: btn.id, size: b.height, hit: top ? (top.closest('[id]')?.id || top.tagName) : null }
+      })
+      const rail = getComputedStyle(document.getElementById('map-rail'))
+      return { bar: r('#bar'), rail: r('#map-rail'), ticker: r('#rx-log'), notice: r('#guest-notice'), hits,
+        vh: innerHeight, barH: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ch-bar-h')),
+        railBottom: parseFloat(rail.bottom), gap: parseFloat(rail.rowGap) }
     })
-    // The map itself, or the control -- anything but the chrome on top of it.
-    for (const [name, hit] of Object.entries(hits)) {
-      expect(hit, `zoom ${name} is not covered (got ${hit})`).toMatch(/^(map|maplibregl|BUTTON|SPAN)/i)
-    }
+    expect(g.rail.top, 'the rail runs up under the bar').toBeGreaterThanOrEqual(g.bar.bottom)
+    const apart = (a, b) => a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top
+    expect(apart(g.rail, g.ticker), `rail ${JSON.stringify(g.rail)} over ticker ${JSON.stringify(g.ticker)}`).toBe(true)
+    expect(apart(g.rail, g.notice), `rail ${JSON.stringify(g.rail)} under notice ${JSON.stringify(g.notice)}`).toBe(true)
+    for (const { id, hit } of g.hits) expect(hit, `#${id} is covered`).toBe(id)
+    // Five buttons and four gaps in what is left between 8px under the bar and
+    // the rail's bottom offset, never under 36px and never over 46px.
+    const fits = Math.min(46, Math.max(36, (g.vh - g.barH - 8 - g.railBottom - 4 * g.gap) / 5))
+    for (const { id, size } of g.hits) expect(Math.abs(size - fits), `#${id} is ${size}px where ${fits}px fits`).toBeLessThan(0.1)
+    if (fullSize) for (const { id, size } of g.hits) expect(size, `#${id} shrank`).toBe(46)
   })
 }
+
+// MapLibre opens the compact attribution expanded, and on a phone a longer
+// credit (the terrain source's, in 3D) wraps it to two lines: 44px, so its top
+// stood 10px above the rail's lower edge and the node-positions button sat on
+// the text. Two lines of text are put in by hand, since the test basemap's
+// credit is one short line.
+test('the rail stays clear of an attribution that wraps to two lines on a phone', async ({ page }) => {
+  await asGuest(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  const g = await page.evaluate(() => {
+    const attrib = document.querySelector('.maplibregl-ctrl-attrib')
+    attrib.classList.remove('maplibregl-attrib-empty')
+    attrib.classList.add('maplibregl-compact', 'maplibregl-compact-show')
+    attrib.setAttribute('open', '')   // a <details>: MapLibre opens it with the class
+    attrib.querySelector('.maplibregl-ctrl-attrib-inner').textContent =
+      'MapLibre | OpenFreeMap © OpenMapTiles Data from OpenStreetMap | Terrain Tiles by Mapzen'
+    const a = attrib.getBoundingClientRect()
+    return { attribTop: a.top, attribHeight: a.height, railBottom: document.getElementById('map-rail').getBoundingClientRect().bottom }
+  })
+  expect(g.attribHeight, 'the credit is not two lines, so this measures something else').toBeGreaterThan(30)
+  expect(g.attribHeight, 'the credit is not two lines, so this measures something else').toBeLessThan(50)
+  expect(g.railBottom).toBeLessThanOrEqual(g.attribTop)
+})
 
 test('the bar names the product at every width', async ({ page }) => {
   await asGuest(page)

@@ -18,7 +18,9 @@
 // four active type chips are one narrowed dimension, and clearing it is one
 // act — the pill says "Filters (N)" and the clear button "Clear N filters",
 // and both must promise the same thing. The layer mode is deliberately NOT
-// counted: it is a view choice, and Clear has never reset it.
+// counted: it is a view choice, and Clear has never reset it. Node positions
+// is not either since #630, which moved it out of the panel to a button on the
+// map's rail: the same kind of view choice, so Clear leaves it standing too.
 //
 // This list is the panel's inventory, and it does not maintain itself: a
 // control added to the panel later stays dark here until it is added below.
@@ -34,14 +36,13 @@
 // The union of both surfaces' dimensions since #564, so one function answers
 // for both panels. Each surface passes what it has and the rest default off:
 // `plotWindow` is the app's "Plot last" (the map's timeframe is a bar control
-// and travels in the URL, so Clear has never reset it either); `nodePos` is
-// the map's alone.
+// and travels in the URL, so Clear has never reset it either).
 //
 // It took csAdverts and csRelays as well until #629, which folded those two
 // overlays into the node-position layer: they are sources that layer draws
 // now, not dimensions of their own. A caller still passing them counts nothing
 // extra, the same way a Sender-unknown flag has since #535.
-export function activeFilterCount({ directOnly = false, types = null, idClasses = null, plotWindow = false, nodePos = false } = {}) {
+export function activeFilterCount({ directOnly = false, types = null, idClasses = null, plotWindow = false } = {}) {
   let n = 0
   if (directOnly) n++
   // An empty/absent set means "no type filter" -- same convention as the app's
@@ -50,6 +51,5 @@ export function activeFilterCount({ directOnly = false, types = null, idClasses 
   // Same convention for the sender-id class dimension (#475).
   if (idClasses && [...idClasses].length > 0) n++
   if (plotWindow) n++
-  if (nodePos) n++
   return n
 }

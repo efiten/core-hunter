@@ -65,7 +65,7 @@ test('turning the map writes the bearing into the URL, and the compass puts nort
   await page.keyboard.press('Shift+ArrowLeft')
   await page.waitForFunction(() => Math.abs(Math.round(window.__mapBearing())) === 15)
   await expect(page).toHaveURL(/[?&]bearing=-?15/)
-  await page.click('.maplibregl-ctrl-compass')
+  await page.click('#compass-btn')
   await page.waitForFunction(() => Math.round(window.__mapBearing()) === 0)
   await expect(page).not.toHaveURL(/[?&]bearing=/)
 })

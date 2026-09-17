@@ -48,9 +48,11 @@ export const NODEPOS_ESTIMATE_CAVEAT = 'The estimate is inferred from RSSI, not 
 // different sentence — and on this side it is a separate state below.
 export const NODEPOS_EMPTY_TEXT = 'No positions from the node registry — resolver unreachable or it holds none, so nothing can be drawn'
 
-// Below member the server strips positions, so the layer cannot draw whatever
-// the map is showing. Same remedy web/auth.js's guestNotice() names, since a
-// second wording for one account state would read as a second problem.
+// The server answered 403 to a caller the page took for a member, so the layer
+// cannot draw whatever the map is showing. A role the page already knows is
+// below member gets its own reason instead (auth.js nodePosReason, #630). Same
+// remedy web/auth.js's guestNotice() names, since a second wording for one
+// account state would read as a second problem.
 export const NODEPOS_GUEST_TEXT = 'Node positions need a verified member account — everything else on the map stays visible'
 
 // The deployment has no registry configured (server 503 registry_not_configured).
@@ -96,13 +98,17 @@ export function nodePosKeyText({ registryEmpty = false } = {}) {
 //          state, and a disclaimer for absent data reads as "the layer works,
 //          the area is empty" — the exact confusion this replaces.
 //
+// `reason` is auth.js nodePosReason() for the viewer's role: null from member
+// up, and below member the whole line, since the account is why the layer is
+// empty whatever the registry says (#630).
+//
 // `registry` is fetchNodeRegistry()'s answer: null when the fetch itself
 // failed, otherwise {status, stale}. `drawn` is how many markers this draw
 // actually produced — not how many rows arrived, since a row can survive the
 // registry and still be unplottable.
-export function nodePosPresentation({ on = false, member = true, registry = null, drawn = 0, narrow = false, glanceExpired = false } = {}) {
+export function nodePosPresentation({ on = false, reason = null, registry = null, drawn = 0, narrow = false, glanceExpired = false } = {}) {
   if (!on) return { note: false, key: '' }
-  if (!member) return { note: false, key: NODEPOS_GUEST_TEXT }
+  if (reason) return { note: false, key: reason }
 
   const status = registry ? registry.status : 'unavailable'
   const stale = Boolean(registry && registry.stale)

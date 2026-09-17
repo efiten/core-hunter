@@ -75,6 +75,46 @@ Not a checkbox, and not a cycle button, where the states are named and simultane
 meaningful. Theme is `System / Dark / Light` (#563); the map's layer mode is
 `Points / Hex / Both`.
 
+**Exception, on both surfaces: a button in the FAB rail cycles.** *Standard pattern: the
+floating action button, with a segmented progress ring for its stop.* A rail is a column of
+round 46px targets over the map; a strip of three segments is not a rail button, and a rail
+of strips is not a rail. So a FAB with three stops cycles them on a tap, and the ring
+(`fabring.js`) is drawn from the first segment through the current one, so the stop reads
+at a glance rather than from the icon alone. Off fills nothing. The label names the stop
+(`Node positions: positions and reach`). Applied by the app's layer, compass, sound and
+node-positions FABs, and by the map's node-positions button in its rail (#630). Anywhere
+else, a panel, a sheet or a bar, three states are a segmented control.
+
+### The FAB rail
+
+*Standard pattern: floating action buttons over a map, stacked in one column.*
+
+Both surfaces put their map controls in one column of round buttons at the right: 46px,
+8px apart, on `--ch-surface`, the accent ring outside the button when on, the muted and
+half-transparent look when disabled, a `:focus-visible` outline, labels without a `title`.
+On the map it stands at the bottom right at every width, above the attribution, and holds
+zoom in, zoom out, compass, 2D/3D and node positions (#630). A zoom button at the map's
+exact bound is disabled. The compass turns to north and keeps the pitch: flattening is the
+view button's job.
+
+**A short screen shrinks the buttons, not the rail.** When five 46px buttons do not fit
+between the bar and the attribution, as on a phone held sideways (568x320), the buttons
+take what fits, 8px under the bar, with a 36px floor, and the gap halves to 4px below 400px
+of height first. That floor is under the 44px rule below, as a deliberate exception (Kasper,
+14 September 2026): it only applies to a phone held sideways under about 400px of height,
+where the alternatives were a rail under the bar, a rail over the attribution, or dropping
+the zoom buttons. Wherever 46px fits it is kept, as at 844x390; near the limit, as at 667x375, the
+bar's rendered height decides, so a taller font shrinks the buttons a little.
+
+Overlays keep the rail's column clear (`--ch-rail-clear`, 14 + 46 + 8px): the readout, the
+Locate card and the node-positions notice stop at it. On a phone held sideways, narrower
+than 641px, the column reaches up to the bar, so the pinned ticker and the notices stop at
+it too.
+
+**Guard:** `e2e/barlayout.spec.js` hits every rail button at its centre at 375x812,
+390x844, 768x1024, 1280x800 and 844x390 as a guest and as a member, and at five sideways
+sizes down to 568x320.
+
 ### Pick several: the browsable checkbox-row popover
 
 *Standard pattern: multi-select listbox in a popover, as GitHub's label picker and every
@@ -157,9 +197,10 @@ property of the **surface**, not of the ticker: the next interaction popup added
 the reader the same.
 
 **How it moves aside is a width question, not a touch one.** Above 640px it drags. Below,
-the card is full-bleed (`min(680px, 100vw)`), so every position is the same band at a different
-height and there is no "out of the way" to drag it to — its stops and its cross are what move it
-aside there, which is what the app does at every width (#561).
+the card is pinned as in the app: centred under the bar at `calc(100vw - 20px)` (#643). It spans
+the map, so there is no "out of the way" to drag it to, and its stops and its cross are what move
+it aside there, which is what the app does at every width (#561). The position dragged on a wide
+screen is kept, not clamped, while narrow, so it is back when the screen is wide again.
 
 So dragging is the one of the three that comes neither to the app nor to a phone. Both for the
 same reason: it only means something when there is map beside the panel as well as under it.
@@ -202,7 +243,7 @@ from 0 to 60 — including which lane the marker lands on for each row — and c
 
 | | app | map | reason |
 |---|---|---|---|
-| position | fixed, centred | placed; dragged above 640px | surface rule above |
+| position | fixed, centred | placed and dragged above 640px; centred below, as in the app | surface rule above |
 | pointer events | caught | passed through | surface rule above |
 
 Everything else is the same, including the collapse stops and the cross with its bar button.
@@ -220,8 +261,9 @@ Same groups, same order, same words:
 
 `Time` · `Traffic types` · `Sender id` · `Only show` · `Ignored senders`
 
-The map adds `Overlays` and `View` **after** those, and only there: they are analysis, and the
-map is the superset. Nothing else may differ, including the order — the app opened with two
+The map adds `View` **after** those, and only there: it is analysis, and the
+map is the superset. `Overlays` was a second map-only group until #630 moved node positions,
+its one control, to the map's FAB rail as the app has it. Nothing else may differ, including the order — the app opened with two
 checkboxes and reached the chips third while the map did the opposite, and one said `Types`
 where the other said `Traffic types` (#564).
 
@@ -314,11 +356,19 @@ they took part in the same layout as the filters: "you now have admin access"
 pushed the controls around, and four unrelated readouts landed on three
 different baselines (#561).
 
-They also may not take the corner a map control is in. The notice moved out of
+They also may not take the place a map control is in. The notice moved out of
 the bar and straight over Leaflet's zoom control, which is the same defect in a
 new place — `elementFromPoint` on the `+` returned `#guest-notice`. Overlays
-clear the controls, and on a phone the zoom control moves to the bottom left,
-where the ticker is not and a thumb is.
+clear the controls.
+
+**Where the notices sit** (#630). On a desktop, at the top centre under the bar,
+between the ticker's first-visit corner at the top left and the FAB rail on the
+right: a centred column at most 560px wide, never wider than the room between
+the rail's clearance on both sides. When the ticker lies in that column, the
+notices move to the band beside it if that band is at least 320px wide, and
+under it if not (`noticeplace.js`), so a notice, which paints over the ticker,
+never takes the clicks on its cross or its chevron. Below 640px they span the
+width under the bar (8px from each edge), under the pinned ticker.
 
 ## Copy and marks
 
