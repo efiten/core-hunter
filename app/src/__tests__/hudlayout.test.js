@@ -58,6 +58,32 @@ describe('the HUD readout rows (#637, #618)', () => {
     }
   })
 
+  // The direction arrow (#660) comes and goes with its target and heading. It
+  // is a fixed box, no taller than the row, so appearing never grows the row
+  // and the number beside it moves over by the same width every time.
+  it('gives the direction arrow a fixed box no taller than its row', () => {
+    const dir = rulesStyling('hud-dir')
+    expect(dir.length, 'app.css declares #hud-dir').toBeGreaterThan(0)
+    expect(dir.some((r) => /(^|[;\s])flex:\s*none\s*(;|$)/.test(r.body))).toBe(true)
+    const px = (prop) => {
+      for (const r of dir) {
+        const m = r.body.match(new RegExp(`(?:^|[;\\s])${prop}:\\s*(\\d+(?:\\.\\d+)?)px`))
+        if (m) return Number(m[1])
+      }
+      return null
+    }
+    const rowHeight = (() => {
+      for (const r of rulesStyling('hud-readout-row')) {
+        const m = r.body.match(/(?:^|[;\s])height:\s*(\d+(?:\.\d+)?)px/)
+        if (m) return Number(m[1])
+      }
+      return null
+    })()
+    expect(px('width'), '#hud-dir declares a px width').not.toBe(null)
+    expect(px('height'), '#hud-dir declares a px height').not.toBe(null)
+    expect(px('height')).toBeLessThanOrEqual(rowHeight)
+  })
+
   // An ellipsis does nothing on the anonymous flex items of a flex container
   // (AGENTS.md 5.4 item 2), so the sender stays a block with inline children:
   // the text is cut from its end and the muted "via ~" before it survives. A

@@ -126,3 +126,38 @@ The order, the lock timing, the hand-over, the refusals and the in-flight guard 
 against fakes of the video, its document and `screen.orientation`. Not verified: a real Android
 phone, including whether Chrome's own rotation for fullscreen video or the portrait lock wins, and
 whether a refused picture-in-picture request uses up the tap that fullscreen then needs.
+
+## The direction arrow (#660)
+
+An arrow toward the sender of the shown reception, so a hunter can steer and see whether they are
+closing in without looking at the map. The problem it answers is steering, not understanding the
+last hop, so it gives a direction and no distance.
+
+- **Where it points.** The last hop: the originator at zero hops, a flood's last relay otherwise.
+  A reception placed on a node by reach (#661) points at that node's advertised position, and a
+  collision points nowhere. Otherwise the registry's position for the id (an advert's whole key, a
+  Discover, trace or telemetry reply's unique prefix), and without one the estimate over the
+  receptions of that id in the plot window that fall under rule 2. A channel name is not a node
+  and has no arrow. Filled for an advertised position, outlined for an estimate (`arrow.js`).
+- **What it turns against.** Where you are heading, not north: the GPS course from 2 m/s and the
+  compass below that, switched with the same hysteresis as the map's heading mode (`autoSource`).
+  The arrow keeps its own heading, whatever the map's compass button is set to. A compass reading
+  counts for 2 s. On iOS the orientation events need a permission prompt, which the arrow never
+  raises: below 2 m/s it has a compass there only once the compass button got a yes.
+- **When there is none.** No position, no heading, no GPS fix in the last 15 s (the watch's own
+  timeout, `GPS_STALE_MS`), or a collision: no arrow and nothing in its place.
+- **HUD.** A 30 px box before the RSSI number in the 38 px row, in the number's tier colour. The
+  row keeps its height with or without it; the number moves over by the box and the gap. It
+  repaints from a 1 degree turn.
+- **Float readout.** Top right, beside the number, 84 px, no ring. The canvas redraws from a
+  5 degree turn, or when the arrow appears, goes or changes kind.
+
+The HUD's closed eye on the stand pill never appeared: `hidden` is not a property of an SVG
+element, so setting it did nothing. It is toggled as an attribute now, and so is the arrow's box.
+
+Measured with the real app and a steered GPS: an estimate 2 km east, heading east at 10 m/s, the
+arrow points straight ahead; heading north, to the right; 17 s after the fixes stop it is gone. The
+HUD stays 114 px throughout. Not verified: a real compass, a real phone in picture-in-picture
+(where the page is hidden and GPS and orientation events may stop, which the age gates turn into
+no arrow rather than a frozen one), and the bearing swinging close to the target.
+

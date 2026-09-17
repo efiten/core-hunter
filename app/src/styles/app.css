@@ -158,6 +158,13 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    30px arrow ('-120', 'SNR -20.0 dB', '59m 59s') needs 329px of the 328px a
    360px screen leaves at 12px, and fits with 8. */
 #hud-readout-row { display: flex; align-items: baseline; gap: 8px; height: 38px; }
+/* The direction arrow (#660), before the number: a fixed 30px box centred in
+   the 38px row, so it never grows the row. The colour is the reading's tier,
+   set with the number's; the SVG turns, the box does not. */
+#hud-dir { flex: none; width: 30px; height: 30px; align-self: center; }
+#hud-dir svg { width: 30px; height: 30px; display: block; overflow: visible; }
+#hud-dir polygon { fill: currentColor; }
+#hud-dir.estimate polygon { fill: none; stroke: currentColor; stroke-width: 2.2; }
 
 /* The number alone, in its tier colour; the unit went with #618, the float
    keeps it. nowrap and flex:none so the row can never squeeze it. */

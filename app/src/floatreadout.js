@@ -18,7 +18,7 @@ import { rssiTier } from './signal.js'
 // offset for the colour, hudToggleText for the stand and the eye. Before the
 // first reception there is nothing to show, and the window says so (empty)
 // instead of drawing placeholders.
-export function floatModel({ rec, sinceText, mode, hidden, ble, mqtt, offsetDb = 0 } = {}) {
+export function floatModel({ rec, sinceText, mode, hidden, ble, mqtt, offsetDb = 0, dir = null } = {}) {
   const has = !!rec
   const { prefix, name, note } = senderReadout(rec)
   const toggle = hudToggleText(mode, hidden)
@@ -33,6 +33,8 @@ export function floatModel({ rec, sinceText, mode, hidden, ble, mqtt, offsetDb =
     eye: toggle.eye,
     links: { ble: !!ble, mqtt: !!mqtt },
     status: ble ? '' : 'Disconnected',
+    // The direction arrow (#660), from arrow.js; only with a reception.
+    dir: has && dir ? dir : null,
   }
 }
 
@@ -131,6 +133,7 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
         ctx.font = `500 52px ${MONO}`
         ctx.fillText('dBm', L + w + 22, 230)
       }
+      if (m.dir) drawDirection(ctx, m.dir, tier)
       // SNR left, age right. Numbers are never cut.
       ctx.fillStyle = muted
       ctx.font = `500 54px ${MONO}`
@@ -265,6 +268,26 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
 }
 
 const MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace'
+
+// The direction arrow (#660): top right, beside the number, in the reading's
+// tier colour. A navigation arrow pointing up, in unit coordinates (tip, right
+// wing, notch, left wing), turned by the angle from straight ahead. Filled for
+// an advertised position, outlined for an estimate. No ring and no distance.
+const ARROW = [[0, -1], [0.62, 0.78], [0, 0.42], [-0.62, 0.78]]
+const DIR_X = W - 148, DIR_Y = 136, DIR_SIZE = 84
+function drawDirection(ctx, dir, color) {
+  const a = (dir.angle * Math.PI) / 180
+  const cos = Math.cos(a), sin = Math.sin(a)
+  ctx.beginPath()
+  ARROW.forEach(([px, py], i) => {
+    const x = DIR_X + DIR_SIZE * (px * cos - py * sin)
+    const y = DIR_Y + DIR_SIZE * (px * sin + py * cos)
+    if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y)
+  })
+  ctx.closePath()
+  ctx.lineJoin = 'round'
+  if (dir.kind === 'advertised') { ctx.fillStyle = color; ctx.fill() } else { ctx.lineWidth = 9; ctx.strokeStyle = color; ctx.stroke() }
+}
 
 function linkDot(ctx, cx, cy, r, color, hollow) {
   ctx.beginPath()

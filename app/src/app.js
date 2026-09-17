@@ -27,6 +27,7 @@ import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
 import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from './hudmode.js'
 import { createFloatReadout, floatModel, floatSupported } from './floatreadout.js'
+import { arrowFor, arrowTarget, arrowChanged, headingFor } from './arrow.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
 import { VIEW_STATES, VIEW_LABELS, nextViewIndex, viewKey } from './maplayers.js'
@@ -234,6 +235,13 @@ const state = {
   // The float readout (#555), or null where the browser cannot stream a
   // canvas into a video and take that video out of the page.
   float: null,
+  // The direction arrow (#660). Its heading is its own, whatever the map's
+  // compass mode: source follows the speed (autoSource), course is the last
+  // GPS course, compass the last reading { deg, at }. target is where the
+  // shown reception's sender is; hudDir and floatDir what each surface drew.
+  arrow: { source: 'device', course: null, compass: null, target: null, hudDir: null, floatDir: null },
+  // The tick's plot-window rows, attributed: what the arrow's estimate reads.
+  windowRows: [],
   filter: { ...DEFAULT_FILTER },
   // Resolved name per selected target id (lowercased) — for the chip label
   // when exactly one target is selected (#178).
@@ -315,6 +323,8 @@ function updateHud(rec) {
     rssiEl.textContent = ''
     rssiEl.style.color = ''
   }
+  // The arrow wears the number's colour (#660).
+  el('hud-dir').style.color = rssiEl.style.color
 
   // Secondary: SNR (small muted)
   el('hud-snr').textContent = rec.snr != null ? 'SNR ' + rec.snr.toFixed(1) + ' dB' : ''
@@ -360,7 +370,56 @@ function showOnHud(rec, at) {
   // reception next to the previous one's age for up to a second.
   el('hud-since').textContent = sinceLabel(Date.now(), at)
   renderHudTools()
+  updateArrowTarget()
   drawFloat()
+}
+
+// updateArrowTarget works out where the shown reception's sender is (#660):
+// on a new reception, and on every tick, when the rows, their attribution or
+// the registry may have moved it.
+function updateArrowTarget() {
+  state.arrow.target = arrowTarget(state.hudRec, { index: state.attrIndex, rows: state.windowRows })
+  refreshArrow()
+}
+
+// refreshArrow turns the target into an arrow against the heading and the fix,
+// and repaints what changed: the HUD from a 1 degree turn, the float readout,
+// which redraws its whole canvas, from 5 degrees. It runs on every fix, every
+// compass reading and every tick, so an arrow whose heading or fix went stale
+// is gone within a second.
+function refreshArrow() {
+  const now = Date.now()
+  const a = state.arrow
+  const dir = arrowFor({ target: a.target, fix: state.gps.latest(), lastFixAt: state.lastGpsFixAt, heading: headingFor({ ...a, now }), now })
+  if (arrowChanged(a.hudDir, dir, 1)) {
+    a.hudDir = dir
+    const box = el('hud-dir')
+    box.hidden = !dir
+    if (dir) {
+      box.classList.toggle('estimate', dir.kind === 'estimate')
+      box.firstElementChild.style.transform = `rotate(${dir.angle.toFixed(1)}deg)`
+    }
+  }
+  if (arrowChanged(a.floatDir, dir, 5)) {
+    a.floatDir = dir
+    drawFloat()
+  }
+}
+
+// The arrow's compass (#660), apart from the map's heading mode: that listener
+// comes and goes with the compass button, this one stays. It only stores the
+// reading. iOS hands orientation out only after a permission prompt, which the
+// arrow never raises: there it listens once the compass button got a yes.
+let arrowCompassOn = false
+function listenCompassForArrow() {
+  if (arrowCompassOn) return
+  arrowCompassOn = true
+  window.addEventListener(ORIENTATION_EVENT, (e) => {
+    const deg = compassHeading(e)
+    if (deg == null) return
+    state.arrow.compass = { deg, at: Date.now() }
+    refreshArrow()
+  })
 }
 
 // syncHudToPlayhead, from the tick after the ticker has rendered: the row on
@@ -390,6 +449,7 @@ function floatModelNow() {
     ble: state.connected,
     mqtt: Boolean(state.publisher && state.publisher.connected()),
     offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb),
+    dir: state.arrow.floatDir,
   })
 }
 
@@ -483,7 +543,9 @@ function renderHudTools() {
   const t = hudToggleText(state.rxMode, state.hudHidden)
   const modeBtn = el('hud-mode')
   el('hud-mode-label').textContent = t.label
-  modeBtn.querySelector('.hud-eye').hidden = !t.eye
+  // An attribute, not the property: hidden does nothing on an SVG, so the eye
+  // never showed.
+  modeBtn.querySelector('.hud-eye').toggleAttribute('hidden', !t.eye)
   modeBtn.classList.toggle('all', state.rxMode === 'all')
   modeBtn.setAttribute('aria-label', t.aria)
   if (t.title) modeBtn.title = t.title; else modeBtn.removeAttribute('title')
@@ -999,6 +1061,10 @@ function onGpsFix(fix) {
     if (next !== compassState.source) switchCompassSource(next)
   }
   if (compassState.source === 'course') applyCourseHeading(fix.heading, fix.speed)
+  // The arrow's heading follows the speed the same way, on its own (#660).
+  state.arrow.course = resolveCourseHeading(fix.heading, state.arrow.course, fix.speed)
+  state.arrow.source = autoSource(state.arrow.source, fix.speed)
+  refreshArrow()
 }
 
 // ---------------------------------------------------------------------------
@@ -1216,6 +1282,8 @@ async function drawOnce() {
     enrichNames(rows)
     attributeRows([windowRows, rows])
     state.lastRows = rows
+    state.windowRows = windowRows
+    updateArrowTarget()
     refreshTargetChip()
     el('hud-since').textContent = sinceLabel(now, state.hudAt)
     drawFloat()
@@ -3059,6 +3127,7 @@ async function enableHeadingRotation() {
       if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false
     } catch { return false }
   }
+  listenCompassForArrow()
   if (orientationHandler) return true
   orientationHandler = (e) => {
     const h = compassHeading(e)
@@ -3289,6 +3358,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   wireHudTools()
   renderHudTools()
   initFloatReadout()
+  // The arrow's compass, where no permission prompt guards it (#660).
+  if (!(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function')) listenCompassForArrow()
 
   // Wire controls
   el('connect-btn').addEventListener('click', () => {

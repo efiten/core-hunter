@@ -67,6 +67,13 @@ describe('floatModel: what the float readout draws', () => {
     expect(m.links).toEqual({ ble: false, mqtt: false })
     expect(m.status).toBe('Disconnected')
   })
+  // The arrow (#660) belongs to the reception it points from.
+  it('passes the direction through only with a reception', () => {
+    const dir = { angle: 40, kind: 'advertised' }
+    expect(floatModel({ ...base, dir }).dir).toEqual(dir)
+    expect(floatModel({ ...base }).dir).toBe(null)
+    expect(floatModel({ ...base, rec: null, dir }).dir).toBe(null)
+  })
   // The attenuator offset shifts the tier the same way the map and the HUD
   // shift it, so the window's colour agrees with both.
   it('applies the plot offset to the tier', () => {

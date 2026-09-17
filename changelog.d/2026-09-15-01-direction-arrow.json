@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-15-direction-arrow",
+  "date": "2026-09-15",
+  "where": "app",
+  "title": "An arrow toward the node you heard",
+  "body": "The HUD and the float readout point at the last hop, relative to where you are heading."
+}
