@@ -239,6 +239,23 @@ export class Queue {
     return done(tx);
   }
 
+  // resumeAtHead moves a broker to the newest reception when it is switched
+  // back on. Off means "do not send my receptions there", and draining the
+  // hours it was off the moment it comes back would undo that.
+  async resumeAtHead(brokerId) {
+    await this.forgetBroker(brokerId);
+    return this.startAtHead(brokerId);
+  }
+
+  // forgetBroker drops a removed broker's watermark, so adding the same broker
+  // again starts at the newest reception instead of where the old one stopped.
+  async forgetBroker(brokerId) {
+    const db = await openDB();
+    const tx = db.transaction(META, 'readwrite');
+    tx.objectStore(META).delete(watermarkKey(brokerId));
+    return done(tx);
+  }
+
   // setWatermark is monotonic: the drain advances it to the last contiguous
   // success, and a later partial pass must never walk it back over rows that
   // were already sent.

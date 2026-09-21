@@ -2,6 +2,7 @@ import { SOUND_MODES } from './sound.js'
 import { VIEW_STATES, viewKey } from './maplayers.js'
 import { THEME_PREFS } from './theme.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
+import { parseBrokerPrefs } from './brokers.js'
 
 // readStored returns the raw stored value for key, or null when it is absent
 // or storage is unavailable. Reading localStorage throws SecurityError where
@@ -14,6 +15,16 @@ function readStored(key) {
   } catch (_) {
     return null
   }
+}
+
+// The hunter's own brokers and the ones they switched off (#554). Kept on the
+// phone; config.json stays the site's list.
+export function loadBrokerPrefs() {
+  return parseBrokerPrefs(readStored('core-hunter-brokers'))
+}
+
+export function saveBrokerPrefs(prefs) {
+  try { localStorage.setItem('core-hunter-brokers', JSON.stringify(prefs)) } catch (_) {}
 }
 
 // Attenuator setting (dB, non-positive: 0/-10/-20/-30). Persisted; added back to

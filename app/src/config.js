@@ -39,7 +39,8 @@ export function normalizeConfig(raw) {
       password: b.password == null ? '' : String(b.password),
     });
   };
-  if (c.mqttUrl) addBroker({ id: 'default', url: c.mqttUrl, username: c.mqttUsername, password: c.mqttPassword });
+  // The mqttUrl broker has no name field of its own; it is the app's own.
+  if (c.mqttUrl) addBroker({ id: 'default', name: 'Mesh-Hunter', url: c.mqttUrl, username: c.mqttUsername, password: c.mqttPassword });
   if (Array.isArray(raw.brokers)) raw.brokers.forEach(addBroker);
   if (c.brokers.length === 0) throw new Error('config.json: "mqttUrl" or a "brokers" entry with a url is required');
 

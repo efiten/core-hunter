@@ -192,6 +192,28 @@ describe('Queue watermark per broker (#554)', () => {
   })
 })
 
+describe('Queue — switching a broker on again, and removing one (#554)', () => {
+  // Off means "do not send my receptions there". Sending the hours it was off
+  // the moment it is switched back on would undo that.
+  it('resumes a broker at the newest reception, past what it missed', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 5; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(2, 'dmc')
+    await q.resumeAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(5)
+  })
+
+  it('forgets a removed broker, so adding it again starts fresh', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 3; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(1, 'user:be.example')
+    await q.forgetBroker('user:be.example')
+    await q.add(rec(iso(0)))
+    await q.startAtHead('user:be.example')
+    expect(await q.getWatermark('user:be.example')).toBe(4)
+  })
+})
+
 describe('Queue.prune — retention, gated on publication (#230)', () => {
   it('deletes published rows older than the cutoff', async () => {
     const q = new Queue()

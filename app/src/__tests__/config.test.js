@@ -70,7 +70,7 @@ describe('normalizeConfig channelKeys', () => {
 describe('normalizeConfig brokers (#554)', () => {
   it('turns the single-broker fields into the first broker', () => {
     const c = normalizeConfig({ mqttUrl: 'wss://own.example/ws', mqttUsername: 'u', mqttPassword: 'p' })
-    expect(c.brokers).toEqual([{ id: 'default', name: 'own.example', url: 'wss://own.example/ws', username: 'u', password: 'p' }])
+    expect(c.brokers).toEqual([{ id: 'default', name: 'Mesh-Hunter', url: 'wss://own.example/ws', username: 'u', password: 'p' }])
   })
 
   it('appends the brokers array after it, in order', () => {

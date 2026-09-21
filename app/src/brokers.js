@@ -19,3 +19,104 @@ export function dotState(connected) {
   if (up === 0) return 'off'
   return up === connected.length ? 'on' : 'partial'
 }
+
+// ---- The hunter's own brokers (#554) ---------------------------------------
+//
+// config.json supplies the site's brokers. On top of that a hunter can add
+// brokers of their own and switch any broker off; both are kept on the phone.
+
+function usable(b) {
+  return Boolean(b) && typeof b === 'object' && typeof b.url === 'string' && b.url.trim() !== '' && typeof b.id === 'string' && b.id !== ''
+}
+
+// parseBrokerPrefs reads the stored JSON. Anything unreadable is the same as
+// nothing stored: no broker added, none switched off.
+export function parseBrokerPrefs(stored) {
+  let raw = null
+  try { raw = JSON.parse(stored) } catch (_) { raw = null }
+  if (!raw || typeof raw !== 'object') return { added: [], off: [] }
+  return {
+    added: Array.isArray(raw.added) ? raw.added.filter(usable) : [],
+    off: Array.isArray(raw.off) ? raw.off.filter((id) => typeof id === 'string') : [],
+  }
+}
+
+// mergeBrokers is the list the sheet shows and the drain walks: the site's
+// brokers first, then the hunter's. `source` says who put it there, `enabled`
+// whether receptions go to it. An id belongs to the site first, because its
+// watermark does.
+export function mergeBrokers(site, prefs) {
+  const off = new Set((prefs && prefs.off) || [])
+  const out = (site || []).map((b) => ({ ...b, source: 'site', enabled: !off.has(b.id) }))
+  for (const b of (prefs && prefs.added) || []) {
+    if (out.some((x) => x.id === b.id)) continue
+    out.push({ ...b, source: 'user', enabled: !off.has(b.id) })
+  }
+  return out
+}
+
+// validateBroker turns the add form into a broker, or into the message to put
+// under the field. `securePage` is whether the app itself is served over
+// https: a secure page cannot open a plain ws:// socket, and the browser
+// blocks it without an error worth showing.
+export function validateBroker(form, existingIds, { securePage = true } = {}) {
+  const url = String((form && form.url) || '').trim()
+  let parsed = null
+  try { parsed = new URL(url) } catch (_) { parsed = null }
+  const scheme = parsed ? parsed.protocol : ''
+  if (!parsed || !parsed.hostname || (scheme !== 'wss:' && scheme !== 'ws:') || (scheme === 'ws:' && securePage)) {
+    return { ok: false, errors: { url: 'Use a WebSocket address that starts with wss://' }, broker: null }
+  }
+  // host, not hostname: it carries a non-default port, and two brokers on one
+  // machine each need their own watermark.
+  const id = 'user:' + parsed.host
+  if ((existingIds || []).includes(id)) {
+    return { ok: false, errors: { url: 'This broker is already in the list.' }, broker: null }
+  }
+  return {
+    ok: true,
+    errors: {},
+    broker: {
+      id,
+      name: String(form.name || '').trim() || parsed.hostname,
+      url,
+      username: String(form.username || '').trim(),
+      password: form.password == null ? '' : String(form.password),
+    },
+  }
+}
+
+// brokerStatus is the one line under a broker's name.
+export function brokerStatus({ enabled, connected, queued }) {
+  if (!enabled) return { dot: 'off', text: 'Off' }
+  const n = Number.isFinite(queued) ? Math.max(0, Math.trunc(queued)) : 0
+  const waiting = n > 0 ? ` · ${n.toLocaleString('en')} queued` : ''
+  return { dot: connected ? 'on' : 'warn', text: (connected ? 'Connected' : 'Not connected') + waiting }
+}
+
+// probeBroker tries a connection before a broker is saved, so a typo in the
+// address shows up in the form instead of as a dot that never lights. The
+// publisher is always ended: mqtt.js would otherwise keep retrying a broker
+// that was never saved. A wrong host does not fail, it never answers, hence
+// the timeout.
+export async function probeBroker(publisher, timeoutMs = 8000) {
+  let timer = null
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve({ ok: false, reason: 'No answer' }), timeoutMs) })
+  const attempt = publisher.connect().then(() => ({ ok: true }), (e) => ({ ok: false, reason: (e && e.message) || 'Refused' }))
+  try {
+    return await Promise.race([attempt, timeout])
+  } finally {
+    clearTimeout(timer)
+    publisher.end()
+  }
+}
+
+// mqttSummary is the state text next to "MQTT" in the Status tab. `connected`
+// is one boolean per broker that is on.
+export function mqttSummary(connected) {
+  const flags = connected || []
+  if (flags.length === 0) return 'All brokers off'
+  const up = flags.filter(Boolean).length
+  if (up === flags.length) return 'Connected'
+  return up === 0 ? 'Not connected' : `${up} of ${flags.length} connected`
+}

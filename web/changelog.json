@@ -7,6 +7,13 @@
     "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
   },
   {
+    "id": "2026-09-21-mqtt-brokers",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "Choose where your receptions go",
+    "body": "Settings lists every MQTT broker your receptions go to. Switch one off, or add a broker of your own."
+  },
+  {
     "id": "2026-09-21-float-keeps-logging",
     "date": "2026-09-21",
     "where": "app",

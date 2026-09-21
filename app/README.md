@@ -75,6 +75,10 @@ cp public/config.example.json public/config.json
 
 `config.json` is gitignored; never commit credentials.
 
+A hunter can add brokers of their own and switch any broker off, under Settings, MQTT brokers. Those
+choices are kept on the phone (`localStorage`), password included, and never leave it. A broker that
+is switched back on receives what is heard from then on, not what it missed while it was off.
+
 ### What gets captured
 
 A reception is stored when the phone has a fix good enough to place it. That is the only condition

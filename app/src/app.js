@@ -19,7 +19,8 @@ import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableRec
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
-import { pruneFloor, dotState } from './brokers.js'
+import { pruneFloor, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary } from './brokers.js'
+import { createBrokerSheet } from './brokersheet.js'
 import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
@@ -38,7 +39,7 @@ import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
 import { filterSheetMarkup } from './filtersheet.js'
 import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration, loadBrokerPrefs, saveBrokerPrefs } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
@@ -186,6 +187,9 @@ const state = {
   // consecutive drain passes have failed on one reception for that broker
   // (#454), carried here because the drain loop restarts every 5 s.
   publishers: new Map(),
+  // Brokers the hunter added, and the ids they switched off (#554).
+  brokerPrefs: loadBrokerPrefs(),
+  brokerSheet: null,
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
@@ -585,10 +589,74 @@ function wireHudTools() {
   })
 }
 
-// The brokers every reception goes to (#554).
-function brokerList() {
+// Every broker the sheet lists (#554): the site's from config.json, then the
+// hunter's own.
+function allBrokers() {
   const cfg = getConfig()
-  return (cfg && cfg.brokers) || []
+  return mergeBrokers((cfg && cfg.brokers) || [], state.brokerPrefs)
+}
+
+// The brokers every reception goes to: the ones that are on.
+function brokerList() {
+  return allBrokers().filter((b) => b.enabled)
+}
+
+async function brokerStatusOf(id) {
+  let queued = 0
+  try { queued = await state.queue.unpublishedCount(id) } catch (_) { queued = 0 }
+  return { connected: brokerConnected(id), queued }
+}
+
+function setBrokerPrefs(prefs) {
+  state.brokerPrefs = prefs
+  saveBrokerPrefs(prefs)
+}
+
+// Off stops the sending at once rather than on the next drain tick; on again
+// starts at the newest reception (queue.resumeAtHead says why).
+async function toggleBroker(id, enabled) {
+  const off = state.brokerPrefs.off.filter((x) => x !== id)
+  if (!enabled) off.push(id)
+  else { try { await state.queue.resumeAtHead(id) } catch (_) { /* drains from where it was */ } }
+  setBrokerPrefs({ ...state.brokerPrefs, off })
+  await ensureMqtt()
+  setMqttDot()
+}
+
+// Connect first, store second: a broker that does not answer is never saved.
+async function saveBroker(form, editingId) {
+  const taken = allBrokers().map((b) => b.id).filter((x) => x !== editingId)
+  const v = validateBroker(form, taken, { securePage: location.protocol === 'https:' })
+  if (!v.ok) return v
+  const probe = await probeBroker(new Publisher({
+    url: v.broker.url, username: v.broker.username, password: v.broker.password,
+    clientId: state.rxPubkey || 'mesh-hunter-' + Math.random().toString(16).slice(2, 10),
+  }))
+  if (!probe.ok) return { ok: false, errors: { url: `Could not connect (${probe.reason}). Check the address and the sign-in.` } }
+  const added = state.brokerPrefs.added.filter((b) => b.id !== v.broker.id)
+  added.push(v.broker)
+  setBrokerPrefs({ ...state.brokerPrefs, added })
+  if (editingId) dropPublisher(v.broker.id)
+  else { try { await state.queue.startAtHead(v.broker.id) } catch (_) { /* starts at 0 */ } }
+  await ensureMqtt()
+  return { ok: true, errors: {} }
+}
+
+async function removeBroker(id) {
+  setBrokerPrefs({
+    added: state.brokerPrefs.added.filter((b) => b.id !== id),
+    off: state.brokerPrefs.off.filter((x) => x !== id),
+  })
+  dropPublisher(id)
+  try { await state.queue.forgetBroker(id) } catch (_) { /* a stale watermark only matters if it is added again */ }
+  setMqttDot()
+}
+
+function dropPublisher(id) {
+  const entry = state.publishers.get(id)
+  if (!entry) return
+  entry.publisher.end()
+  state.publishers.delete(id)
 }
 
 function brokerConnected(id) {
@@ -1829,7 +1897,11 @@ function applyConnectButtons() {
 // the receptions are already on disk, they were heard by a real companion, and
 // they are owed to the broker whatever the link is doing now.
 async function ensureMqtt() {
-  for (const broker of brokerList()) {
+  const on = brokerList()
+  for (const id of [...state.publishers.keys()]) {
+    if (!on.some((b) => b.id === id)) dropPublisher(id)
+  }
+  for (const broker of on) {
     // The identity comes from the queue when live state has none: a deliberate
     // disconnect clears state.rxPubkey, and the backlog still belongs to the
     // companion that captured it.
@@ -2023,20 +2095,42 @@ function refreshConnState() {
   renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
   el('ss-ble-dot').classList.toggle('on', connected)
-  const mqttOn = mqttDotState() === 'on'
-  el('ss-conn-mqtt').textContent = mqttOn ? 'Connected' : 'Not connected'
-  el('ss-mqtt-dot').classList.toggle('on', mqttOn)
-  // While MQTT is down the one thing worth knowing is how much is waiting.
-  // Async on purpose: the count comes from IndexedDB and this refresher is
-  // called from sync paths; the row keeps its last value until the count
-  // lands, and the guard stops a late count from unhiding a row that a
-  // reconnect just hid.
-  el('ss-mqtt-queued-row').hidden = mqttOn
-  if (!mqttOn) {
-    state.queue.unpublishedCount((brokerList()[0] || {}).id).then((n) => {
-      if (mqttDotState() !== 'on') el('ss-mqtt-queued').textContent = String(n)
+  renderMqttStatus()
+}
+
+// The MQTT group in the Status tab (#554): one line per broker that is on.
+// Rows are rebuilt only when the set of brokers changes, so the tick that
+// keeps them honest does not replace a row mid-tap.
+function renderMqttStatus() {
+  const on = brokerList()
+  const dot = mqttDotState()
+  el('ss-conn-mqtt').textContent = mqttSummary(on.map((b) => brokerConnected(b.id)))
+  el('ss-mqtt-dot').classList.toggle('on', dot !== 'off')
+  el('ss-mqtt-dot').classList.toggle('warn', dot === 'partial')
+  const box = el('ss-mqtt-rows')
+  const key = on.map((b) => b.id + '\u0000' + b.name).join('\u0001')
+  if (box.dataset.key !== key) {
+    box.dataset.key = key
+    box.replaceChildren(...on.map((b) => {
+      const row = document.createElement('div')
+      row.className = 'bk-status-row'
+      row.dataset.id = b.id
+      const d = document.createElement('i'); d.className = 'ss-state-dot'
+      const name = document.createElement('span'); name.className = 'bk-name'; name.textContent = b.name
+      const st = document.createElement('span'); st.className = 'bk-status'
+      row.append(d, name, st)
+      return row
+    }))
+  }
+  for (const row of box.children) {
+    brokerStatusOf(row.dataset.id).then((stat) => {
+      const view = brokerStatus({ enabled: true, connected: stat.connected, queued: stat.queued })
+      row.firstChild.classList.toggle('on', view.dot === 'on')
+      row.firstChild.classList.toggle('warn', view.dot === 'warn')
+      row.lastChild.textContent = view.text
     }).catch(() => {})
   }
+  if (state.brokerSheet) state.brokerSheet.tick()
 }
 
 // nextPhase is where the buttons land afterwards: 'idle' for a deliberate
@@ -2262,6 +2356,7 @@ let settingsSelectTab = () => {}
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
+    <div class="bk-page" id="broker-page" hidden></div>
     <div class="settings-page-inner">
       <div class="sheet-head">
         <div class="ss-tabs" role="tablist" aria-label="Settings sections">
@@ -2298,9 +2393,8 @@ function buildSettingsSheet() {
             <span>MQTT</span>
             <span class="ss-grp-state"><i id="ss-mqtt-dot" class="ss-state-dot"></i><span id="ss-conn-mqtt">Not connected</span></span>
           </div>
-          <dl class="ss-conn-status" id="ss-mqtt-queued-row" hidden>
-            <dt>Queued</dt><dd id="ss-mqtt-queued">—</dd>
-          </dl>
+          <div class="bk-status-rows" id="ss-mqtt-rows"></div>
+          <button type="button" class="bk-manage" id="ss-mqtt-manage">Manage brokers<span aria-hidden="true">›</span></button>
         </div>
       </div>
       <div class="ss-account-section">
@@ -2349,6 +2443,11 @@ function buildSettingsSheet() {
           <select id="ss-exag">${EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')}</select>
         </label>
         <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The 3D view raises the ground.</p>
+      </div>
+      <div class="ss-radio-section">
+        <h3>Publishing</h3>
+        <button type="button" class="bk-manage bk-manage-boxed" id="ss-brokers-open">MQTT brokers<span aria-hidden="true">›</span></button>
+        <p class="ss-hint">Where your receptions go. Add a broker of your own, or switch one off.</p>
       </div>
       <div class="ss-radio-section">
         <h3>Identity</h3>
@@ -2511,6 +2610,19 @@ function buildSettingsSheet() {
 
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+
+  // The brokers page lives inside the settings sheet (#554), so a tap in it is
+  // a tap inside the sheet for the outside-click dismissal below.
+  state.brokerSheet = createBrokerSheet({
+    root: el('broker-page'),
+    getBrokers: allBrokers,
+    getStatus: brokerStatusOf,
+    onToggle: toggleBroker,
+    onSave: saveBroker,
+    onRemove: removeBroker,
+  })
+  el('ss-mqtt-manage').addEventListener('click', () => state.brokerSheet.open())
+  el('ss-brokers-open').addEventListener('click', () => state.brokerSheet.open())
 
   // Tab switching (#203): one panel at a time. All panels stay in the DOM so
   // each keeps its own scroll position independently.
@@ -3357,7 +3469,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // now on, not the week already in the store (#554). Never the broker from
   // mqttUrl: it has no watermark on a phone that captured offline before it
   // ever connected, and that backlog is owed to it in full.
-  for (const b of brokerList()) {
+  for (const b of allBrokers()) {
     if (b.id === DEFAULT_BROKER) continue
     try { await state.queue.startAtHead(b.id) } catch (_) { /* retried on the next load */ }
   }
@@ -3513,6 +3625,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!sheet.hidden) {
       el('filter-sheet').hidden = true
       el('target-sheet').hidden = true
+      // Always open on the tabs, not on wherever the brokers page was left.
+      state.brokerSheet.close()
       refreshConnState()
       refreshAccount()
       checkForUpdate()
