@@ -128,9 +128,14 @@ describe('brokerStatus — one line per broker (#554)', () => {
     expect(brokerStatus({ enabled: true, connected: true, queued: 1200 })).toEqual({ dot: 'on', text: 'Connected · 1,200 queued' })
   })
 
-  it('warns when a broker that is on is not connected', () => {
+  it('warns when receptions are waiting for a broker that is not connected', () => {
     expect(brokerStatus({ enabled: true, connected: false, queued: 214 })).toEqual({ dot: 'warn', text: 'Not connected · 214 queued' })
-    expect(brokerStatus({ enabled: true, connected: false, queued: 0 })).toEqual({ dot: 'warn', text: 'Not connected' })
+  })
+
+  // With no companion and nothing owed the app keeps no connection open
+  // (mqttlifecycle.js), and that is not a fault to flag in amber.
+  it('stays quiet when a broker is not connected and nothing is waiting', () => {
+    expect(brokerStatus({ enabled: true, connected: false, queued: 0 })).toEqual({ dot: 'off', text: 'Not connected' })
   })
 })
 

@@ -91,7 +91,10 @@ export function brokerStatus({ enabled, connected, queued }) {
   if (!enabled) return { dot: 'off', text: 'Off' }
   const n = Number.isFinite(queued) ? Math.max(0, Math.trunc(queued)) : 0
   const waiting = n > 0 ? ` · ${n.toLocaleString('en')} queued` : ''
-  return { dot: connected ? 'on' : 'warn', text: (connected ? 'Connected' : 'Not connected') + waiting }
+  // Amber means receptions are waiting. Not connected with nothing owed is the
+  // resting state without a companion, not a fault.
+  const dot = connected ? 'on' : (n > 0 ? 'warn' : 'off')
+  return { dot, text: (connected ? 'Connected' : 'Not connected') + waiting }
 }
 
 // probeBroker tries a connection before a broker is saved, so a typo in the
