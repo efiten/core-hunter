@@ -85,7 +85,9 @@ floating action button, with a segmented progress ring for its stop.* A rail is 
 round 46px targets over the map; a strip of three segments is not a rail button, and a rail
 of strips is not a rail. So a FAB with three stops cycles them on a tap, and the ring
 (`fabring.js`) is drawn from the first segment through the current one, so the stop reads
-at a glance rather than from the icon alone. Off fills nothing. The label names the stop
+at a glance rather than from the icon alone. Off fills nothing and is not a segment: the
+ring counts the on states, so off / positions / reach reads empty, half, full (#620). The
+label names the stop
 (`Node positions: positions and reach`). Applied by the app's layer, compass, sound and
 node-positions FABs, and by the map's node-positions button in its rail (#630). Anywhere
 else, a panel, a sheet or a bar, three states are a segmented control.
