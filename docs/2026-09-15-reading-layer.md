@@ -130,10 +130,10 @@ asking gets the same attempt. When every path is refused the button does not say
 out, and the stream stops.
 
 The order, the lock timing, the hand-over, the refusals and the in-flight guard are unit-tested
-against fakes of the video, its document and `screen.orientation`. Not verified: on a real Android
-phone, whether Chrome's own rotation for fullscreen video or the portrait lock wins, whether a
-refused request uses up the tap the next one needs, and that the page stays visible through the
-fullscreen path (#669 rests on the field report from before #616).
+against fakes of the video, its document and `screen.orientation`. Field test on an Android phone
+(Kasper, 21 September, #669): fullscreen opens upright, the window appears after Home, GPS keeps
+logging and the sound keeps playing. Not verified: whether a refused request uses up the tap the
+next one needs.
 
 ## The direction arrow (#660)
 
