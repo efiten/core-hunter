@@ -2,6 +2,7 @@
 // meshcoretomqtt-compatible format CoreScope's ingestor consumes, on the
 // hunter topic meshcore/hunter/{rxPubkey}/packets.
 import mqtt from 'mqtt';
+import { buildObs, buildTrack, obsTopic, trackTopic } from './wardrive.js';
 
 // MQTT keepalive, in seconds. Explicit rather than mqtt.js's 60 s default:
 // a missed PINGREQ is what flipped the status dot to "Not connected" while the
@@ -9,8 +10,15 @@ import mqtt from 'mqtt';
 // deliberate number in our code, not an undocumented library default.
 export const KEEPALIVE_S = 30;
 
+// How long a publish may wait for its PUBACK. Twice the drain tick.
+export const ACK_TIMEOUT_MS = 10_000;
+
+// The stream label in a wardrive topic: meshcore/{label}/{PUBKEY}/wardriver/...
+const DEFAULT_LABEL = 'hunter';
+
 export class Publisher {
-  // opts: { url, username, password } — EMQX WSS endpoint + per-client creds.
+  // opts: { url, username, password, clientId } for the connection, and
+  // { format, label } for what is sent: 'packets' (default) or 'wardrive'.
   constructor(opts) { this.opts = opts; this.client = null; }
 
   connect() {
@@ -57,17 +65,46 @@ export class Publisher {
     };
   }
 
-  // publish sends one reception; resolves on broker ack (QoS1).
+  // send resolves on the broker's ack (QoS 1) and gives up after ackTimeoutMs.
+  // A broker that accepts the connection but drops the message sends no
+  // PUBACK, and mqtt.js then never calls back: with several brokers that would
+  // hold the drain, and every other broker with it, for ever (#554).
+  send(topic, message) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('publish not acknowledged')), this.opts.ackTimeoutMs || ACK_TIMEOUT_MS);
+      this.client.publish(topic, JSON.stringify(message), { qos: 1 }, (err) => {
+        clearTimeout(timer);
+        if (err) reject(err); else resolve();
+      });
+    });
+  }
+
+  // publish sends one reception.
   // The row's own pubkey wins over the caller's: a reception belongs to the
   // companion that heard it, and the backlog may outlive that BLE session
   // (#454). The argument stays as the fallback for rows queued before the
   // stamp existed.
-  publish(rxPubkey, rec, name) {
+  //
+  // A broker in the wardrive format (#554) gets the reception as an obs. One
+  // whose frame cannot be hashed is passed over: without the hash a consumer
+  // cannot join it to anything, and failing would block the queue behind it.
+  async publish(rxPubkey, rec, name) {
     const owner = (rec && rec.rx_pubkey) || rxPubkey;
-    const topic = 'meshcore/hunter/' + owner + '/packets';
-    const payload = JSON.stringify(Publisher.buildPayload(owner, rec, name));
-    return new Promise((resolve, reject) => {
-      this.client.publish(topic, payload, { qos: 1 }, (err) => (err ? reject(err) : resolve()));
+    if (this.opts.format === 'wardrive') {
+      const obs = await buildObs(rec, { originId: String(owner).toUpperCase(), pubAt: new Date().toISOString() });
+      if (!obs) return undefined;
+      return this.send(obsTopic(this.opts.label || DEFAULT_LABEL, owner), obs);
+    }
+    return this.send('meshcore/hunter/' + owner + '/packets', Publisher.buildPayload(owner, rec, name));
+  }
+
+  // publishTrack sends one stored listening interval (wardrive format only).
+  publishTrack(row) {
+    const track = buildTrack({
+      originId: String(row.rx_pubkey).toUpperCase(),
+      t0: row.t0, t1: row.t1, lat: row.lat, lon: row.lon, accM: row.acc_m,
+      rxCount: row.rx_count, listening: row.listening,
     });
+    return this.send(trackTopic(this.opts.label || DEFAULT_LABEL, row.rx_pubkey), track);
   }
 }

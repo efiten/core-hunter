@@ -18,6 +18,10 @@ const STORE = 'receptions';
 const META = 'meta';
 // Per-node facts (#553): what a node answered about itself, keyed by pubkey.
 const NODES = 'nodes';
+// Listening intervals for brokers in the wardrive format (#554). A track is
+// not a reception, so it has a store of its own and the map never reads one.
+const TRACKS = 'tracks';
+const TRACK_WATERMARK_KEY = 'tracks_through';
 const WATERMARK_KEY = 'published_through';
 // The first broker. Its watermark keeps the key it always had, so an install
 // that was already draining carries on from where it was (#554).
@@ -26,8 +30,8 @@ export const DEFAULT_BROKER = 'default';
 // One watermark per broker (#554): each broker is owed the receptions it has
 // not had yet, and a broker that is offline for an hour must not hold the
 // others back.
-function watermarkKey(brokerId) {
-  return !brokerId || brokerId === DEFAULT_BROKER ? WATERMARK_KEY : WATERMARK_KEY + ':' + brokerId;
+function watermarkKey(brokerId, base = WATERMARK_KEY) {
+  return !brokerId || brokerId === DEFAULT_BROKER ? base : base + ':' + brokerId;
 }
 
 // Retention (#230): receptions older than this are pruned — but only once
@@ -122,7 +126,7 @@ export function watermarkAfter(watermark, outcomes) {
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 3);
+    const req = indexedDB.open(DB_NAME, 4);
     req.onupgradeneeded = (e) => {
       const db = req.result;
       const store = e.oldVersion < 1
@@ -134,6 +138,10 @@ function openDB() {
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'k' });
       // v3 (#553): the nodes store. Additive, so nothing in receptions moves.
       if (!db.objectStoreNames.contains(NODES)) db.createObjectStore(NODES, { keyPath: 'pubkey' });
+      // v4 (#554): the tracks store, indexed on t1 for retention. Additive.
+      if (!db.objectStoreNames.contains(TRACKS)) {
+        db.createObjectStore(TRACKS, { keyPath: 'id', autoIncrement: true }).createIndex('t1', 't1');
+      }
     };
     // An older tab still holding an older connection blocks this tab's upgrade.
     // Without this the promise never settles and every await on it — including
@@ -227,15 +235,17 @@ export class Queue {
   // already has a watermark keeps it.
   async startAtHead(brokerId) {
     const db = await openDB();
-    const tx = db.transaction([STORE, META], 'readwrite');
+    const tx = db.transaction([STORE, TRACKS, META], 'readwrite');
     const meta = tx.objectStore(META);
-    const key = watermarkKey(brokerId);
-    const known = meta.get(key);
-    known.onsuccess = () => {
-      if (known.result) return;
-      const newest = tx.objectStore(STORE).openKeyCursor(null, 'prev');
-      newest.onsuccess = () => meta.put({ k: key, v: newest.result ? newest.result.primaryKey : 0 });
-    };
+    for (const [store, base] of [[STORE, WATERMARK_KEY], [TRACKS, TRACK_WATERMARK_KEY]]) {
+      const key = watermarkKey(brokerId, base);
+      const known = meta.get(key);
+      known.onsuccess = () => {
+        if (known.result) return;
+        const newest = tx.objectStore(store).openKeyCursor(null, 'prev');
+        newest.onsuccess = () => meta.put({ k: key, v: newest.result ? newest.result.primaryKey : 0 });
+      };
+    }
     return done(tx);
   }
 
@@ -253,7 +263,55 @@ export class Queue {
     const db = await openDB();
     const tx = db.transaction(META, 'readwrite');
     tx.objectStore(META).delete(watermarkKey(brokerId));
+    tx.objectStore(META).delete(watermarkKey(brokerId, TRACK_WATERMARK_KEY));
     return done(tx);
+  }
+
+  // ---- Tracks (#554): listening intervals, drained like receptions ----------
+
+  async addTrack(track) {
+    const db = await openDB();
+    const tx = db.transaction(TRACKS, 'readwrite');
+    tx.objectStore(TRACKS).add(track);
+    return done(tx);
+  }
+
+  async unpublishedTracksFrom(watermark) {
+    const db = await openDB();
+    const store = db.transaction(TRACKS, 'readonly').objectStore(TRACKS);
+    return (await result(store.getAll(IDBKeyRange.lowerBound(watermark, true), DRAIN_BATCH))) || [];
+  }
+
+  async getTrackWatermark(brokerId) {
+    const db = await openDB();
+    const row = await result(db.transaction(META, 'readonly').objectStore(META).get(watermarkKey(brokerId, TRACK_WATERMARK_KEY)));
+    return row ? row.v : 0;
+  }
+
+  async setTrackWatermark(id, brokerId) {
+    const current = await this.getTrackWatermark(brokerId);
+    if (id <= current) return current;
+    const db = await openDB();
+    const tx = db.transaction(META, 'readwrite');
+    tx.objectStore(META).put({ k: watermarkKey(brokerId, TRACK_WATERMARK_KEY), v: id });
+    return done(tx, id);
+  }
+
+  // pruneTracks deletes tracks older than `cutoffIso`, never past `floor`: the
+  // same rule as prune(), a track that has not been published is never dropped.
+  async pruneTracks(cutoffIso, floor) {
+    if (floor <= 0) return 0;
+    const db = await openDB();
+    const tx = db.transaction(TRACKS, 'readwrite');
+    const req = tx.objectStore(TRACKS).index('t1').openCursor(IDBKeyRange.upperBound(cutoffIso, true));
+    let removed = 0;
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return;
+      if (cur.primaryKey <= floor) { cur.delete(); removed++; }
+      cur.continue();
+    };
+    return done(tx, () => removed);
   }
 
   // setWatermark is monotonic: the drain advances it to the last contiguous

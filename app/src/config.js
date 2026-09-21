@@ -39,6 +39,12 @@ export function normalizeConfig(raw) {
       entry.username = String(b.username || '').trim();
       entry.password = b.password == null ? '' : String(b.password);
     }
+    // format 'wardrive': receptions go out as obs plus the phone's track
+    // (wardrive.js), under a stream label. Anything else is the packets format.
+    if (b.format === 'wardrive') {
+      entry.format = 'wardrive';
+      entry.label = String(b.label || 'hunter').trim().toLowerCase();
+    }
     c.brokers.push(entry);
   };
   // The mqttUrl broker has no name field of its own; it is the app's own.

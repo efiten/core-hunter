@@ -131,3 +131,53 @@ export function obsTopic(label, pubkeyHex) {
 export function trackTopic(label, pubkeyHex) {
   return `meshcore/${label}/${String(pubkeyHex).toUpperCase()}/wardriver/track`
 }
+
+// createTrackWindow keeps the running listening interval: when it began, what
+// was heard in it, and where the last track was cut. tick() returns the stored
+// row for a track that is due, or null. The row is what queue.addTrack keeps;
+// Publisher.publishTrack turns it into the message.
+//
+// A tick without a usable fix returns nothing and keeps counting: a track that
+// cannot be placed is worth nothing, and the next one that can carries the
+// count. close() cuts a last track with listening false, so a consumer reads
+// the end of a session as the end of listening, not as silence on the air.
+export function createTrackWindow() {
+  let startMs = null
+  let rxCount = 0
+  let lastMs = null
+  let lastPos = null
+
+  function cut({ nowMs, fix, rxPubkey, listening }) {
+    const row = {
+      t0: new Date(startMs).toISOString(),
+      t1: new Date(nowMs).toISOString(),
+      rx_pubkey: rxPubkey,
+      lat: fix.lat,
+      lon: fix.lon,
+      acc_m: fix.acc_m,
+      rx_count: rxCount,
+      listening,
+    }
+    startMs = nowMs
+    rxCount = 0
+    lastMs = nowMs
+    lastPos = { lat: fix.lat, lon: fix.lon }
+    return row
+  }
+
+  return {
+    heard() { rxCount++ },
+    tick({ nowMs, fix, rxPubkey }) {
+      if (!fix) return null
+      if (startMs == null) startMs = nowMs
+      if (!shouldEmitTrack({ nowMs, lastMs, lastPos, curPos: fix })) return null
+      return cut({ nowMs, fix, rxPubkey, listening: true })
+    },
+    close({ nowMs, fix, rxPubkey }) {
+      if (startMs == null || !fix) { startMs = null; rxCount = 0; lastMs = null; lastPos = null; return null }
+      const row = cut({ nowMs, fix, rxPubkey, listening: false })
+      startMs = null; lastMs = null; lastPos = null
+      return row
+    },
+  }
+}

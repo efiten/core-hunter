@@ -79,7 +79,7 @@ describe('validateBroker — the add form (#554)', () => {
     expect(validateBroker(ok, [])).toEqual({
       ok: true,
       errors: {},
-      broker: { id: 'user:mqtt.be.example', name: 'BE community', url: 'wss://mqtt.be.example:443', username: 'hunter', password: 'secret' },
+      broker: { id: 'user:mqtt.be.example', name: 'BE community', url: 'wss://mqtt.be.example:443', username: 'hunter', password: 'secret', format: 'wardrive' },
     })
   })
 
@@ -110,7 +110,15 @@ describe('validateBroker — the add form (#554)', () => {
 
   it('keeps no username or password for a broker the companion signs in to', () => {
     const r = validateBroker({ ...ok, auth: 'companion' }, [])
-    expect(r.broker).toEqual({ id: 'user:mqtt.be.example', name: 'BE community', url: 'wss://mqtt.be.example:443', auth: 'companion' })
+    expect(r.broker).toEqual({ id: 'user:mqtt.be.example', name: 'BE community', url: 'wss://mqtt.be.example:443', auth: 'companion', format: 'wardrive' })
+  })
+
+  // A broker a hunter adds is there to put them on someone's map, so wardrive
+  // is what it gets unless the form says packets.
+  it('gives an added broker the wardrive format unless packets was chosen', () => {
+    expect(validateBroker(ok, []).broker.format).toBe('wardrive')
+    expect(validateBroker({ ...ok, format: 'wardrive' }, []).broker.format).toBe('wardrive')
+    expect('format' in validateBroker({ ...ok, format: 'packets' }, []).broker).toBe(false)
   })
 
   it('refuses a broker that is already in the list', () => {

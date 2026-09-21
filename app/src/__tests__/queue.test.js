@@ -214,6 +214,55 @@ describe('Queue — switching a broker on again, and removing one (#554)', () =>
   })
 })
 
+describe('Queue tracks — listening intervals for wardrive brokers (#554)', () => {
+  const track = (t1, extra = {}) => ({ t0: t1, t1, rx_pubkey: 'ab', lat: 52, lon: 5, rx_count: 0, listening: true, ...extra })
+
+  it('keeps tracks apart from receptions, so the map never reads one', async () => {
+    const q = new Queue()
+    await q.addTrack(track(iso(MIN)))
+    expect(await q.count()).toBe(0)
+    expect(await q.since(iso(DAY))).toEqual([])
+  })
+
+  it('hands a broker the tracks above its own track watermark, in order', async () => {
+    const q = new Queue()
+    for (let i = 3; i > 0; i--) await q.addTrack(track(iso(i * MIN)))
+    await q.setTrackWatermark(1, 'dmc')
+    expect((await q.unpublishedTracksFrom(await q.getTrackWatermark('dmc'))).map((t) => t.id)).toEqual([2, 3])
+    expect((await q.unpublishedTracksFrom(await q.getTrackWatermark('other'))).map((t) => t.id)).toEqual([1, 2, 3])
+  })
+
+  it('never moves a track watermark backwards', async () => {
+    const q = new Queue()
+    await q.setTrackWatermark(9, 'dmc')
+    await q.setTrackWatermark(4, 'dmc')
+    expect(await q.getTrackWatermark('dmc')).toBe(9)
+  })
+
+  it('starts a new broker at the newest track too, not only at the newest reception', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 4; i++) await q.addTrack(track(iso(i * MIN)))
+    await q.startAtHead('dmc')
+    expect(await q.getTrackWatermark('dmc')).toBe(4)
+  })
+
+  it('forgets a removed broker\'s track watermark along with the other', async () => {
+    const q = new Queue()
+    await q.setTrackWatermark(3, 'dmc')
+    await q.forgetBroker('dmc')
+    expect(await q.getTrackWatermark('dmc')).toBe(0)
+  })
+
+  it('prunes old tracks only below the floor it is given', async () => {
+    const q = new Queue()
+    await q.addTrack(track(iso(9 * DAY)))
+    await q.addTrack(track(iso(8 * DAY)))
+    await q.addTrack(track(iso(MIN)))
+    expect(await q.pruneTracks(iso(RETENTION_MS), 1)).toBe(1)
+    expect((await q.unpublishedTracksFrom(0)).map((t) => t.id)).toEqual([2, 3])
+  })
+})
+
 describe('Queue.prune — retention, gated on publication (#230)', () => {
   it('deletes published rows older than the cutoff', async () => {
     const q = new Queue()

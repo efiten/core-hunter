@@ -2,7 +2,7 @@
 // reception goes to, a switch per broker, and a form to add one. DOM glue only;
 // what a row says and whether a form is valid are brokers.js decisions, and
 // storing, probing and connecting are the caller's.
-import { brokerStatus } from './brokers.js'
+import { brokerStatus, BROKER_PRESETS } from './brokers.js'
 
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>'
 
@@ -43,6 +43,12 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
         <h2 class="bk-title" id="bk-form-title">Add broker</h2>
       </div>
       <form class="ss-panel active bk-form" id="bk-form" novalidate>
+        <div class="bk-field" id="bk-presets-field"><span>Start from</span>
+          <div class="bk-chips" id="bk-presets">
+            ${BROKER_PRESETS.map((p) => `<button type="button" class="bk-chip" data-preset="${p.key}" aria-pressed="false">${p.name}</button>`).join('')}
+            <button type="button" class="bk-chip" data-preset="" aria-pressed="true">Custom</button>
+          </div>
+        </div>
         <label class="bk-field"><span>Name</span><input id="bk-name" type="text" autocomplete="off" placeholder="Shown in this list" /></label>
         <label class="bk-field"><span>Address</span><input id="bk-url" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="wss://broker.example:443" /></label>
         <p class="bk-error" id="bk-url-error" role="alert" hidden></p>
@@ -57,7 +63,17 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
           <label class="bk-field"><span>Username</span><input id="bk-user" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
           <label class="bk-field"><span>Password</span><input id="bk-pass" type="password" autocomplete="off" /></label>
         </div>
-        <p class="ss-hint">Sends each reception with your position. The broker's owner can see where you drove.</p>
+        <p class="ss-hint" id="bk-format-hint"></p>
+        <details class="bk-adv">
+          <summary>Advanced</summary>
+          <div class="bk-field"><span id="bk-format-label">Send as</span>
+            <div class="ss-seg bk-seg" role="group" aria-labelledby="bk-format-label">
+              <button type="button" id="bk-format-wardrive" aria-pressed="true">Wardrive</button>
+              <button type="button" id="bk-format-packets" aria-pressed="false">Packets</button>
+            </div>
+          </div>
+          <p class="ss-hint">Wardrive: receptions plus your track, for a hunter map. Packets: one message per reception, for a Mesh-Hunter server.</p>
+        </details>
         <button type="button" class="bk-remove" id="bk-remove" hidden>Remove broker</button>
         <button type="submit" class="ss-connect bk-save" id="bk-save">Connect and save</button>
       </form>
@@ -78,6 +94,26 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     $('bk-auth-hint').hidden = auth !== 'companion'
   }
 
+  let format = 'wardrive'
+  function setFormat(next) {
+    format = next
+    $('bk-format-wardrive').setAttribute('aria-pressed', String(format === 'wardrive'))
+    $('bk-format-packets').setAttribute('aria-pressed', String(format === 'packets'))
+    $('bk-format-hint').textContent = format === 'wardrive'
+      ? "Sends each reception with your position, plus your track. The broker's owner can see where you drove."
+      : "Sends each reception with your position. The broker's owner can see where you drove."
+  }
+
+  function setPreset(key) {
+    for (const chip of root.querySelectorAll('.bk-chip')) chip.setAttribute('aria-pressed', String(chip.dataset.preset === key))
+    const preset = BROKER_PRESETS.find((p) => p.key === key)
+    if (!preset) return
+    $('bk-name').value = preset.name
+    $('bk-url').value = preset.url
+    setAuth(preset.auth === 'companion' ? 'companion' : 'password')
+    setFormat(preset.format === 'wardrive' ? 'wardrive' : 'packets')
+  }
+
   function showView(which) {
     $('bk-list-view').hidden = which !== 'list'
     $('bk-form-view').hidden = which !== 'form'
@@ -94,6 +130,11 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     $('bk-user').value = broker ? (broker.username || '') : ''
     $('bk-pass').value = broker ? (broker.password || '') : ''
     setAuth(broker && broker.auth === 'companion' ? 'companion' : 'password')
+    setFormat(broker && broker.format !== 'wardrive' ? 'packets' : 'wardrive')
+    // A preset is a way to fill in a new broker, not a property of a saved one.
+    $('bk-presets-field').hidden = Boolean(broker)
+    setPreset('')
+    root.querySelector('.bk-adv').open = false
     $('bk-remove').hidden = !broker
     $('bk-url-error').hidden = true
     $('bk-save').disabled = false
@@ -142,6 +183,9 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
   }
 
   $('bk-add').addEventListener('click', () => openForm(null))
+  for (const chip of root.querySelectorAll('.bk-chip')) chip.addEventListener('click', () => setPreset(chip.dataset.preset))
+  $('bk-format-wardrive').addEventListener('click', () => setFormat('wardrive'))
+  $('bk-format-packets').addEventListener('click', () => setFormat('packets'))
   $('bk-auth-password').addEventListener('click', () => setAuth('password'))
   $('bk-auth-companion').addEventListener('click', () => setAuth('companion'))
   $('bk-form-back').addEventListener('click', () => showView('list'))
@@ -157,7 +201,7 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     save.disabled = true
     save.textContent = 'Connecting…'
     const result = await onSave({
-      name: $('bk-name').value, url: $('bk-url').value, auth, username: $('bk-user').value, password: $('bk-pass').value,
+      name: $('bk-name').value, url: $('bk-url').value, auth, format, username: $('bk-user').value, password: $('bk-pass').value,
     }, editingId)
     save.disabled = false
     save.textContent = 'Connect and save'

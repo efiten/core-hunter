@@ -507,6 +507,20 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 /* The app's own segmented control (.ss-seg), stretched to the form's width. */
 .bk-seg { display: flex; margin-left: 0; }
 .bk-seg button { flex: 1; }
+.bk-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.bk-chip { min-height: 44px; padding: 0 14px; border: 1px solid var(--ch-border); border-radius: 999px;
+  background: transparent; color: var(--ch-text); font: inherit; font-size: 13px; cursor: pointer; }
+.bk-chip[aria-pressed="true"] { border-color: var(--ch-accent); color: var(--ch-accent); font-weight: 600; }
+.bk-adv { border-top: 1px solid var(--ch-border); }
+.bk-adv summary { min-height: 44px; display: flex; align-items: center; color: var(--ch-muted); font-size: 14px; cursor: pointer; }
+.bk-adv[open] { padding-bottom: 8px; }
+/* display:flex drops the native marker, so the summary draws its own. */
+.bk-adv summary { list-style: none; }
+.bk-adv summary::-webkit-details-marker { display: none; }
+.bk-adv summary::after { content: ""; margin-left: auto; width: 7px; height: 7px; border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .15s; }
+.bk-adv[open] summary::after { transform: rotate(-135deg); }
+.bk-adv .bk-field { margin-bottom: 6px; }
 .bk-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .bk-error { margin: -8px 0 0; font-size: 12px; line-height: 1.4; color: var(--ch-accent-2); }
 .bk-remove { align-self: flex-start; min-height: 44px; padding: 0; border: none; background: transparent;

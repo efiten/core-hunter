@@ -113,4 +113,16 @@ describe('normalizeConfig brokers (#554)', () => {
     expect(c.brokers[0]).toEqual({ id: 'a', name: 'a.example', url: 'wss://a.example', auth: 'companion' })
     expect(c.brokers[1].auth).toBeUndefined()
   })
+
+  it('reads a broker\'s format and stream label, and leaves both out for the packets default', () => {
+    const c = normalizeConfig({ brokers: [
+      { id: 'a', url: 'wss://a.example', format: 'wardrive', label: 'Hunter ' },
+      { id: 'b', url: 'wss://b.example', format: 'wardrive' },
+      { id: 'c', url: 'wss://c.example', format: 'something', label: 'x' },
+    ] })
+    expect(c.brokers[0]).toMatchObject({ format: 'wardrive', label: 'hunter' })
+    expect(c.brokers[1]).toMatchObject({ format: 'wardrive', label: 'hunter' })
+    expect('format' in c.brokers[2]).toBe(false)
+    expect('label' in c.brokers[2]).toBe(false)
+  })
 })

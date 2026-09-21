@@ -511,6 +511,14 @@ Verify against the other surface, not only against the issue text: put the two C
 two screens side by side. Where a shared rule can be asserted, pin it in `web/parity.test.js` so
 it is mechanical instead of remembered.
 
+**A switch belongs to a row in a list; a loose boolean stays a checkbox (#554).** The brokers page
+has one on/off per broker, and that is a switch: 46x28 track in a 46x44 hit area, `role="switch"`
+with `aria-checked`, `--ch-accent` when on (`.bk-switch` in `app/src/styles/app.css`). It is the
+one place a native checkbox does not fit, because a 13x13 box at the end of a row is not a 44px
+target and a list of them does not read as "these are on". A yes/no that stands on its own (the
+two filter rows, Remember me, Share my node name) stays a checkbox, as #563 decided. A new list
+of things that are each on or off uses the switch; nothing else does.
+
 ### Prefix attribution: rows merge per surface, a relay id is placed by reach
 
 One physical node is named by several different-length ids in the same pubkey namespace — the full
@@ -626,7 +634,10 @@ color: #ff4444;
 ### No secrets in the repo
 
 `public/config.json` and `server/config.json` are gitignored. Never commit broker URLs,
-usernames, passwords, or API keys. Never commit local filesystem paths, server hostnames, IPs,
+usernames, passwords, or API keys of a deployment. The hosts of a public third-party broker that
+invites feeders are not secrets and may be named in code: `BROKER_PRESETS` in `app/src/brokers.js`
+carries the two DutchMeshCore collectors, which DutchMeshCore publishes itself (#554). A preset
+never carries a credential; those brokers sign in with the companion's key. Never commit local filesystem paths, server hostnames, IPs,
 or SSH keys. Local agent context (`CLAUDE.md`) is also gitignored.
 
 Before publishing anything (docs, comments, commit messages), scrub all infrastructure detail.
@@ -732,6 +743,26 @@ them is dead-lettered into `raw_messages` rather than stored, since a value type
 absence into 0,0, a real coordinate off West Africa. `acc_m` may be absent or `null` when the device
 reports no accuracy figure; it is then stored as SQL `NULL`, never as `0` — which would mean the most
 accurate fix in the table (#346). Keep the ingestor's `gps` fields pointers for exactly this reason.
+
+### Other brokers, and the wardrive format (#554)
+
+The contract above is the one for a Mesh-Hunter server, and stays the format of the `mqttUrl`
+broker. A broker marked `format: "wardrive"` (config.json, or a broker a hunter adds) gets two
+other messages instead, built in `app/src/wardrive.js`:
+
+- `meshcore/{label}/{PUBKEY}/wardriver/obs`: one reception. `v, origin_id, rx_at, pub_at, hash,
+  raw, len, packet_type, route, payload_len, path[], RSSI, SNR, pos{lat, lon, accuracy, src}`.
+  `hash` is the firmware's packet hash (`Packet::calculatePacketHash`, 8 bytes, hex); a reception
+  whose frame cannot be hashed is passed over for these brokers.
+- `meshcore/{label}/{PUBKEY}/wardriver/track`: one listening interval, every 10 s or 25 m.
+  `v, origin_id, t0, t1, lat, lon, accuracy, rx_count, listening, src`. `rx_count: 0` with
+  `listening: true` is silence evidence, so `listening` is only true while the radio is connected,
+  and a dropped link closes the interval with `listening: false`.
+
+`{label}` is a stream label (`hunter`), never an airport code: a moving receiver must not be read
+as a fixed observer. `{PUBKEY}` is upper-case. The companion's name is not part of either message.
+A broker marked `auth: "companion"` is signed in to as `v1_{PUBKEY}` with a token the companion
+signs itself (`app/src/companionsign.js`).
 
 ---
 

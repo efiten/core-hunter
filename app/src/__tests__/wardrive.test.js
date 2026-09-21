@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { frameWalk, packetHash, buildObs, buildTrack, shouldEmitTrack, obsTopic, trackTopic, TRACK_INTERVAL_S, TRACK_DISTANCE_M } from '../wardrive.js'
+import { frameWalk, packetHash, buildObs, buildTrack, shouldEmitTrack, obsTopic, trackTopic, TRACK_INTERVAL_S, TRACK_DISTANCE_M, createTrackWindow } from '../wardrive.js'
 
 const hex = (bytes) => bytes.map((b) => b.toString(16).padStart(2, '0')).join('')
 
@@ -131,5 +131,52 @@ describe('topics (#554)', () => {
   it('puts the stream label where a fixed observer has its region, and upper-cases the key', () => {
     expect(obsTopic('hunter', 'ab'.repeat(32))).toBe('meshcore/hunter/' + 'AB'.repeat(32) + '/wardriver/obs')
     expect(trackTopic('hunter', 'ab'.repeat(32))).toBe('meshcore/hunter/' + 'AB'.repeat(32) + '/wardriver/track')
+  })
+})
+
+describe('createTrackWindow — counting what was heard between tracks (#554)', () => {
+  const fix = { lat: 52.0, lon: 5.0, acc_m: 8 }
+  const T0 = Date.parse('2026-09-21T10:00:00.000Z')
+  const KEY = 'ab'.repeat(32)
+
+  it('opens with a track at once, then one per interval carrying the count', () => {
+    const w = createTrackWindow()
+    const first = w.tick({ nowMs: T0, fix, rxPubkey: KEY })
+    expect(first).toMatchObject({ t0: '2026-09-21T10:00:00.000Z', t1: '2026-09-21T10:00:00.000Z', rx_count: 0, listening: true, rx_pubkey: KEY })
+    w.heard(); w.heard(); w.heard()
+    expect(w.tick({ nowMs: T0 + 4000, fix, rxPubkey: KEY })).toBeNull()
+    const second = w.tick({ nowMs: T0 + TRACK_INTERVAL_S * 1000, fix, rxPubkey: KEY })
+    expect(second).toMatchObject({ t0: '2026-09-21T10:00:00.000Z', t1: '2026-09-21T10:00:10.000Z', rx_count: 3, lat: 52.0, lon: 5.0, acc_m: 8 })
+    // The count starts over with each track.
+    expect(w.tick({ nowMs: T0 + 2 * TRACK_INTERVAL_S * 1000, fix, rxPubkey: KEY }).rx_count).toBe(0)
+  })
+
+  // A track without a position cannot be placed, and silence that cannot be
+  // placed is worth nothing. The count is kept for the track that can.
+  it('waits for a fix, and keeps counting meanwhile', () => {
+    const w = createTrackWindow()
+    w.tick({ nowMs: T0, fix, rxPubkey: KEY })
+    w.heard()
+    expect(w.tick({ nowMs: T0 + 20_000, fix: null, rxPubkey: KEY })).toBeNull()
+    w.heard()
+    expect(w.tick({ nowMs: T0 + 30_000, fix, rxPubkey: KEY }).rx_count).toBe(2)
+  })
+
+  it('closes with a last track that says the phone stopped listening', () => {
+    const w = createTrackWindow()
+    w.tick({ nowMs: T0, fix, rxPubkey: KEY })
+    w.heard()
+    expect(w.close({ nowMs: T0 + 3000, fix, rxPubkey: KEY })).toMatchObject({ t1: '2026-09-21T10:00:03.000Z', rx_count: 1, listening: false })
+  })
+
+  it('has nothing to close when it never opened', () => {
+    expect(createTrackWindow().close({ nowMs: T0, fix, rxPubkey: KEY })).toBeNull()
+  })
+
+  it('opens afresh after a close, without carrying the old interval over', () => {
+    const w = createTrackWindow()
+    w.tick({ nowMs: T0, fix, rxPubkey: KEY })
+    w.close({ nowMs: T0 + 3000, fix, rxPubkey: KEY })
+    expect(w.tick({ nowMs: T0 + 60_000, fix, rxPubkey: KEY })).toMatchObject({ t0: '2026-09-21T10:01:00.000Z', rx_count: 0 })
   })
 })

@@ -21,11 +21,12 @@ import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
 import { pruneFloor, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary } from './brokers.js'
 import { createBrokerSheet } from './brokersheet.js'
+import { createTrackWindow } from './wardrive.js'
 import { createSigner, buildBrokerToken, brokerUsername, brokerAudience, tokenUsable } from './companionsign.js'
 import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
-import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
+import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M, isUsableFix } from './gps.js'
 import { requestSelfInfo, radioSummary } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
@@ -197,6 +198,8 @@ const state = {
   needsCompanion: new Set(),
   signRetryAt: new Map(),
   signer: null,
+  // The running listening interval, for brokers in the wardrive format.
+  trackWindow: createTrackWindow(),
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
@@ -1316,6 +1319,7 @@ async function processFrame(dv) {
   // and so does any other traffic from it, which is the cheaper of the two.
   if (rec.sender_id != null) state.sweep.heardAt.set(String(rec.sender_id).toLowerCase(), Date.now())
   await state.queue.add(rec)
+  state.trackWindow.heard()
   // After the add, so the store never keeps it: an attribution follows the
   // registry and the attenuator, which change after the reception (#661).
   rec._attr = attributeReception(rec, attributionContext())
@@ -1473,6 +1477,7 @@ async function drawOnce() {
 
 async function renderTick() {
   await drawOnce()
+  await trackTick()
   setTimeout(renderTick, 1000)
 }
 
@@ -1504,9 +1509,15 @@ async function drainOnce() {
   try {
     // Each broker drains on its own watermark (#554), so one that is offline
     // or slow does not hold back what the others are owed.
-    for (const broker of brokerList()) {
-      if (brokerConnected(broker.id)) await drainBroker(broker.id, state.publishers.get(broker.id))
-    }
+    // Side by side, not one after the other: a broker that is slow to
+    // acknowledge would otherwise eat the tick of every broker after it.
+    await Promise.all(brokerList().filter((b) => brokerConnected(b.id)).map(async (b) => {
+      const entry = state.publishers.get(b.id)
+      try {
+        await drainBroker(b.id, entry)
+        if (entry.format === 'wardrive') await drainTracks(b.id, entry)
+      } catch (_) { /* this broker retries next cycle; the others carry on */ }
+    }))
     await pruneOnce()
   } catch (_) {
     // queue read failed — retry next cycle
@@ -1561,6 +1572,43 @@ async function drainBroker(id, entry) {
   }
 }
 
+// Tracks go to brokers in the wardrive format, after the receptions they
+// count. Same rule as the receptions: the watermark moves over an unbroken run
+// of acknowledged publishes and stops at the first failure.
+async function drainTracks(id, entry) {
+  const startedAt = Date.now()
+  let watermark = await state.queue.getTrackWatermark(id)
+  for (;;) {
+    const rows = await state.queue.unpublishedTracksFrom(watermark)
+    let sent = watermark
+    let failed = false
+    for (const row of rows) {
+      try { await entry.publisher.publishTrack(row); sent = row.id } catch (_) { failed = true; break }
+    }
+    if (sent > watermark) { await state.queue.setTrackWatermark(sent, id); watermark = sent }
+    if (failed) break
+    if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
+  }
+}
+
+// trackTick cuts a track when one is due (wardrive.js). Only while a broker in
+// the wardrive format is on: nobody else reads them. Listening means the radio
+// is connected; a dropped link closes the interval instead, so a gap in the
+// connection is never read as silence on the air.
+async function trackTick() {
+  if (!brokerList().some((b) => b.format === 'wardrive')) return
+  const fix = state.gps.latest()
+  const args = { nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey: state.rxPubkey }
+  const row = state.connected && state.rxPubkey ? state.trackWindow.tick(args) : null
+  if (row) { try { await state.queue.addTrack(row) } catch (_) { /* a lost track is a gap, not an error */ } }
+}
+
+async function closeTrack(rxPubkey) {
+  const fix = state.gps.latest()
+  const row = state.trackWindow.close({ nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey })
+  if (row && rxPubkey) { try { await state.queue.addTrack(row) } catch (_) { /* as above */ } }
+}
+
 // Retention (#230): drop receptions past RETENTION_MS, but only ones the broker
 // already has — "all receptions go to MQTT" outranks the age cap, so an offline
 // phone keeps everything until it drains. Hourly; the store only grows slowly.
@@ -1574,6 +1622,11 @@ async function pruneOnce() {
   const owed = []
   for (const b of brokerList()) owed.push({ id: b.id, watermark: await state.queue.getWatermark(b.id) })
   const removed = await state.queue.prune(cutoff, pruneFloor(owed))
+  const owedTracks = []
+  for (const b of brokerList()) {
+    if (b.format === 'wardrive') owedTracks.push({ id: b.id, watermark: await state.queue.getTrackWatermark(b.id) })
+  }
+  await state.queue.pruneTracks(cutoff, pruneFloor(owedTracks))
   if (removed > 0) console.debug('[prune] removed', removed, 'published record(s) past retention')
 }
 
@@ -1980,8 +2033,10 @@ async function connectMqtt(broker, owner = state.rxPubkey) {
     username: creds.username,
     password: creds.password,
     clientId: owner,
+    format: broker.format,
+    label: broker.label,
   })
-  state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 }, owner, token: creds.password })
+  state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 }, owner, token: creds.password, format: broker.format })
   publisher.connect()
     .then(() => setMqttDot())
     .catch((e) => console.error('[mqtt]', broker.id, e))
@@ -2016,6 +2071,9 @@ async function connectAll() {
       setDot('dot-ble', on)
       if (!on) {
         state.connected = false
+        // The radio stopped listening: close the interval rather than let the
+        // next track count a dead link as silence (#554).
+        void closeTrack(state.rxPubkey)
         // A spontaneous drop reaches neither disconnectAll nor stopBatteryPoll
         // (#433). Without this the whole Connection section keeps describing a
         // link that is gone: the last voltage, the companion name, its pubkey
@@ -2191,6 +2249,8 @@ async function disconnectAll(nextPhase = 'idle') {
   setDot('dot-ble', false)
   setDot('dot-mqtt', false)
   state.connected = false
+  // Before the identity is cleared: the closing track belongs to it (#554).
+  void closeTrack(state.rxPubkey)
   state.rxPubkey = ''
   state.sf = null
   state.radio = null

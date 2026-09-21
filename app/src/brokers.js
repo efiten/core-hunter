@@ -79,6 +79,7 @@ export function validateBroker(form, existingIds, { securePage = true } = {}) {
     broker.username = String(form.username || '').trim()
     broker.password = form.password == null ? '' : String(form.password)
   }
+  if (form.format !== 'packets') broker.format = 'wardrive'
   return { ok: true, errors: {}, broker }
 }
 
@@ -120,3 +121,11 @@ export function mqttSummary(connected) {
   if (up === flags.length) return 'Connected'
   return up === 0 ? 'Not connected' : `${up} of ${flags.length} connected`
 }
+
+// Brokers the add form can start from. These hosts are public: DutchMeshCore
+// lists them for anyone who feeds its network. They take a token signed by the
+// companion instead of a password, and the wardrive format.
+export const BROKER_PRESETS = [
+  { key: 'dmc1', name: 'DutchMeshCore 1', url: 'wss://collector1.dutchmeshcore.nl:443', auth: 'companion', format: 'wardrive' },
+  { key: 'dmc2', name: 'DutchMeshCore 2', url: 'wss://collector2.dutchmeshcore.nl:443', auth: 'companion', format: 'wardrive' },
+]
