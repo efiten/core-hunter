@@ -94,12 +94,18 @@ describe('dedupeSenders never closes over a non-transitive relation (#268)', () 
     expect(out[0].merged_ids).toEqual(['a1b2', A])
   })
 
-  it('never merges two prefixes with no full-pubkey anchor between them', () => {
+  // This used to be refused: an anchor had to be a full pubkey, and only an
+  // advert carries one. A node heard through Discover replies and relay hops
+  // alone then kept a row per id for as long as no advert was in the window
+  // (#625). The longest id of one chain is the anchor now, as on the map
+  // (#331). What #268 refuses is untouched: the tests around this one.
+  it('merges two prefixes of one chain under the longer one, with no full pubkey in the window (#625)', () => {
     const out = senderList([
       rec({ sender_kind: 'relay', sender_id: 'a1b2', ...shared }),
       rec({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c3', ...shared }),
     ], {})
-    expect(out.map((r) => r.sender_id).sort()).toEqual(['a1b2', 'a1b2c3'])
+    expect(out).toHaveLength(1)
+    expect(out[0].merged_ids).toEqual(['a1b2', 'a1b2c3'])
   })
 
   it('produces the same clusters regardless of input order', () => {
@@ -132,6 +138,121 @@ describe('dedupeSenders never closes over a non-transitive relation (#268)', () 
       rec({ sender_kind: 'advert_pubkey', sender_id: A, ...shared }),
     ], {})
     expect(out.map((r) => r.sender_id).sort()).toEqual([A].sort())
+  })
+})
+
+// #625, the reported case: a Discover reply (8-byte prefix), a 3-byte relay
+// hash and a 2-byte one, all resolved to one name, and no advert in the window.
+describe('a node with no advert in the window is still one row (#625)', () => {
+  const name = { sender_label: 'NL-NIJ-Dikkeboom' }
+  const D = 'db11db7700aa11bb'
+  const rows = (...extra) => senderList([
+    rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name, rx_at: '2026-09-12T10:00:00Z' }),
+    rec({ sender_kind: 'relay', sender_id: 'db11', ...name, rx_at: '2026-09-12T10:01:00Z' }),
+    rec({ sender_kind: 'relay', sender_id: 'db11db', ...name, rx_at: '2026-09-12T10:02:00Z' }),
+    ...extra,
+  ], {})
+
+  it('folds the three ids into one row, newest reception on top', () => {
+    const out = rows()
+    expect(out).toHaveLength(1)
+    expect(out[0].merged_ids).toEqual(['db11', 'db11db', D])
+    expect(out[0].rx_at).toBe('2026-09-12T10:02:00Z')
+  })
+  it('keeps the strict name gate: a row that shows no name stays on its own', () => {
+    const out = senderList([
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', sender_label: null }),
+    ], {})
+    expect(out).toHaveLength(2)
+  })
+  it('does not merge a chain whose longest id shows no name, even when the shorter ones agree', () => {
+    // The gate is against the anchor, and the anchor is the longest id. Known
+    // and accepted (docs/2026-09-21-anchorless-prefix-merge.md).
+    const out = senderList([
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, sender_label: null }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11db', ...name }),
+    ], {})
+    expect(out).toHaveLength(3)
+  })
+  it('leaves a prefix alone when what it could be is not one chain', () => {
+    // A second Discover id that shares db11 and is no prefix of D: db11 is as
+    // likely the one as the other. db11db still belongs to D alone.
+    const out = rows(rec({ sender_kind: 'discover_pubkey', sender_id: 'db11ff0000aa11bb', ...name }))
+    const short = out.find((r) => r.merged_ids.includes('db11'))
+    expect(short.merged_ids).toEqual(['db11'])
+    expect(out.find((r) => r.merged_ids.includes(D)).merged_ids).toEqual(['db11db', D])
+  })
+  it('refuses the same way when one of the two is a full pubkey: the chain rule has no blind side', () => {
+    // Before #625 only full pubkeys counted as candidates, so db11 attached to
+    // the advert here although the Discover id is another node with its prefix.
+    const A = pk('db11aa')
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...name }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', ...name }),
+    ], {})
+    expect(out).toHaveLength(3)
+  })
+  it('does not merge a relay placed on another node into the chain (#661)', () => {
+    const out = senderList([
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', sender_label: null, _attr: { rule: 'node', node: { pubkey: pk('db11ee'), name: 'NL-NIJ-Dikkeboom' } } }),
+    ], {})
+    expect(out).toHaveLength(2)
+  })
+  it('merges a relay placed on a node whose key the longer id is a prefix of', () => {
+    const out = senderList([
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', sender_label: null, _attr: { rule: 'node', node: { pubkey: pk(D), name: 'NL-NIJ-Dikkeboom' } } }),
+    ], {})
+    expect(out).toHaveLength(1)
+  })
+  it('gives the same clusters whatever order the receptions come in', () => {
+    const key = (out) => out.map((r) => r.merged_ids.join('+')).sort()
+    const base = [
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11db', ...name }),
+    ]
+    expect(key(senderList([...base].reverse(), {}))).toEqual(key(senderList(base, {})))
+  })
+})
+
+// The key of a row with no full pubkey (#625). It was the row's own sender_id,
+// which for a merged row is the id of whichever reception is newest, so it
+// changed from one reception to the next. The longest id of the cluster is the
+// key now: a full pubkey when there is one, as before.
+describe('clusterKey and the selection for a chain with no full pubkey (#625)', () => {
+  const name = { sender_label: 'NL-NIJ-Dikkeboom' }
+  const D = 'db11db7700aa11bb'
+  const chain = (newest) => senderList([
+    rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name, rx_at: newest === D ? '2026-09-12T11:00:00Z' : '2026-09-12T10:00:00Z' }),
+    rec({ sender_kind: 'relay', sender_id: 'db11', ...name, rx_at: newest === 'db11' ? '2026-09-12T11:00:00Z' : '2026-09-12T10:01:00Z' }),
+  ], {})
+
+  it('is the longest id, whichever reception is the newest', () => {
+    expect(clusterKey(chain(D)[0])).toBe(D)
+    expect(clusterKey(chain('db11')[0])).toBe(D)
+  })
+  it('expands to every id of the chain', () => {
+    expect([...expandSelection([D], chain('db11'))].sort()).toEqual(['db11', D])
+  })
+  it('follows the node when its advert arrives later and the key becomes the pubkey', () => {
+    // Selected under the Discover id; then the advert is heard, and the row's
+    // key is the full pubkey. The stored key still names a member of that row.
+    const A = pk(D)
+    const later = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: A, ...name }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, ...name }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', ...name }),
+    ], {})
+    expect(later).toHaveLength(1)
+    expect([...expandSelection([D], later)].sort()).toEqual([A, 'db11', D].sort())
+  })
+  it('picks the chain key from the map popup, which knows one id only', () => {
+    expect(selectionKeyFor(chain(D), 'db11')).toBe(D)
   })
 })
 
@@ -332,6 +453,67 @@ describe('relTime', () => {
     expect(relTime(null, now)).toBe('—')
     expect(relTime(undefined, now)).toBe('—')
     expect(relTime('not-a-date', now)).toBe('—')
+  })
+})
+
+// #625, the second half: idPrefix cuts every id to 6 hex, so two rows with
+// different ids could print the same one. A row shows as much of its id as
+// tells it apart from the others, two hex at a time, never the whole key.
+describe('two rows never print the same id for two different ids (#625)', () => {
+  const at = (out, id) => targetParts(out.find((r) => r.sender_id === id)).secondary
+  it('prints the usual 6 hex when nothing collides', () => {
+    const out = senderList([rec({ sender_kind: 'advert_pubkey', sender_id: pk('a1b2c3d4'), sender_label: 'A' })], {})
+    expect(at(out, pk('a1b2c3d4'))).toBe('a1b2c3')
+  })
+  it('extends both until they differ', () => {
+    const X = pk('db11db77'), Y = pk('db11dbaa')
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: X, sender_label: 'Noord' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: Y, sender_label: 'Zuid' }),
+    ], {})
+    expect(at(out, X)).toBe('db11db77')
+    expect(at(out, Y)).toBe('db11dbaa')
+  })
+  it('leaves a short id as it is and extends the longer one past it', () => {
+    // The reported pair: a 3-byte relay hash and a longer id that starts with
+    // it, kept apart because their names differ.
+    const D = 'db11db7700aa11bb'
+    const out = senderList([
+      rec({ sender_kind: 'relay', sender_id: 'db11db', sender_label: 'Een' }),
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, sender_label: 'Ander' }),
+    ], {})
+    expect(at(out, 'db11db')).toBe('db11db')
+    expect(at(out, D)).toBe('db11db77')
+  })
+  it('stops at 8 bytes, so a full key is never printed', () => {
+    const X = pk('db11db7700aa11bb01'), Y = pk('db11db7700aa11bb02')
+    const out = senderList([
+      rec({ sender_kind: 'advert_pubkey', sender_id: X, sender_label: 'Noord' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: Y, sender_label: 'Zuid' }),
+    ], {})
+    expect(at(out, X)).toBe('db11db7700aa11bb')
+    expect(at(out, Y)).toBe('db11db7700aa11bb')
+  })
+  it('tells the pinned rows apart by the same rule, against the whole list', () => {
+    const X = pk('db11db77'), Y = pk('db11dbaa')
+    const now = Date.parse('2026-06-29T10:05:00Z')
+    const out = topSenders([
+      rec({ sender_kind: 'advert_pubkey', sender_id: X, sender_label: 'Noord', rssi: -60 }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: Y, sender_label: 'Zuid', rssi: -120, rx_at: '2026-06-29T08:00:00Z' }),
+      rec({ sender_kind: 'advert_pubkey', sender_id: pk('cccc'), sender_label: 'C', rssi: -61 }),
+    ], { count: 2, nowMs: now })
+    expect(out.map((r) => r.sender_id)).not.toContain(Y)
+    expect(at(out, X)).toBe('db11db77')
+  })
+  it('leaves channel names alone: their id is text, not hex', () => {
+    // Named, so the id is on the second line at all (#640): a row whose first
+    // line is the id prints nothing under it.
+    const out = senderList([
+      rec({ sender_kind: 'channel_name', sender_id: 'Spammer-one', sender_label: 'Spam' }),
+      rec({ sender_kind: 'channel_name', sender_id: 'Spammer-two', sender_label: 'Spam' }),
+    ], {})
+    expect(at(out, 'Spammer-one')).toBe('Spamme')
+    expect(at(out, 'Spammer-two')).toBe('Spamme')
   })
 })
 
