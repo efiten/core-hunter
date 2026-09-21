@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { createFloatReadout, fitName, floatModel, floatSupported } from '../floatreadout.js'
+import { createFloatReadout, fitName, floatModel, floatSupported, fullscreenFirst } from '../floatreadout.js'
 import { senderReadout } from '../hudsender.js'
 import { hudToggleText } from '../hudmode.js'
 
@@ -179,7 +179,7 @@ async function settle() {
 // The float readout against fakes of the canvas, the video, its document and
 // screen.orientation. `calls` is one ordered log: the window requests, play
 // and pause, the lock, and every text the canvas drew ('draw -85').
-function makeFloat({ pip = true, fullscreen = true, webkit = false } = {}) {
+function makeFloat({ pip = true, fullscreen = true, webkit = false, fullscreenFirst = false } = {}) {
   const calls = []
   const pending = {}
   const ask = (name) => {
@@ -229,7 +229,7 @@ function makeFloat({ pip = true, fullscreen = true, webkit = false } = {}) {
     return pending[name].shift()
   }
   const opened = []
-  const float = createFloatReadout({ canvas, video, colors: () => '#000000', onChange: (v) => opened.push(v), orientation })
+  const float = createFloatReadout({ canvas, video, colors: () => '#000000', onChange: (v) => opened.push(v), orientation, fullscreenFirst })
   return {
     float, calls, opened, doc, video,
     count: (name) => calls.filter((c) => c === name).length,
@@ -238,6 +238,55 @@ function makeFloat({ pip = true, fullscreen = true, webkit = false } = {}) {
     fire: (type) => (listeners.doc[type] || []).forEach((fn) => fn()),
   }
 }
+
+// #669: on Android the picture-in-picture call puts the video in a window of
+// its own and the tab goes to the background: the page is hidden, the GPS
+// watch stops and nothing is recorded. The fullscreen path shrinks Chrome
+// itself into the window, which keeps the page visible. The capability flags
+// are the same as desktop Chrome's, so the platform decides the order.
+describe('fullscreenFirst (#669)', () => {
+  it('is true on Android, by userAgentData or by the UA string', () => {
+    expect(fullscreenFirst({ userAgentData: { platform: 'Android' }, userAgent: '' })).toBe(true)
+    expect(fullscreenFirst({ userAgent: 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 Chrome/139.0 Mobile Safari/537.36' })).toBe(true)
+  })
+  it('is false on desktop Chrome and on an iPhone', () => {
+    expect(fullscreenFirst({ userAgentData: { platform: 'macOS' }, userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/139.0 Safari/537.36' })).toBe(false)
+    expect(fullscreenFirst({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1' })).toBe(false)
+  })
+  it('is false with no navigator at all', () => {
+    expect(fullscreenFirst(undefined)).toBe(false)
+  })
+})
+
+describe('createFloatReadout open path on Android (#669)', () => {
+  it('goes fullscreen first even where picture-in-picture is enabled', async () => {
+    const h = makeFloat({ fullscreenFirst: true })
+    h.float.open()
+    await settle()
+    expect(h.count('requestFullscreen')).toBe(1)
+    expect(h.count('requestPictureInPicture')).toBe(0)
+    h.doc.fullscreenElement = h.video
+    h.resolve('requestFullscreen')
+    await settle()
+    h.resolve('lock portrait')
+    await settle()
+    expect(h.float.isOpen()).toBe(true)
+    expect(h.count('requestPictureInPicture')).toBe(0)
+  })
+
+  it('falls back to picture-in-picture when fullscreen is refused', async () => {
+    const h = makeFloat({ fullscreenFirst: true })
+    h.float.open()
+    await settle()
+    h.reject('requestFullscreen')
+    await settle()
+    expect(h.count('requestPictureInPicture')).toBe(1)
+    expect(h.float.isOpen()).toBe(false)
+    h.resolve('requestPictureInPicture')
+    await settle()
+    expect(h.float.isOpen()).toBe(true)
+  })
+})
 
 // #616: the button promises a floating window. Picture-in-picture is that
 // window, so it is asked for first; fullscreen is the fallback Android Chrome

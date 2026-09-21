@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-21-float-keeps-logging",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "The float readout keeps logging on Android",
+    "body": "On Android the float readout opens fullscreen again: press Home for the window. Positions and sound keep running."
+  },
+  {
     "id": "2026-09-15-direction-arrow",
     "date": "2026-09-15",
     "where": "app",

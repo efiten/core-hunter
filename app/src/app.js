@@ -26,7 +26,7 @@ import { requestSelfInfo } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
 import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from './hudmode.js'
-import { createFloatReadout, floatModel, floatSupported } from './floatreadout.js'
+import { createFloatReadout, floatModel, floatSupported, fullscreenFirst } from './floatreadout.js'
 import { arrowFor, arrowTarget, arrowChanged, headingFor } from './arrow.js'
 import { loadConfig, getConfig } from './config.js'
 import { createHuntMap } from './huntmap.js'
@@ -476,6 +476,8 @@ function initFloatReadout() {
       btn.setAttribute('aria-pressed', String(open))
       if (open) drawFloat()
     },
+    // Android: fullscreen first, so the page stays visible and capturing (#669).
+    fullscreenFirst: fullscreenFirst(navigator),
   })
   btn.hidden = !state.float.supported
   // The reading goes in with the tap: the window opens on the canvas's

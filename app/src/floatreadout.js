@@ -1,9 +1,11 @@
 // The float readout (#555): the HUD's reading drawn onto a canvas, streamed
 // into a <video>, and taken out of the page (#616). Where the browser has the
 // picture-in-picture API on, the video goes straight into its floating
-// window. Android Chrome has that API off, so there the video goes fullscreen
-// instead, locked upright, and Chrome moves the fullscreen video into its
-// floating window by itself when the user presses Home or switches apps.
+// window. Not on Android (#669): there that call puts the video in a window
+// of its own and the tab behind it is hidden, so the GPS watch stops and
+// nothing is recorded. Android goes fullscreen instead, locked upright, and
+// Chrome shrinks itself into the floating window when the user presses Home
+// or switches apps, which keeps the page visible and capturing.
 // Chrome's automatic PiP through the Media Session API is desktop-only.
 //
 // floatModel, floatSupported and createFloatReadout's open path are
@@ -54,8 +56,8 @@ export function fitName(text, maxWidth, measure) {
 // floatSupported: can this browser stream a canvas into a video and take that
 // video out of the page? Element fullscreen is the Android path; iOS has only
 // webkitEnterFullscreen, which still shows the readout big. Picture-in-picture
-// counts only where the document says it is enabled: Android Chrome's video
-// has the method with the API switched off.
+// counts only where the document says it is enabled: a video can have the
+// method with the API switched off.
 export function floatSupported(win) {
   if (!win || !win.document) return false
   const canvas = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype
@@ -64,6 +66,14 @@ export function floatSupported(win) {
   if (!video) return false
   return typeof video.requestFullscreen === 'function' || typeof video.webkitEnterFullscreen === 'function'
     || (!!win.document.pictureInPictureEnabled && typeof video.requestPictureInPicture === 'function')
+}
+
+// fullscreenFirst: is this Android (#669)? Its capability flags match desktop
+// Chrome's, so the platform is the only thing that tells the two apart.
+export function fullscreenFirst(nav) {
+  if (!nav) return false
+  if (nav.userAgentData && nav.userAgentData.platform) return nav.userAgentData.platform === 'Android'
+  return /Android/i.test(nav.userAgent || '')
 }
 
 // Canvas size. 16:9, the shape of the window Android gives a video: measured
@@ -80,8 +90,9 @@ const L = 72, R = W - 56
 // resolves a --ch-* token to a colour at draw time, read from the canvas,
 // which carries data-theme="dark": the window is dark whatever the app's
 // theme, without this module reading the stylesheet (#615). `orientation` is
-// screen.orientation, passed in so the lock can be tested.
-export function createFloatReadout({ canvas, video, colors, onChange, orientation = globalThis.screen && globalThis.screen.orientation }) {
+// screen.orientation, passed in so the lock can be tested. `fullscreenFirst`
+// turns the open order around for Android (#669).
+export function createFloatReadout({ canvas, video, colors, onChange, orientation = globalThis.screen && globalThis.screen.orientation, fullscreenFirst = false }) {
   if (!canvas || !video || !canvas.captureStream) return { supported: false, draw() {}, open() {}, close() {}, isOpen: () => false }
   canvas.width = W
   canvas.height = H
@@ -200,7 +211,8 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
   async function openOnce(next) {
     draw(next)
     try { await video.play() } catch (_) {}
-    if (await floatWindow() || await fullscreen()) { setOpen(true); return }
+    const ways = fullscreenFirst ? [fullscreen, floatWindow] : [floatWindow, fullscreen]
+    if (await ways[0]() || await ways[1]()) { setOpen(true); return }
     // Every path was refused: nothing left the page, so the button must not
     // say it did, and the stream stops.
     try { video.pause() } catch (_) {}
@@ -212,7 +224,7 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
     try { await video.requestPictureInPicture(); return true } catch (_) { return false }
   }
 
-  // Fullscreen, the Android path. The canvas is landscape, so Chrome would
+  // Fullscreen, the Android path (first there, #669). The canvas is landscape, so Chrome would
   // turn the phone's screen sideways; the portrait lock keeps the readout
   // upright. A lock is only allowed while fullscreen, so it waits for that,
   // and a refused lock still leaves the readout out. iPhone Safari has no
