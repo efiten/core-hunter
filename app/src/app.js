@@ -1540,7 +1540,7 @@ async function drainBroker(id, entry) {
         await entry.publisher.publish(state.rxPubkey, r, state.name)
         outcomes.push({ id: r.id, ok: true })
       } catch (_) {
-        // Publish failed. Stop here rather than skipping ahead — the rest is
+        // Publish failed. Stop here rather than skipping ahead: the rest is
         // retried next cycle. How far the watermark may move is
         // nextWatermark's decision, not this loop's.
         outcomes.push({ id: r.id, ok: false })

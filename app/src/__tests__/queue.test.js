@@ -192,7 +192,7 @@ describe('Queue watermark per broker (#554)', () => {
   })
 })
 
-describe('Queue — switching a broker on again, and removing one (#554)', () => {
+describe('Queue: switching a broker on again, and removing one (#554)', () => {
   // Off means "do not send my receptions there". Sending the hours it was off
   // the moment it is switched back on would undo that.
   it('resumes a broker at the newest reception, past what it missed', async () => {
@@ -214,7 +214,7 @@ describe('Queue — switching a broker on again, and removing one (#554)', () =>
   })
 })
 
-describe('Queue tracks — listening intervals for wardrive brokers (#554)', () => {
+describe('Queue tracks: listening intervals for wardrive brokers (#554)', () => {
   const track = (t1, extra = {}) => ({ t0: t1, t1, rx_pubkey: 'ab', lat: 52, lon: 5, rx_count: 0, listening: true, ...extra })
 
   it('keeps tracks apart from receptions, so the map never reads one', async () => {

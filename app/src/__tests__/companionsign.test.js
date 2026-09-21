@@ -31,7 +31,7 @@ function fakeCompanion({ maxLen = 8192, failData = false, silent = false } = {})
   }
 }
 
-describe('signWithCompanion — the companion signs, the key stays on it (#554)', () => {
+describe('signWithCompanion: the companion signs, the key stays on it (#554)', () => {
   it('returns a signature that verifies against the companion\'s own key', async () => {
     const c = fakeCompanion()
     const token = await buildBrokerToken({ pubkeyHex: c.pubkeyHex, audience: 'broker.example', nowSec: 1_790_000_000, sign: (b) => signWithCompanion(c, b) })
@@ -87,7 +87,7 @@ describe('broker sign-in fields (#554)', () => {
   })
 })
 
-describe('createSigner — one signature at a time (#554)', () => {
+describe('createSigner: one signature at a time (#554)', () => {
   // The companion has a single sign buffer, and a second START empties it. Two
   // brokers that both need a token must not interleave their frames.
   it('finishes one signature before it starts the next', async () => {
@@ -109,7 +109,7 @@ describe('createSigner — one signature at a time (#554)', () => {
   })
 })
 
-describe('tokenUsable — when a stored token still gets in (#554)', () => {
+describe('tokenUsable: when a stored token still gets in (#554)', () => {
   const token = (claims) => 'h.' + Buffer.from(JSON.stringify(claims)).toString('base64url') + '.sig'
   const KEY = 'AB'.repeat(32)
 

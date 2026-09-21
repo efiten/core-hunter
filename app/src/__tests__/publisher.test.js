@@ -39,7 +39,7 @@ describe('Publisher.buildPayload', () => {
   })
 })
 
-describe('Publisher.publish — a broker that never answers (#554)', () => {
+describe('Publisher.publish: a broker that never answers (#554)', () => {
   // A broker that accepts the connection but drops the message sends no PUBACK,
   // and mqtt.js then never calls back. With several brokers that would hold the
   // drain, and every other broker with it, for ever.
@@ -56,7 +56,7 @@ describe('Publisher.publish — a broker that never answers (#554)', () => {
   })
 })
 
-describe('Publisher — the wardrive format (#554)', () => {
+describe('Publisher: the wardrive format (#554)', () => {
   const REC = { rx_at: '2026-09-21T10:00:00.000Z', rx_pubkey: 'ab'.repeat(32), raw: '15008bdead', snr: 5, rssi: -90, lat: 52.1, lon: 5.1, acc_m: 8 }
   const capture = () => { const sent = []; return { sent, client: { publish(topic, payload, opts, cb) { sent.push({ topic, payload: JSON.parse(payload), opts }); cb(null) } } } }
 

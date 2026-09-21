@@ -19,7 +19,7 @@ const VECTORS = [
 // with node:crypto rather than with the code under test.
 const TRACE = { raw: [0x25, 0x02, 0xaa, 0xbb, 0x01, 0x02], hash: '508606e568249d06' }
 
-describe('packetHash — the packet identity consumers deduplicate on (#554)', () => {
+describe('packetHash: the packet identity consumers deduplicate on (#554)', () => {
   it.each(VECTORS)('matches the reference for $hash', async (v) => {
     expect(await packetHash(hex(v.raw))).toBe(v.hash)
   })
@@ -42,7 +42,7 @@ describe('packetHash — the packet identity consumers deduplicate on (#554)', (
   })
 })
 
-describe('frameWalk — header, transport codes, path (#554)', () => {
+describe('frameWalk: header, transport codes, path (#554)', () => {
   it('skips the four transport-code bytes on a transport route', () => {
     const w = frameWalk(new Uint8Array([0x14, 1, 2, 3, 4, 0x01, 0xaa, 0xbb]))
     expect(w).toMatchObject({ routeType: 0, payloadType: 5, hops: ['aa'], payloadStart: 7 })
@@ -56,7 +56,7 @@ describe('frameWalk — header, transport codes, path (#554)', () => {
 
 const REC = { rx_at: '2026-09-21T10:00:00.000Z', rx_pubkey: 'ab'.repeat(32), raw: hex([0x15, 0x01, 0xaa, 0x8b, 0xde, 0xad]), snr: -3.5, rssi: -92, lat: 52.123456789, lon: 5.987654321, acc_m: 8.04 }
 
-describe('buildObs — one reception in the wardrive shape (#554)', () => {
+describe('buildObs: one reception in the wardrive shape (#554)', () => {
   it('carries the reception, its position and the packet identity', async () => {
     expect(await buildObs(REC, { originId: 'AB'.repeat(32), pubAt: '2026-09-21T10:00:05.000Z' })).toEqual({
       v: 1,
@@ -90,7 +90,7 @@ describe('buildObs — one reception in the wardrive shape (#554)', () => {
   })
 })
 
-describe('buildTrack — a listening interval (#554)', () => {
+describe('buildTrack: a listening interval (#554)', () => {
   it('says where the phone was, for how long, and what it heard', () => {
     expect(buildTrack({ originId: 'K', t0: '2026-09-21T10:00:00.000Z', t1: '2026-09-21T10:00:10.000Z', lat: 52.1234567, lon: 5.1, accM: 12.34, rxCount: 3, listening: true })).toEqual({
       v: 1, origin_id: 'K', t0: '2026-09-21T10:00:00.000Z', t1: '2026-09-21T10:00:10.000Z',
@@ -108,7 +108,7 @@ describe('buildTrack — a listening interval (#554)', () => {
   })
 })
 
-describe('shouldEmitTrack — every 10 s or 25 m, whichever comes first (#554)', () => {
+describe('shouldEmitTrack: every 10 s or 25 m, whichever comes first (#554)', () => {
   const here = { lat: 52.0, lon: 5.0 }
   it('emits the first track of a session at once', () => {
     expect(shouldEmitTrack({ nowMs: 0, lastMs: null, lastPos: null, curPos: here })).toBe(true)
@@ -134,7 +134,7 @@ describe('topics (#554)', () => {
   })
 })
 
-describe('createTrackWindow — counting what was heard between tracks (#554)', () => {
+describe('createTrackWindow: counting what was heard between tracks (#554)', () => {
   const fix = { lat: 52.0, lon: 5.0, acc_m: 8 }
   const T0 = Date.parse('2026-09-21T10:00:00.000Z')
   const KEY = 'ab'.repeat(32)

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { pruneFloor, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary } from '../brokers.js'
 
-describe('pruneFloor — how far retention may delete (#554)', () => {
+describe('pruneFloor: how far retention may delete (#554)', () => {
   it('stops at the broker that is furthest behind', () => {
     expect(pruneFloor([{ id: 'default', watermark: 900 }, { id: 'dmc', watermark: 120 }])).toBe(120)
   })
@@ -17,7 +17,7 @@ describe('pruneFloor — how far retention may delete (#554)', () => {
   })
 })
 
-describe('dotState — one dot for several brokers (#554)', () => {
+describe('dotState: one dot for several brokers (#554)', () => {
   it('is on when every broker is connected', () => {
     expect(dotState([true, true])).toBe('on')
   })
@@ -32,7 +32,7 @@ describe('dotState — one dot for several brokers (#554)', () => {
   })
 })
 
-describe('parseBrokerPrefs — what the phone remembers (#554)', () => {
+describe('parseBrokerPrefs: what the phone remembers (#554)', () => {
   it('reads back what was stored', () => {
     const stored = JSON.stringify({ added: [{ id: 'user:be.example', name: 'BE', url: 'wss://be.example', username: 'h', password: 's' }], off: ['default'] })
     expect(parseBrokerPrefs(stored)).toEqual({ added: [{ id: 'user:be.example', name: 'BE', url: 'wss://be.example', username: 'h', password: 's' }], off: ['default'] })
@@ -52,7 +52,7 @@ describe('parseBrokerPrefs — what the phone remembers (#554)', () => {
   })
 })
 
-describe('mergeBrokers — the list the sheet shows (#554)', () => {
+describe('mergeBrokers: the list the sheet shows (#554)', () => {
   const site = [{ id: 'default', name: 'Own', url: 'wss://own.example' }, { id: 'dmc', name: 'DMC', url: 'wss://dmc.example' }]
   const added = [{ id: 'user:be.example', name: 'BE', url: 'wss://be.example' }]
 
@@ -72,7 +72,7 @@ describe('mergeBrokers — the list the sheet shows (#554)', () => {
   })
 })
 
-describe('validateBroker — the add form (#554)', () => {
+describe('validateBroker: the add form (#554)', () => {
   const ok = { name: 'BE community', url: 'wss://mqtt.be.example:443', username: 'hunter', password: 'secret' }
 
   it('turns a filled-in form into a broker keyed by its host', () => {
@@ -128,7 +128,7 @@ describe('validateBroker — the add form (#554)', () => {
   })
 })
 
-describe('brokerStatus — one line per broker (#554)', () => {
+describe('brokerStatus: one line per broker (#554)', () => {
   it('says Off for a broker that is switched off, whatever the socket does', () => {
     expect(brokerStatus({ enabled: false, connected: true, queued: 9 })).toEqual({ dot: 'off', text: 'Off' })
   })
@@ -158,7 +158,7 @@ describe('brokerStatus — one line per broker (#554)', () => {
   })
 })
 
-describe('probeBroker — connect before saving (#554)', () => {
+describe('probeBroker: connect before saving (#554)', () => {
   const fake = (connect) => { const p = { ended: 0, connect, end() { p.ended++ } }; return p }
 
   it('reports a broker that accepts the connection, and hangs up again', async () => {
@@ -181,7 +181,7 @@ describe('probeBroker — connect before saving (#554)', () => {
   })
 })
 
-describe('mqttSummary — the MQTT line in the Status tab (#554)', () => {
+describe('mqttSummary: the MQTT line in the Status tab (#554)', () => {
   it('keeps the old wording while there is one broker', () => {
     expect(mqttSummary([true])).toBe('Connected')
     expect(mqttSummary([false])).toBe('Not connected')
