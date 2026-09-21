@@ -11,6 +11,7 @@
 // Drain tick (5s):  non-destructive queue.takeAll() → publish unpublished rows
 //                   → add id to state.published Set (no queue.remove ever)
 
+import './maplibre.js'
 import { WebBluetoothTransport } from './transport.js'
 import { parseFrame, PUSH_CODE_LOG_RX_DATA } from './frames.js'
 import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSignature } from './decode.js'

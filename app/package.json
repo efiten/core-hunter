@@ -11,6 +11,7 @@
   "dependencies": {
     "@michaelhart/meshcore-decoder": "^0.3.0",
     "crypto-js": "^4.2.0",
+    "maplibre-gl": "4.7.1",
     "mqtt": "^5.10.1"
   },
   "devDependencies": {

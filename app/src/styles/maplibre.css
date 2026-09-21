@@ -1,0 +1,3 @@
+/* MapLibre's own sheet, from the pinned package rather than unpkg (#617).
+   Linked first in index.html, so tokens.css and app.css still override it. */
+@import 'maplibre-gl/dist/maplibre-gl.css';
