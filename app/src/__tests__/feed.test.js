@@ -344,9 +344,11 @@ describe('targetParts', () => {
     expect(targetParts({ sender_label: 'Repeater-Zuid', sender_id: 'abcd' }))
       .toEqual({ primary: '~Repeater-Zuid', secondary: 'abcd' })
   })
-  it('shows the id prefix plus a "name not resolved" marker as primary when there is no name, and the bare prefix as secondary', () => {
+  // #640: the second line is the check on a name (#451). Without a name the
+  // first line is the prefix already, and printing it under itself said nothing.
+  it('prints the id prefix once when there is no name: in the primary, with the marker', () => {
     expect(targetParts({ sender_label: null, sender_id: 'a1b2c3d4e5f6' }))
-      .toEqual({ primary: 'a1b2c3 (name not resolved)', secondary: 'a1b2c3' })
+      .toEqual({ primary: 'a1b2c3 (name not resolved)', secondary: '' })
   })
   it('falls back to a dash when neither is present', () => {
     expect(targetParts({ sender_label: null, sender_id: null }))
@@ -679,7 +681,7 @@ describe('targetParts follows attribution', () => {
   })
   it('shows a collided relay as not resolved, whatever the resolver named it', () => {
     expect(targetParts({ sender_kind: 'relay', sender_id: '4a4a', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } }))
-      .toEqual({ primary: '4a4a (name not resolved)', secondary: '4a4a' })
+      .toEqual({ primary: '4a4a (name not resolved)', secondary: '' })
   })
   it("reads the row by its newest reception's attribution", () => {
     const older = { sender_kind: 'relay', sender_id: '64aa', sender_label: null, rx_at: '2026-09-15T10:00:00Z', _attr: { rule: 'collision', count: 2 } }

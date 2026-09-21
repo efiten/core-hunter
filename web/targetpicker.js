@@ -195,7 +195,9 @@ const idPrefix = (id) => id.slice(0, ID_PREFIX_HEX_CHARS)
 
 // targetParts splits a sender row into a primary label and a muted secondary
 // byte-prefix, so duplicate names / different-length prefixes of the same
-// node stay distinguishable, same idea as app's feed.js.
+// node stay distinguishable, same idea as app's feed.js. The secondary line
+// checks a name; a row whose first line is the id already leaves it empty
+// (#640).
 export function targetParts(rec) {
   const id = rec.sender_id != null ? String(rec.sender_id) : ''
   const label = rec.sender_label ? String(rec.sender_label) : ''
@@ -205,12 +207,12 @@ export function targetParts(rec) {
   // print "77" indistinguishably from a resolved short name. It gets the #
   // mark instead; unlike the app, this list has no kind gate keeping those
   // rows out (see the module docstring), so the guard has to live here.
-  if (isHashIdKind(rec.sender_kind)) return { primary: `#${prefix}`, secondary: prefix }
+  if (isHashIdKind(rec.sender_kind)) return { primary: `#${prefix}`, secondary: '' }
   if (label) return { primary: label, secondary: prefix }
   // The resolver answers 2- and 3-byte relay prefixes, and map.js fills
   // sender_label from its cache before rendering. A row still without one has
   // either not been looked up yet or came back ambiguous.
-  return { primary: `${prefix} (name not resolved)`, secondary: prefix }
+  return { primary: `${prefix} (name not resolved)`, secondary: '' }
 }
 
 // relTime — ported from app/src/feed.js (not shared: see module docstring).
