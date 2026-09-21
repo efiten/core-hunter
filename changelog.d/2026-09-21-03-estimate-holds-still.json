@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-estimate-holds-still",
+  "date": "2026-09-21",
+  "where": "map",
+  "title": "A node's estimate holds still",
+  "body": "The estimated position no longer shifts as you pan or zoom: it uses every hearing in the time window, not only those on screen."
+}
