@@ -3,9 +3,9 @@ import { frameWalk, packetHash, buildObs, buildTrack, shouldEmitTrack, obsTopic,
 
 const hex = (bytes) => bytes.map((b) => b.toString(16).padStart(2, '0')).join('')
 
-// Reference hashes from the DutchMeshCore ingest, which validated its own
-// implementation against firmware Packet::calculatePacketHash and live observer
-// hashes. They are the values a consumer deduplicates on, so ours must match.
+// Reference hashes from an independent implementation that was validated
+// against firmware Packet::calculatePacketHash and live observer hashes. They
+// are the values a consumer deduplicates on, so ours must match.
 const VECTORS = [
   { raw: [0x15, 0x00, 0x8b, 0xde, 0xad], hash: 'a8dd682eb57e5992' },
   { raw: [0x11, 0x02, 0x7f, 0x33, ...new Array(32).fill(0)], hash: 'f09cc66424a35e60' },

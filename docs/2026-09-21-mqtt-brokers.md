@@ -88,7 +88,7 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
 
 Unit tests cover the watermarks, the merge of site and hunter brokers, the form, the status lines,
 the signing exchange (a real Ed25519 key behind a fake companion, the token checked with
-`verifyAuthToken`), the packet hash (three reference hashes from the DutchMeshCore ingest and one
+`verifyAuthToken`), the packet hash (three reference hashes from an independent implementation and one
 TRACE frame worked out with `node:crypto`), obs, track and the track window. Each new test was run
 once with the code under it broken.
 
