@@ -288,3 +288,19 @@ test('a member roster that lands after the logout does not bring the names back 
   expect(list, 'the newest roster stays').toContain('Hunter 1 (43)')
   expect(list, 'a logged-out page shows no real names').not.toContain('ON8AR')
 })
+
+// #679. The panel sits inside #bar, and `#bar select, #bar input, #bar button`
+// (1,0,1) outranked the bare `.tl-row` (0,1,0): the rows wore the bar's border,
+// fill, radius and padding on top of their own separator. Read off the
+// computed style, since the markup and the classes were right all along.
+test('a picker row is a bare row, not a bar button (#679)', async ({ page }) => {
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [H1, H2] } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/?mode=points')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  const row = await page.locator('#hp-list .tl-row').first().evaluate((el) => {
+    const c = getComputedStyle(el)
+    return { border: c.borderTopWidth, bg: c.backgroundColor, radius: c.borderTopLeftRadius, padding: c.padding }
+  })
+  expect(row).toEqual({ border: '0px', bg: 'rgba(0, 0, 0, 0)', radius: '0px', padding: '8px 4px' })
+})
