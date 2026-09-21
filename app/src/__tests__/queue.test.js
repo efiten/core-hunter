@@ -140,6 +140,58 @@ describe('Queue watermark — survives a reload', () => {
   })
 })
 
+describe('Queue watermark per broker (#554)', () => {
+  it('keeps one broker\'s progress apart from another\'s', async () => {
+    const q = new Queue()
+    await q.setWatermark(42)
+    await q.setWatermark(7, 'dmc')
+    expect(await q.getWatermark()).toBe(42)
+    expect(await q.getWatermark('dmc')).toBe(7)
+  })
+
+  it('counts what each broker is still owed, not what the first one is', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 4; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(3)
+    await q.setWatermark(1, 'dmc')
+    expect(await q.unpublishedCount()).toBe(1)
+    expect(await q.unpublishedCount('dmc')).toBe(3)
+  })
+
+  it('reads the pending identity above that broker\'s own watermark', async () => {
+    const q = new Queue()
+    await q.add(rec(iso(3 * MIN), { rx_pubkey: 'aa' }))
+    await q.add(rec(iso(2 * MIN), { rx_pubkey: 'bb' }))
+    await q.setWatermark(1)
+    expect(await q.pendingPubkey()).toBe('bb')
+    expect(await q.pendingPubkey('dmc')).toBe('aa')
+  })
+
+  // A broker added on a phone with a week of receptions must not get the week:
+  // it was not a destination when those were heard.
+  it('starts a broker it has not seen before at the newest reception', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 3; i++) await q.add(rec(iso(i * MIN)))
+    await q.startAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(3)
+    expect(await q.unpublishedFrom(await q.getWatermark('dmc'))).toEqual([])
+  })
+
+  it('leaves a broker it already knows where it was', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 3; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(1, 'dmc')
+    await q.startAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(1)
+  })
+
+  it('starts at 0 on an empty store', async () => {
+    const q = new Queue()
+    await q.startAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(0)
+  })
+})
+
 describe('Queue.prune — retention, gated on publication (#230)', () => {
   it('deletes published rows older than the cutoff', async () => {
     const q = new Queue()

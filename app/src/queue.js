@@ -19,6 +19,16 @@ const META = 'meta';
 // Per-node facts (#553): what a node answered about itself, keyed by pubkey.
 const NODES = 'nodes';
 const WATERMARK_KEY = 'published_through';
+// The first broker. Its watermark keeps the key it always had, so an install
+// that was already draining carries on from where it was (#554).
+export const DEFAULT_BROKER = 'default';
+
+// One watermark per broker (#554): each broker is owed the receptions it has
+// not had yet, and a broker that is offline for an hour must not hold the
+// others back.
+function watermarkKey(brokerId) {
+  return !brokerId || brokerId === DEFAULT_BROKER ? WATERMARK_KEY : WATERMARK_KEY + ':' + brokerId;
+}
 
 // Retention (#230): receptions older than this are pruned — but only once
 // they have reached the broker. "All receptions go to MQTT" outranks the age
@@ -203,22 +213,41 @@ export class Queue {
     return (await result(store.getAll(IDBKeyRange.lowerBound(watermark, true), DRAIN_BATCH))) || [];
   }
 
-  async getWatermark() {
+  async getWatermark(brokerId) {
     const db = await openDB();
     const store = db.transaction(META, 'readonly').objectStore(META);
-    const row = await result(store.get(WATERMARK_KEY));
+    const row = await result(store.get(watermarkKey(brokerId)));
     return row ? row.v : 0;
+  }
+
+  // startAtHead gives a broker this store has not seen before a watermark at
+  // the newest reception, so it receives what is heard from now on. Without it
+  // a broker added on a phone holding a week of receptions would get the week,
+  // none of which was heard with that broker as a destination. A broker that
+  // already has a watermark keeps it.
+  async startAtHead(brokerId) {
+    const db = await openDB();
+    const tx = db.transaction([STORE, META], 'readwrite');
+    const meta = tx.objectStore(META);
+    const key = watermarkKey(brokerId);
+    const known = meta.get(key);
+    known.onsuccess = () => {
+      if (known.result) return;
+      const newest = tx.objectStore(STORE).openKeyCursor(null, 'prev');
+      newest.onsuccess = () => meta.put({ k: key, v: newest.result ? newest.result.primaryKey : 0 });
+    };
+    return done(tx);
   }
 
   // setWatermark is monotonic: the drain advances it to the last contiguous
   // success, and a later partial pass must never walk it back over rows that
   // were already sent.
-  async setWatermark(id) {
-    const current = await this.getWatermark();
+  async setWatermark(id, brokerId) {
+    const current = await this.getWatermark(brokerId);
     if (id <= current) return current;
     const db = await openDB();
     const tx = db.transaction(META, 'readwrite');
-    tx.objectStore(META).put({ k: WATERMARK_KEY, v: id });
+    tx.objectStore(META).put({ k: watermarkKey(brokerId), v: id });
     return done(tx, id);
   }
 
@@ -256,8 +285,8 @@ export class Queue {
   // Oldest rather than newest, because the drain publishes in id order and the
   // MQTT client id is bound to one companion at a time -- so the connection has
   // to belong to whoever is at the front of the queue.
-  async pendingPubkey() {
-    const watermark = await this.getWatermark();
+  async pendingPubkey(brokerId) {
+    const watermark = await this.getWatermark(brokerId);
     const db = await openDB();
     const store = db.transaction(STORE, 'readonly').objectStore(STORE);
     const rows = (await result(store.getAll(IDBKeyRange.lowerBound(watermark, true), 1))) || [];
@@ -296,8 +325,8 @@ export class Queue {
   // the map for over an hour. A dot that only says "the socket is open" is not
   // the same as "your receptions are getting through", and the difference is
   // the whole hunt.
-  async unpublishedCount() {
-    const watermark = await this.getWatermark();
+  async unpublishedCount(brokerId) {
+    const watermark = await this.getWatermark(brokerId);
     const db = await openDB();
     const store = db.transaction(STORE, 'readonly').objectStore(STORE);
     return result(store.count(IDBKeyRange.lowerBound(watermark, true)));

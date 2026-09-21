@@ -744,6 +744,8 @@ accurate fix in the table (#346). Keep the ingestor's `gps` fields pointers for 
   published is never deleted, however old — an offline phone keeps everything until it drains.
   IndexedDB is the working set; the backend deduplicates. Publication is tracked by a durable
   watermark, not an in-memory set, so a restart does not re-publish the store.
+  There is one watermark per broker (#554): each broker drains on its own, so one that is offline
+  does not hold the others back, and retention deletes only below the lowest of them.
   See `docs/2026-07-22-retention-and-bounded-reads.md` (#230); this replaces an earlier absolute
   "never deletes local rows" rule, which made the store unbounded.
 - Queue reads are **bounded** — never `getAll()` over the store. The display reads its time window via
