@@ -73,22 +73,19 @@ export function validateBroker(form, existingIds, { securePage = true } = {}) {
   if ((existingIds || []).includes(id)) {
     return { ok: false, errors: { url: 'This broker is already in the list.' }, broker: null }
   }
-  return {
-    ok: true,
-    errors: {},
-    broker: {
-      id,
-      name: String(form.name || '').trim() || parsed.hostname,
-      url,
-      username: String(form.username || '').trim(),
-      password: form.password == null ? '' : String(form.password),
-    },
+  const broker = { id, name: String(form.name || '').trim() || parsed.hostname, url }
+  if (form.auth === 'companion') broker.auth = 'companion'
+  else {
+    broker.username = String(form.username || '').trim()
+    broker.password = form.password == null ? '' : String(form.password)
   }
+  return { ok: true, errors: {}, broker }
 }
 
 // brokerStatus is the one line under a broker's name.
-export function brokerStatus({ enabled, connected, queued }) {
+export function brokerStatus({ enabled, connected, queued, needsCompanion = false }) {
   if (!enabled) return { dot: 'off', text: 'Off' }
+  if (!connected && needsCompanion) return { dot: 'warn', text: 'Connect your companion to sign in' }
   const n = Number.isFinite(queued) ? Math.max(0, Math.trunc(queued)) : 0
   const waiting = n > 0 ? ` · ${n.toLocaleString('en')} queued` : ''
   // Amber means receptions are waiting. Not connected with nothing owed is the

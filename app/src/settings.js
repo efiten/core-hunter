@@ -27,6 +27,20 @@ export function saveBrokerPrefs(prefs) {
   try { localStorage.setItem('core-hunter-brokers', JSON.stringify(prefs)) } catch (_) {}
 }
 
+// Tokens the companion signed for brokers it signs in to (#554), by broker id.
+// Stored so the backlog can still go out after the radio is unplugged; a token
+// is good for a day and only for the host it names.
+export function loadBrokerTokens() {
+  try {
+    const raw = JSON.parse(readStored('core-hunter-broker-tokens'))
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  } catch (_) { return {} }
+}
+
+export function saveBrokerTokens(tokens) {
+  try { localStorage.setItem('core-hunter-broker-tokens', JSON.stringify(tokens)) } catch (_) {}
+}
+
 // Attenuator setting (dB, non-positive: 0/-10/-20/-30). Persisted; added back to
 // plotted RSSI so the picture stays consistent when an external attenuator is on.
 export function loadAttenuator() {

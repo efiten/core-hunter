@@ -19,7 +19,7 @@ function node(tag, className, text) {
 
 // createBrokerSheet wires the page into `root`.
 //   getBrokers()            the merged list: [{ id, name, url, source, enabled, username }]
-//   getStatus(id)           Promise<{ connected, queued }>
+//   getStatus(id)           Promise<{ connected, queued, needsCompanion }>
 //   onToggle(id, enabled)   the hunter flipped a switch
 //   onSave(form, editingId) Promise<{ ok, errors }>; validates, connects, stores
 //   onRemove(id)            the hunter removed a broker they added
@@ -46,7 +46,14 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
         <label class="bk-field"><span>Name</span><input id="bk-name" type="text" autocomplete="off" placeholder="Shown in this list" /></label>
         <label class="bk-field"><span>Address</span><input id="bk-url" type="url" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="wss://broker.example:443" /></label>
         <p class="bk-error" id="bk-url-error" role="alert" hidden></p>
-        <div class="bk-pair">
+        <div class="bk-field"><span id="bk-auth-label">Sign in with</span>
+          <div class="ss-seg bk-seg" role="group" aria-labelledby="bk-auth-label">
+            <button type="button" id="bk-auth-password" aria-pressed="true">Password</button>
+            <button type="button" id="bk-auth-companion" aria-pressed="false">Companion key</button>
+          </div>
+        </div>
+        <p class="ss-hint" id="bk-auth-hint" hidden>Your companion signs you in with its own key. The key stays on the radio, and the broker sees which companion you are.</p>
+        <div class="bk-pair" id="bk-pair">
           <label class="bk-field"><span>Username</span><input id="bk-user" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" /></label>
           <label class="bk-field"><span>Password</span><input id="bk-pass" type="password" autocomplete="off" /></label>
         </div>
@@ -61,6 +68,15 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
   // One status updater per drawn row, so the render tick can keep the lines
   // honest without rebuilding rows under a finger.
   let updaters = []
+
+  let auth = 'password'
+  function setAuth(next) {
+    auth = next
+    $('bk-auth-password').setAttribute('aria-pressed', String(auth === 'password'))
+    $('bk-auth-companion').setAttribute('aria-pressed', String(auth === 'companion'))
+    $('bk-pair').hidden = auth === 'companion'
+    $('bk-auth-hint').hidden = auth !== 'companion'
+  }
 
   function showView(which) {
     $('bk-list-view').hidden = which !== 'list'
@@ -77,6 +93,7 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     $('bk-url').readOnly = Boolean(broker)
     $('bk-user').value = broker ? (broker.username || '') : ''
     $('bk-pass').value = broker ? (broker.password || '') : ''
+    setAuth(broker && broker.auth === 'companion' ? 'companion' : 'password')
     $('bk-remove').hidden = !broker
     $('bk-url-error').hidden = true
     $('bk-save').disabled = false
@@ -96,6 +113,7 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
       txt.append(node('span', 'bk-name', b.name), node('span', 'bk-host', host(b.url)))
       const status = node('span', 'bk-status', (b.source === 'site' ? 'From this site' : 'Added by you'))
       txt.append(status)
+      if (b.auth === 'companion') txt.append(node('span', 'bk-status', "Signs in with your companion's key"))
       if (b.source === 'user') {
         txt.classList.add('bk-tappable')
         txt.tabIndex = 0
@@ -112,7 +130,7 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
       sw.addEventListener('click', async () => { await onToggle(b.id, !b.enabled); refresh() })
       row.append(dot, txt, sw)
       const update = () => getStatus(b.id).then((s) => {
-        const view = brokerStatus({ enabled: b.enabled, connected: s.connected, queued: s.queued })
+        const view = brokerStatus({ enabled: b.enabled, ...s })
         dot.classList.toggle('on', view.dot === 'on')
         dot.classList.toggle('warn', view.dot === 'warn')
         status.textContent = (b.source === 'site' ? 'From this site' : 'Added by you') + ' · ' + view.text
@@ -124,6 +142,8 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
   }
 
   $('bk-add').addEventListener('click', () => openForm(null))
+  $('bk-auth-password').addEventListener('click', () => setAuth('password'))
+  $('bk-auth-companion').addEventListener('click', () => setAuth('companion'))
   $('bk-form-back').addEventListener('click', () => showView('list'))
   $('bk-back').addEventListener('click', () => { root.hidden = true })
   $('bk-remove').addEventListener('click', async () => {
@@ -137,7 +157,7 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     save.disabled = true
     save.textContent = 'Connecting…'
     const result = await onSave({
-      name: $('bk-name').value, url: $('bk-url').value, username: $('bk-user').value, password: $('bk-pass').value,
+      name: $('bk-name').value, url: $('bk-url').value, auth, username: $('bk-user').value, password: $('bk-pass').value,
     }, editingId)
     save.disabled = false
     save.textContent = 'Connect and save'

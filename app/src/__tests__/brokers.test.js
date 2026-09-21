@@ -108,6 +108,11 @@ describe('validateBroker — the add form (#554)', () => {
     expect(validateBroker({ ...ok, url: 'wss://mqtt.be.example:8084/mqtt' }, []).broker.id).toBe('user:mqtt.be.example:8084')
   })
 
+  it('keeps no username or password for a broker the companion signs in to', () => {
+    const r = validateBroker({ ...ok, auth: 'companion' }, [])
+    expect(r.broker).toEqual({ id: 'user:mqtt.be.example', name: 'BE community', url: 'wss://mqtt.be.example:443', auth: 'companion' })
+  })
+
   it('refuses a broker that is already in the list', () => {
     const r = validateBroker(ok, ['default', 'user:mqtt.be.example'])
     expect(r.ok).toBe(false)
@@ -118,6 +123,12 @@ describe('validateBroker — the add form (#554)', () => {
 describe('brokerStatus — one line per broker (#554)', () => {
   it('says Off for a broker that is switched off, whatever the socket does', () => {
     expect(brokerStatus({ enabled: false, connected: true, queued: 9 })).toEqual({ dot: 'off', text: 'Off' })
+  })
+
+  // A broker the companion signs in to cannot connect until the radio has
+  // signed once. That is a thing to do, so it says what.
+  it('says what it is waiting for when the companion has to sign first', () => {
+    expect(brokerStatus({ enabled: true, connected: false, queued: 0, needsCompanion: true })).toEqual({ dot: 'warn', text: 'Connect your companion to sign in' })
   })
 
   it('says Connected when nothing is waiting', () => {

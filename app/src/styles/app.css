@@ -477,9 +477,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    sheet, so the sheet's own surface shows through the same way. */
 .bk-page { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column;
   background: var(--ch-bg); }
-.bk-page[hidden] { display: none; }
 .bk-view { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.bk-view[hidden] { display: none; }
 #settings-sheet .bk-head { justify-content: flex-start; gap: 4px; padding-bottom: 0; }
 .bk-title { margin: 0; font-size: 15px; font-weight: 600; padding: 10px 0; }
 .bk-back { width: 44px; height: 44px; margin-left: -8px; display: inline-flex; align-items: center; justify-content: center;
@@ -506,6 +504,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .bk-field input { min-height: 44px; padding: 0 12px; border: 1px solid var(--ch-border); border-radius: 8px;
   background: transparent; color: var(--ch-text); font: inherit; font-size: 14px; min-width: 0; }
 .bk-field input[readonly] { color: var(--ch-muted); }
+/* The app's own segmented control (.ss-seg), stretched to the form's width. */
+.bk-seg { display: flex; margin-left: 0; }
+.bk-seg button { flex: 1; }
 .bk-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .bk-error { margin: -8px 0 0; font-size: 12px; line-height: 1.4; color: var(--ch-accent-2); }
 .bk-remove { align-self: flex-start; min-height: 44px; padding: 0; border: none; background: transparent;

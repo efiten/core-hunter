@@ -21,6 +21,7 @@ import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
 import { pruneFloor, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary } from './brokers.js'
 import { createBrokerSheet } from './brokersheet.js'
+import { createSigner, buildBrokerToken, brokerUsername, brokerAudience, tokenUsable } from './companionsign.js'
 import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
@@ -39,7 +40,7 @@ import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
 import { filterSheetMarkup } from './filtersheet.js'
 import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration, loadBrokerPrefs, saveBrokerPrefs } from './settings.js'
+import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration, loadBrokerPrefs, saveBrokerPrefs, loadBrokerTokens, saveBrokerTokens } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
@@ -190,6 +191,12 @@ const state = {
   // Brokers the hunter added, and the ids they switched off (#554).
   brokerPrefs: loadBrokerPrefs(),
   brokerSheet: null,
+  // Tokens the companion signed, by broker id, and the brokers that are
+  // waiting for it to sign (#554).
+  brokerTokens: loadBrokerTokens(),
+  needsCompanion: new Set(),
+  signRetryAt: new Map(),
+  signer: null,
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
@@ -604,7 +611,28 @@ function brokerList() {
 async function brokerStatusOf(id) {
   let queued = 0
   try { queued = await state.queue.unpublishedCount(id) } catch (_) { queued = 0 }
-  return { connected: brokerConnected(id), queued }
+  return { connected: brokerConnected(id), queued, needsCompanion: state.needsCompanion.has(id) }
+}
+
+// What to sign in with. A password broker has its two fields. A broker the
+// companion signs in to needs a token for this companion and this host: the
+// stored one while it has time left, otherwise a fresh signature -- which takes
+// the radio, connected and the same one the receptions belong to. null means
+// not now.
+async function brokerCredentials(broker, owner) {
+  if (broker.auth !== 'companion') return { username: broker.username, password: broker.password }
+  const audience = brokerAudience(broker.url)
+  const nowSec = Math.floor(Date.now() / 1000)
+  const stored = state.brokerTokens[broker.id]
+  if (tokenUsable(stored, { pubkeyHex: owner, audience, nowSec })) return { username: brokerUsername(owner), password: stored }
+  if (!state.connected || !state.transport || state.rxPubkey !== owner) return null
+  if (!state.signer || state.signer.transport !== state.transport) {
+    state.signer = { transport: state.transport, sign: createSigner(state.transport) }
+  }
+  const token = await buildBrokerToken({ pubkeyHex: owner, audience, nowSec, sign: state.signer.sign })
+  state.brokerTokens = { ...state.brokerTokens, [broker.id]: token }
+  saveBrokerTokens(state.brokerTokens)
+  return { username: brokerUsername(owner), password: token }
 }
 
 function setBrokerPrefs(prefs) {
@@ -628,8 +656,13 @@ async function saveBroker(form, editingId) {
   const taken = allBrokers().map((b) => b.id).filter((x) => x !== editingId)
   const v = validateBroker(form, taken, { securePage: location.protocol === 'https:' })
   if (!v.ok) return v
+  let creds = null
+  try { creds = await brokerCredentials(v.broker, state.rxPubkey) } catch (e) {
+    return { ok: false, errors: { url: `Your companion could not sign in (${e.message}).` } }
+  }
+  if (!creds) return { ok: false, errors: { url: 'Connect your companion first: it signs you in to this broker.' } }
   const probe = await probeBroker(new Publisher({
-    url: v.broker.url, username: v.broker.username, password: v.broker.password,
+    url: v.broker.url, username: creds.username, password: creds.password,
     clientId: state.rxPubkey || 'mesh-hunter-' + Math.random().toString(16).slice(2, 10),
   }))
   if (!probe.ok) return { ok: false, errors: { url: `Could not connect (${probe.reason}). Check the address and the sign-in.` } }
@@ -1898,8 +1931,15 @@ function applyConnectButtons() {
 // they are owed to the broker whatever the link is doing now.
 async function ensureMqtt() {
   const on = brokerList()
-  for (const id of [...state.publishers.keys()]) {
-    if (!on.some((b) => b.id === id)) dropPublisher(id)
+  const nowSec = Math.floor(Date.now() / 1000)
+  for (const [id, entry] of [...state.publishers]) {
+    const broker = on.find((b) => b.id === id)
+    // mqtt.js reconnects with the password it was given, so a token that has
+    // run out would be refused for ever: drop the client and let the pass
+    // below sign in again.
+    const stale = broker && broker.auth === 'companion'
+      && !tokenUsable(entry.token, { pubkeyHex: entry.owner, audience: brokerAudience(broker.url), nowSec })
+    if (!broker || stale) dropPublisher(id)
   }
   for (const broker of on) {
     // The identity comes from the queue when live state has none: a deliberate
@@ -1911,7 +1951,7 @@ async function ensureMqtt() {
     }
     const run = mqttShouldRun({ configured: true, rxPubkey: owner })
     switch (mqttAction(run, state.publishers.has(broker.id))) {
-      case 'connect': connectMqtt(broker, owner); break
+      case 'connect': await connectMqtt(broker, owner); break
       case 'end':
         state.publishers.get(broker.id).publisher.end()
         state.publishers.delete(broker.id)
@@ -1922,15 +1962,26 @@ async function ensureMqtt() {
   }
 }
 
-function connectMqtt(broker, owner = state.rxPubkey) {
+async function connectMqtt(broker, owner = state.rxPubkey) {
   if (!owner) return
+  // A companion that cannot sign (older firmware answers nothing) is asked
+  // again after a minute, not on every 5 s drain tick: each ask holds the BLE
+  // link for its full timeout.
+  if (Date.now() < (state.signRetryAt.get(broker.id) || 0)) return
+  let creds = null
+  try { creds = await brokerCredentials(broker, owner) } catch (e) {
+    state.signRetryAt.set(broker.id, Date.now() + 60_000)
+    console.error('[mqtt]', broker.id, 'sign-in', e)
+  }
+  state.needsCompanion[creds ? 'delete' : 'add'](broker.id)
+  if (!creds) return
   const publisher = new Publisher({
     url: broker.url,
-    username: broker.username,
-    password: broker.password,
+    username: creds.username,
+    password: creds.password,
     clientId: owner,
   })
-  state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 } })
+  state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 }, owner, token: creds.password })
   publisher.connect()
     .then(() => setMqttDot())
     .catch((e) => console.error('[mqtt]', broker.id, e))
@@ -2124,7 +2175,7 @@ function renderMqttStatus() {
   }
   for (const row of box.children) {
     brokerStatusOf(row.dataset.id).then((stat) => {
-      const view = brokerStatus({ enabled: true, connected: stat.connected, queued: stat.queued })
+      const view = brokerStatus({ enabled: true, ...stat })
       row.firstChild.classList.toggle('on', view.dot === 'on')
       row.firstChild.classList.toggle('warn', view.dot === 'warn')
       row.lastChild.textContent = view.text

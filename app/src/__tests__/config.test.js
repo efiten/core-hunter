@@ -104,4 +104,13 @@ describe('normalizeConfig brokers (#554)', () => {
     const c = normalizeConfig({ brokers: [{ id: 'a', url: 'wss://one.example' }, { id: 'a', url: 'wss://two.example' }] })
     expect(c.brokers.map((b) => b.url)).toEqual(['wss://one.example'])
   })
+
+  it('reads how a broker is signed in to, and defaults to a password', () => {
+    const c = normalizeConfig({ brokers: [
+      { id: 'a', url: 'wss://a.example', auth: 'companion', username: 'ignored', password: 'ignored' },
+      { id: 'b', url: 'wss://b.example', auth: 'nonsense' },
+    ] })
+    expect(c.brokers[0]).toEqual({ id: 'a', name: 'a.example', url: 'wss://a.example', auth: 'companion' })
+    expect(c.brokers[1].auth).toBeUndefined()
+  })
 })

@@ -31,13 +31,15 @@ export function normalizeConfig(raw) {
     try { host = new URL(url).hostname || url; } catch (_) { /* keep the raw string as the name */ }
     const id = String(b.id || host).trim();
     if (c.brokers.some((x) => x.id === id)) return;
-    c.brokers.push({
-      id,
-      name: String(b.name || host).trim(),
-      url,
-      username: String(b.username || '').trim(),
-      password: b.password == null ? '' : String(b.password),
-    });
+    // auth 'companion': no password, the companion signs a token with its own
+    // key (companionsign.js). Anything else is a username and a password.
+    const entry = { id, name: String(b.name || host).trim(), url };
+    if (b.auth === 'companion') entry.auth = 'companion';
+    else {
+      entry.username = String(b.username || '').trim();
+      entry.password = b.password == null ? '' : String(b.password);
+    }
+    c.brokers.push(entry);
   };
   // The mqttUrl broker has no name field of its own; it is the app's own.
   if (c.mqttUrl) addBroker({ id: 'default', name: 'Mesh-Hunter', url: c.mqttUrl, username: c.mqttUsername, password: c.mqttPassword });
