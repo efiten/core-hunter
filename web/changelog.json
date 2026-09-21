@@ -42,6 +42,20 @@
     "body": "Hunter, target and ignore rows lost their boxes: one line between rows, as in the app."
   },
   {
+    "id": "2026-09-21-active-view-stop",
+    "date": "2026-09-21",
+    "where": "map",
+    "title": "The filter panel shows which view is on",
+    "body": "Points, Hex or Both: the active one is filled now. The active quick range in the time picker is coloured too."
+  },
+  {
+    "id": "2026-09-21-light-accent-contrast",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "A darker accent in the light theme",
+    "body": "The light theme's teal is darker, so text on it and text in it read at the contrast small type needs."
+  },
+  {
     "id": "2026-09-15-direction-arrow",
     "date": "2026-09-15",
     "where": "app",

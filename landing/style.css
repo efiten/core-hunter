@@ -9,7 +9,7 @@
   --ch-bg:#f4f1ea; --ch-text:#1b2430; --ch-muted:#5a6675;
   --ch-surface:rgba(255,252,245,0.92); --ch-input-bg:#fffcf5; --ch-border:#cfc8b8;
   --ch-sig-hot:#d11f1f; --ch-sig-warm:#e07000; --ch-sig-mid:#c79100; --ch-sig-cool:#1577c0; --ch-sig-cold:#3a44b8; --ch-sig-none:#9aa3ad;
-  --ch-accent:#0e9f7e; --ch-accent-2:#b4530a;
+  --ch-accent:#0b7a60; --ch-accent-2:#b4530a;
 }
 
 * { box-sizing: border-box; }

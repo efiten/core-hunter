@@ -211,3 +211,35 @@ test('an open panel paints over the Locate readout and the node-position notice 
   await expect(page.locator('#locate-info')).toBeHidden()
   await expect(page.locator('#nodepos-toggle')).toHaveAttribute('aria-pressed', 'true')
 })
+
+// #633. `#bar select, #bar input, #bar button` paints every button in the bar
+// at (1,0,1), and `.bf-seg button.active` was (0,2,1): the class was set and
+// the stop painted nothing, so the panel never said which view the map was in.
+// Read off the computed style, because aria-pressed was right all along.
+test('the View control paints the stop that is active (#633)', async ({ page }) => {
+  await page.goto('/')
+  await openFilters(page)
+  const paint = () => page.evaluate(() => {
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--ch-accent').trim()
+    const probe = document.createElement('i')
+    probe.style.color = accent
+    document.body.append(probe)
+    const accentRgb = getComputedStyle(probe).color
+    probe.remove()
+    return { accentRgb, stops: [...document.querySelectorAll('#layer-seg button')].map((b) => ({
+      id: b.id, pressed: b.getAttribute('aria-pressed'), bg: getComputedStyle(b).backgroundColor })) }
+  })
+
+  const before = await paint()
+  const active = before.stops.filter((s) => s.pressed === 'true')
+  expect(active).toHaveLength(1)
+  expect(active[0].bg).toBe(before.accentRgb)
+  for (const s of before.stops.filter((x) => x.pressed !== 'true')) expect(s.bg, s.id).not.toBe(before.accentRgb)
+
+  // And it follows the selection, not the initial markup.
+  const other = before.stops.find((s) => s.pressed !== 'true').id
+  await page.locator(`#${other}`).click()
+  const after = await paint()
+  expect(after.stops.find((s) => s.id === other).bg).toBe(after.accentRgb)
+  expect(after.stops.find((s) => s.id === active[0].id).bg).not.toBe(after.accentRgb)
+})
