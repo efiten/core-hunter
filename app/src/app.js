@@ -103,7 +103,7 @@ function saveExaggeration(x) {
   try { localStorage.setItem('core-hunter-exaggeration', String(x)) } catch (_) {}
 }
 
-// Share my node name (#576). Stored as '1' or removed, so loadShareName's
+// Introduce my node to targets (#576, named Share my node name until #636). Stored as '1' or removed, so loadShareName's
 // exact-match read has one on-value and everything else is off.
 function saveShareName(on) {
   try {
@@ -203,7 +203,7 @@ const state = {
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
   exaggeration: loadExaggeration(),
-  // Share my node name (#576): off by default, the hunter's own decision.
+  // Introduce my node to targets (#576): off by default, the hunter's own decision.
   shareName: loadShareName(),
   soundMode: loadSoundMode(),
   themePref: loadThemePref(),
@@ -1540,7 +1540,7 @@ function autoPingTick() {
   renderAutoPingCadence()
   pulseDiscoverBtn()
   sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
-  // With Share my node name on, a cycle that has a companion as target also
+  // With Introduce my node to targets on, a cycle that has a companion as target also
   // carries our advert (#576): that is the node that has to hear us before it
   // can answer, and one advert at switch-on could be sent while it is out of
   // range. Zero-hop, so it costs the mesh nothing beyond this one airtime, and
@@ -1588,7 +1588,7 @@ function autoPingTick() {
 // ---------------------------------------------------------------------------
 // The one directed probe a companion answers. Three things have to hold: our
 // companion has the target as a contact (else the firmware answers NOT_FOUND),
-// the target has us (Share my node name, #576), and the ask goes out zero-hop.
+// the target has us (Introduce my node to targets, #576), and the ask goes out zero-hop.
 // The last one is the contact-path dance from coredrive-rx (contactpath.js):
 // read the contact, force its out_path_len to 0 for the ask, put it back right
 // after, whether the ask went out or not. Nothing here floods: an override that
@@ -2311,9 +2311,9 @@ function buildSettingsSheet() {
         <h3>Identity</h3>
         <label class="ss-check-row" id="ss-row-share-name">
           <input type="checkbox" id="ss-share-name" />
-          <span>Share my node name</span>
+          <span>Introduce my node to targets</span>
         </label>
-        <p class="ss-hint">Shares your companion's name and key with nodes in direct range, once per auto-discover cycle while a companion is your target. Off: the app never transmits who you are.</p>
+        <p class="ss-hint">Sends your companion's name and public key to nodes in direct range, once per auto-discover cycle, while a companion is your target. A MeshCore node answers a request only from a sender it already knows, so this is what lets the app ask a companion target about itself. Off: the app never transmits who you are.</p>
       </div>
       <div class="ss-theme-row">
         <span>Theme</span>
@@ -2419,7 +2419,7 @@ function buildSettingsSheet() {
   })
   refreshConnState()
 
-  // Share my node name (#576): a checkbox, saved on change, and the row and
+  // Introduce my node to targets (#576): a checkbox, saved on change, and the row and
   // the settings dot both say when it is on.
   const share = el('ss-share-name')
   share.checked = state.shareName
