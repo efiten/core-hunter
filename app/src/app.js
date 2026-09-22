@@ -22,7 +22,7 @@ import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
-import { requestSelfInfo } from './selfinfo.js'
+import { requestSelfInfo, radioSummary } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
 import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from './hudmode.js'
@@ -1871,6 +1871,9 @@ async function connectAll() {
     state.rxPubkey = info.pubkey.toLowerCase()
     state.name = info.name || ''
     state.sf = info.sf ?? null
+    // The rest of the radio (#650): what the companion reports, for the Status
+    // tab and for the duty floor to read instead of assume (#609).
+    state.radio = { sf: state.sf, freqKhz: info.freqKhz ?? null, bwHz: info.bwHz ?? null, cr: info.cr ?? null }
     // The SF picks the registries a relay id is placed against (#661). When a
     // registry of that SF has not answered yet, the fetch asks it again now,
     // or once its request from start-up has settled if that one is still out.
@@ -1972,7 +1975,7 @@ function refreshConnState() {
   applyConnectButtons()
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
-  el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
+  el('ss-conn-sf').textContent = radioSummary(state.radio)
   renderAutoPingCadence()
   renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
@@ -2002,6 +2005,7 @@ async function disconnectAll(nextPhase = 'idle') {
   state.connected = false
   state.rxPubkey = ''
   state.sf = null
+  state.radio = null
   rebuildAttributionIndex()
   el('discover-btn').disabled = true
   stopAutoPing()
@@ -2239,7 +2243,7 @@ function buildSettingsSheet() {
           </div>
           <dl class="ss-conn-status">
             <dt>Companion</dt><dd id="ss-conn-name">—</dd>
-            <dt>Signal</dt><dd id="ss-conn-sf">—</dd>
+            <dt>Radio</dt><dd id="ss-conn-sf">—</dd>
             <dt>Auto-discover</dt><dd id="ss-conn-autoping">Off</dd>
             <dt>Battery</dt><dd id="ss-conn-battery">—</dd>
             <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
