@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { LAYER_ORDER } from '../huntmap.js'
+import { NODE_GLYPH_LAYERS } from '../nodeglyphs.js'
 
 // #626, the over/under half. addOverlays adds every layer behind a getLayer
 // guard, so before this the stack was whatever order the adds happened to run
@@ -13,7 +14,9 @@ import { LAYER_ORDER } from '../huntmap.js'
 // future change and not declared here, which is exactly how the stack drifted
 // in the first place.
 const SRC = readFileSync(new URL('../huntmap.js', import.meta.url), 'utf8')
-const added = [...SRC.matchAll(/addLayer\(\{\s*id: '([^']+)'/g)].map((m) => m[1])
+// The node glyph layers are added from their specs (nodeglyphs.js, #632), so
+// their ids are not literals in huntmap.js; the module names them.
+const added = [...SRC.matchAll(/addLayer\(\{\s*id: '([^']+)'/g)].map((m) => m[1]).concat(NODE_GLYPH_LAYERS)
 
 describe('LAYER_ORDER covers what the map actually adds', () => {
   // A regex that matched nothing would make every assertion below vacuous.
