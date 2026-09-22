@@ -4,6 +4,8 @@
 **Status:** decided (Kasper, 2026-09-14 on #661; the open questions answered 2026-09-14 and 2026-09-15). The rule is in `attribution.js`; the surfaces follow in the same bundle.
 **Related:** #296 (the map's refusal this replaces), #452 (the `~` mark and `resolversFor`), #603 (the reach stars), #660 (the arrow, which needs a place to point at), #320 (a sender id is unauthenticated), `docs/2026-09-05-names-agree-or-nothing.md`, `docs/2026-09-08-coverage-overview.md`
 
+> **Amended 2026-09-21 (#632, `docs/2026-09-21-node-glyphs-in-gl.md`).** The ● hub is a GL feature now and has no tooltip, so answer 8 and the hub paragraph under "What it costs" describe a surface that is gone. `starLabel` was removed with it. A hub is keyed by its star's id and painted in its hue.
+
 ## The problem
 
 A flood relayed over 1-byte path hashes records its last hop as `path_hash`. No layer gave that reception a position: the reach stars took relays from 2 bytes only, the node-position layer paired only advert and Discover receptions with a registry node, and the resolver names no 2-hex id. So a reception `via #64` had nothing to draw from, and the arrow had nothing to point at.

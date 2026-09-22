@@ -252,3 +252,29 @@ export async function toggleLocate(page, expectOn = true) {
   await clickUntil(page, '#locate-toggle', async () => (await page.locator('#locate-toggle.on').count()) === (expectOn ? 1 : 0))
   await closeFilters(page)
 }
+
+// The node layer's ▲ and ● are GL features since #632 (nodeglyphs.js), so
+// there is no element to count or click. The page's __glyphs hook lists them
+// by kind ('advert', 'estimate', 'hub') with what the layer paints (label,
+// color, sel, op), and __glyphPagePoint says where one paints, for a real
+// click on it.
+export const glyphs = (page, kind) => page.evaluate((k) => window.__glyphs(k), kind)
+export async function expectGlyphs(page, kind, count, { timeout = 10000 } = {}) {
+  await expect.poll(async () => (await glyphs(page, kind)).length, { timeout }).toBe(count)
+}
+// The names on the map: the ▲ whose label the declutter kept (#425).
+export const labelsOnMap = (page) => glyphs(page, 'advert').then((g) => g.map((a) => a.label).filter(Boolean))
+// A real click on a glyph, at the point it paints. `key` is the node's pubkey
+// (or a hub's star id); the first ▲ when omitted.
+// Waits for the glyph and for the map to settle first: a click by pixel misses
+// a glyph the fit-to-points animation is still carrying past it, where the
+// marker it replaced was an element the click followed.
+export async function tapGlyph(page, key = null, kind = 'advert') {
+  await expect.poll(async () => (await glyphs(page, kind)).length, { timeout: 15000 }).toBeGreaterThan(0)
+  await mapSettled(page)
+  const k = key || (await glyphs(page, kind))[0]?.key
+  expect(k, `no ${kind} glyph to tap`).toBeTruthy()
+  const pt = await page.evaluate(([kk, kd]) => window.__glyphPagePoint(kk, kd), [k, kind])
+  expect(pt, `no ${kind} glyph for ${k}`).not.toBeNull()
+  await page.mouse.click(pt.x, pt.y)
+}

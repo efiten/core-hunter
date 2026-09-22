@@ -42,6 +42,13 @@
     "body": "Hunter, target and ignore rows lost their boxes: one line between rows, as in the app."
   },
   {
+    "id": "2026-09-21-node-glyphs-in-the-scene",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "Node markers stand in the map",
+    "body": "The ▲, ● and hubs are drawn by the map itself now: they follow the terrain, sit among the 3D pillars and stop floating. A selected name has a halo instead of a pill."
+  },
+  {
     "id": "2026-09-15-direction-arrow",
     "date": "2026-09-15",
     "where": "app",

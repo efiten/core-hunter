@@ -5,7 +5,6 @@
 // Copied whole between app/src/ and web/ (parity.test.js), since neither
 // deploy path can ship a file outside its own directory (#238).
 import { estimateFor } from './nodelayer.js'
-import { withinReach } from './attribution.js'
 
 // Attribution is classifyReception's rule (AGENTS.md §1): the originator at
 // zero hops, or the last relay of a flood. On the record that is a Repeater
@@ -174,32 +173,6 @@ export function starSelected(star, selected) {
   return selected.has(star.id) || star.points.some((p) => p.sender_id != null && selected.has(String(p.sender_id).toLowerCase()))
 }
 
-// starLabel is how a star names itself in a tooltip, where its hub has no
-// other text (#661). A star keyed by one byte reads '#' and the id: a 2-hex
-// hash is an id, never a name (AGENTS.md §5.4 item 6). A star of a short relay
-// id holds the hearings no node could be placed on (rule 2), so a resolver's
-// name for it wears the guess mark (#452), and gives way to the id when the
-// registry holds a node with that prefix out of reach (prefixKnown): that name
-// belongs to a node not heard here. nameAt(id) is where the lookup places the
-// node behind its name ({ lat, lon }), if it says, and a place out of the
-// hearing's reach is the same evidence. The map needs it: its registry slice
-// ends at the reach around the view, so a node further out never makes
-// prefixKnown there. The reach is from the raw RSSI, as the map's is; the app
-// passes no names. Any other star keeps its name as it is, or the first 8 hex
-// of its id. nameOf(id) is the surface's name lookup, if any.
-export function starLabel(star, { nameOf = () => undefined, nameAt = () => null, attributionOf = () => null } = {}) {
-  const id = String(star.id)
-  if (/^[0-9a-f]{2}$/i.test(id)) return '#' + id
-  const pt = star.points && star.points.length ? star.points[0] : null
-  const attr = pt ? attributionOf(pt) : null
-  if (attr && attr.rule === 'estimate') {
-    const at = nameAt(id)
-    const elsewhere = attr.prefixKnown || (!!at && !withinReach(pt, at))
-    const name = elsewhere ? '' : nameOf(id)
-    return name ? '~' + name : id
-  }
-  return nameOf(id) || id.slice(0, 8)
-}
 
 // coverageStars groups the repeater hearings by starKey and hangs each star
 // from its origin. attributionOf(pt) answers a hearing's attribution, or null

@@ -23,6 +23,7 @@ import { northResetEase } from './maprail.js'
 import { EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
+import { nodeGlyphLayers, nearestGlyph, hitBox, drawTriangle, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE, NODE_DOT_LAYER, NODE_ADVERT_LAYER, NODE_GLYPH_LAYERS, TRI_IMAGE, TRI_W, TRI_H } from './nodeglyphs.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 const STYLES = {
@@ -53,10 +54,13 @@ export const LAYER_ORDER = [
   'observer-advert', 'observer-rxlog',
   'locate-out', 'locate-in',
   'nodedrift', 'nodecircle-search', 'nodecircle-drift',
+  // The ▲, ● and hubs, GL layers since #632: the dots first, so a name never
+  // hides under a dot, and both above the connectors they belong to.
+  NODE_DOT_LAYER, NODE_ADVERT_LAYER,
   'rxhighlight',    // the ticker's playhead ring, never under a point
 ]
 // The sources the data layers read, all GeoJSON, all set through setData.
-const GEO_SOURCES = ['hex', 'reach', 'points', 'points-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle']
+const GEO_SOURCES = ['hex', 'reach', 'points', 'points-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]
 // The app's ceiling (huntmap.js MAX_PITCH): a near-horizontal camera for the
 // tilt gesture; the view button itself eases to PITCH_3D (maplayers.js).
 const MAX_PITCH = 85
@@ -249,6 +253,19 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     if (!map.getLayer('nodecircle-drift')) map.addLayer({ id: 'nodecircle-drift', type: 'line', source: 'nodecircle',
       filter: ['==', ['get', 'style'], 'drift'],
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
+    // The ▲ and ● as layers (#632, nodeglyphs.js). The ▲ is an SDF image so
+    // icon-color paints it per feature; a style swap drops images with the
+    // layers, so it is added again here. The colours are the theme's at this
+    // moment, like every other overlay's: a theme swap re-runs this.
+    if (!map.hasImage(TRI_IMAGE)) {
+      const cv = document.createElement('canvas'); cv.width = TRI_W; cv.height = TRI_H
+      const ctx = cv.getContext('2d'); drawTriangle(ctx)
+      map.addImage(TRI_IMAGE, ctx.getImageData(0, 0, TRI_W, TRI_H), { sdf: true, pixelRatio: 2 })
+    }
+    const style = map.getStyle()
+    for (const spec of nodeGlyphLayers({ bg: cssVar('--ch-bg'), surface: cssVar('--ch-surface'), glyphs: !!(style && style.glyphs) })) {
+      if (!map.getLayer(spec.id)) map.addLayer(spec)
+    }
     // The ticker's playhead ring (#224): last, so it is never under a point.
     if (!map.getLayer('rxhighlight')) map.addLayer({ id: 'rxhighlight', type: 'circle', source: 'rxhighlight',
       paint: { 'circle-radius': 9, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': cssVar('--ch-accent'), 'circle-stroke-width': 2 } })
@@ -367,7 +384,20 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   // 'both' mode a click on a point also ran its hex cell's handler, which
   // moved the ticker off the row the point had just focused.
   const clickCbs = new Map()
+  // The glyph a click lands on (#632): the nearest ▲ or ● inside the 30px
+  // box the markers used to carry. Asked first by every click path, so a
+  // glyph beats the dot or the cell under it, as the marker did by sitting
+  // on top and stopping propagation.
+  const glyphCbs = []
+  function glyphAt(point) {
+    const layers = NODE_GLYPH_LAYERS.filter((id) => map.getLayer(id))
+    if (!layers.length) return null
+    return nearestGlyph(map.queryRenderedFeatures(hitBox(point), { layers }), point, (c) => map.project(c))
+  }
+  function onGlyphTap(cb) { glyphCbs.push(cb) }
   map.on('click', (e) => {
+    const glyph = glyphAt(e.point)
+    if (glyph) { for (const cb of glyphCbs) cb(glyph.properties, glyph.geometry.coordinates); return }
     const layers = [...clickCbs.keys()].filter((id) => map.getLayer(id))
     // queryRenderedFeatures lists the topmost feature first.
     const f = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : null
@@ -375,16 +405,20 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     for (const cb of clickCbs.get(f.layer.id)) cb(f.properties, e.lngLat, e)
   })
 
-  // A click on bare map: no feature of a clickable layer under the pointer.
-  // Marker clicks never reach here (they stop propagation), so this is what
-  // clears a selection.
+  // A click on bare map: no feature of a clickable layer under the pointer,
+  // and no glyph in the tap box. This is what clears a selection.
   const clickable = ['points', 'points-3d', 'hex', 'hex-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out']
   function onEmptyClick(cb) {
     map.on('click', (e) => {
+      if (glyphAt(e.point)) return
       const layers = clickable.filter((id) => map.getLayer(id))
       const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers }) : []
       if (!hit.length) cb(e.lngLat)
     })
+  }
+  for (const layerId of NODE_GLYPH_LAYERS) {
+    map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
   }
   function onLayerClick(layerId, cb) {
     if (!clickCbs.has(layerId)) clickCbs.set(layerId, [])
@@ -448,7 +482,15 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     onOverlaysReady(cb) { readyCbs.push(cb); if (overlaysReady) cb() },
     isReady() { return overlaysReady },
     setData, setHeat, syncSize,
-    openPopup, closePopup, onPopup(cb) { popupCbs.push(cb) }, hoverText, onLayerClick, onEmptyClick,
+    openPopup, closePopup, onPopup(cb) { popupCbs.push(cb) }, hoverText, onLayerClick, onEmptyClick, onGlyphTap,
+    // Test hook (#632): where a glyph paints, in page px, for a real click on it.
+    glyphPagePoint(key, kind) {
+      const src = kind === 'advert' ? NODE_GLYPH_SOURCE : NODE_DOT_SOURCE
+      const f = (pending.get(src) || { features: [] }).features.find((x) => x.properties.key === key && (!kind || x.properties.kind === kind))
+      if (!f) return null
+      const p = map.project(f.geometry.coordinates), r = map.getContainer().getBoundingClientRect()
+      return { x: r.left + p.x, y: r.top + p.y }
+    },
     setReach, rayCount() { return rays.rayCount() }, raysVisible() { return rays.isVisible() },
     addMarker, clearMarkers, markerCount, markerLatLng,
     // Counts what a source holds, for the tests that used to count Leaflet's

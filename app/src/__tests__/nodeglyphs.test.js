@@ -25,7 +25,7 @@ describe('dotFeature', () => {
 })
 
 describe('nodeGlyphLayers', () => {
-  const layers = nodeGlyphLayers({ text: '#e6edf3', bg: '#0b0e14', surface: '#121721' })
+  const layers = nodeGlyphLayers({ bg: '#0b0e14', surface: '#121721' })
   it('is the dot layer under the advert layer, each on its own source', () => {
     expect(layers.map((l) => [l.id, l.type, l.source])).toEqual([
       [NODE_DOT_LAYER, 'circle', NODE_DOT_SOURCE],
@@ -39,6 +39,13 @@ describe('nodeGlyphLayers', () => {
     expect(layout['text-allow-overlap']).toBe(true)
     expect(layout['text-ignore-placement']).toBe(true)
     expect(layout['icon-image']).toBe(TRI_IMAGE)
+  })
+  it('drops the names, and only the names, for a style without glyphs', () => {
+    const [dots, adverts] = nodeGlyphLayers({ bg: '#0b0e14', surface: '#121721', glyphs: false })
+    expect(Object.keys(adverts.layout).some((k) => k.startsWith('text-'))).toBe(false)
+    expect(Object.keys(adverts.paint).some((k) => k.startsWith('text-'))).toBe(false)
+    expect(adverts.layout['icon-image']).toBe(TRI_IMAGE)
+    expect(dots).toEqual(layers[0])
   })
   it('paints colour and opacity per feature, and the selected name heavier in a surface halo', () => {
     const { paint, layout } = layers[1]

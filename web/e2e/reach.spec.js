@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, setNodePos, openSettings } from './fixtures.js'
+import { test, expect, mapSettled, setNodePos, openSettings, glyphs, expectGlyphs, tapGlyph } from './fixtures.js'
 
 // #603: the third stop of Node positions draws every repeater's reach at
 // once: one ray per hearing attributed to it, from the ▲ (or the ● estimate
@@ -40,16 +40,14 @@ test('the reach stop draws one ray per repeater hearing, from ▲ or ●, and le
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
   // R1's hub is the node layer's ▲, in the star's hue; R2 has no registry
   // position, so its star hangs from a ● at the estimate.
-  await expect(page.locator('.rc-hub.rc-estimate')).toHaveCount(1)
-  await expect(page.locator('.np-advert')).toHaveCount(1)
+  await expectGlyphs(page, 'hub', 1)
+  await expectGlyphs(page, 'advert', 1)
   const p = await props(page)
   const r1 = p.filter((f) => f.id === R1), r2 = p.filter((f) => f.id === R2)
   expect(r1).toHaveLength(6); expect(r2).toHaveLength(5)
   expect(r1[0].color).not.toBe(r2[0].color)
   expect(new Set(r1.map((f) => f.color)).size).toBe(1)
-  const advColor = await page.locator('.np-advert').evaluate((el) => el.style.color)
-  const hue = await page.evaluate((c) => { const s = document.createElement('span'); s.style.color = c; document.body.appendChild(s); const v = getComputedStyle(s).color; s.remove(); return v }, r1[0].color)
-  expect(advColor).toBe(hue)
+  expect((await glyphs(page, 'advert'))[0].color).toBe(r1[0].color)
   // Two-way (the Discover replies) at full opacity, one-way receded, same width.
   const two = r1.filter((f) => f.two), one = r1.filter((f) => !f.two)
   expect(two).toHaveLength(2)
@@ -61,8 +59,10 @@ test('the reach stop draws one ray per repeater hearing, from ▲ or ●, and le
   const dots = await page.evaluate(() => window.__features('points'))
   expect(dots.filter((d) => d.color === r1[0].color)).toHaveLength(6)
   expect(dots.filter((d) => d.color === r2[0].color)).toHaveLength(5)
-  // R2's id is one byte, so its ● names it as an id (#661, AGENTS.md 5.4 item 6).
-  await expect(page.locator('.rc-hub.rc-estimate')).toHaveAttribute('title', /^#b7: reach from its RSSI estimate/)
+  // R2's hub is keyed by its id, in its star's hue.
+  const hub = (await glyphs(page, 'hub'))[0]
+  expect(hub.key).toBe(R2)
+  expect(hub.color).toBe(r2[0].color)
 })
 
 test('a 1-byte last hop joins the star of the one node it can be, and takes its hue (#661)', async ({ page }) => {
@@ -73,7 +73,7 @@ test('a 1-byte last hop joins the star of the one node it can be, and takes its 
   const r1 = p.filter((f) => f.id === R1)
   expect(r1).toHaveLength(10)
   // No star of its own: R2's is still the only ●.
-  await expect(page.locator('.rc-hub.rc-estimate')).toHaveCount(1)
+  await expectGlyphs(page, 'hub', 1)
   const dots = await page.evaluate(() => window.__features('points'))
   expect(dots.filter((d) => d.color === r1[0].color)).toHaveLength(10)
 })
@@ -86,10 +86,10 @@ test('a 1-byte last hop with two nodes in reach draws no ray (#661)', async ({ p
     { pubkey: 'aa11' + '00'.repeat(30), name: 'Elders-aa', lat: 51.04, lon: 4.003 },
   ] } }))
   await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
-  await expect(page.locator('.np-advert').first()).toBeVisible({ timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
   expect((await props(page)).filter((f) => f.id === R1)).toHaveLength(6)
-  await expect(page.locator('.rc-hub.rc-estimate')).toHaveCount(1)
+  await expectGlyphs(page, 'hub', 1)
 })
 
 test('a picked 1-byte last hop selects the star of the node it was placed on, ▲ included (#661)', async ({ page }) => {
@@ -99,9 +99,9 @@ test('a picked 1-byte last hop selects the star of the node it was placed on, �
   const p = await props(page)
   expect(p.filter((f) => f.id === R1).every((f) => !f.dim)).toBe(true)
   expect(p.filter((f) => f.id === R2).every((f) => f.dim)).toBe(true)
-  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
-  await expect(page.locator('.np-advert.np-dim')).toHaveCount(0)
-  await expect(page.locator('.rc-hub.np-dim')).toHaveCount(1)
+  await expect.poll(async () => (await glyphs(page, 'advert')).filter((a) => a.sel).length).toBe(1)
+  expect((await glyphs(page, 'advert')).filter((a) => a.op < 1)).toHaveLength(0)
+  await expect.poll(async () => (await glyphs(page, 'hub')).filter((h) => h.op < 1).length).toBe(1)
 })
 
 // #661 with #624: a selection keeps lit what belongs to the selected star, and
@@ -120,7 +120,7 @@ test('a selection keeps the dots of the last hops placed on its node lit, picked
   }
   const before = await opOf()
   expect(before.hops).toHaveLength(4)
-  await page.locator('.np-advert').click()
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await expect.poll(async () => (await opOf()).r2.every((op, k) => Math.abs(op - before.r2[k] * 0.25) < 1e-9)).toBe(true)
   expect((await opOf()).hops).toEqual(before.hops)
@@ -132,60 +132,23 @@ test('a selection keeps the dots of the last hops placed on its node lit, picked
   expect((await opOf()).hops).toEqual(before.hops)
 })
 
-// #661: a 2 or 3-byte relay id no node in reach can be keeps its resolver name
-// on the ●, with ~, unless a positioned node with that prefix is out of reach.
-// The registry here answers its bbox, as the server does, so FAR sits beyond
-// the slice and only the resolver's position for the name can say where it is.
-// The names are held back until the hubs are up, so the title has to follow
-// data that arrives after the draw.
-test('a 2-byte ● wears its resolver name with ~, or its id when the named node is out of reach (#661)', async ({ page }) => {
-  const FAR = '4a4a' + 'be'.repeat(30)
-  const registry = [{ pubkey: R1, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0005 }, { pubkey: FAR, name: 'Far-4a4a', lat: 51.5, lon: 4.05 }]
-  const shortIds = [
-    ...ring(51.03, 4.05, 5, (lat, lon) => at(lat, lon, -95, '4a4a', 'relay', null)),   // FAR is 52 km north
-    ...ring(50.97, 3.97, 5, (lat, lon) => at(lat, lon, -95, '5b5b', 'relay', null)),   // no position known
-  ]
-  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [...hearings, ...shortIds] } }))
-  const boxes = []
-  await page.route('**/api/nodes/positions*', (r) => {
-    const [s, w, n, e] = new URL(r.request().url()).searchParams.get('bbox').split(',').map(Number)
-    boxes.push(n)
-    return r.fulfill({ json: { nodes: registry.filter((x) => x.lat >= s && x.lat <= n && x.lon >= w && x.lon <= e) } })
-  })
-  let release
-  const held = new Promise((done) => { release = done })
-  await page.route('**/api/resolve*', async (r) => {
-    await held
-    const prefix = new URL(r.request().url()).searchParams.get('prefix')
-    if (prefix === '4a4a') return r.fulfill({ json: { pubkey: FAR, name: 'Far-4a4a', ambiguous: false, lat: 51.5, lon: 4.05 } })
-    if (prefix === '5b5b') return r.fulfill({ json: { pubkey: '5b5b' + 'cd'.repeat(30), name: 'Relay-Oost', ambiguous: false } })
-    return r.fulfill({ json: { pubkey: R1, name: 'Repeater-Zuid', ambiguous: false, lat: 51.0005, lon: 4.0005 } })
-  })
-  const titles = () => page.locator('.rc-hub.rc-estimate').evaluateAll((els) => els.map((el) => el.title.split(':')[0]).sort())
-  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
-  await expect.poll(titles, { timeout: 10000 }).toEqual(['#b7', '4a4a', '5b5b'])
-  expect(Math.max(...boxes)).toBeLessThan(51.5)   // FAR is never in the slice
-  release()
-  await expect.poll(titles, { timeout: 10000 }).toEqual(['#b7', '4a4a', '~Relay-Oost'])
-})
-
 test('a tap on ▲ selects that star and dims the others; a second tap or a tap on the map clears it', async ({ page }) => {
   await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
-  await page.locator('.np-advert').click()
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
-  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
+  await expect.poll(async () => (await glyphs(page, 'advert')).filter((a) => a.sel).length).toBe(1)
   await expect.poll(async () => (await props(page)).filter((f) => f.dim).length).toBe(5)
   const p = await props(page)
   const r1 = p.find((f) => f.id === R1), r2 = p.find((f) => f.id === R2)
   expect(r1.dim).toBe(false); expect(r2.dim).toBe(true)
   expect(r2.op).toBeLessThan(0.2)
-  await expect(page.locator('.rc-hub.np-dim')).toHaveCount(1)
-  await page.locator('.np-advert').click()
+  await expect.poll(async () => (await glyphs(page, 'hub')).filter((h) => h.op < 1).length).toBe(1)
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([])
-  await expect(page.locator('.np-advert.np-selected')).toHaveCount(0)
+  await expect.poll(async () => (await glyphs(page, 'advert')).filter((a) => a.sel).length).toBe(0)
   // Select again, then a tap on bare map clears.
-  await page.locator('.np-advert').click()
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await mapSettled(page)
   // A bare spot, south-east of the centre: the view snapped to the hearings,
@@ -227,7 +190,7 @@ test('a selection dims every dot that is not the selected repeater\'s, the compa
   expect(near(before.r1, 0.7)).toBe(true)
   expect(near(before.r2, 0.46)).toBe(true)
   expect(near(before.c1, 0.7)).toBe(true)
-  await page.locator('.np-advert').click()
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await expect.poll(async () => near((await opOf()).r2, 0.46 * 0.25)).toBe(true)
   const after = await opOf()
@@ -246,8 +209,8 @@ test('a repeater with no hearings is selectable, and its popup says there is not
   await page.route('**/api/nodes/positions*', (r) => r.fulfill({ json: { nodes: [{ pubkey: R3, name: 'Repeater-Noord', lat: 51.001, lon: 4.001 }] } }))
   await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
-  await expect(page.locator('.np-advert')).toHaveCount(1)
-  await page.locator('.np-advert').click()
+  await expectGlyphs(page, 'advert', 1)
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R3])
   // No dot belongs to R3, so every one of them steps back.
   await expect.poll(async () => (await page.evaluate(() => window.__features('points'))).every((d) => d.op < 0.2)).toBe(true)
@@ -268,7 +231,7 @@ test('the popup\'s reach button selects and clears, and the popup stays up with 
   // own behaviour is what this test pins.
   await page.locator('#rx-log .rx-close').click()
   await expect(page.locator('#rx-log')).toBeHidden()
-  await page.locator('.np-advert').click()
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
   // R1 has hearings, so the popup makes no excuse for it.
@@ -291,13 +254,13 @@ test('a relay id pick keeps the ▲ selected, and its popup offers the node\'s o
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(15)
   await page.locator('#rx-log .rx-close').click()
   await expect(page.locator('#rx-log')).toBeHidden()
-  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
-  await page.locator('.np-advert').click()
+  await expect.poll(async () => (await glyphs(page, 'advert')).filter((a) => a.sel).length).toBe(1)
+  await tapGlyph(page)
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([R1])
   await expect(page.locator('.pp-reach')).toHaveText('Hide reach')
   await page.locator('.pp-reach').click()
   await expect.poll(() => page.evaluate(() => window.__coverageSel())).toEqual([])
-  await expect(page.locator('.np-advert.np-selected')).toHaveCount(1)
+  await expect.poll(async () => (await glyphs(page, 'advert')).filter((a) => a.sel).length).toBe(1)
   await expect(page.locator('.pp-reach')).toHaveText('Show reach')
 })
 
@@ -320,11 +283,11 @@ test('the positions stop keeps the ▲ and drops the rays; off drops both', asyn
   await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
   await setNodePos(page, 'positions')
   await expect.poll(() => rays(page)).toBe(0)
-  await expect(page.locator('.np-advert')).toHaveCount(1)
-  await expect(page.locator('.rc-hub')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 1)
+  await expectGlyphs(page, 'hub', 0)
   await expect(page).toHaveURL(/[?&]nodepos=positions/)
   await setNodePos(page, 'off')
-  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 0)
   await expect(page).not.toHaveURL(/[?&]nodepos=/)
 })
 

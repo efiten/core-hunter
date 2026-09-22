@@ -700,7 +700,8 @@ export function createHuntMap(containerId) {
       const ctx = cv.getContext('2d'); drawTriangle(ctx)
       map.addImage(TRI_IMAGE, ctx.getImageData(0, 0, TRI_W, TRI_H), { sdf: true, pixelRatio: 2 })
     }
-    for (const spec of nodeGlyphLayers({ text: cssVar('--ch-text'), bg: cssVar('--ch-bg'), surface: cssVar('--ch-surface') })) {
+    const style = map.getStyle()
+    for (const spec of nodeGlyphLayers({ bg: cssVar('--ch-bg'), surface: cssVar('--ch-surface'), glyphs: !!(style && style.glyphs) })) {
       if (!map.getLayer(spec.id)) map.addLayer({ ...spec, layout: { ...spec.layout, visibility: nodeLayerOn() ? 'visible' : 'none' } })
     }
     // One pass puts the stack in its declared order (#626), whatever order the
