@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-picker-rows-bare",
+  "date": "2026-09-21",
+  "where": "map",
+  "title": "Cleaner rows in the pickers",
+  "body": "Hunter, target and ignore rows lost their boxes: one line between rows, as in the app."
+}
