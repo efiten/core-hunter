@@ -2,9 +2,11 @@
 // reception goes to, a switch per broker, and a form to add one. DOM glue only;
 // what a row says and whether a form is valid are brokers.js decisions, and
 // storing, probing and connecting are the caller's.
-import { brokerStatus, BROKER_PRESETS } from './brokers.js'
+import { brokerStatus } from './brokers.js'
 
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>'
+
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 function host(url) {
   try { return new URL(url).host } catch (_) { return url }
@@ -23,7 +25,9 @@ function node(tag, className, text) {
 //   onToggle(id, enabled)   the hunter flipped a switch
 //   onSave(form, editingId) Promise<{ ok, errors }>; validates, connects, stores
 //   onRemove(id)            the hunter removed a broker they added
-export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSave, onRemove }) {
+// `presets` are the brokers the add form can start from (presetsFrom in
+// brokers.js, out of config.json); with none the "Start from" row is not shown.
+export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSave, onRemove, presets = [] }) {
   root.innerHTML = `
     <div class="bk-view" id="bk-list-view">
       <div class="sheet-head bk-head">
@@ -43,9 +47,9 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
         <h2 class="bk-title" id="bk-form-title">Add broker</h2>
       </div>
       <form class="ss-panel active bk-form" id="bk-form" novalidate>
-        <div class="bk-field" id="bk-presets-field"><span>Start from</span>
+        <div class="bk-field" id="bk-presets-field"${presets.length ? '' : ' hidden'}><span>Start from</span>
           <div class="bk-chips" id="bk-presets">
-            ${BROKER_PRESETS.map((p) => `<button type="button" class="bk-chip" data-preset="${p.key}" aria-pressed="false">${p.name}</button>`).join('')}
+            ${presets.map((p) => `<button type="button" class="bk-chip" data-preset="${esc(p.key)}" aria-pressed="false">${esc(p.name)}</button>`).join('')}
             <button type="button" class="bk-chip" data-preset="" aria-pressed="true">Custom</button>
           </div>
         </div>
@@ -104,9 +108,13 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
       : "Sends each reception with your position. The broker's owner can see where you drove."
   }
 
+  // The stream label a preset's broker acknowledges rides with the saved
+  // broker; a custom broker has none and publishes on the default.
+  let presetLabel = null
   function setPreset(key) {
     for (const chip of root.querySelectorAll('.bk-chip')) chip.setAttribute('aria-pressed', String(chip.dataset.preset === key))
-    const preset = BROKER_PRESETS.find((p) => p.key === key)
+    const preset = presets.find((p) => p.key === key)
+    presetLabel = preset ? preset.label : null
     if (!preset) return
     $('bk-name').value = preset.name
     $('bk-url').value = preset.url
@@ -132,8 +140,9 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     setAuth(broker && broker.auth === 'companion' ? 'companion' : 'password')
     setFormat(broker && broker.format !== 'wardrive' ? 'packets' : 'wardrive')
     // A preset is a way to fill in a new broker, not a property of a saved one.
-    $('bk-presets-field').hidden = Boolean(broker)
+    $('bk-presets-field').hidden = Boolean(broker) || !presets.length
     setPreset('')
+    presetLabel = broker ? (broker.label || null) : null
     root.querySelector('.bk-adv').open = false
     $('bk-remove').hidden = !broker
     $('bk-url-error').hidden = true
@@ -201,7 +210,7 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
     save.disabled = true
     save.textContent = 'Connecting…'
     const result = await onSave({
-      name: $('bk-name').value, url: $('bk-url').value, auth, format, username: $('bk-user').value, password: $('bk-pass').value,
+      name: $('bk-name').value, url: $('bk-url').value, auth, format, username: $('bk-user').value, password: $('bk-pass').value, label: presetLabel,
     }, editingId)
     save.disabled = false
     save.textContent = 'Connect and save'

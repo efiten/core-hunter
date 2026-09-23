@@ -80,12 +80,16 @@ export function validateBroker(form, existingIds, { securePage = true } = {}) {
     broker.password = form.password == null ? '' : String(form.password)
   }
   if (form.format !== 'packets') broker.format = 'wardrive'
+  // A preset's stream label rides with the broker (presetsFrom); a broker
+  // without one publishes on the default label.
+  if (typeof form.label === 'string' && form.label.trim()) broker.label = form.label.trim()
   return { ok: true, errors: {}, broker }
 }
 
 // brokerStatus is the one line under a broker's name.
-export function brokerStatus({ enabled, connected, queued, needsCompanion = false }) {
+export function brokerStatus({ enabled, connected, queued, needsCompanion = false, signRefused = false }) {
   if (!enabled) return { dot: 'off', text: 'Off' }
+  if (!connected && signRefused) return { dot: 'warn', text: 'Your companion could not sign in' }
   if (!connected && needsCompanion) return { dot: 'warn', text: 'Connect your companion to sign in' }
   const n = Number.isFinite(queued) ? Math.max(0, Math.trunc(queued)) : 0
   const waiting = n > 0 ? ` · ${n.toLocaleString('en')} queued` : ''
@@ -122,10 +126,28 @@ export function mqttSummary(connected) {
   return up === 0 ? 'Not connected' : `${up} of ${flags.length} connected`
 }
 
-// Brokers the add form can start from. These hosts are public: DutchMeshCore
-// lists them for anyone who feeds its network. They take a token signed by the
-// companion instead of a password, and the wardrive format.
-export const BROKER_PRESETS = [
-  { key: 'dmc1', name: 'DutchMeshCore 1', url: 'wss://collector1.dutchmeshcore.nl:443', auth: 'companion', format: 'wardrive' },
-  { key: 'dmc2', name: 'DutchMeshCore 2', url: 'wss://collector2.dutchmeshcore.nl:443', auth: 'companion', format: 'wardrive' },
-]
+// Brokers the add form can start from, from config.json (`brokerPresets`):
+// the site names the public brokers it invites its hunters to feed, with the
+// stream label those brokers acknowledge. A preset carries no credential:
+// `auth: 'companion'` signs in with the companion's key. In config.json rather
+// than in code, so no third party's host is committed here (AGENTS.md, "No
+// secrets in the repo"); an unusable entry is left out rather than shown.
+export function presetsFrom(cfg) {
+  const raw = cfg && Array.isArray(cfg.brokerPresets) ? cfg.brokerPresets : []
+  const out = []
+  for (const p of raw) {
+    if (!p || typeof p !== 'object') continue
+    const key = typeof p.key === 'string' && p.key.trim() ? p.key.trim() : null
+    const url = typeof p.url === 'string' ? p.url.trim() : ''
+    if (!key || !/^wss?:\/\//.test(url) || out.some((x) => x.key === key)) continue
+    out.push({
+      key,
+      name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : new URL(url).hostname,
+      url,
+      auth: p.auth === 'password' ? 'password' : 'companion',
+      format: p.format === 'packets' ? 'packets' : 'wardrive',
+      label: typeof p.label === 'string' && p.label.trim() ? p.label.trim() : null,
+    })
+  }
+  return out
+}

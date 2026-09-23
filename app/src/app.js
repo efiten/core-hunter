@@ -19,7 +19,7 @@ import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableRec
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
-import { pruneFloor, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary } from './brokers.js'
+import { pruneFloor, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary, presetsFrom } from './brokers.js'
 import { createBrokerSheet } from './brokersheet.js'
 import { createTrackWindow } from './wardrive.js'
 import { createSigner, buildBrokerToken, brokerUsername, brokerAudience, tokenUsable } from './companionsign.js'
@@ -196,6 +196,7 @@ const state = {
   // waiting for it to sign (#554).
   brokerTokens: loadBrokerTokens(),
   needsCompanion: new Set(),
+  signRefused: new Set(),
   signRetryAt: new Map(),
   signer: null,
   // The running listening interval, for brokers in the wardrive format.
@@ -614,7 +615,7 @@ function brokerList() {
 async function brokerStatusOf(id) {
   let queued = 0
   try { queued = await state.queue.unpublishedCount(id) } catch (_) { queued = 0 }
-  return { connected: brokerConnected(id), queued, needsCompanion: state.needsCompanion.has(id) }
+  return { connected: brokerConnected(id), queued, needsCompanion: state.needsCompanion.has(id), signRefused: state.signRefused.has(id) }
 }
 
 // What to sign in with. A password broker has its two fields. A broker the
@@ -643,12 +644,14 @@ function setBrokerPrefs(prefs) {
   saveBrokerPrefs(prefs)
 }
 
-// Off stops the sending at once rather than on the next drain tick; on again
-// starts at the newest reception (queue.resumeAtHead says why).
+// Off stops the sending at once rather than on the next drain tick, and it
+// is a pause: on again drains from where the broker stopped, so a weekend
+// captured with the switch off still reaches the map (Kasper, 2026-09-23).
+// The backlog leaves once the switch is on, which is the hunter's decision,
+// made when they flip it.
 async function toggleBroker(id, enabled) {
   const off = state.brokerPrefs.off.filter((x) => x !== id)
   if (!enabled) off.push(id)
-  else { try { await state.queue.resumeAtHead(id) } catch (_) { /* drains from where it was */ } }
   setBrokerPrefs({ ...state.brokerPrefs, off })
   await ensureMqtt()
   setMqttDot()
@@ -664,6 +667,11 @@ async function saveBroker(form, editingId) {
     return { ok: false, errors: { url: `Your companion could not sign in (${e.message}).` } }
   }
   if (!creds) return { ok: false, errors: { url: 'Connect your companion first: it signs you in to this broker.' } }
+  // The live session goes first: the probe signs in with the same client id
+  // (the companion's key, which the broker's ACL binds topics to), and a
+  // second session under one id kicks the first. ensureMqtt rebuilds it below,
+  // or on the next drain tick if the probe fails.
+  if (editingId) dropPublisher(editingId)
   const probe = await probeBroker(new Publisher({
     url: v.broker.url, username: creds.username, password: creds.password,
     clientId: state.rxPubkey || 'mesh-hunter-' + Math.random().toString(16).slice(2, 10),
@@ -672,8 +680,7 @@ async function saveBroker(form, editingId) {
   const added = state.brokerPrefs.added.filter((b) => b.id !== v.broker.id)
   added.push(v.broker)
   setBrokerPrefs({ ...state.brokerPrefs, added })
-  if (editingId) dropPublisher(v.broker.id)
-  else { try { await state.queue.startAtHead(v.broker.id) } catch (_) { /* starts at 0 */ } }
+  if (!editingId) { try { await state.queue.startAtHead(v.broker.id) } catch (_) { /* starts at 0 */ } }
   await ensureMqtt()
   return { ok: true, errors: {} }
 }
@@ -1499,6 +1506,12 @@ async function renderTick() {
 // published after publish() resolves, two overlapping passes could each publish
 // the same row (a redundant MQTT message — backend dedups on raw+rx_at).
 let draining = false
+// The brokers with a drain in flight. Each broker drains on its own watermark
+// and on its own promise (#554): a broker that is slow to acknowledge, or one
+// whose every publish waits out the ack timeout, keeps draining across ticks
+// while the others take every tick. Joined with Promise.all, the slow one ate
+// the site broker's tick as well, and its watermark stalled the prune.
+const brokerDrains = new Set()
 async function drainOnce() {
   if (draining) return
   // Before the guard, not after: the publisher this checks for is the one
@@ -1507,17 +1520,15 @@ async function drainOnce() {
   await ensureMqtt()
   draining = true
   try {
-    // Each broker drains on its own watermark (#554), so one that is offline
-    // or slow does not hold back what the others are owed.
-    // Side by side, not one after the other: a broker that is slow to
-    // acknowledge would otherwise eat the tick of every broker after it.
-    await Promise.all(brokerList().filter((b) => brokerConnected(b.id)).map(async (b) => {
+    for (const b of brokerList().filter((b) => brokerConnected(b.id))) {
+      if (brokerDrains.has(b.id)) continue
       const entry = state.publishers.get(b.id)
-      try {
-        await drainBroker(b.id, entry)
-        if (entry.format === 'wardrive') await drainTracks(b.id, entry)
-      } catch (_) { /* this broker retries next cycle; the others carry on */ }
-    }))
+      brokerDrains.add(b.id)
+      drainBroker(b.id, entry)
+        .then(() => (entry.format === 'wardrive' ? drainTracks(b.id, entry) : null))
+        .catch(() => { /* this broker retries next cycle; the others carry on */ })
+        .finally(() => brokerDrains.delete(b.id))
+    }
     await pruneOnce()
   } catch (_) {
     // queue read failed — retry next cycle
@@ -1573,20 +1584,26 @@ async function drainBroker(id, entry) {
 }
 
 // Tracks go to brokers in the wardrive format, after the receptions they
-// count. Same rule as the receptions: the watermark moves over an unbroken run
-// of acknowledged publishes and stops at the first failure.
+// count. Same rule as the receptions, nextWatermark included: the watermark
+// moves over an unbroken run of acknowledged publishes, stops at the first
+// failure, and steps over a track that fails every pass rather than holding
+// every track behind it and the prune with them (#554 review).
 async function drainTracks(id, entry) {
   const startedAt = Date.now()
   let watermark = await state.queue.getTrackWatermark(id)
   for (;;) {
     const rows = await state.queue.unpublishedTracksFrom(watermark)
-    let sent = watermark
-    let failed = false
+    const outcomes = []
     for (const row of rows) {
-      try { await entry.publisher.publishTrack(row); sent = row.id } catch (_) { failed = true; break }
+      try { await entry.publisher.publishTrack(row); outcomes.push({ id: row.id, ok: true }) }
+      catch (_) { outcomes.push({ id: row.id, ok: false }); break }
     }
-    if (sent > watermark) { await state.queue.setTrackWatermark(sent, id); watermark = sent }
-    if (failed) break
+    const failed = outcomes.some((o) => !o.ok)
+    const next = nextWatermark(watermark, outcomes, entry.trackStall)
+    entry.trackStall = next.stall
+    if (next.steppedOver !== null) console.warn('[drain]', id, 'stepping over track', next.steppedOver, 'after repeated publish failures')
+    if (next.watermark > watermark) { await state.queue.setTrackWatermark(next.watermark, id); watermark = next.watermark }
+    if (failed && next.steppedOver === null) break
     if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
   }
 }
@@ -1619,11 +1636,15 @@ async function pruneOnce() {
   lastPrune = now
   const cutoff = new Date(now - RETENTION_MS).toISOString()
   // A reception may only go once every broker that is owed it has it (#554).
+  // With every broker off, the ones that are off are still owed what they
+  // have not had: off is a pause, and the floor with nobody on would be no
+  // floor at all, pruning unsent rows past the age cap (#554 review).
+  const owedBy = brokerList().length ? brokerList() : allBrokers()
   const owed = []
-  for (const b of brokerList()) owed.push({ id: b.id, watermark: await state.queue.getWatermark(b.id) })
+  for (const b of owedBy) owed.push({ id: b.id, watermark: await state.queue.getWatermark(b.id) })
   const removed = await state.queue.prune(cutoff, pruneFloor(owed))
   const owedTracks = []
-  for (const b of brokerList()) {
+  for (const b of owedBy) {
     if (b.format === 'wardrive') owedTracks.push({ id: b.id, watermark: await state.queue.getTrackWatermark(b.id) })
   }
   await state.queue.pruneTracks(cutoff, pruneFloor(owedTracks))
@@ -2015,31 +2036,47 @@ async function ensureMqtt() {
   }
 }
 
+// The brokers with a connect in flight: brokerCredentials can wait on the
+// companion signing, and ensureMqtt runs from the drain tick, a toggle and a
+// save, so two of them could each build a Publisher for one broker and the
+// overwritten one was never ended (#554 review).
+const connecting = new Set()
 async function connectMqtt(broker, owner = state.rxPubkey) {
-  if (!owner) return
+  if (!owner || connecting.has(broker.id)) return
   // A companion that cannot sign (older firmware answers nothing) is asked
   // again after a minute, not on every 5 s drain tick: each ask holds the BLE
   // link for its full timeout.
   if (Date.now() < (state.signRetryAt.get(broker.id) || 0)) return
-  let creds = null
-  try { creds = await brokerCredentials(broker, owner) } catch (e) {
-    state.signRetryAt.set(broker.id, Date.now() + 60_000)
-    console.error('[mqtt]', broker.id, 'sign-in', e)
+  connecting.add(broker.id)
+  try {
+    let creds = null
+    let refused = false
+    try { creds = await brokerCredentials(broker, owner) } catch (e) {
+      refused = true
+      state.signRetryAt.set(broker.id, Date.now() + 60_000)
+      console.error('[mqtt]', broker.id, 'sign-in', e)
+    }
+    // Two different waits, told apart on the brokers page: no companion to
+    // sign with, or a companion that answered the sign request with an error.
+    state.needsCompanion[creds || refused ? 'delete' : 'add'](broker.id)
+    state.signRefused[refused ? 'add' : 'delete'](broker.id)
+    if (!creds) return
+    if (state.publishers.has(broker.id)) return
+    const publisher = new Publisher({
+      url: broker.url,
+      username: creds.username,
+      password: creds.password,
+      clientId: owner,
+      format: broker.format,
+      label: broker.label,
+    })
+    state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 }, trackStall: { id: null, count: 0 }, owner, token: creds.password, format: broker.format })
+    publisher.connect()
+      .then(() => setMqttDot())
+      .catch((e) => console.error('[mqtt]', broker.id, e))
+  } finally {
+    connecting.delete(broker.id)
   }
-  state.needsCompanion[creds ? 'delete' : 'add'](broker.id)
-  if (!creds) return
-  const publisher = new Publisher({
-    url: broker.url,
-    username: creds.username,
-    password: creds.password,
-    clientId: owner,
-    format: broker.format,
-    label: broker.label,
-  })
-  state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 }, owner, token: creds.password, format: broker.format })
-  publisher.connect()
-    .then(() => setMqttDot())
-    .catch((e) => console.error('[mqtt]', broker.id, e))
 }
 
 function endMqtt() {
@@ -2731,6 +2768,7 @@ function buildSettingsSheet() {
     onToggle: toggleBroker,
     onSave: saveBroker,
     onRemove: removeBroker,
+    presets: presetsFrom(getConfig()),
   })
   el('ss-mqtt-manage').addEventListener('click', () => state.brokerSheet.open())
   el('ss-brokers-open').addEventListener('click', () => state.brokerSheet.open())

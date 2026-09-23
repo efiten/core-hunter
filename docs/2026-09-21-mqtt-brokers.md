@@ -43,6 +43,11 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
   connected still owes it the whole backlog.
 - **Switching a broker back on also starts at the newest reception.** Off means "do not send my
   receptions there", and draining the hours it was off the moment it comes back would undo that.
+  > **Amended 2026-09-23 (review of #671).** Off is a pause: on again drains from where the broker
+  > stopped. A phone that captured a weekend with the site broker's switch off would otherwise
+  > lose that weekend for the map, and with every broker off the prune had no floor and dropped
+  > unsent rows past the age cap. The backlog leaves when the switch goes on, the hunter's
+  > decision at that moment. `resumeAtHead` is gone; `forgetBroker` stays for a removed broker.
 - **The form connects before it saves.** A typo in the address shows up under the field instead of
   as a dot that never lights. A broker that does not answer within 8 s is not stored.
 - **A publish that is never acknowledged fails after 10 s.** A broker can accept the connection
@@ -65,6 +70,10 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
   is a fixed observer with one position. A hunter moves.
 - **One signature at a time.** The companion has a single sign buffer and a second
   `CMD_SIGN_START` empties it, so two brokers that both need a token queue up.
+- **Each broker drains on its own promise** (2026-09-23, review of #671). A broker whose every
+  publish waits out the 10 s ack timeout keeps draining across ticks on its own; the others take
+  every tick. Joined in one tick, the slow one held the site broker's tick and, through the prune
+  floor, the retention. Tracks step over a track that fails every pass, as receptions do.
 
 ## Two rules this touches
 
@@ -73,6 +82,10 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
   feeds its network, and a preset carries no credential. The rule now says so. This is a change to
   a hard rule and wants the maintainer's explicit yes; without it the presets move to
   `config.json`.
+  > **Amended 2026-09-23.** The maintainer chose `config.json` (review of #671), so the rule stays
+  > as it was and the presets are `brokerPresets` there (`presetsFrom` in `brokers.js`), each with
+  > the stream `label` that broker acknowledges: the site sets its presets the way it sets
+  > `mqttUrl`, and no third party's host is committed.
 - **#563** decided that a boolean stays a checkbox. The switch on the brokers page is a new
   control. AGENTS.md §7 now says where it applies: one on/off per row in a list. A loose yes/no
   stays a checkbox.

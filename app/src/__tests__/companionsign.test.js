@@ -34,9 +34,12 @@ function fakeCompanion({ maxLen = 8192, failData = false, silent = false } = {})
 describe('signWithCompanion: the companion signs, the key stays on it (#554)', () => {
   it('returns a signature that verifies against the companion\'s own key', async () => {
     const c = fakeCompanion()
-    const token = await buildBrokerToken({ pubkeyHex: c.pubkeyHex, audience: 'broker.example', nowSec: 1_790_000_000, sign: (b) => signWithCompanion(c, b) })
+    // Now, not a fixed second: the verifier reads the token's age off the real
+    // clock, so a fixed iat went stale a day after it was written.
+    const nowSec = Math.floor(Date.now() / 1000) - 60
+    const token = await buildBrokerToken({ pubkeyHex: c.pubkeyHex, audience: 'broker.example', nowSec, sign: (b) => signWithCompanion(c, b) })
     const claims = await verifyAuthToken(token, c.pubkeyHex.toUpperCase())
-    expect(claims).toMatchObject({ publicKey: c.pubkeyHex.toUpperCase(), aud: 'broker.example', iat: 1_790_000_000 })
+    expect(claims).toMatchObject({ publicKey: c.pubkeyHex.toUpperCase(), aud: 'broker.example', iat: nowSec })
   })
 
   it('sends the data in frames the companion can take, in order', async () => {

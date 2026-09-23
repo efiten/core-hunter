@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pruneFloor, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary } from '../brokers.js'
+import { pruneFloor, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary, presetsFrom } from '../brokers.js'
 
 describe('pruneFloor: how far retention may delete (#554)', () => {
   it('stops at the broker that is furthest behind', () => {
@@ -195,5 +195,47 @@ describe('mqttSummary: the MQTT line in the Status tab (#554)', () => {
 
   it('says so when every broker is switched off', () => {
     expect(mqttSummary([])).toBe('All brokers off')
+  })
+})
+
+// The presets come from config.json since the review of #671 (the site names
+// the public brokers it invites its hunters to feed, with the stream label
+// each acknowledges), so no third party's host is committed in code.
+describe('presetsFrom', () => {
+  it('reads the usable entries and fills what a preset may leave out', () => {
+    expect(presetsFrom({ brokerPresets: [
+      { key: 'c1', name: 'Collector 1', url: 'wss://c1.example:443', auth: 'companion', format: 'wardrive', label: 'wardriver' },
+      { key: 'c2', url: 'wss://c2.example:443' },
+    ] })).toEqual([
+      { key: 'c1', name: 'Collector 1', url: 'wss://c1.example:443', auth: 'companion', format: 'wardrive', label: 'wardriver' },
+      { key: 'c2', name: 'c2.example', url: 'wss://c2.example:443', auth: 'companion', format: 'wardrive', label: null },
+    ])
+  })
+  it('leaves out what cannot be a broker, and a second entry under one key', () => {
+    expect(presetsFrom({ brokerPresets: [
+      { key: '', url: 'wss://x.example' }, { key: 'h', url: 'https://x.example' }, 'nope', null,
+      { key: 'k', url: 'wss://a.example' }, { key: 'k', url: 'wss://b.example' },
+    ] })).toEqual([{ key: 'k', name: 'a.example', url: 'wss://a.example', auth: 'companion', format: 'wardrive', label: null }])
+  })
+  it('is empty without config, or without the key', () => {
+    expect(presetsFrom(null)).toEqual([])
+    expect(presetsFrom({})).toEqual([])
+    expect(presetsFrom({ brokerPresets: 'x' })).toEqual([])
+  })
+})
+
+describe('validateBroker carries a preset\'s label', () => {
+  it('keeps the label the form hands over, and none when there is none', () => {
+    const withLabel = validateBroker({ url: 'wss://c1.example:443', auth: 'companion', label: 'wardriver' }, [])
+    expect(withLabel.broker.label).toBe('wardriver')
+    const without = validateBroker({ url: 'wss://c1.example:443', auth: 'companion', label: null }, [])
+    expect('label' in without.broker).toBe(false)
+  })
+})
+
+describe('brokerStatus tells a refusing companion from an absent one', () => {
+  it('says the companion could not sign in when the sign request was refused', () => {
+    expect(brokerStatus({ enabled: true, connected: false, queued: 0, signRefused: true })).toEqual({ dot: 'warn', text: 'Your companion could not sign in' })
+    expect(brokerStatus({ enabled: true, connected: false, queued: 0, needsCompanion: true })).toEqual({ dot: 'warn', text: 'Connect your companion to sign in' })
   })
 })

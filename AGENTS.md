@@ -634,10 +634,7 @@ color: #ff4444;
 ### No secrets in the repo
 
 `public/config.json` and `server/config.json` are gitignored. Never commit broker URLs,
-usernames, passwords, or API keys of a deployment. The hosts of a public third-party broker that
-invites feeders are not secrets and may be named in code: `BROKER_PRESETS` in `app/src/brokers.js`
-carries the two DutchMeshCore collectors, which DutchMeshCore publishes itself (#554). A preset
-never carries a credential; those brokers sign in with the companion's key. Never commit local filesystem paths, server hostnames, IPs,
+usernames, passwords, or API keys. Never commit local filesystem paths, server hostnames, IPs,
 or SSH keys. Local agent context (`CLAUDE.md`) is also gitignored.
 
 Before publishing anything (docs, comments, commit messages), scrub all infrastructure detail.
