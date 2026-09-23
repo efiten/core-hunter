@@ -7,6 +7,13 @@
     "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
   },
   {
+    "id": "2026-09-21-unresolved-row-id-once",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "An unnamed sender shows its id once",
+    "body": "A row without a resolved name no longer repeats its id on the second line."
+  },
+  {
     "id": "2026-09-21-ring-counts-on-states",
     "date": "2026-09-21",
     "where": "both",

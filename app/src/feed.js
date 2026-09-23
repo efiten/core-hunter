@@ -212,7 +212,9 @@ export function idPrefix(id) {
 // when a name resolves, so duplicate names and different-length prefixes of
 // the same node are distinguishable. Unresolved rows show the prefix plus a
 // "name not resolved" marker as the primary line, so every row still reads
-// name-first even before resolution completes.
+// name-first even before resolution completes. The secondary line is the check
+// on a name (#451), so a row without one leaves it empty: the prefix is on the
+// first line already, and under itself it said nothing (#640).
 export function targetParts(rec) {
   const id = rec.sender_id != null ? String(rec.sender_id) : ''
   // The guess mark on a name resolved for a short prefix (#452), and a relay's
@@ -222,7 +224,7 @@ export function targetParts(rec) {
   if (!id) return { primary: label || '—', secondary: '' }
   const prefix = idPrefix(id)
   if (label) return { primary: label, secondary: prefix }
-  return { primary: `${prefix} (name not resolved)`, secondary: prefix }
+  return { primary: `${prefix} (name not resolved)`, secondary: '' }
 }
 
 // rememberTargetName keeps the target chip's name for a selected node key in
