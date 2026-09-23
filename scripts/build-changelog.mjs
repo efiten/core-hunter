@@ -24,6 +24,7 @@
 // The id inside the file is untouched by all of this. It stays `<date>-<slug>`,
 // exactly as it shipped, for the same reason.
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
 // <date>-<NN>-<slug>.json. The slug is lowercase because every existing id is,
 // and a name that differs from its id only in case would read as two entries.
@@ -94,9 +95,23 @@ export function generate(rootUrl) {
   return serialize(buildChangelog(readEntryFiles(new URL('changelog.d/', rootUrl))))
 }
 
+// isCurrent is whether a copy on disk is what the generator produces. A
+// checkout with core.autocrlf holds the copies with CRLF, and git stores them
+// with LF either way, so the line ending is not a difference.
+export function isCurrent(current, out) {
+  return current != null && current.replace(/\r\n/g, '\n') === out
+}
+
+// isMain is whether `argv1` is the file at `moduleUrl`. Compared as URLs: a
+// `file://${path}` string only matches a POSIX path, so on Windows the CLI
+// below never ran, and `--check` exited 0 without checking anything.
+export function isMain(moduleUrl, argv1) {
+  return argv1 != null && moduleUrl === pathToFileURL(argv1).href
+}
+
 // CLI: `node scripts/build-changelog.mjs` writes both copies,
 // `--check` only reports whether they are already what the source produces.
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url, process.argv[1])) {
   const root = new URL('../', import.meta.url)
   const out = generate(root)
   const check = process.argv.includes('--check')
@@ -104,7 +119,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (const target of TARGETS) {
     const url = new URL(target, root)
     const current = (() => { try { return readFileSync(url, 'utf8') } catch { return null } })()
-    if (current === out) continue
+    if (isCurrent(current, out)) continue
     stale++
     if (check) console.error(`${target} is not what changelog.d/ produces`)
     else { writeFileSync(url, out); console.log(`wrote ${target}`) }
