@@ -33,7 +33,8 @@ import { readFileSync } from 'node:fs'
 // The changelog generator lives at the repo root, outside both surfaces, because
 // it is the one thing that writes the two copies rather than being shipped by
 // either (#509). Tests already reach across the boundary; deploys never do.
-import { buildChangelog, readEntryFiles } from '../scripts/build-changelog.mjs'
+import { buildChangelog, readEntryFiles, isMain, isCurrent } from '../scripts/build-changelog.mjs'
+import { fileURLToPath } from 'node:url'
 import * as webLayer from './nodelayer.js'
 import * as appLayer from '../app/src/nodelayer.js'
 import * as attrRule from './attribution.js'
@@ -466,6 +467,26 @@ describe('changelog — parity between the app and web copies', () => {
     // the same file twice, and one generator writing both is what makes that
     // true rather than hoped for.
     expect(webRaw).toBe(appRaw)
+  })
+})
+
+// `node scripts/build-changelog.mjs` has to know it was run, not imported. The
+// check compares URLs, so it holds for a Windows path as well as a POSIX one:
+// a `file://${path}` string match never fired on Windows, where the CLI and
+// `--check` then did nothing and exited 0.
+describe('changelog generator: run as a script', () => {
+  const script = new URL('../scripts/build-changelog.mjs', import.meta.url)
+  it('recognises its own path on this platform', () => {
+    expect(isMain(script.href, fileURLToPath(script))).toBe(true)
+  })
+  it('is not main when another file was run, or none', () => {
+    expect(isMain(script.href, fileURLToPath(import.meta.url))).toBe(false)
+    expect(isMain(script.href, undefined)).toBe(false)
+  })
+  it('reads a CRLF checkout of a current copy as current', () => {
+    expect(isCurrent('[\r\n  1\r\n]\r\n', '[\n  1\n]\n')).toBe(true)
+    expect(isCurrent('[\n  2\n]\n', '[\n  1\n]\n')).toBe(false)
+    expect(isCurrent(null, '[]\n')).toBe(false)
   })
 })
 
