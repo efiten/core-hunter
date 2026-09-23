@@ -105,15 +105,22 @@ canvas for six states with the app in its light theme.
 
 ## How the float readout leaves the page (#616)
 
-The float button promises a floating window, so that is what it asks for first.
+The float button promises a floating window, so that is what it asks for first, except on Android.
 
-1. **Picture-in-picture**, where `document.pictureInPictureEnabled` says the API is on. Android
-   Chrome's video has `requestPictureInPicture` with the API switched off, so there this step is
-   skipped, and a video with the method alone no longer counts as a way out (`floatSupported`).
+1. **Picture-in-picture**, where `document.pictureInPictureEnabled` says the API is on. A video with
+   the method alone does not count as a way out (`floatSupported`).
 2. **Fullscreen** otherwise, with `screen.orientation.lock('portrait')` once fullscreen is up, since a
    lock is only allowed then. The 16:9 canvas would turn the phone sideways without it. A refused
    lock still leaves the readout out. The lock is released as soon as fullscreen ends, and the
    600 ms wait for Android's fullscreen-to-window hand-over stays as it was.
+
+**On Android the two swap places (#669).** #616 took Android Chrome's API to be off. In the field
+(21 September) the window opened without the fullscreen step, the sound parked and GPS logging
+stopped: the page was hidden while the window was up, and a reception without a fix is not recorded.
+Through fullscreen and Home, Chrome shrinks itself into the window and the page stays visible.
+`fullscreenFirst(navigator)` answers by platform, because the capability flags match desktop
+Chrome's. Picture-in-picture is still the fallback when fullscreen is refused.
+
 3. **The video's own player** (`webkitEnterFullscreen`) on iPhone Safari, which has no element
    fullscreen.
 
@@ -123,9 +130,10 @@ asking gets the same attempt. When every path is refused the button does not say
 out, and the stream stops.
 
 The order, the lock timing, the hand-over, the refusals and the in-flight guard are unit-tested
-against fakes of the video, its document and `screen.orientation`. Not verified: a real Android
-phone, including whether Chrome's own rotation for fullscreen video or the portrait lock wins, and
-whether a refused picture-in-picture request uses up the tap that fullscreen then needs.
+against fakes of the video, its document and `screen.orientation`. Field test on an Android phone
+(Kasper, 21 September, #669): fullscreen opens upright, the window appears after Home, GPS keeps
+logging and the sound keeps playing. Not verified: whether a refused request uses up the tap the
+next one needs.
 
 ## The direction arrow (#660)
 

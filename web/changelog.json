@@ -7,6 +7,13 @@
     "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
   },
   {
+    "id": "2026-09-21-float-keeps-logging",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "The float readout keeps logging on Android",
+    "body": "On Android the float readout opens fullscreen again: press Home for the window. Positions and sound keep running."
+  },
+  {
     "id": "2026-09-21-unresolved-row-id-once",
     "date": "2026-09-21",
     "where": "both",
