@@ -1,10 +1,45 @@
 [
   {
+    "id": "2026-09-21-earlier-rides-stay-longer",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "Earlier rides stay on the map longer",
+    "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
+  },
+  {
     "id": "2026-09-21-float-keeps-logging",
     "date": "2026-09-21",
     "where": "app",
     "title": "The float readout keeps logging on Android",
     "body": "On Android the float readout opens fullscreen again: press Home for the window. Positions and sound keep running."
+  },
+  {
+    "id": "2026-09-21-unresolved-row-id-once",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "An unnamed sender shows its id once",
+    "body": "A row without a resolved name no longer repeats its id on the second line."
+  },
+  {
+    "id": "2026-09-21-ring-counts-on-states",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "The button ring counts what is on",
+    "body": "Sound and node positions show an empty, half or full ring. Off no longer takes a segment of its own."
+  },
+  {
+    "id": "2026-09-21-select-all-hunters",
+    "date": "2026-09-21",
+    "where": "map",
+    "title": "Select all hunters in one tap",
+    "body": "The hunter picker has one control above the list: Select all, or Clear selection once anything is picked."
+  },
+  {
+    "id": "2026-09-21-picker-rows-bare",
+    "date": "2026-09-21",
+    "where": "map",
+    "title": "Cleaner rows in the pickers",
+    "body": "Hunter, target and ignore rows lost their boxes: one line between rows, as in the app."
   },
   {
     "id": "2026-09-15-direction-arrow",

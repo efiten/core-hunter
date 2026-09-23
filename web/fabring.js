@@ -2,7 +2,7 @@
 // button, filled (accent) from the first segment through the current one, the
 // rest muted — so a tap's effect (advancing to the next segment) is visible at
 // a glance, not just inferable from the icon changing. Used by the layer FAB
-// (3 modes), the compass FAB (3 tap states), the sound FAB (off/rxtx/full) and
+// (5 views), the compass FAB (2 stops), the sound FAB (off/rxtx/full) and
 // the node-positions FAB (off/positions/reach), and on the map by its rail's
 // node-positions button (#630), which is why web/fabring.js is this file byte
 // for byte (web/parity.test.js).
@@ -19,21 +19,27 @@ const GAP = 4 // px gap between segments, in SVG user units
 //
 // offIndex names the one state, if any, that is *off* rather than at position
 // zero (#373): at that index nothing is filled, because off is the absence of
-// a progress position and a lit segment there reads as "1 of 3 active" while
-// the feature is doing nothing. It is opt-in per call site, not a rule about
-// index 0: of the FABs that use this ring, only sound and node positions have
-// an off state.
+// a progress position and a lit segment there reads as active while the
+// feature is doing nothing. Off is not a segment either (#620): the ring counts
+// the on states, so off / positions / reach draws two segments and reads empty,
+// half, full. Counting the off stop lit two thirds for the first on state. It
+// is opt-in per call site, not a rule about index 0: of the FABs that use this
+// ring, the sound one and node positions have an off state.
 // The compass's `following` and the view FAB's `points 2D` are both *on* at
-// index 0, so their single filled segment is correct and must not change.
+// index 0 and have no off stop, so every segment they draw is a real position.
 export function ringSegments(current, total, { offIndex } = {}) {
-  if (total < 2) return []
-  const off = current === offIndex
-  const segLen = (CIRCUMFERENCE - total * GAP) / total
+  const hasOff = Number.isInteger(offIndex) && offIndex >= 0 && offIndex < total
+  const count = hasOff ? total - 1 : total
+  if (count < 2) return []
+  const off = hasOff && current === offIndex
+  // The position among the on states: the stops after the off one move up.
+  const position = hasOff && current > offIndex ? current - 1 : current
+  const segLen = (CIRCUMFERENCE - count * GAP) / count
   const segs = []
-  for (let i = 0; i < total; i++) {
+  for (let i = 0; i < count; i++) {
     segs.push({
       index: i,
-      filled: !off && i <= current,
+      filled: !off && i <= position,
       dasharray: `${segLen} ${CIRCUMFERENCE - segLen}`,
       dashoffset: -(i * (segLen + GAP)),
     })

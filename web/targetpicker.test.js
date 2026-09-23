@@ -85,7 +85,7 @@ describe('dedupeSenders — prefix variants of one node collapse to one row', ()
     // unresolved, so a name gate would never merge anything.
     const out = dedupeSenders([discover('4a4abe'), relay('4a4a')])
     expect(out).toHaveLength(1)
-    expect(targetParts(out[0])).toEqual({ primary: '4a4abe (name not resolved)', secondary: '4a4abe' })
+    expect(targetParts(out[0])).toEqual({ primary: '4a4abe (name not resolved)', secondary: '' })
   })
 
   it('refuses a prefix that could be either of two nodes', () => {
@@ -225,9 +225,11 @@ describe('targetParts — primary/secondary label split', () => {
     expect(targetParts(pt({ sender_id: 'aa11bb22cc33', sender_label: 'NEO7HI' })))
       .toEqual({ primary: 'NEO7HI', secondary: 'aa11bb' })
   })
-  it('falls back to the id prefix + a marker when unresolved', () => {
+  // #640: the second line checks a name. With no name the first line is the
+  // prefix already, so it is printed once.
+  it('falls back to the id prefix + a marker when unresolved, and prints the prefix once', () => {
     expect(targetParts(pt({ sender_id: 'aa11bb22cc33', sender_label: '' })))
-      .toEqual({ primary: 'aa11bb (name not resolved)', secondary: 'aa11bb' })
+      .toEqual({ primary: 'aa11bb (name not resolved)', secondary: '' })
   })
   it('handles a missing id', () => {
     expect(targetParts(pt({ sender_id: null, sender_label: '' }))).toEqual({ primary: '—', secondary: '' })
@@ -240,11 +242,11 @@ describe('targetParts — primary/secondary label split', () => {
   // identity. Both kinds that carry one are covered.
   it('marks a 1-byte path hash rather than presenting it as a name', () => {
     expect(targetParts(pt({ sender_id: '77', sender_label: '77', sender_kind: 'path_hash' })))
-      .toEqual({ primary: '#77', secondary: '77' })
+      .toEqual({ primary: '#77', secondary: '' })
   })
   it('marks a 1-byte direct hash the same way', () => {
     expect(targetParts(pt({ sender_id: '4a', sender_label: '4a', sender_kind: 'direct_hash' })))
-      .toEqual({ primary: '#4a', secondary: '4a' })
+      .toEqual({ primary: '#4a', secondary: '' })
   })
   // The guard is on the KIND, not on the length: a resolver name that happens
   // to be short must still render as a name.

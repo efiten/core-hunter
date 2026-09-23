@@ -2478,6 +2478,7 @@ function syncHunterToggleLabel() {
 
 hunterPicker = createMultiSelectPicker(hunterAdapter, document.getElementById('hp-list'), {
   pinnedEl: document.getElementById('hp-pinned'),
+  bulkEl: document.getElementById('hp-bulk'),
   onChange: () => { syncHunterToggleLabel(); urlstate.save(); refresh(); snapToHunter() },
 })
 // currentFilters/currentHunters (filters.js) read the selection through this,
