@@ -7,6 +7,13 @@
     "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
   },
   {
+    "id": "2026-09-21-ring-counts-on-states",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "The button ring counts what is on",
+    "body": "Sound and node positions show an empty, half or full ring. Off no longer takes a segment of its own."
+  },
+  {
     "id": "2026-09-21-select-all-hunters",
     "date": "2026-09-21",
     "where": "map",

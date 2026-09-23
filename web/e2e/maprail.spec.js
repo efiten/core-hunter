@@ -87,12 +87,14 @@ test('a member taps the node-positions button through off, positions and reach, 
   await expect(fab).toHaveAttribute('aria-label', 'Node positions: advertised positions')
   await expect(fab).toHaveAttribute('aria-pressed', 'true')
   await expect(fab).toHaveClass(/\bon\b/)
-  expect(await lit()).toBe(2)
+  // Two on states, two segments (#620): the first is half the ring.
+  expect(await fab.evaluate((el) => el.querySelectorAll('.fab-ring circle').length)).toBe(2)
+  expect(await lit()).toBe(1)
   await expect(page).toHaveURL(/[?&]nodepos=positions/)
 
   await fab.click()
   await expect(fab).toHaveAttribute('aria-label', 'Node positions: positions and reach')
-  expect(await lit()).toBe(3)
+  expect(await lit()).toBe(2)
   await expect(page).toHaveURL(/[?&]nodepos=reach/)
 
   await fab.click()
