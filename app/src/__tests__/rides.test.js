@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { RIDE_GAP_MS, BACKLOG_OUTLINE_ZOOM, splitRides, currentRideStart, isBacklog, showBacklogPoints } from '../rides.js'
+import { RIDE_GAP_MS, splitRides, currentRideStart, isBacklog, showBacklogPoints } from '../rides.js'
 
 const T0 = Date.parse('2026-09-04T13:10:00Z')
 const MIN = 60_000
@@ -53,12 +53,13 @@ describe('currentRideStart / isBacklog', () => {
 })
 
 describe('showBacklogPoints', () => {
-  // Kasper, 2026-09-04: outlines come back "reasonably soon" while zooming in;
-  // zoom 15 is street-grid level, where 8px circles stop overlapping.
-  it('draws backlog points from zoom 15, not below', () => {
-    expect(BACKLOG_OUTLINE_ZOOM).toBe(15)
-    expect(showBacklogPoints(14.9)).toBe(false)
-    expect(showBacklogPoints(15)).toBe(true)
+  // Kasper, 2026-09-04: outlines come back "reasonably soon" while zooming in.
+  // That was zoom 15 until the field said one pinch out already lost them
+  // (#668, 2026-09-21); 12 keeps them through town level.
+  it('draws backlog points from zoom 12, not below', () => {
+    expect(showBacklogPoints(11.9)).toBe(false)
+    expect(showBacklogPoints(12)).toBe(true)
+    expect(showBacklogPoints(14)).toBe(true)
     expect(showBacklogPoints(18)).toBe(true)
   })
 })

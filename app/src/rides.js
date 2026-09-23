@@ -15,7 +15,8 @@ export const RIDE_GAP_MS = 10 * 60 * 1000
 
 // Below this zoom a backlog reception is coverage only (its hex cell); from
 // it, the backlog comes back as outline circles. Kasper: "redelijk snel al".
-export const BACKLOG_OUTLINE_ZOOM = 15
+// 15 at first; the field lost the outlines one pinch out, so 12 (#668).
+export const BACKLOG_OUTLINE_ZOOM = 12
 
 const rxMs = (r) => {
   const t = r && r.rx_at != null ? Date.parse(r.rx_at) : NaN
