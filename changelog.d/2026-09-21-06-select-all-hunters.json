@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-select-all-hunters",
+  "date": "2026-09-21",
+  "where": "map",
+  "title": "Select all hunters in one tap",
+  "body": "The hunter picker has one control above the list: Select all, or Clear selection once anything is picked."
+}
