@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-21-earlier-rides-stay-longer",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "Earlier rides stay on the map longer",
+    "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
+  },
+  {
     "id": "2026-09-21-select-all-hunters",
     "date": "2026-09-21",
     "where": "map",
