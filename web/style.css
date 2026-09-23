@@ -187,6 +187,14 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   box-shadow: 0 12px 34px rgba(0,0,0,.4); font-size: 13px; }
 .tl-pinned-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ch-muted);
   margin: 0 0 2px; }
+/* The one control above a picker's list (#628). #bar-prefixed like
+   .f-chip.active: the panel sits inside #bar, whose `#bar button` (1,0,1)
+   would otherwise dress it as a bar button. A text button, right-aligned, so
+   it reads as an action on the list and not as a row of it. */
+#bar .tl-bulk { display: block; margin: 0 0 8px auto; padding: 2px 0; border: 0; border-radius: 0;
+  background: transparent; color: var(--ch-accent); font: inherit; font-size: 12px; cursor: pointer; }
+#bar .tl-bulk:hover { text-decoration: underline; }
+#bar .tl-bulk[hidden] { display: none; }
 .tl-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
 .tl-pinned { max-height: none; }
 /* min(40vh, ...) not 40vh alone: with PAGE_SIZE rows the list stops overflowing

@@ -1,5 +1,19 @@
 [
   {
+    "id": "2026-09-21-earlier-rides-stay-longer",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "Earlier rides stay on the map longer",
+    "body": "Points of earlier rides now stay visible while you zoom out, down to town level."
+  },
+  {
+    "id": "2026-09-21-select-all-hunters",
+    "date": "2026-09-21",
+    "where": "map",
+    "title": "Select all hunters in one tap",
+    "body": "The hunter picker has one control above the list: Select all, or Clear selection once anything is picked."
+  },
+  {
     "id": "2026-09-21-picker-rows-bare",
     "date": "2026-09-21",
     "where": "map",
