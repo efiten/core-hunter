@@ -288,3 +288,52 @@ test('a member roster that lands after the logout does not bring the names back 
   expect(list, 'the newest roster stays').toContain('Hunter 1 (43)')
   expect(list, 'a logged-out page shows no real names').not.toContain('ON8AR')
 })
+
+// #679. The panel sits inside #bar, and `#bar select, #bar input, #bar button`
+// (1,0,1) outranked the bare `.tl-row` (0,1,0): the rows wore the bar's border,
+// fill, radius and padding on top of their own separator. Read off the
+// computed style, since the markup and the classes were right all along.
+test('a picker row is a bare row, not a bar button (#679)', async ({ page }) => {
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [H1, H2] } }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.goto('/?mode=points')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  const row = await page.locator('#hp-list .tl-row').first().evaluate((el) => {
+    const c = getComputedStyle(el)
+    return { border: c.borderTopWidth, bg: c.backgroundColor, radius: c.borderTopLeftRadius, padding: c.padding }
+  })
+  expect(row).toEqual({ border: '0px', bg: 'rgba(0, 0, 0, 0)', radius: '0px', padding: '8px 4px' })
+})
+
+// #628. A roster of dozens and one tap per row. One control above the list: it
+// says what a tap does, selects every hunter when none is picked, and clears
+// the pick otherwise. Every hunter means the roster, not the page of 12 rows
+// the list has rendered so far.
+test('one control above the list selects every hunter, then clears them (#628)', async ({ page }) => {
+  const many = Array.from({ length: 30 }, (_, i) => ({
+    hunter_pubkey: `${String(i).padStart(2, '0')}aa11bb22cc`, hunter_name: `HUNTER-${String(i).padStart(2, '0')}`, count: 30 - i,
+  }))
+  await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: many } }))
+  const urls = []
+  await page.route('**/api/points*', (r) => { urls.push(r.request().url()); return r.fulfill({ json: { points: [] } }) })
+  await page.goto('/?mode=points')
+  await openPicker(page, '#hp-toggle', '#hunter-picker')
+  const bulk = page.locator('#hp-bulk')
+  await expect(bulk).toHaveText('Select all')
+
+  await bulk.click()
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters (30) ▾')
+  await expect(bulk).toHaveText('Clear selection')
+  await expect(page.locator('#hp-list .tl-row[aria-pressed="true"]')).toHaveCount(12)
+  await expect.poll(() => urls.some((u) => (hunterOf(u) || '').split(',').length === 30)).toBe(true)
+
+  // With a partial pick it still clears: the label names the one thing it does.
+  await page.locator('#hp-list .tl-row').first().click()
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters (29) ▾')
+  await expect(bulk).toHaveText('Clear selection')
+  await bulk.click()
+  await expect(page.locator('#hp-toggle')).toHaveText('Hunters ▾')
+  await expect(bulk).toHaveText('Select all')
+  await expect(page.locator('#hp-list .tl-row[aria-pressed="true"]')).toHaveCount(0)
+  await expect(page).not.toHaveURL(/[?&]hunter=/)
+})

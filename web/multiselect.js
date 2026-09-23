@@ -15,6 +15,9 @@
 //   pinned(items, {count, nowMs}) -> optional; the pinned "Top" rows, or
 //                                    omitted entirely to skip the pinned section
 //   onPick(selectedSet)     -> optional side effect fired right after a toggle
+// An optional bulkEl is the one control above the list (#628): a button that
+// selects every row when nothing is picked and clears the pick otherwise, and
+// says which of the two a tap does.
 // targetpicker.js's sender adapter and hunterpicker.js's hunter adapter are
 // the two current instances.
 
@@ -73,10 +76,19 @@ function row(rec, { adapter, nowMs, selectedIds, onToggle }) {
   return li
 }
 
+// What the bulk control does next (#628). One button rather than a pair: the
+// two actions are never both useful, and the label is the action, so a tap
+// holds no surprise. Any pick, partial or whole, makes it Clear: selecting the
+// rest of a partial pick is rare, and clearing one is what one tap per row made
+// tedious.
+export function bulkAction(selectedCount) {
+  return selectedCount > 0 ? { action: 'clear', label: 'Clear selection' } : { action: 'all', label: 'Select all' }
+}
+
 // createMultiSelectPicker builds the browsable multi-select list + optional
 // pinned section. It owns the selection as a lower-cased id Set; the caller's
 // onChange fires whenever it moves, same shape as the original target picker.
-export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, pinnedCount = 3 } = {}) {
+export function createMultiSelectPicker(adapter, listEl, { pinnedEl, bulkEl, onChange, pinnedCount = 3 } = {}) {
   const selected = new Set()
   let visible = PAGE_SIZE
   let lastItems = []
@@ -98,9 +110,25 @@ export function createMultiSelectPicker(adapter, listEl, { pinnedEl, onChange, p
     render(lastItems, Date.now())
   }
 
+  // Every row the adapter lists, not the page rendered so far: "all" is the
+  // roster, and the rows past the first page are part of it.
+  function onBulk() {
+    if (bulkAction(selected.size).action === 'clear') selected.clear()
+    else for (const rec of adapter.list(lastItems)) for (const k of idsOf(adapter, rec)) selected.add(k)
+    if (adapter.onPick) adapter.onPick(selected)
+    if (onChange) onChange()
+    render(lastItems, Date.now())
+  }
+  if (bulkEl) bulkEl.addEventListener('click', onBulk)
+
   function render(items, nowMs) {
     lastItems = items || []
     const selKey = JSON.stringify([...selected].sort())
+    if (bulkEl) {
+      bulkEl.textContent = bulkAction(selected.size).label
+      // Nothing to select and nothing to clear: no control.
+      bulkEl.hidden = !selected.size && !adapter.list(lastItems, { limit: 1 }).length
+    }
 
     if (pinnedEl && adapter.pinned) {
       const pinned = adapter.pinned(lastItems, { count: pinnedCount, nowMs })
