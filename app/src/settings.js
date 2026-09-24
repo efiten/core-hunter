@@ -53,7 +53,7 @@ export function loadThemePref() {
   return THEME_PREFS.includes(v) ? v : 'system'
 }
 
-// Share my node name (#576): the first setting that puts the hunter's own
+// Introduce my node to targets (#576, Share my node name until #636): the first setting that puts the hunter's own
 // identity on air. Off unless the stored value says on, exactly: a missing or
 // malformed slot must never read as "share".
 export function loadShareName() {

@@ -203,14 +203,14 @@ describe('isSettingsActive with the exaggeration', () => {
 // The settings dot says "something behind this button is not at its default".
 // Sharing the node name is exactly that, and it is the one setting that
 // transmits, so it must reach the dot (#576).
-describe('isSettingsActive lights for Share my node name', () => {
+describe('isSettingsActive lights for Introduce my node to targets', () => {
   it('is true with the name shared and everything else at default', () => {
     expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, shareName: true })).toBe(true)
     expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, shareName: false })).toBe(false)
   })
 })
 
-// Share my node name (#576): the first setting that puts the hunter's own
+// Introduce my node to targets (#576): the first setting that puts the hunter's own
 // identity on air, so it is off unless the stored value says on, exactly.
 describe('loadShareName', () => {
   it('is on only for the stored on-value', () => {

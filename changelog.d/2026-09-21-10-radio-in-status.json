@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-radio-in-status",
+  "date": "2026-09-21",
+  "where": "app",
+  "title": "The radio's settings in Status",
+  "body": "Status shows the companion's frequency, bandwidth, spreading factor and coding rate, as the radio reports them."
+}
