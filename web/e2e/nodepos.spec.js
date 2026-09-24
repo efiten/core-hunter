@@ -627,8 +627,8 @@ const bboxHonouring = (page, points, seen = []) =>
 const driftIn = async (page, view) => {
   await page.goto(`/?${view}`)
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
-  await page.locator('.np-advert').click({ force: true })
+  await expectGlyphs(page, 'advert', 1, { timeout: 15000 })
+  await tapGlyph(page)
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText(/drift \d+ m/)
   return (await popup.textContent()).match(/drift (\d+) m/)[1]
@@ -650,7 +650,7 @@ test('a pan reuses the receptions the node layer already has (#664)', async ({ p
   await bboxHonouring(page, ring(51, 4, 250, 8), seen)
   await page.goto('/?lat=51.0&lon=4.0&z=14')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 15000 })
   // The layer's own fetch is the paged one with no bbox; the ticker also asks
   // without a bbox, 200 rows at a time, and does so on every refresh.
   const windowFetches = () => seen.filter((u) => !u.searchParams.has('bbox') && u.searchParams.get('limit') === '5000').length
