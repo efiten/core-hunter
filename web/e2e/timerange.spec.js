@@ -47,6 +47,20 @@ test('a token range in the URL is restored and resolved on load', async ({ page 
   // The active quick range is marked in the list.
   await openPicker(page, '#tr-toggle', '#time-picker')
   await expect(page.locator('#tr-quick .tr-item.active')).toHaveText('Last 1 hour')
+  // And it reads as marked (#633): the class was set while `#bar button`
+  // (1,0,1) kept the text colour, so only the 3px rail said which range is on.
+  const colours = await page.evaluate(() => {
+    const colourOf = (sel) => getComputedStyle(document.querySelector(sel)).color
+    return { active: colourOf('#tr-quick .tr-item.active button'), other: colourOf('#tr-quick .tr-item:not(.active) button') }
+  })
+  expect(colours.active).not.toBe(colours.other)
+  // The rows themselves are bare, as their rule has always asked: the same
+  // (1,0,1) gave them the bar's border, fill and radius instead.
+  const row = await page.evaluate(() => {
+    const c = getComputedStyle(document.querySelector('#tr-quick .tr-item:not(.active) button'))
+    return { border: c.borderTopWidth, bg: c.backgroundColor, radius: c.borderTopLeftRadius }
+  })
+  expect(row).toEqual({ border: '0px', bg: 'rgba(0, 0, 0, 0)', radius: '0px' })
 })
 
 test('the absolute panel pre-fills from a token and Apply switches to an absolute range', async ({ page }) => {

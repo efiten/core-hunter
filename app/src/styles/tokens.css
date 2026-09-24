@@ -38,7 +38,7 @@
   --ch-surface-thin: rgba(255, 252, 245, 0.72);
   --ch-text:      #1b2430;
   --ch-muted:     #5a6675;
-  --ch-accent:    #0e9f7e;   /* teal — primary accent */
+  --ch-accent:    #0b7a60;   /* teal — primary accent; 4.7:1 on --ch-bg, 5.2:1 on the panel (#633) */
   --ch-accent-2:  #b4530a;   /* burnt amber — alerts */
   --ch-basemap:   light;
 
