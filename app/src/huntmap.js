@@ -96,8 +96,8 @@ const TRAIL_OPACITY = 0.5
 
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
-  // Degrade to a no-op map (never throw during app init) when MapLibre's CDN
-  // script failed, or when WebGL is unavailable — GPU blocklist, an older
+  // Degrade to a no-op map (never throw during app init) when MapLibre did not
+  // load, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
   // in that case (Leaflet's raster map had no WebGL dependency).
   if (typeof maplibregl === 'undefined') return stub

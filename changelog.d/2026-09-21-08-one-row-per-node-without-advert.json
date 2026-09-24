@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-one-row-per-node-without-advert",
+  "date": "2026-09-21",
+  "where": "app",
+  "title": "One row per node, also before its advert",
+  "body": "The target list folds a node's short ids into one row when the names match, without waiting for an advert. Look-alike ids print longer."
+}

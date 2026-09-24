@@ -517,9 +517,12 @@ One physical node is named by several different-length ids in the same pubkey na
 32-byte advert pubkey, an 8-byte (or full) discover prefix, a 1-3 byte relay path hash. Whether two
 such ids may be treated as one node differs **per component, deliberately**:
 
-- **App (`app/src/feed.js`, `web`-independent):** strict. A prefix attaches to a full pubkey only
-  when a name is present on **both** sides and matches. The app has a local capture store
-  and can afford the name as a safety margin. Do not loosen this. The name is the one each row
+- **App (`app/src/feed.js`, `web`-independent):** strict. A prefix attaches only when a name is
+  present on **both** sides and matches. The app has a local capture store and can afford the name
+  as a safety margin. Do not loosen this. What it attaches to is the longest id of its chain, the
+  website's rule below, and no longer a full pubkey only (#625,
+  `docs/2026-09-21-anchorless-prefix-merge.md`): a node with no advert in the window kept one row
+  per id. The name is the one each row
   shows, so a relay's attribution by reach (#661, below) decides for its row: a collision or a
   placement on another node never merges, not even when that node shares the name (Kasper,
   2026-09-15).
