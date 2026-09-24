@@ -19,7 +19,7 @@ import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableRec
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
-import { pruneFloor, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary, presetsFrom } from './brokers.js'
+import { pruneFloor, owedBrokers, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary, presetsFrom } from './brokers.js'
 import { createBrokerSheet } from './brokersheet.js'
 import { createTrackWindow } from './wardrive.js'
 import { createSigner, buildBrokerToken, brokerUsername, brokerAudience, tokenUsable } from './companionsign.js'
@@ -1636,10 +1636,8 @@ async function pruneOnce() {
   lastPrune = now
   const cutoff = new Date(now - RETENTION_MS).toISOString()
   // A reception may only go once every broker that is owed it has it (#554).
-  // With every broker off, the ones that are off are still owed what they
-  // have not had: off is a pause, and the floor with nobody on would be no
-  // floor at all, pruning unsent rows past the age cap (#554 review).
-  const owedBy = brokerList().length ? brokerList() : allBrokers()
+  // Which brokers are owed, a paused one included or not, is owedBrokers'.
+  const owedBy = owedBrokers(allBrokers())
   const owed = []
   for (const b of owedBy) owed.push({ id: b.id, watermark: await state.queue.getWatermark(b.id) })
   const removed = await state.queue.prune(cutoff, pruneFloor(owed))

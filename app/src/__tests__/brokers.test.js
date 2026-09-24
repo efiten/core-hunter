@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pruneFloor, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary, presetsFrom } from '../brokers.js'
+import { pruneFloor, owedBrokers, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary, presetsFrom } from '../brokers.js'
 
 describe('pruneFloor: how far retention may delete (#554)', () => {
   it('stops at the broker that is furthest behind', () => {
@@ -10,10 +10,29 @@ describe('pruneFloor: how far retention may delete (#554)', () => {
     expect(pruneFloor([{ id: 'default', watermark: 900 }, { id: 'dmc', watermark: 0 }])).toBe(0)
   })
 
-  // Nothing is owed to anyone, so age alone decides. Without this a hunter who
-  // switched every broker off would keep every reception forever.
-  it('lets age decide when no broker is on', () => {
+  // Nothing is owed to anyone, so age alone decides. owedBrokers never hands
+  // over an empty list while a broker is configured, and config.js requires one.
+  it('lets age decide when no broker is owed', () => {
     expect(pruneFloor([])).toBe(Infinity)
+  })
+})
+
+describe('owedBrokers: whose watermark holds retention back (#554)', () => {
+  const site = { id: 'default', enabled: true }
+  const dmc = { id: 'user:dmc.example', enabled: false }
+
+  // A paused broker keeps its backlog for the retention window, not beyond it:
+  // counting it would grow the store for as long as the switch stays off,
+  // which is the unbounded store #230 removed (#671 review).
+  it('owes only the brokers that are on while one is', () => {
+    expect(owedBrokers([site, dmc])).toEqual([site])
+  })
+
+  // Nothing leaves the phone, so nothing unsent is pruned: the same as a phone
+  // with no broker configured, whose watermark never moved.
+  it('owes every broker while none is on', () => {
+    const paused = { ...site, enabled: false }
+    expect(owedBrokers([paused, dmc])).toEqual([paused, dmc])
   })
 })
 
@@ -215,6 +234,15 @@ describe('presetsFrom', () => {
     expect(presetsFrom({ brokerPresets: [
       { key: '', url: 'wss://x.example' }, { key: 'h', url: 'https://x.example' }, 'nope', null,
       { key: 'k', url: 'wss://a.example' }, { key: 'k', url: 'wss://b.example' },
+    ] })).toEqual([{ key: 'k', name: 'a.example', url: 'wss://a.example', auth: 'companion', format: 'wardrive', label: null }])
+  })
+  // The scheme alone is not an address. Without a name the hostname lookup
+  // threw, and buildSettingsSheet with it; with a name the entry was shown
+  // and then refused by the form (#671 review).
+  it('leaves out an address that starts right and does not parse, named or not', () => {
+    expect(presetsFrom({ brokerPresets: [
+      { key: 'x', url: 'wss://' }, { key: 'y', name: 'Named', url: 'wss://:443' },
+      { key: 'k', url: 'wss://a.example' },
     ] })).toEqual([{ key: 'k', name: 'a.example', url: 'wss://a.example', auth: 'companion', format: 'wardrive', label: null }])
   })
   it('is empty without config, or without the key', () => {

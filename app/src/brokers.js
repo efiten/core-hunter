@@ -3,11 +3,23 @@
 
 // pruneFloor is how far retention may delete: the watermark of the broker that
 // is furthest behind. A reception is only safe to drop once every broker that
-// is owed it has it. `brokers` are the ones that are ON: [{ id, watermark }].
-// With none on, nothing is owed to anyone and age alone decides.
+// is owed it has it. `brokers` are the owed ones (owedBrokers):
+// [{ id, watermark }]. With none, nothing is owed to anyone and age alone
+// decides.
 export function pruneFloor(brokers) {
   if (!brokers || brokers.length === 0) return Infinity
   return Math.min(...brokers.map((b) => b.watermark))
+}
+
+// owedBrokers is whose watermark holds retention back. While a broker is on,
+// only the brokers that are on: a paused one keeps its backlog for the
+// retention window and not beyond, since counting it would grow the store for
+// as long as its switch stays off (#230). With every broker off nothing leaves
+// the phone, so all of them count and nothing unsent is pruned, as on a phone
+// whose one broker never connected (#671 review).
+export function owedBrokers(brokers) {
+  const on = (brokers || []).filter((b) => b.enabled)
+  return on.length ? on : (brokers || [])
 }
 
 // dotState folds the brokers that are on into the one MQTT dot in the top bar.
@@ -139,10 +151,13 @@ export function presetsFrom(cfg) {
     if (!p || typeof p !== 'object') continue
     const key = typeof p.key === 'string' && p.key.trim() ? p.key.trim() : null
     const url = typeof p.url === 'string' ? p.url.trim() : ''
-    if (!key || !/^wss?:\/\//.test(url) || out.some((x) => x.key === key)) continue
+    let parsed = null
+    try { parsed = new URL(url) } catch (_) { parsed = null }
+    const scheme = parsed ? parsed.protocol : ''
+    if (!key || (scheme !== 'wss:' && scheme !== 'ws:') || !parsed.hostname || out.some((x) => x.key === key)) continue
     out.push({
       key,
-      name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : new URL(url).hostname,
+      name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : parsed.hostname,
       url,
       auth: p.auth === 'password' ? 'password' : 'companion',
       format: p.format === 'packets' ? 'packets' : 'wardrive',

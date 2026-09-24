@@ -48,6 +48,16 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
   > lose that weekend for the map, and with every broker off the prune had no floor and dropped
   > unsent rows past the age cap. The backlog leaves when the switch goes on, the hunter's
   > decision at that moment. `resumeAtHead` is gone; `forgetBroker` stays for a removed broker.
+  >
+  > **Amended 2026-09-24 (review of #671; Kasper chose this rule, option b, on 2026-09-25).** A pause keeps its backlog for the retention window,
+  > not beyond it. While another broker is on, a paused broker does not hold the prune back, so
+  > receptions older than 7 days that the brokers that are on already have are deleted, the paused
+  > broker's backlog with them. Counting paused brokers would keep that backlog, but the store
+  > would then grow for as long as a switch stays off, and switching a broker off for good is a
+  > use the page offers (the site's own broker cannot be removed, only switched off). That is the
+  > unbounded store #230 removed. With every broker off, all of them count: nothing leaves the
+  > phone, and nothing unsent is deleted, as on a phone whose one broker never connected. The
+  > rule is `owedBrokers` in `brokers.js`.
 - **The form connects before it saves.** A typo in the address shows up under the field instead of
   as a dot that never lights. A broker that does not answer within 8 s is not stored.
 - **A publish that is never acknowledged fails after 10 s.** A broker can accept the connection

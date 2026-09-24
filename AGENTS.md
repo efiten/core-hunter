@@ -773,7 +773,10 @@ signs itself (`app/src/companionsign.js`).
   IndexedDB is the working set; the backend deduplicates. Publication is tracked by a durable
   watermark, not an in-memory set, so a restart does not re-publish the store.
   There is one watermark per broker (#554): each broker drains on its own, so one that is offline
-  does not hold the others back, and retention deletes only below the lowest of them.
+  does not hold the others back, and retention deletes only below the lowest watermark of the
+  brokers that are on. A broker switched off keeps its backlog for the retention window, not
+  beyond it; with every broker off, all of them count and nothing unsent is deleted
+  (`owedBrokers` in `app/src/brokers.js`).
   See `docs/2026-07-22-retention-and-bounded-reads.md` (#230); this replaces an earlier absolute
   "never deletes local rows" rule, which made the store unbounded.
 - Queue reads are **bounded** — never `getAll()` over the store. The display reads its time window via
