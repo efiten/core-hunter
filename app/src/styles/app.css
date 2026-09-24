@@ -73,40 +73,20 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 
 /* Node-position layer (#197): ▲ = the node's own advertised position, ● = our
    RSSI estimate — a solid hot dot, the same mark the analyser map's Locate
-   uses for its estimate, so the two surfaces agree on what the glyph means. */
-.np-advert { position: relative; font-size: 14px; line-height: 16px; text-align: center; color: var(--ch-text);
-  text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); cursor: pointer; }
-/* Absolute so the label never shifts the ▲ off its anchored coordinate. The
-   layer is opt-in, so names are shown on the map while it is on (#197). */
-.np-label, .np-label-probe { font-size: 11px; line-height: 1; white-space: nowrap; }
-.np-label { position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
-  margin-left: 4px;
-  color: var(--ch-text); text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); }
-/* The declutter's measuring probe (#539): same font box as .np-label but
-   never the class itself, so nothing counting labels counts the probe. */
-.np-label-probe { position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
-.np-estimate { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg);
-  background: var(--ch-sig-hot); cursor: pointer; position: relative; }
-/* Bigger touch boxes for the node markers (#539): ▲ measures 14x16 and ● 12px.
-   30px rather than the full 44px, deliberately: a marker element swallows the
-   pan gesture that starts on it, so 33 markers x 44px would turn a dense
-   cluster into a patch of map that cannot be dragged. 30px doubles the target
-   without making that dead zone dominant. */
-.np-advert::after, .np-estimate::after { content: ''; position: absolute;
-  left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
+   uses for its estimate, so the two surfaces agree on what the glyph means.
+   Both are GL layers since #632 (nodeglyphs.js), so there is no marker to
+   style; what is left here is the declutter's measuring probe (#539), which
+   reads the font the symbol layer prints in. Noto Sans is the style's glyph
+   font; Android ships it, so the measure is exact there, and Arial is the
+   nearest metric elsewhere. */
+.np-label-probe { font-family: "Noto Sans", Arial, sans-serif; font-size: 11px; line-height: 1; white-space: nowrap;
+  position: absolute; left: -9999px; top: 0; visibility: hidden; pointer-events: none; }
 /* A hex cell's label (#556): the id prefixes heard there, centred on the cell,
    in the map's own halo so it reads over any tier colour. Never a tap target. */
 .hex-label { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 10px; line-height: 1; white-space: nowrap; color: var(--ch-text);
   text-shadow: 0 0 3px var(--ch-bg), 0 0 3px var(--ch-bg); pointer-events: none; }
 .np-muted { color: var(--ch-muted); }
-/* The coverage (#603): a selected ▲ carries its name in a pill in its own
-   hue; the others dim with their stars. .rc-hub is the ● of a star with no
-   registry position, in the repeater's hue (inline). */
-.np-advert.np-selected .np-label { font-size: 12px; font-weight: 600; padding: 2px 8px; border: 1.5px solid currentColor; border-radius: 999px; background: var(--ch-surface); color: inherit; }
-.np-dim { opacity: 0.35; }
-.rc-hub { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ch-bg); background: var(--ch-muted); cursor: pointer; position: relative; }
-.rc-hub::after { content: ''; position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
 
 /* The node-position layer's one line over the map: it appears only to say the
    registry came up empty, which is an explanation rather than a legend and so

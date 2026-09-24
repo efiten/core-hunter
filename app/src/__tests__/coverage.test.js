@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   isRepeaterHearing, isTwoWay, hueSlot, assignHues, HUE_COUNT, NEAR_M,
   rayStrength, rayStyle, ONE_WAY_OPACITY, DIM_OPACITY,
-  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim, starKey, starSelected, starLabel,
+  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim, starKey, starSelected,
 } from '../coverage.js'
 import { estimateFor } from '../nodelayer.js'
 
@@ -312,43 +312,6 @@ describe('starKey', () => {
   })
 })
 
-// A star's name in a tooltip (#661). A 1-byte id is an id, never a name
-// (AGENTS.md 5.4 item 6), and a short relay id's resolver name follows rule 2:
-// it wears ~, and gives way to the id once the registry places a node with that
-// prefix out of reach.
-describe('starLabel', () => {
-  const pts = (id, kind) => [{ sender_id: id, sender_kind: kind, lat: 51, lon: 4, rssi: -80 }]
-  const named = () => 'Heumensoord-RPT'
-  it('reads # and the id for a star keyed by one byte, whatever name it is given', () => {
-    expect(starLabel({ id: '64', points: pts('64', 'path_hash') })).toBe('#64')
-    expect(starLabel({ id: '64', points: pts('64', 'path_hash') }, { nameOf: named, attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) })).toBe('#64')
-    expect(starLabel({ id: 'b7', points: pts('b7', 'relay') }, { nameOf: named })).toBe('#b7')
-  })
-  it('names a short relay id by its resolver name with ~, unless a node with that prefix is out of reach', () => {
-    const star = { id: '4a4a', points: pts('4a4a', 'relay') }
-    expect(starLabel(star, { nameOf: () => 'repeater-3', attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) })).toBe('~repeater-3')
-    expect(starLabel(star, { nameOf: () => 'repeater-3', attributionOf: () => ({ rule: 'estimate', prefixKnown: true }) })).toBe('4a4a')
-    expect(starLabel(star, { nameOf: () => undefined, attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) })).toBe('4a4a')
-  })
-  // The map's registry slice ends at the reach around the view, so a node with
-  // that prefix further out never makes prefixKnown there. The name lookup's
-  // own position for the named node says the same thing: out of the hearing's
-  // reach, the name is that node's and the id shows.
-  it('gives way to the id when the named node advertises a position out of the hearing\'s reach', () => {
-    const star = { id: '4a4a', points: pts('4a4a', 'relay') }   // -80 dBm at 51,4: the full 15 km
-    const opts = { nameOf: () => 'repeater-3', attributionOf: () => ({ rule: 'estimate', prefixKnown: false }) }
-    expect(starLabel(star, { ...opts, nameAt: () => ({ lat: 51.5, lon: 4 }) })).toBe('4a4a')          // 55 km north
-    expect(starLabel(star, { ...opts, nameAt: () => ({ lat: 51.1, lon: 4 }) })).toBe('~repeater-3')    // 11 km north
-    expect(starLabel(star, { ...opts, nameAt: () => null })).toBe('~repeater-3')
-    expect(starLabel(star, { ...opts, nameAt: () => undefined })).toBe('~repeater-3')
-  })
-  it('names a full key by its name as it is, and falls back to the first 8 hex', () => {
-    const star = { id: A, points: pts(A, 'advert_pubkey') }
-    expect(starLabel(star, { nameOf: () => 'Zuid', attributionOf: () => null })).toBe('Zuid')
-    expect(starLabel(star, { nameOf: () => '', attributionOf: () => null })).toBe('aaaaaaaa')
-    expect(starLabel(star)).toBe('aaaaaaaa')
-  })
-})
 
 // A pick is a raw id (the app's selection, the map's picker), while a star is
 // keyed by its node once a hearing is attributed. Either names the star.

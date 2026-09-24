@@ -56,6 +56,13 @@
     "body": "The target list folds a node's short ids into one row when the names match, without waiting for an advert. Look-alike ids print longer."
   },
   {
+    "id": "2026-09-21-node-glyphs-in-the-scene",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "Node markers stand in the map",
+    "body": "The ▲, ● and hubs are drawn by the map itself now: they follow the terrain, sit among the 3D pillars and stop floating. A selected name has a halo instead of a pill."
+  },
+  {
     "id": "2026-09-21-radio-in-status",
     "date": "2026-09-21",
     "where": "app",

@@ -43,6 +43,8 @@ import * as appNotice from '../app/src/nodeposnotice.js'
 import * as webTicker from './receptionticker.js'
 import * as webLabels from './nodelabels.js'
 import * as appLabels from '../app/src/nodelabels.js'
+import * as webGlyphs from './nodeglyphs.js'
+import * as appGlyphs from '../app/src/nodeglyphs.js'
 import * as appTicker from '../app/src/receptionlog.js'
 import * as webSky from './sky.js'
 import * as appSky from '../app/src/sky.js'
@@ -185,6 +187,21 @@ describe('nodelabels — parity between the app and web copies', () => {
     expect(appLabels.LABEL_CHAR_PX).toBe(webLabels.LABEL_CHAR_PX)
     expect(appLabels.LABEL_HEIGHT_PX).toBe(webLabels.LABEL_HEIGHT_PX)
     expect(appLabels.LABEL_OFFSET_PX).toBe(webLabels.LABEL_OFFSET_PX)
+  })
+})
+
+// nodeglyphs.js is a verbatim copy on both sides (#632): the node layer's ▲
+// and ● are the same GL features on both maps.
+describe('nodeglyphs — parity between the app and web copies', () => {
+  it('is the same file, byte for byte', () => {
+    expect(readFileSync(new URL('./nodeglyphs.js', import.meta.url), 'utf8'))
+      .toBe(readFileSync(new URL('../app/src/nodeglyphs.js', import.meta.url), 'utf8'))
+  })
+  it('builds the same features and layers', () => {
+    const adv = { key: 'AB', lon: 5.8, lat: 51.8, label: 'X', color: '#fff', selected: true }
+    expect(appGlyphs.advertFeature(adv)).toEqual(webGlyphs.advertFeature(adv))
+    const theme = { bg: '#0b0e14', surface: '#121721' }
+    expect(appGlyphs.nodeGlyphLayers(theme)).toEqual(webGlyphs.nodeGlyphLayers(theme))
   })
 })
 

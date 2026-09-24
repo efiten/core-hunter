@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { LAYER_ORDER } from './mapcore.js'
+import { NODE_GLYPH_LAYERS } from './nodeglyphs.js'
 
 // #626, the over/under half, the map's copy of app/src/__tests__/huntmap-order.
 // addOverlays adds every layer behind a getLayer guard, so before this the
@@ -19,7 +20,9 @@ const literal = [...SRC.matchAll(/addLayer\(\{\s*id: '([^']+)'/g)].map((m) => m[
 // carry `id: src` and the pattern above cannot see them.
 const looped = [...SRC.matchAll(/for \(const src of \[([^\]]+)\]\)/g)]
   .flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]))
-const added = [...literal, ...looped]
+// The node glyph layers are added from their specs (nodeglyphs.js, #632), so
+// their ids are not literals here either; the module names them.
+const added = [...literal, ...looped, ...NODE_GLYPH_LAYERS]
 
 describe('LAYER_ORDER covers what the map actually adds', () => {
   // A pattern that matched nothing would make every assertion below vacuous.

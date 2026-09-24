@@ -3,10 +3,11 @@ import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeig
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
+import { advertFeature, dotFeature, nodeGlyphLayers, nearestGlyph, hitBox, drawTriangle, fc as glyphFc, EMPTY_FC as GLYPH_EMPTY, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE, NODE_ADVERT_LAYER, NODE_DOT_LAYER, NODE_GLYPH_LAYERS, TRI_IMAGE, TRI_W, TRI_H } from './nodeglyphs.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected, starLabel } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
 import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey } from './rendercache.js'
@@ -59,6 +60,9 @@ export const LAYER_ORDER = [
   // The node-position layer sits above the hex heat: it is an explicit opt-in
   // overlay, and a connector buried under a hot cell defeats drawing it.
   'nodedrift', 'nodecircle-search', 'nodecircle-drift',
+  // The ▲, ● and hubs, GL layers since #632: the dots first, so a name never
+  // hides under a dot, and both above the connectors they belong to.
+  NODE_DOT_LAYER, NODE_ADVERT_LAYER,
 ]
 
 // 3D mode (#147 phase 2): setView() tilts the camera (pitchTransition,
@@ -140,7 +144,7 @@ export function createHuntMap(containerId) {
   map.on('error', reportMapError)
   // Node-position layer (#197): registry nodes with a self-advertised position,
   // drawn against our own estimate. Off until the FAB turns it on.
-  let nodePositions = [], nodeLayerMode = 'off', nodeMarkers = []
+  let nodePositions = [], nodeLayerMode = 'off'
   const nodeLayerOn = () => nodeLayerMode !== 'off'
   // The coverage (#603): every repeater's reach in the layer's third stop.
   // coverageSel is the marker-tap selection; a picked target counts too
@@ -150,7 +154,7 @@ export function createHuntMap(containerId) {
   // stars must stay up at a quarter, so app.js hands the sender-free rows.
   // starCache keeps each star's estimate from tick to tick (coverage.js).
   const coverageSel = new Set(), starCache = new Map()
-  let coverageHue = new Map(), lastReachRows = null, hubMarkers = []
+  let coverageHue = new Map(), lastReachRows = null, hubFeatures = []
   // A reception's attribution by reach (#661, attribution.js): app.js works it
   // out every tick and puts it on the row as _attr, so the stars, the dots and
   // the node-position layer place a relay id exactly as the HUD names it.
@@ -200,7 +204,7 @@ export function createHuntMap(containerId) {
   // the selected ids, and the ids of the stars they select (starSelected), so
   // a ▲ whose star was picked by a relay id placed on it is not dimmed.
   function drawCoverage(records) {
-    hubMarkers.forEach((m) => m.remove()); hubMarkers = []
+    hubFeatures = []
     if (!coverageOn() || !map.getSource('reach')) {
       coverageHue = new Map(); starCache.clear()
       if (map.getSource('reach')) { map.getSource('reach').setData(EMPTY); rays.setData([]) }
@@ -217,15 +221,13 @@ export function createHuntMap(containerId) {
     coverageHue = new Map([...hues].map(([id, slot]) => [id, colorOf(slot)]))
     map.getSource('reach').setData(fcRays)
     rays.setData(fcRays.features)
+    // The ● hub of a star with no registry position, in the star's hue. A
+    // feature of the dot layer since #632, drawn with the estimates by
+    // drawNodeLayer, so one setData carries every ●. A tap selects the star.
     for (const st of stars) {
       if (st.origin.kind !== 'estimate') continue   // the ▲ of the node layer is the hub
-      const el = document.createElement('div')
-      el.className = 'rc-hub' + (selected.size && !selectedStars.has(st.id) ? ' np-dim' : '')
-      el.style.background = coverageHue.get(st.id)
-      // A hub keyed by one byte reads '#64', never a bare hash (starLabel).
-      el.title = `${starLabel(st)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where you drove; unmeasured is not unreachable.`
-      el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
-      hubMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([st.origin.lon, st.origin.lat]).addTo(map))
+      hubFeatures.push(dotFeature({ key: st.id, kind: 'hub', lon: st.origin.lon, lat: st.origin.lat,
+        color: coverageHue.get(st.id), dim: !!(selected.size && !selectedStars.has(st.id)) }))
     }
     return { selected, selectedStars, count: fcRays.features.length }
   }
@@ -236,8 +238,8 @@ export function createHuntMap(containerId) {
   const labelMeasurer = () => npMeasure || (npMeasure = createLabelMeasurer(map.getContainer()))
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   // The repeater whose popup comes back after a selecting tap (#623). A tap
-  // that selects redraws the node layer, and the redraw removes every marker,
-  // the tapped one included, so its popup has to be reopened on the rebuilt one.
+  // that selects redraws the node layer, and the redraw closes the popup, so
+  // it has to be reopened on the redrawn glyph.
   let reopenNodeKey = null
   const ACQUIRE_ZOOM = 18
   let follow = true, lastPos = null, onFollow = null, acquired = false
@@ -565,7 +567,7 @@ export function createHuntMap(containerId) {
     // darkened a bar against its own cell (#412). Re-applied here like the
     // sky, since setStyle drops it. Guarded for an older MapLibre.
     if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
-    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d']) {
+    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -689,6 +691,19 @@ export function createHuntMap(containerId) {
       filter: ['==', ['get', 'style'], 'drift'],
       layout: { visibility: nodeLayerOn() ? 'visible' : 'none' },
       paint: { 'line-color': ['get', 'color'], 'line-width': 1.2, 'line-opacity': 0.8, 'line-dasharray': [1, 3] } })
+    // The ▲ and ● as layers (#632, nodeglyphs.js). The ▲ is an SDF image so
+    // icon-color paints it per feature; a style swap drops images with the
+    // layers, so it is added again here. The colours are the theme's at this
+    // moment, like every other overlay's: a theme swap re-runs this.
+    if (!map.hasImage(TRI_IMAGE)) {
+      const cv = document.createElement('canvas'); cv.width = TRI_W; cv.height = TRI_H
+      const ctx = cv.getContext('2d'); drawTriangle(ctx)
+      map.addImage(TRI_IMAGE, ctx.getImageData(0, 0, TRI_W, TRI_H), { sdf: true, pixelRatio: 2 })
+    }
+    const style = map.getStyle()
+    for (const spec of nodeGlyphLayers({ bg: cssVar('--ch-bg'), surface: cssVar('--ch-surface'), glyphs: !!(style && style.glyphs) })) {
+      if (!map.getLayer(spec.id)) map.addLayer({ ...spec, layout: { ...spec.layout, visibility: nodeLayerOn() ? 'visible' : 'none' } })
+    }
     // One pass puts the stack in its declared order (#626), whatever order the
     // adds ran in. Moving each present layer to the top in LAYER_ORDER leaves
     // them exactly as declared, and repairs a stack built across two runs on a
@@ -697,6 +712,11 @@ export function createHuntMap(containerId) {
     for (const id of LAYER_ORDER) if (map.getLayer(id)) map.moveLayer(id)
     rays.addTo(map)
     rays.setVisible(coverageOn() && mode3D)
+    // The glyph sources were just re-added empty, and their features carry
+    // the theme's colours, so the node layer's signature is stale whatever
+    // the rows say: a theme swap or the bare fallback used to leave the ▲ and
+    // ● gone until something else changed (#632 review).
+    nodePosSig = null
     draw()
   }
   // Initial style: 'load' fires once when the first style is ready. A theme
@@ -735,15 +755,30 @@ export function createHuntMap(containerId) {
       .setLngLat([r.lon, r.lat]).setHTML(popupHtml(r, lastSelected)).addTo(map)
     wireIsolate(popup, r); wireIgnore(popup, r)
   }
-  // A tap on bare map clears the coverage selection (#603); marker taps stop
-  // their own propagation and never land here.
+  // The glyph a tap lands on (#632): the nearest ▲ or ● inside the tap box,
+  // the 30px the markers used to carry. Asked first by every click path, so a
+  // glyph beats the dot or the cell under it, as the marker did by sitting on
+  // top and stopping propagation.
+  function nodeGlyphAt(point) {
+    const layers = NODE_GLYPH_LAYERS.filter((id) => map.getLayer(id))
+    if (!layers.length) return null
+    return nearestGlyph(map.queryRenderedFeatures(hitBox(point), { layers }), point, (c) => map.project(c))
+  }
+  // A tap on bare map clears the coverage selection (#603). A tap on a glyph
+  // goes to the glyph.
   map.on('click', (e) => {
+    const glyph = nodeGlyphAt(e.point)
+    if (glyph) { onGlyphTap(glyph); return }
     if (!coverageSel.size) return
     const layers = ['points', 'points-3d', 'hex', 'hex-3d'].filter((id) => map.getLayer(id))
     if (!map.queryRenderedFeatures(e.point, { layers }).length) clearCoverageSelection()
   })
+  for (const layerId of NODE_GLYPH_LAYERS) {
+    map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
+    map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
+  }
   for (const layerId of ['points', 'points-3d']) {
-    map.on('click', layerId, onPointClick)
+    map.on('click', layerId, (e) => { if (!nodeGlyphAt(e.point)) onPointClick(e) })
     map.on('mouseenter', layerId, () => { map.getCanvas().style.cursor = 'pointer' })
     map.on('mouseleave', layerId, () => { map.getCanvas().style.cursor = '' })
   }
@@ -927,36 +962,32 @@ export function createHuntMap(containerId) {
   }
 
   // The name rides alongside the ▲ rather than only inside the popup: this
-  // layer is opt-in, so the map can afford the labels while it is on. The
-  // label is absolutely positioned so it never shifts the glyph off the
-  // coordinate the marker is anchored to.
-  function nodeMarkerEl(cls, glyph, label) {
-    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-    const el = document.createElement('div')
-    const name = label ? `<span class="np-label">${esc(label)}</span>` : ''
-    el.innerHTML = `<div class="${cls}">${glyph}${name}</div>`
-    return el
+  // What a tap on a glyph does (#632), the marker's click handler moved to
+  // the layer. In the reach stop a tap on a ▲ or ● selects the repeater and
+  // the popup comes back after the redraw (reopenNodeKey, #623); a tap on a
+  // hub selects its star. Outside it a tap toggles the node's popup.
+  // nodeInfo is what the last draw knew per node, so the popup is built from
+  // the same rows the glyph was drawn from.
+  let nodeInfo = new Map(), openNodePopup = null, openNodeKey = null
+  function onGlyphTap(f) {
+    const { kind, key } = f.properties
+    if (kind === 'hub') { toggleCoverageSelection(key); return }
+    const info = nodeInfo.get(key)
+    if (!info) return
+    if (coverageOn()) { reopenNodeKey = key; toggleCoverageSelection(key); return }
+    if (openNodePopup && openNodeKey === key) { openNodePopup.remove(); return }
+    showNodePopup(key, f.geometry.coordinates)
   }
-
-  // A Marker built from a custom element does not toggle its popup on tap by
-  // itself, so wire the click explicitly.
-  // With the reach on, a repeater's ▲ takes the hue of its star, a selected
-  // one carries its name in a pill, the others dim with their stars, and a
-  // tap selects (#603); the popup still opens.
-  function addNodeMarker(cls, glyph, lngLat, popup, label, { color = null, selected = false, dim = false, onTap = null } = {}) {
-    const el = nodeMarkerEl(cls, glyph, label)
-    const inner = el.firstElementChild
-    if (color) inner.style.color = color
-    if (selected) inner.classList.add('np-selected')
-    if (dim) inner.classList.add('np-dim')
-    const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map)
-    // A selecting tap redraws the node layer, which removes this very marker,
-    // so toggling its popup afterwards would open it on a marker already gone.
-    // That tap sets reopenNodeKey instead and drawNodeLayer reopens the popup
-    // on the rebuilt marker (#623). A tap with nothing to select just toggles.
-    el.addEventListener('click', (e) => { e.stopPropagation(); if (onTap) onTap(); else marker.togglePopup() })
-    nodeMarkers.push(marker)
-    return marker
+  // At the glyph that was tapped, ▲ or ●, as the marker's popup was; the one
+  // that comes back after a selecting redraw opens at the ▲.
+  function showNodePopup(key, at = null) {
+    const info = nodeInfo.get(key)
+    if (!info) return
+    if (openNodePopup) openNodePopup.remove()
+    const { n, p, est, opts } = info
+    const popup = nodePopup(n, p, est, opts).setLngLat(at || [n.lon, n.lat]).addTo(map)
+    popup.on('close', () => { if (openNodePopup === popup) { openNodePopup = null; openNodeKey = null } })
+    openNodePopup = popup; openNodeKey = key
   }
 
   // Recomputed per tick: the visible node set follows the viewport, and each
@@ -967,7 +998,10 @@ export function createHuntMap(containerId) {
     if (!nodeLayerOn()) {
       map.getSource('nodedrift').setData(EMPTY)
       map.getSource('nodecircle').setData(EMPTY)
-      nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
+      map.getSource(NODE_GLYPH_SOURCE).setData(GLYPH_EMPTY)
+      map.getSource(NODE_DOT_SOURCE).setData(GLYPH_EMPTY)
+      if (openNodePopup) openNodePopup.remove()
+      nodeInfo = new Map()
       return
     }
 
@@ -1025,8 +1059,9 @@ export function createHuntMap(containerId) {
     if (sig === nodePosSig) return   // nothing changed — leave the layer (and any open popup) alone
     nodePosSig = sig
 
-    const lines = [], circles = []
-    nodeMarkers.forEach((m) => m.remove()); nodeMarkers = []
+    const lines = [], circles = [], adverts = [], dots = [...hubFeatures]
+    const info = new Map()
+    const textColor = cssVar('--ch-text'), hotColor = cssVar('--ch-sig-hot')
 
     for (const { n, est, p } of draw) {
       const color = driftColor(p)
@@ -1050,16 +1085,13 @@ export function createHuntMap(containerId) {
       // removes that key (toggleCoverageSelection), so a star selected through
       // a picked relay id offers "Show reach", not a "Hide reach" it cannot keep.
       const picked = !!(cov && cov.selected.has(key))
-      const tap = reachOn ? () => { reopenNodeKey = key; toggleCoverageSelection(key) } : null
-      const popupFor = () => nodePopup(n, p, est, { key, reachOn, selected: picked, heard: !!hue })
-      const adv = addNodeMarker('np-advert', '▲', [n.lon, n.lat], popupFor(), labelled.has(n.pubkey) ? (n.name || n.pubkey) : null,
-        { color: hue, selected, dim: !!(cov && cov.selected.size && !selected), onTap: tap })
-      // Only on the ▲, so a tap on the ● does not leave two popups open.
-      if (reopenNodeKey === key) adv.togglePopup()
+      info.set(key, { n, p, est, opts: { key, reachOn, selected: picked, heard: !!hue } })
+      adverts.push(advertFeature({ key, lon: n.lon, lat: n.lat, label: labelled.has(n.pubkey) ? (n.name || n.pubkey) : '',
+        color: hue || textColor, selected, dim: !!(cov && cov.selected.size && !selected) }))
       if (!est || !est.centroid) continue
       // The ● is the same repeater, so it selects the same star (coverage log,
       // decision 6: a tap on a repeater's ▲ or ● selects it).
-      addNodeMarker('np-estimate', '', [est.centroid.lon, est.centroid.lat], popupFor(), null, { onTap: tap })
+      dots.push(dotFeature({ key, kind: 'estimate', lon: est.centroid.lon, lat: est.centroid.lat, color: hotColor }))
       lines.push({ type: 'Feature', properties: { color },
         geometry: { type: 'LineString', coordinates: [[n.lon, n.lat], [est.centroid.lon, est.centroid.lat]] } })
       if (p.circle) {
@@ -1068,12 +1100,19 @@ export function createHuntMap(containerId) {
           geometry: { type: 'LineString', coordinates: ring } })
       }
     }
-    // Cleared whether or not it matched: a repeater that scrolled out of view
-    // between the tap and the redraw must not pop its popup open the next time
-    // it comes back.
-    reopenNodeKey = null
+    nodeInfo = info
     map.getSource('nodedrift').setData(fc(lines))
     map.getSource('nodecircle').setData(fc(circles))
+    map.getSource(NODE_GLYPH_SOURCE).setData(glyphFc(adverts))
+    map.getSource(NODE_DOT_SOURCE).setData(glyphFc(dots))
+    // An open popup belongs to a node that may have left the view or changed
+    // its text; the redraw closes it, and reopens the one a selecting tap asked
+    // for (#623). Cleared whether or not it matched: a repeater that scrolled
+    // out of view between the tap and the redraw must not pop its popup open
+    // the next time it comes back.
+    if (openNodePopup) openNodePopup.remove()
+    if (reopenNodeKey && info.has(reopenNodeKey)) showNodePopup(reopenNodeKey)
+    reopenNodeKey = null
   }
 
   function nodePopup(n, p, est, { key = null, reachOn = false, selected = false, heard = false } = {}) {
@@ -1206,7 +1245,7 @@ export function createHuntMap(containerId) {
   function setNodeLayer(m) {
     nodeLayerMode = m === 'reach' || m === 'positions' ? m : 'off'
     if (!coverageOn()) coverageSel.clear()
-    for (const id of ['nodedrift', 'nodecircle-search', 'nodecircle-drift']) {
+    for (const id of ['nodedrift', 'nodecircle-search', 'nodecircle-drift', ...NODE_GLYPH_LAYERS]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', nodeLayerOn() ? 'visible' : 'none')
     }
     applyReachVisibility()

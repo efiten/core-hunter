@@ -1,4 +1,4 @@
-import { test, expect, mapSettled, setNodePos, toggleLocate } from './fixtures.js'
+import { test, expect, mapSettled, setNodePos, toggleLocate, glyphs, expectGlyphs, labelsOnMap, tapGlyph } from './fixtures.js'
 
 // Node-position layer (#197): a sender's self-advertised position (▲) drawn
 // against our RSSI estimate (●), with the gap between them as drift.
@@ -141,15 +141,35 @@ test('checking it draws the advertised marker, names it on the map and reflects 
   // Exactly one marker per node — concurrent redraws must not leave duplicates.
   // The marker only appears after two sequential round-trips (points, then the
   // resolve that supplies the advertised position), so allow for both.
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 15000 })
   // The name is on the map, not only in the popup: the layer is opt-in.
-  await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
+  await expect.poll(() => labelsOnMap(page)).toEqual(['Repeater-Zuid'])
   await expect(page).toHaveURL(/[?&]nodepos=positions/)
 
-  await page.locator('.np-advert').click({ force: true })
+  await tapGlyph(page)
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText('Repeater-Zuid')
   await expect(popup).toContainText('▲ advertised · ● estimated')
+})
+
+// #632 review: a tap on the ● opens the popup at the ●, as the marker's did,
+// not at the ▲ of the same node.
+test('a tap on the estimate opens the popup where the estimate is', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
+  await page.goto('/')
+  await setNodePos(page, 'positions')
+  await expectGlyphs(page, 'estimate', 1, { timeout: 15000 })
+  await tapGlyph(page, SENDER, 'estimate')
+  await expect(page.locator('.maplibregl-popup-content')).toContainText('Repeater-Zuid')
+  const [dot, popup] = await page.evaluate((k) => {
+    const p = window.__glyphPagePoint(k, 'estimate')
+    const r = document.querySelector('.maplibregl-popup').getBoundingClientRect()
+    return [p, { x: r.left + r.width / 2, y: r.bottom }]
+  }, SENDER)
+  // The popup's tip stands on its anchor: horizontally on the ●, and above it.
+  expect(Math.abs(popup.x - dot.x)).toBeLessThan(4)
+  expect(dot.y - popup.y).toBeGreaterThan(-2)
+  expect(dot.y - popup.y).toBeLessThan(20)
 })
 
 test('a drift under 100 m reports a distance but claims no radius', async ({ page }) => {
@@ -158,7 +178,7 @@ test('a drift under 100 m reports a distance but claims no radius', async ({ pag
   await routes(page, { lat: 51.0004, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
   await setNodePos(page, 'positions')
-  await page.locator('.np-advert').first().click({ force: true })
+  await tapGlyph(page)
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText(/drift \d+ m/)
   await expect(popup).not.toContainText('search radius')
@@ -176,8 +196,8 @@ test('a one-sided estimate does not claim a search radius', async ({ page }) => 
   // tight, which can push the advertised marker outside the viewport.
   await page.goto('/?lat=51.0012&lon=4.0&z=14')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1)
-  await page.locator('.np-advert').click({ force: true })
+  await expectGlyphs(page, 'advert', 1)
+  await tapGlyph(page)
   await expect(page.locator('.maplibregl-popup-content')).toContainText('radius not trusted')
 })
 
@@ -198,7 +218,7 @@ test('the layer is refused to a guest, whose resolve responses carry no position
   await expect(page.locator('#nodepos-key')).toContainText(/account/i)
   await expect(fab).toHaveAttribute('aria-pressed', 'false')
   // What the gate is for is unchanged: nothing is drawn.
-  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 0)
 })
 
 test('the layer comes back after a Locate round-trip', async ({ page }) => {
@@ -208,12 +228,12 @@ test('the layer comes back after a Locate round-trip', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
 
   await toggleLocate(page) // Locate lives in the filter panel (#539)
-  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 0)
   await toggleLocate(page, false)
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
 })
 
 test('a relay id longer than 3 bytes does not become an estimate for a node (#661)', async ({ page }) => {
@@ -232,13 +252,13 @@ test('a relay id longer than 3 bytes does not become an estimate for a node (#66
   })
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
   // No ● and no connector: the relay receptions carried no attributable identity.
-  await expect(page.locator('.np-estimate')).toHaveCount(0)
+  await expectGlyphs(page, 'estimate', 0)
 
   // The popup agrees: it names only the ▲, and like the estimate branch it
   // repeats no position notice (#662).
-  await page.locator('.np-advert').first().click()
+  await tapGlyph(page)
   const popup = page.locator('.maplibregl-popup')
   await expect(popup).toContainText('▲ advertised')
   await expect(popup).not.toContainText('estimated')
@@ -256,8 +276,8 @@ test('a 2-byte relay heard near the one node with that prefix pairs onto it (#66
   await routes(page, { lat: 51.0005, lon: 4.0, points: relayRing(), nodes: [RELAY_NODE] })
   await page.goto('/?mode=points&lat=51&lon=4&z=15')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
-  await expect(page.locator('.np-estimate')).toHaveCount(1)
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
+  await expectGlyphs(page, 'estimate', 1)
 })
 
 test('a relay with two candidate nodes in reach pairs with neither, the second one out of view (#661)', async ({ page }) => {
@@ -268,9 +288,9 @@ test('a relay with two candidate nodes in reach pairs with neither, the second o
   await routes(page, { lat: 51.0005, lon: 4.0, points: relayRing(), nodes: [RELAY_NODE, elsewhere] })
   await page.goto('/?mode=points&lat=51&lon=4&z=15')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
-  await expect(page.locator('.np-label')).toHaveText('Heumensoord-RPT')
-  await expect(page.locator('.np-estimate')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
+  await expect.poll(() => labelsOnMap(page)).toEqual(['Heumensoord-RPT'])
+  await expectGlyphs(page, 'estimate', 0)
 })
 
 // #376: the layer used to end in an empty state four different ways, all of
@@ -285,7 +305,7 @@ test('with markers on screen the popup names its glyphs and nothing repeats a no
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
   // Nothing in the corner explains a glyph any more, whatever state it is in.
   await expect(page.locator('#nodepos-stack')).not.toContainText('▲')
   // Nor does it say that positions are inferred (#662). The stack as a whole,
@@ -294,7 +314,7 @@ test('with markers on screen the popup names its glyphs and nothing repeats a no
   await expect(page.locator('#nodepos-stack')).not.toContainText(/inferred|GPS/i)
   await expect(page.locator('#nodepos-key')).toBeHidden()
 
-  await page.locator('.np-advert').first().click()
+  await tapGlyph(page)
   const popup = page.locator('.maplibregl-popup')
   await expect(popup).toContainText('advertised')
   await expect(page.locator('.maplibregl-popup .np-caveat')).toHaveCount(0)
@@ -317,7 +337,7 @@ for (const [label, fulfil, expected] of [
     await page.goto('/?mode=points')
     await setNodePos(page, 'positions')
     await expect(page.locator('#nodepos-key')).toContainText(expected, { timeout: 10000 })
-    await expect(page.locator('.np-advert')).toHaveCount(0)
+    await expectGlyphs(page, 'advert', 0)
   })
 }
 
@@ -328,7 +348,7 @@ test('marks a registry the server could not refresh (#376)', async ({ page }) =>
   }))
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
   // Drawn, and dated: the positions are real, their age is not guaranteed.
   await expect(page.locator('#nodepos-key')).toContainText('positions may be a few minutes old')
 })
@@ -365,9 +385,9 @@ test('a node nobody in this filter heard is still drawn (#377)', async ({ page }
   await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
-  await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid')
-  await expect(page.locator('.np-estimate')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
+  await expect.poll(() => labelsOnMap(page)).toEqual(['Repeater-Zuid'])
+  await expectGlyphs(page, 'estimate', 0)
 })
 
 test('the registry slice follows the viewport padded by the reach, not the reception filter (#377, #661)', async ({ page }) => {
@@ -386,7 +406,7 @@ test('the registry slice follows the viewport padded by the reach, not the recep
   // where the box runs past 180 degrees and the pads say little.
   await page.goto('/?mode=points&lat=51&lon=4&z=13')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
   expect(urls.length).toBeGreaterThan(0)
   // One more draw on the settled view, so the request and the bounds read below
   // describe the same view.
@@ -448,18 +468,18 @@ test('a registry fetch that lands after Locate does not repaint the layer into t
   await setNodePos(page, 'positions')
   // The registry is in flight, so the draw is parked on its await and nothing
   // is on the map yet.
-  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 0)
 
   await toggleLocate(page) // Locate lives in the filter panel (#539)
   releaseRegistry()
   // The draw resumes inside focus mode and must stay out of it.
-  await expect(page.locator('.np-advert')).toHaveCount(0)
+  await expectGlyphs(page, 'advert', 0)
   await page.waitForTimeout(600)
-  expect(await page.locator('.np-advert').count(), 'no marker repainted into focus mode').toBe(0)
+  expect((await glyphs(page, 'advert')).length, 'no glyph repainted into focus mode').toBe(0)
 
   // And the layer still comes back when Locate is switched off.
   await toggleLocate(page, false)
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 10000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 10000 })
 })
 
 test('overlapping names are dropped, and the markers they belong to are not', async ({ page }) => {
@@ -477,15 +497,20 @@ test('overlapping names are dropped, and the markers they belong to are not', as
   await setNodePos(page, 'positions')
 
   // Every node keeps its marker: decluttering hides names, never nodes.
-  await expect(page.locator('.np-advert')).toHaveCount(4, { timeout: 15000 })
-  const labels = page.locator('.np-label')
-  const shown = await labels.count()
+  await expectGlyphs(page, 'advert', 4, { timeout: 15000 })
+  const shown = (await labelsOnMap(page)).length
   expect(shown, 'some names must be dropped in a cluster this tight').toBeLessThan(4)
   expect(shown, 'and at least one must survive').toBeGreaterThan(0)
 
-  // The ones that are drawn do not print over each other.
+  // The ones that are drawn do not print over each other. The label is the
+  // symbol layer's since #632, so its box is worked out the way the layer
+  // paints it: at the glyph's point, offset by the ▲ and measured in the
+  // probe's font (nodelabels.js labelBox).
   const overlaps = await page.evaluate(() => {
-    const boxes = [...document.querySelectorAll('.np-label')].map((el) => el.getBoundingClientRect())
+    const boxes = window.__glyphs('advert').filter((a) => a.label).map((a) => {
+      const p = window.__glyphPagePoint(a.key, 'advert')
+      return { left: p.x + 18, right: p.x + 18 + window.__measureLabel(a.label), top: p.y - 6.5, bottom: p.y + 6.5 }
+    })
     const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
     let n = 0
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (hit(boxes[i], boxes[j])) n++
@@ -494,7 +519,7 @@ test('overlapping names are dropped, and the markers they belong to are not', as
   expect(overlaps, 'labels drawn on top of each other').toBe(0)
 
   // The name of a node whose label was dropped is still reachable.
-  await page.locator('.np-advert').first().click({ force: true })
+  await tapGlyph(page)
   await expect(page.locator('.maplibregl-popup-content')).toContainText('NL-DR-GTN-OBS0')
 })
 
@@ -517,56 +542,50 @@ test('a pair the character estimate would call clear is decluttered on its real 
     nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.01)] })
   await page.goto('/?lat=51.0005&lon=4.005&z=16')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
+  await expectGlyphs(page, 'advert', 2, { timeout: 15000 })
 
   const pxPerDeg = await page.evaluate(() => {
-    const xs = [...document.querySelectorAll('.np-advert')]
-      .map((el) => el.getBoundingClientRect().left).sort((a, b) => a - b)
+    const xs = window.__glyphs('advert').map((a) => window.__glyphPagePoint(a.key, 'advert').x).sort((a, b) => a - b)
     return (xs[1] - xs[0]) / 0.01
   })
   expect(pxPerDeg, 'the two calibration markers must be distinguishable').toBeGreaterThan(100)
 
-  // 96 px apart: wider than the 93.0 the estimate claims for this name, and
-  // narrower than the 100.1 it actually occupies.
-  const GAP_PX = 96
+  // Between what the estimate claims for this name (93.0 px) and what the
+  // probe measures in the layer's font: wider than the first, narrower than
+  // the second. Read off the probe rather than hard-coded, since the font is
+  // the symbol layer's since #632 and differs per machine (Noto Sans or Arial).
+  const ESTIMATE_PX = 15 * 6.2
+  const width = await page.evaluate((name) => window.__measureLabel(name), `${NAME}1`)
+  expect(width, 'the measured width must exceed the estimate, or the case cannot exist').toBeGreaterThan(ESTIMATE_PX + 2)
+  const GAP_PX = Math.floor((ESTIMATE_PX + width) / 2)
   await page.route('**/api/nodes/positions*', (r) => r.fulfill({
     json: { nodes: [node(1, 51.0005, 4.0), node(2, 51.0005, 4.0 + GAP_PX / pxPerDeg)] },
   }))
   await setNodePos(page, 'off')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(2, { timeout: 15000 })
+  await expectGlyphs(page, 'advert', 2, { timeout: 15000 })
 
-  // Both markers, one name. Under the estimate both names were drawn, 4 px of
+  // Both markers, one name. Under the estimate both names were drawn, part of
   // the first sitting under the second.
-  const measured = await page.evaluate(() => {
-    const labels = [...document.querySelectorAll('.np-label')]
-    const r = labels.map((el) => el.getBoundingClientRect())
-    const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
-    let overlaps = 0
-    for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++) if (hit(r[i], r[j])) overlaps++
-    return { shown: labels.length, overlaps, width: r.length ? +r[0].width.toFixed(1) : 0 }
-  })
-  expect(measured.shown, 'the second name must be dropped, not printed over the first').toBe(1)
-  expect(measured.overlaps).toBe(0)
-  // Pins the arithmetic above: if the drawn label stops being ~100 px wide,
-  // 96 is no longer between the estimate and the truth and this test is
-  // measuring something else.
-  expect(measured.width).toBeGreaterThan(GAP_PX)
+  await expect.poll(() => labelsOnMap(page), { timeout: 10000 }).toHaveLength(1)
+  // Pins the arithmetic above: the gap sits between the estimate and the
+  // measured width, or this test is measuring something else.
+  expect(GAP_PX).toBeGreaterThan(ESTIMATE_PX)
+  expect(width).toBeGreaterThan(GAP_PX)
 })
 
 // The probe has to be invisible, out of the way, and still have a width to
-// read. Same class as a real label for the font, so the rules that park it
-// have to win over .np-label's own positioning.
+// read. It wears the font the symbol layer prints the names in (#632): the
+// style's Noto Sans, Arial where that is not installed.
 test('the measuring probe is hidden and parked, and reads the label font', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
   await page.goto('/')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-label')).toHaveText('Repeater-Zuid', { timeout: 15000 })
+  await expect.poll(() => labelsOnMap(page), { timeout: 15000 }).toEqual(['Repeater-Zuid'])
 
   const probe = await page.evaluate(() => {
     const el = document.querySelector('.np-label-probe')
     if (!el) return null
-    const label = document.querySelector('.np-label')
     const cs = getComputedStyle(el)
     return {
       insideMap: !!el.closest('#map'),
@@ -574,18 +593,19 @@ test('the measuring probe is hidden and parked, and reads the label font', async
       countedAsLabel: el.matches('.np-label'),
       visibility: cs.visibility,
       left: cs.left,
-      transform: cs.transform,
-      sameFont: cs.font === getComputedStyle(label).font,
+      fontFamily: cs.fontFamily,
+      fontSize: cs.fontSize,
       // Not display:none -- a box with no layout has no width to measure.
       hasWidth: el.getBoundingClientRect().width >= 0 && cs.display !== 'none',
     }
   })
   expect(probe).not.toBeNull()
-  expect(probe.insideMap, 'on document.body it would inherit the page font, not Leaflet\'s').toBe(true)
+  expect(probe.insideMap).toBe(true)
   expect(probe.visibility).toBe('hidden')
   expect(probe.left).toBe('-9999px')
   expect(probe.countedAsLabel).toBe(false)
-  expect(probe.sameFont).toBe(true)
+  expect(probe.fontFamily).toMatch(/^"?Noto Sans"?/)
+  expect(probe.fontSize).toBe('11px')
   expect(probe.hasWidth).toBe(true)
 })
 
@@ -607,8 +627,8 @@ const bboxHonouring = (page, points, seen = []) =>
 const driftIn = async (page, view) => {
   await page.goto(`/?${view}`)
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
-  await page.locator('.np-advert').click({ force: true })
+  await expectGlyphs(page, 'advert', 1, { timeout: 15000 })
+  await tapGlyph(page)
   const popup = page.locator('.maplibregl-popup-content')
   await expect(popup).toContainText(/drift \d+ m/)
   return (await popup.textContent()).match(/drift (\d+) m/)[1]
@@ -630,7 +650,7 @@ test('a pan reuses the receptions the node layer already has (#664)', async ({ p
   await bboxHonouring(page, ring(51, 4, 250, 8), seen)
   await page.goto('/?lat=51.0&lon=4.0&z=14')
   await setNodePos(page, 'positions')
-  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  await expectGlyphs(page, 'advert', 1, { timeout: 15000 })
   // The layer's own fetch is the paged one with no bbox; the ticker also asks
   // without a bbox, 200 rows at a time, and does so on every refresh.
   const windowFetches = () => seen.filter((u) => !u.searchParams.has('bbox') && u.searchParams.get('limit') === '5000').length

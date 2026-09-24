@@ -598,10 +598,10 @@ reception came from are different acts. The second is one rule on both surfaces,
   app also the arrow (#660) and the sender names. The node-position layer draws registry nodes
   only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2 estimate gets no marker of
   its own. On the map, the ticker and the point popup keep their resolver names, a separate issue.
-  A 1-byte star or hub id reads `#` plus the id in a tooltip, never as a bare name (§5.4 item 6).
-  The map's ● hub tooltip names a 2 or 3-byte id by rule 2, and reads the id also when the resolver
-  places the named node out of reach, since its slice ends at the reach; the app's shows the id
-  (`starLabel` in `coverage.js`).
+  A ● hub has no name on either surface since #632 (`docs/2026-09-21-node-glyphs-in-gl.md`): it
+  is a GL feature keyed by its star's id, and the tooltip that carried `starLabel` went with the
+  marker. Should a hub get a name surface again, a 1-byte id reads `#` plus the id, never a bare
+  name (§5.4 item 6).
 - Relay ids longer than 3 bytes, advert and discover keys and channel names keep their own rules.
   On the node-position layer both surfaces pair an advert by its whole key, and a discover prefix
   from 2 bytes only when it starts exactly one key among the nodes compared

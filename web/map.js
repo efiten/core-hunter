@@ -1,11 +1,12 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
 import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected, starLabel } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
+import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, cachedPosition, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
@@ -1080,7 +1081,11 @@ function clearCoverageSelection() {
 }
 function clearCoverageLayer() {
   wm.setData('reach', null)
-  wm.clearMarkers('reach')
+  hubFeatures = []
+  // The hubs leave the dot layer at once, as the markers did, and the
+  // estimates stay: a registry fetch that fails after this would otherwise
+  // leave hubs of a reach that is off, still answering a tap.
+  wm.setData(NODE_DOT_SOURCE, glyphFc(wm.features(NODE_DOT_SOURCE).filter((f) => f.properties.kind !== 'hub')))
   coverageHue = new Map()
   coverageStarList = []
   starCache.clear()
@@ -1100,9 +1105,7 @@ async function coveragePoints(viewPoints) {
 // position when its id is a full pubkey the registry knows, the RSSI estimate
 // otherwise. selectedStars are the stars the selection picks (starSelected):
 // a relay id picked in the list selects the star of the node it was placed on.
-// hubNames are the ● hubs' tooltip names (starLabel), worked out here because
-// a name, or where its node is, can arrive after a draw, and the signature has
-// to see that. Returns null when the layer is off, so the caller draws nothing.
+// Returns null when the layer is off, so the caller draws nothing.
 function buildCoverage(points, registryNodes, attributionOf) {
   if (!coverageOn()) return null
   const byKey = new Map((registryNodes || []).map((n) => [String(n.pubkey).toLowerCase(), n]))
@@ -1112,14 +1115,16 @@ function buildCoverage(points, registryNodes, attributionOf) {
   const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
   const selected = coverageSelected()
   const selectedStars = new Set(selected.size ? stars.filter((st) => starSelected(st, selected)).map((st) => st.id) : [])
-  const hubNames = new Map(stars.filter((st) => st.origin.kind === 'estimate')
-    .map((st) => [st.id, starLabel(st, { nameOf: cachedName, nameAt: cachedPosition, attributionOf })]))
-  return { stars, hues, colorOf, selected, selectedStars, attributionOf, hubNames, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
+  return { stars, hues, colorOf, selected, selectedStars, attributionOf, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
 }
 window.__coverageSel = () => [...coverageSel] // test hook
 window.__rayCount = () => wm.rayCount() // test hook
 window.__raysVisible = () => wm.raysVisible() // test hook
 window.__features = (id) => wm.features(id).map((f) => f.properties) // test hook
+// Test hooks (#632): the glyphs of a kind, and where one paints, in page px.
+window.__glyphs = (kind) => [...wm.features(NODE_GLYPH_SOURCE), ...wm.features(NODE_DOT_SOURCE)].map((f) => f.properties).filter((p) => !kind || p.kind === kind)
+window.__glyphPagePoint = (key, kind) => wm.glyphPagePoint(String(key).toLowerCase(), kind)
+window.__measureLabel = (text) => labelMeasurer()(text)
 
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---
 // Timeframe-scoped (from/to), not bbox; the heard_key resolves to the node /
@@ -1481,8 +1486,7 @@ async function drawNodePositions() {
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),
     d.est ? `${d.est.centroid.lat.toFixed(5)},${d.est.centroid.lon.toFixed(5)}` : ''].join(':')).join('|')
-    + (cov ? '#reach:' + cov.fc.features.length + ':' + [...cov.selected].join(',') + ':' + [...cov.selectedStars].join(',') + ':' + [...cov.hues].map(([k, v]) => k.slice(0, 8) + v).join(',')
-      + ':' + [...cov.hubNames].map(([k, v]) => k + '=' + v).join(',') : '')
+    + (cov ? '#reach:' + cov.fc.features.length + ':' + [...cov.selected].join(',') + ':' + [...cov.selectedStars].join(',') + ':' + [...cov.hues].map(([k, v]) => k.slice(0, 8) + v).join(',') : '')
     // The label set is part of what is drawn, and it depends on the projection
     // rather than on the rows: a zoom that changes nothing about which nodes
     // are in view still changes which names fit. Without it in the signature,
@@ -1497,7 +1501,8 @@ async function drawNodePositions() {
   const reopen = reopenNodeId
   reopenNodeId = null
 
-  const lines = [], circles = []
+  const lines = [], circles = [], adverts = [], dots = [...hubFeatures]
+  const info = new Map()
   for (const { id, advertised, est, p, name } of deduped) {
     // With the reach on, a repeater's ▲ takes the hue of its star, so the
     // marker and the rays read as one (#603); the drift colour stays for a
@@ -1516,29 +1521,21 @@ async function drawNodePositions() {
     // is labelled — the ● is the same node.
     // Only the names that survived decluttering are drawn; the ▲ always is, and
     // the name is still in the popup, so nothing becomes unreachable (#425).
-    const label = labelled.has(id) ? `<span class="np-label">${esc(rawLabel({ id, name }))}</span>` : ''
-    const adv = document.createElement('div')
-    adv.className = 'np-advert' + (selected ? ' np-selected' : '') + (cov && cov.selected.size && !selected ? ' np-dim' : '')
-    adv.style.color = color; adv.innerHTML = `▲${label}`
-    // In the reach stop a tap on the ▲ selects the star (and clears it on the
-    // second tap); the popup still opens, from the marker's own handler. Every
-    // repeater, star or no star (#623). The gate used to be `hue`, which did
-    // two jobs: it hid the tap from a repeater with no hearings, and it stood
-    // in for "the reach is on", since coverageHue is empty outside it.
-    // coverageOn() says the second directly and the first is gone; the dim
-    // loses its `hue` term for the same reason.
-    const select = () => { reopenNodeId = id; toggleCoverageSelection(id) }
-    if (coverageOn()) adv.addEventListener('click', select)
-    wm.addMarker('nodepos', adv, [advertised.lat, advertised.lon], { popupHtml: html })
+    // What a tap on this node's glyphs reads (onGlyphTap below), and where
+    // its popup opens. Every repeater, star or no star (#623). The gate used
+    // to be `hue`, which did two jobs: it hid the tap from a repeater with no
+    // hearings, and it stood in for "the reach is on", since coverageHue is
+    // empty outside it. coverageOn() says the second directly and the first
+    // is gone; the dim loses its `hue` term for the same reason.
+    info.set(id, { html, at: [advertised.lon, advertised.lat] })
+    adverts.push(advertFeature({ key: id, lon: advertised.lon, lat: advertised.lat, label: labelled.has(id) ? rawLabel({ id, name }) : '',
+      color, selected, dim: !!(cov && cov.selected.size && !selected) }))
     // Only on the ▲, so a tap on the ● does not leave two popups open.
     if (reopen === id) wm.openPopup([advertised.lon, advertised.lat], html)
     if (!est || !est.centroid) continue
-    const estEl = document.createElement('div')
-    estEl.className = 'np-estimate'; estEl.style.background = color
     // The ● is the same repeater, so it selects the same star (coverage log,
     // decision 6: a tap on a repeater's ▲ or ● selects it).
-    if (coverageOn()) estEl.addEventListener('click', select)
-    wm.addMarker('nodepos', estEl, [est.centroid.lat, est.centroid.lon], { popupHtml: html })
+    dots.push(dotFeature({ key: id, kind: 'estimate', lon: est.centroid.lon, lat: est.centroid.lat, color }))
     lines.push({ type: 'Feature', properties: { color },
       geometry: { type: 'LineString', coordinates: [[advertised.lon, advertised.lat], [est.centroid.lon, est.centroid.lat]] } })
     if (p.circle) {
@@ -1546,9 +1543,27 @@ async function drawNodePositions() {
       if (ring.length) circles.push({ type: 'Feature', properties: { color, style: p.circle.kind }, geometry: { type: 'LineString', coordinates: ring } })
     }
   }
+  nodeInfo = info
   wm.setData('nodedrift', { type: 'FeatureCollection', features: lines })
   wm.setData('nodecircle', { type: 'FeatureCollection', features: circles })
+  wm.setData(NODE_GLYPH_SOURCE, glyphFc(adverts))
+  wm.setData(NODE_DOT_SOURCE, glyphFc(dots))
 }
+// What the last draw knew per node, so a tap opens the popup the glyph was
+// drawn with (#632). A tap on a hub selects its star. In the reach stop a tap
+// on a ▲ or ● selects the repeater (and clears it on the second tap) and the
+// popup comes back after the redraw (reopenNodeId, #623); outside it, a tap
+// opens the popup.
+let nodeInfo = new Map()
+// The popup opens at the glyph that was tapped, ▲ or ●, as the marker's did;
+// the one that comes back after a selecting redraw opens at the ▲.
+wm.onGlyphTap(({ kind, key }, at) => {
+  if (kind === 'hub') { toggleCoverageSelection(key); return }
+  const n = nodeInfo.get(key)
+  if (!n) return
+  if (coverageOn()) { reopenNodeId = key; toggleCoverageSelection(key); return }
+  wm.openPopup(at, n.html)
+})
 
 // Puts the rays up (the line source in 2D, the ray layer in 3D, one setData),
 // a ● hub for a star with no registry position, and recolours the dots of the
@@ -1559,19 +1574,16 @@ function drawCoverage(cov) {
   coverageAttributionOf = cov.attributionOf
   coverageStarList = cov.stars
   wm.setData('reach', cov.fc)
-  wm.clearMarkers('reach')
-  for (const st of cov.stars) {
-    if (st.origin.kind !== 'estimate') continue   // the ▲ of the node layer is the hub
-    const el = document.createElement('div')
-    const dim = cov.selected.size && !cov.selectedStars.has(st.id)
-    el.className = 'rc-hub rc-estimate' + (dim ? ' np-dim' : '')
-    el.style.background = coverageHue.get(st.id)
-    el.title = `${cov.hubNames.get(st.id)}: reach from its RSSI estimate, ${st.points.length} hearings. A lower bound from where hunters drove; unmeasured is not unreachable.`
-    el.addEventListener('click', (e) => { e.stopPropagation(); toggleCoverageSelection(st.id) })
-    wm.addMarker('reach', el, [st.origin.lat, st.origin.lon])
-  }
+  // The ● hub of a star with no registry position, in the star's hue. A
+  // feature of the dot layer since #632, drawn with the estimates by
+  // drawNodePositions, so one setData carries every ●. A tap selects the star.
+  hubFeatures = cov.stars
+    .filter((st) => st.origin.kind === 'estimate')   // the ▲ of the node layer is the hub
+    .map((st) => dotFeature({ key: st.id, kind: 'hub', lon: st.origin.lon, lat: st.origin.lat,
+      color: coverageHue.get(st.id), dim: !!(cov.selected.size && !cov.selectedStars.has(st.id)) }))
   repaintSelection()
 }
+let hubFeatures = []
 // The dots of the points layer take the repeater's hue while the reach is on
 // (#603), the tier colour otherwise; the pillars keep the tier.
 //
@@ -1615,7 +1627,8 @@ function pointHue(pt) {
 // The layer is three things: the two GeoJSON sources and the markers.
 function clearNodePosLayer() {
   wm.setData('nodedrift', null); wm.setData('nodecircle', null)
-  wm.clearMarkers('nodepos')
+  wm.setData(NODE_GLYPH_SOURCE, null); wm.setData(NODE_DOT_SOURCE, null)
+  nodeInfo = new Map()
 }
 
 nodePosFab.addEventListener('click', tapNodePosFab)
