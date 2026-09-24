@@ -23,7 +23,7 @@ import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
-import { requestSelfInfo } from './selfinfo.js'
+import { requestSelfInfo, radioSummary } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
 import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from './hudmode.js'
@@ -104,7 +104,7 @@ function saveExaggeration(x) {
   try { localStorage.setItem('core-hunter-exaggeration', String(x)) } catch (_) {}
 }
 
-// Share my node name (#576). Stored as '1' or removed, so loadShareName's
+// Introduce my node to targets (#576, named Share my node name until #636). Stored as '1' or removed, so loadShareName's
 // exact-match read has one on-value and everything else is off.
 function saveShareName(on) {
   try {
@@ -204,7 +204,7 @@ const state = {
   ignore: loadIgnore(),
   attenuatorDb: loadAttenuator(),
   exaggeration: loadExaggeration(),
-  // Share my node name (#576): off by default, the hunter's own decision.
+  // Introduce my node to targets (#576): off by default, the hunter's own decision.
   shareName: loadShareName(),
   soundMode: loadSoundMode(),
   themePref: loadThemePref(),
@@ -1541,7 +1541,7 @@ function autoPingTick() {
   renderAutoPingCadence()
   pulseDiscoverBtn()
   sound.txBlip('discover')   // audio twin of the FAB pulse (#145)
-  // With Share my node name on, a cycle that has a companion as target also
+  // With Introduce my node to targets on, a cycle that has a companion as target also
   // carries our advert (#576): that is the node that has to hear us before it
   // can answer, and one advert at switch-on could be sent while it is out of
   // range. Zero-hop, so it costs the mesh nothing beyond this one airtime, and
@@ -1589,7 +1589,7 @@ function autoPingTick() {
 // ---------------------------------------------------------------------------
 // The one directed probe a companion answers. Three things have to hold: our
 // companion has the target as a contact (else the firmware answers NOT_FOUND),
-// the target has us (Share my node name, #576), and the ask goes out zero-hop.
+// the target has us (Introduce my node to targets, #576), and the ask goes out zero-hop.
 // The last one is the contact-path dance from coredrive-rx (contactpath.js):
 // read the contact, force its out_path_len to 0 for the ask, put it back right
 // after, whether the ask went out or not. Nothing here floods: an override that
@@ -1872,6 +1872,9 @@ async function connectAll() {
     state.rxPubkey = info.pubkey.toLowerCase()
     state.name = info.name || ''
     state.sf = info.sf ?? null
+    // The rest of the radio (#650): what the companion reports, for the Status
+    // tab and for the duty floor to read instead of assume (#609).
+    state.radio = { sf: state.sf, freqKhz: info.freqKhz ?? null, bwHz: info.bwHz ?? null, cr: info.cr ?? null }
     // The SF picks the registries a relay id is placed against (#661). When a
     // registry of that SF has not answered yet, the fetch asks it again now,
     // or once its request from start-up has settled if that one is still out.
@@ -1973,7 +1976,7 @@ function refreshConnState() {
   applyConnectButtons()
   el('ss-conn-name').textContent = state.name || '—'
   el('ss-conn-key').textContent = state.rxPubkey ? state.rxPubkey.slice(0, 12) + '…' : '—'
-  el('ss-conn-sf').textContent = state.sf ? 'SF' + state.sf : '—'
+  el('ss-conn-sf').textContent = radioSummary(state.radio)
   renderAutoPingCadence()
   renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
@@ -2003,6 +2006,7 @@ async function disconnectAll(nextPhase = 'idle') {
   state.connected = false
   state.rxPubkey = ''
   state.sf = null
+  state.radio = null
   rebuildAttributionIndex()
   el('discover-btn').disabled = true
   stopAutoPing()
@@ -2240,7 +2244,7 @@ function buildSettingsSheet() {
           </div>
           <dl class="ss-conn-status">
             <dt>Companion</dt><dd id="ss-conn-name">—</dd>
-            <dt>Signal</dt><dd id="ss-conn-sf">—</dd>
+            <dt>Radio</dt><dd id="ss-conn-sf">—</dd>
             <dt>Auto-discover</dt><dd id="ss-conn-autoping">Off</dd>
             <dt>Battery</dt><dd id="ss-conn-battery">—</dd>
             <dt>Pubkey</dt><dd id="ss-conn-key">—</dd>
@@ -2308,9 +2312,9 @@ function buildSettingsSheet() {
         <h3>Identity</h3>
         <label class="ss-check-row" id="ss-row-share-name">
           <input type="checkbox" id="ss-share-name" />
-          <span>Share my node name</span>
+          <span>Introduce my node to targets</span>
         </label>
-        <p class="ss-hint">Shares your companion's name and key with nodes in direct range, once per auto-discover cycle while a companion is your target. Off: the app never transmits who you are.</p>
+        <p class="ss-hint">Sends your companion's name and public key to nodes in direct range, once per auto-discover cycle, while a companion is your target. A MeshCore node answers a request only from a sender it already knows, so this is what lets the app ask a companion target about itself. Off: the app never transmits who you are.</p>
       </div>
       <div class="ss-theme-row">
         <span>Theme</span>
@@ -2416,7 +2420,7 @@ function buildSettingsSheet() {
   })
   refreshConnState()
 
-  // Share my node name (#576): a checkbox, saved on change, and the row and
+  // Introduce my node to targets (#576): a checkbox, saved on change, and the row and
   // the settings dot both say when it is on.
   const share = el('ss-share-name')
   share.checked = state.shareName

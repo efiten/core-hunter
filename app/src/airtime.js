@@ -6,8 +6,10 @@
 //   Preset. The firmware's default build flags (platformio.ini, [arduino_base])
 //   are LORA_FREQ=869.618, LORA_BW=62.5, LORA_SF=8, and LORA_CR defaults to 5
 //   (variants/*/target.cpp, #ifndef-guarded). The app reads the SF back from
-//   PACKET_SELF_INFO byte 56 (selfinfo.js); it cannot read the bandwidth or
-//   the frequency, so 62.5 kHz is assumed and an unknown SF reads as 8.
+//   PACKET_SELF_INFO byte 56 (selfinfo.js), and since #650 the frequency,
+//   bandwidth and coding rate beside it (bytes 48-57); this module still
+//   computes from the preset, 62.5 kHz and CR 4/5, and an unknown SF reads as
+//   8. What the floor does with the reported values is #609's decision.
 //
 //   Preamble. src/helpers/radiolib/RadioLibWrappers.h:
 //     static uint16_t preambleLengthForSF(uint8_t sf) { return sf <= 8 ? 32 : 16; }
@@ -32,9 +34,10 @@
 //                       16-byte AES block = 22
 //
 //   Budget. 869.618 MHz sits in the 869.400 to 869.650 MHz sub-band, which
-//   ERC 70-03 limits to a 10% duty cycle. The app cannot read the frequency,
-//   so this is a stated assumption for the default preset rather than a
-//   reading, and it is not a setting: the default is the decision.
+//   ERC 70-03 limits to a 10% duty cycle. The app reads the frequency since
+//   #650 but this budget does not follow it yet (#609), so it is a stated
+//   assumption for the default preset rather than a reading, and it is not a
+//   setting: the default is the decision.
 export const DUTY_BUDGET = 0.1
 export const DEFAULT_SF = 8
 export const BW_KHZ = 62.5
