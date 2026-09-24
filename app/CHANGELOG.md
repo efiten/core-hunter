@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.28.0](https://github.com/efiten/core-hunter/compare/app-v1.27.0...app-v1.28.0) (2026-09-24)
+
+
+### Features
+
+* **app,web:** draw the node layer's glyphs as GL layers, not DOM markers ([#682](https://github.com/efiten/core-hunter/issues/682)) ([3928ebf](https://github.com/efiten/core-hunter/commit/3928ebf461a145964c80ca4d5ab09b7813020d63))
+* **app:** read the whole radio from SELF_INFO, and name the self-advert setting for what it is for ([#683](https://github.com/efiten/core-hunter/issues/683)) ([05da05b](https://github.com/efiten/core-hunter/commit/05da05b1e16d7ad1aa9d973c30e76ff43ca62bdf))
+* **web:** one control above the hunter list that selects all, or clears the pick ([#678](https://github.com/efiten/core-hunter/issues/678)) ([07d0753](https://github.com/efiten/core-hunter/commit/07d07531fd0b1249f43c599c6f7e2acc65a5634c))
+
+
+### Bug Fixes
+
+* **app,web:** let the FAB ring count the on states, so off is not a segment ([#677](https://github.com/efiten/core-hunter/issues/677)) ([4a1d3a2](https://github.com/efiten/core-hunter/commit/4a1d3a29aed7c07d8fb362e399b3a6c41610bfee))
+* **app,web:** print an unnamed sender's id once in the target list ([#676](https://github.com/efiten/core-hunter/issues/676)) ([3f7d465](https://github.com/efiten/core-hunter/commit/3f7d46525854e63c01b95fc8664bcae4fa530f76))
+* **app:** fold a node's prefixes into one row without an advert in the window ([#681](https://github.com/efiten/core-hunter/issues/681)) ([48734ef](https://github.com/efiten/core-hunter/commit/48734ef3a885e1ea059d46f211426d7e3d742fdd))
+* **app:** keep the points of earlier rides on the map down to zoom 12 ([#670](https://github.com/efiten/core-hunter/issues/670)) ([789997d](https://github.com/efiten/core-hunter/commit/789997dbd118943e16f6768a8a35996459796978))
+* **app:** open the float readout through fullscreen on Android, so capture goes on ([#672](https://github.com/efiten/core-hunter/issues/672)) ([425b889](https://github.com/efiten/core-hunter/commit/425b8898af1e25062ae6d8bb3a1a7a31e990c1f0))
+* **app:** ship MapLibre in the build, so the launch needs no other host ([#673](https://github.com/efiten/core-hunter/issues/673)) ([82180cc](https://github.com/efiten/core-hunter/commit/82180ccfe076447e707de122a490c66d53d0848c))
+* **web:** give the picker rows their own look back from the bar ([#680](https://github.com/efiten/core-hunter/issues/680)) ([da616ff](https://github.com/efiten/core-hunter/commit/da616ffc087d3508b475835c55221d896f0e8239))
+* **web:** make a node's estimate from the whole window, not from the view ([#675](https://github.com/efiten/core-hunter/issues/675)) ([9255d75](https://github.com/efiten/core-hunter/commit/9255d7590c61c603df7aeeddea0021c5553fa845))
+* **web:** paint the active stop of the View control, and give the quick ranges their own look ([#674](https://github.com/efiten/core-hunter/issues/674)) ([b9c2eb3](https://github.com/efiten/core-hunter/commit/b9c2eb3ecc6eb1624ab4777d42a6b22495b4c768))
+
 ## [1.27.0](https://github.com/efiten/core-hunter/compare/app-v1.26.0...app-v1.27.0) (2026-09-17)
 
 
