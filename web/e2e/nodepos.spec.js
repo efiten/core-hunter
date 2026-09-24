@@ -588,3 +588,57 @@ test('the measuring probe is hidden and parked, and reads the label font', async
   expect(probe.sameFont).toBe(true)
   expect(probe.hasWidth).toBe(true)
 })
+
+// #664. The server narrows /api/points to the bbox it is given, and the layer
+// used to send the viewport's. A node's estimate was then made of the hearings
+// on screen: 650 m between two views of one node was measured on the live map.
+// The stub narrows the way the server does, so a bbox in the query shows up as
+// a different estimate here too.
+const bboxHonouring = (page, points, seen = []) =>
+  page.route('**/api/points*', (r) => {
+    const url = new URL(r.request().url())
+    seen.push(url)
+    const bbox = url.searchParams.get('bbox')
+    if (!bbox) return r.fulfill({ json: { points } })
+    const [s, w, n, e] = bbox.split(',').map(Number)
+    return r.fulfill({ json: { points: points.filter((p) => p.lat >= s && p.lat <= n && p.lon >= w && p.lon <= e) } })
+  })
+
+const driftIn = async (page, view) => {
+  await page.goto(`/?${view}`)
+  await setNodePos(page, 'positions')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  await page.locator('.np-advert').click({ force: true })
+  const popup = page.locator('.maplibregl-popup-content')
+  await expect(popup).toContainText(/drift \d+ m/)
+  return (await popup.textContent()).match(/drift (\d+) m/)[1]
+}
+
+test('a node\'s estimate is the same whichever part of the map is in view (#664)', async ({ page }) => {
+  await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
+  await bboxHonouring(page, ring(51, 4, 250, 8))
+  // The whole ring on screen, then a view whose south edge cuts the ring in
+  // half while the node itself stays in it.
+  const whole = await driftIn(page, 'lat=51.0&lon=4.0&z=14')
+  const half = await driftIn(page, 'lat=51.0045&lon=4.0&z=16')
+  expect(half).toBe(whole)
+})
+
+test('a pan reuses the receptions the node layer already has (#664)', async ({ page }) => {
+  const seen = []
+  await routes(page, { lat: 51.0005, lon: 4.0, points: [] })
+  await bboxHonouring(page, ring(51, 4, 250, 8), seen)
+  await page.goto('/?lat=51.0&lon=4.0&z=14')
+  await setNodePos(page, 'positions')
+  await expect(page.locator('.np-advert')).toHaveCount(1, { timeout: 15000 })
+  // The layer's own fetch is the paged one with no bbox; the ticker also asks
+  // without a bbox, 200 rows at a time, and does so on every refresh.
+  const windowFetches = () => seen.filter((u) => !u.searchParams.has('bbox') && u.searchParams.get('limit') === '5000').length
+  expect(windowFetches()).toBe(1)
+
+  const registry = page.waitForRequest('**/api/nodes/positions*')
+  await page.mouse.move(640, 400); await page.mouse.down(); await page.mouse.move(520, 400, { steps: 4 }); await page.mouse.up()
+  await registry // the node layer did redraw for the new view
+  await mapSettled(page)
+  expect(windowFetches()).toBe(1)
+})
