@@ -56,6 +56,13 @@
     "body": "Same setting, still off by default. The hint says what the advert is for: a node only answers a sender it knows."
   },
   {
+    "id": "2026-09-21-app-starts-without-another-host",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "The app starts on a poor connection",
+    "body": "The map library ships with the app now, so a launch no longer waits on another host. Map tiles still need a connection."
+  },
+  {
     "id": "2026-09-15-direction-arrow",
     "date": "2026-09-15",
     "where": "app",
