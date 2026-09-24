@@ -84,8 +84,10 @@ export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, se
   // What a row paints: its name, which follows the resolver's label and the
   // attribution by reach of its newest reception (#661, targetParts), and its
   // reading. The registry landing, or the attenuator moving the reach, changes
-  // the name without changing the reception, so the attribution is in it.
-  const rowSig = (r) => (r.sender_label || r.sender_id || '') + attributionSignature(r._attr) + r.rssi + r.rx_at
+  // the name without changing the reception, so the attribution is in it. The
+  // printed id grows when another row turns up with the same 6 hex (#625),
+  // which changes nothing else about this row either.
+  const rowSig = (r) => (r.sender_label || r.sender_id || '') + attributionSignature(r._attr) + r.rssi + r.rx_at + (r.id_shown || '')
   const query = () => (searchEl ? String(searchEl.value || '').trim() : '')
 
   function render(rows, ignore, nowMs, selectedIds) {

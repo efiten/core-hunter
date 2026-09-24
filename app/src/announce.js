@@ -1,4 +1,4 @@
-// Share my node name (#576): the one frame that puts the hunter's own identity
+// Introduce my node to targets (#576, Share my node name until #636): the one frame that puts the hunter's own identity
 // on air. The companion sends its self-advert: its public key and name, plus a
 // position, which its own firmware decides. From companion firmware v1.7.1
 // (29 June 2025) it carries one only when the owner set the advert location

@@ -14,6 +14,13 @@
     "body": "On Android the float readout opens fullscreen again: press Home for the window. Positions and sound keep running."
   },
   {
+    "id": "2026-09-21-estimate-holds-still",
+    "date": "2026-09-21",
+    "where": "map",
+    "title": "A node's estimate holds still",
+    "body": "The estimated position no longer shifts as you pan or zoom: it uses every hearing in the time window, not only those on screen."
+  },
+  {
     "id": "2026-09-21-unresolved-row-id-once",
     "date": "2026-09-21",
     "where": "both",
@@ -42,11 +49,53 @@
     "body": "Hunter, target and ignore rows lost their boxes: one line between rows, as in the app."
   },
   {
+    "id": "2026-09-21-one-row-per-node-without-advert",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "One row per node, also before its advert",
+    "body": "The target list folds a node's short ids into one row when the names match, without waiting for an advert. Look-alike ids print longer."
+  },
+  {
     "id": "2026-09-21-node-glyphs-in-the-scene",
     "date": "2026-09-21",
     "where": "both",
     "title": "Node markers stand in the map",
     "body": "The ▲, ● and hubs are drawn by the map itself now: they follow the terrain, sit among the 3D pillars and stop floating. A selected name has a halo instead of a pill."
+  },
+  {
+    "id": "2026-09-21-radio-in-status",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "The radio's settings in Status",
+    "body": "Status shows the companion's frequency, bandwidth, spreading factor and coding rate, as the radio reports them."
+  },
+  {
+    "id": "2026-09-21-introduce-my-node",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "Share my node name is now Introduce my node to targets",
+    "body": "Same setting, still off by default. The hint says what the advert is for: a node only answers a sender it knows."
+  },
+  {
+    "id": "2026-09-21-app-starts-without-another-host",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "The app starts on a poor connection",
+    "body": "The map library ships with the app now, so a launch no longer waits on another host. Map tiles still need a connection."
+  },
+  {
+    "id": "2026-09-21-active-view-stop",
+    "date": "2026-09-21",
+    "where": "map",
+    "title": "The filter panel shows which view is on",
+    "body": "Points, Hex or Both: the active one is filled now. The active quick range in the time picker is coloured too."
+  },
+  {
+    "id": "2026-09-21-light-accent-contrast",
+    "date": "2026-09-21",
+    "where": "both",
+    "title": "A darker accent in the light theme",
+    "body": "The light theme's teal is darker, so text on it and text in it read at the contrast small type needs."
   },
   {
     "id": "2026-09-15-direction-arrow",

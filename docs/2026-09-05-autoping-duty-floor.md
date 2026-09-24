@@ -4,6 +4,9 @@
 **Status:** decided (Kasper, 2026-09-05), implemented
 **Related:** #319 and `docs/2026-08-17-speed-adaptive-autoping.md` (the spike that found this), #479 (the sweep that makes a standing cycle five frames), #577 (the self-advert) and #578 (the telemetry request), both counted
 
+
+> **Amended 2026-09-21 (#650).** `PACKET_SELF_INFO` does carry the frequency, the bandwidth and the coding rate (bytes 48-57, `MyMesh.cpp` CMD_APP_START handler), and the app reads them now (`parseSelfInfo`, shown in the Status tab). Decision 1 and the "Not in this change" line below describe what was known on 5 September. What the floor does with the readings is #609.
+
 ## What changed
 
 `shouldAutoFire` fires on an interval or on 50 m of movement, whichever comes first, and nothing bounded the rate from below. At 90 km/h the distance gate fires every 2 s. And the module's own budget note, "10 s alone is ~0.46% duty cycle", described one 46 ms frame, where a cycle is the Discover plus a trace-ping per target: five frames for a standing sweep.

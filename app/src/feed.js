@@ -25,9 +25,11 @@ export function isTargetKind(kind) {
 // and must never be prefix-merged with the others.
 const HEX_PREFIX_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'relay'])
 
-// A full MeshCore pubkey is 32 bytes = 64 hex. Only an advert carries one
-// (meshpacket.js); discover and relay ids are shorter prefixes of that space.
-const FULL_PUBKEY = /^[0-9a-f]{64}$/
+const HEX_ID = /^[0-9a-f]+$/
+// 2 bytes is where merging starts (AGENTS.md §7): a 1-byte hash is 1-in-256,
+// too coarse to fold rows on. The kinds that carry one are no target kinds and
+// never get here; the floor holds for a short id of any kind.
+const MIN_MERGE_HEX_CHARS = 4
 
 // Two rows only merge once a name is present on both sides and it matches:
 // no name never counts as a match, and a shared prefix alone isn't enough (the
@@ -40,11 +42,12 @@ function sameResolvedName(a, b) {
 
 // placedElsewhere: a reception placed by reach (#661) is that node's, so its
 // name is no proof it came from the anchor when two nodes share a name and a
-// prefix (#268). It joins only the row of the pubkey it was placed on.
+// prefix (#268). It joins only the row of the node it was placed on: the one
+// whose pubkey the anchor's id is, or is a prefix of (#625).
 function placedElsewhere(rec, anchorId) {
   const attr = rec._attr
   if (!attr || attr.rule !== 'node') return false
-  return !attr.node || String(attr.node.pubkey).toLowerCase() !== anchorId.toLowerCase()
+  return !attr.node || !String(attr.node.pubkey).toLowerCase().startsWith(anchorId.toLowerCase())
 }
 
 // mergePrefixGroups clusters the per-exact-id rows that name the same physical
@@ -52,63 +55,70 @@ function placedElsewhere(rec, anchorId) {
 // record. `merged_ids` carries every id in the cluster (lowercased) so a
 // target-list selection catches receptions tagged with any prefix variant.
 //
-// The names compared are the ones the two rows show (shownName), so a relay's
-// attribution by reach (#661) decides for its row: a collision shows no name,
-// and neither it nor a placement on another node merges (Kasper, 2026-09-15),
-// even when that other node shares the anchor's name (placedElsewhere). A
-// relay placed on the anchor's own node merges under that name, with or
-// without a resolver label.
+// The anchor is the LONGEST id a row is a prefix of, the map's rule (#331,
+// web/targetpicker.js). It used to be a full 64-hex pubkey and nothing else,
+// and only an advert carries one: a node heard through Discover replies and
+// relay hops alone kept a row per id for as long as no advert was in the
+// window (#625).
 //
-// Anchored, never transitive (#268). "id A is a prefix of id B" is NOT a
+// Chained, never transitive (#268). "id A is a prefix of id B" is NOT a
 // transitive relation, so it must not be closed over: a 2-byte relay id can be
-// a prefix of two different full pubkeys, and a connected-components pass would
+// a prefix of two different longer ids, and a connected-components pass would
 // then place both of those nodes in one cluster. Selecting that row feeds two
 // physically separate transmitters into one target's map view, which for a
 // direction-finding tool is the wrong answer in the worst possible place.
 //
-// So each prefix attaches to at most ONE anchor (a full 64-hex pubkey with a
-// matching shown name, shownName), and a prefix that matches two or more
-// anchors stays on its own row. Ambiguity is evidence against merging, not
-// for it; that is the same meaning the name resolver's own `ambiguous` flag
-// carries. Anchors never merge with each other: two distinct full pubkeys are
-// two nodes by definition. The pass is O(n·k) in anchors rather than O(n²).
+// So a row attaches only when everything longer that it could be is one single
+// chain (db11 → db11db → db11db77…), and then to the longest of it. Two longer
+// ids that are not prefixes of each other mean the row is as likely the one as
+// the other, and it stays on its own. Ambiguity is evidence against merging,
+// not for it; that is the same meaning the name resolver's own `ambiguous`
+// flag carries. The candidates are counted by prefix ALONE, and the name gate
+// applies to the survivor: folding the name into the count makes the refusal
+// name-conditioned, which defeats it in exactly the case it exists for, two
+// nodes sharing a prefix under different names, where the hop is equally
+// likely to have come from either. Two full pubkeys never merge: neither is a
+// prefix of the other.
+//
+// The name gate is the app's, stricter than the map's: both rows show a name
+// and it is the same one (Kasper, 2026-09-21). The map merges unnamed rows
+// too, because its 8-byte Discover ids carry no name; here a nameless relay
+// hop attached to the one longer id in the window would feed another node's
+// RSSI into the target. The names compared are the ones the two rows show
+// (shownName), so a relay's attribution by reach (#661) decides for its row: a
+// collision shows no name, and neither it nor a placement on another node
+// merges (Kasper, 2026-09-15), even when that other node shares the anchor's
+// name (placedElsewhere). A relay placed on the anchor's own node merges under
+// that name, with or without a resolver label.
 function mergePrefixGroups(entries) {
-  const anchors = []      // indices of full-pubkey rows
-  const attached = new Map()  // anchor index -> [entry indices]
-  const solo = []         // indices that stand alone
+  const eligible = entries
+    .map(([id, rec], i) => ({ i, id: id.toLowerCase(), rec }))
+    .filter((e) => HEX_PREFIX_KINDS.has(e.rec.sender_kind) && e.id.length >= MIN_MERGE_HEX_CHARS && HEX_ID.test(e.id))
 
-  // Seed every anchor before the attach pass, so a prefix that appears earlier
-  // in the input than its anchor still finds a bucket (order independence).
-  entries.forEach(([id, rec], i) => {
-    if (HEX_PREFIX_KINDS.has(rec.sender_kind) && FULL_PUBKEY.test(id.toLowerCase())) {
-      anchors.push(i)
-      attached.set(i, [i])
-    }
-  })
+  const attachTo = new Map()   // entry index -> entry index of the longest id of its chain
+  for (const e of eligible) {
+    const longer = eligible.filter((o) => o.id.length > e.id.length && o.id.startsWith(e.id))
+    if (!longer.length) continue
+    const chained = longer.every((a) => longer.every((b) => a.id.startsWith(b.id) || b.id.startsWith(a.id)))
+    if (!chained) continue   // could be either of two nodes: stands alone
+    const anchor = longer.reduce((a, b) => (b.id.length > a.id.length ? b : a))
+    if (placedElsewhere(e.rec, anchor.id)) continue
+    if (!sameResolvedName(shownName(e.rec), shownName(anchor.rec))) continue
+    attachTo.set(e.i, anchor.i)
+  }
 
-  entries.forEach(([id, rec], i) => {
-    if (attached.has(i)) return   // an anchor never attaches to another anchor
-    const lower = id.toLowerCase()
-    if (!HEX_PREFIX_KINDS.has(rec.sender_kind)) { solo.push(i); return }
-    // Count by prefix ALONE, then apply the name gate to the survivor. Folding
-    // sameResolvedName into the count makes the refusal name-conditioned, which
-    // defeats it in exactly the case it exists for: two anchors sharing a
-    // prefix under different names (say a1b2c3d4… "Zuid" and a1b2ffff… "Noord")
-    // leave a relay hop a1b2 matching only one of them, so it attaches — even
-    // though the hop is equally likely to have come from the other. The
-    // resolver cannot rescue that either: it answers unambiguously whenever it
-    // knows only one of the two.
-    const matches = anchors.filter((a) => entries[a][0].toLowerCase().startsWith(lower))
-    const anchor = matches.length === 1 ? entries[matches[0]] : null
-    if (anchor && !placedElsewhere(rec, anchor[0]) && sameResolvedName(shownName(rec), shownName(anchor[1]))) {
-      attached.get(matches[0]).push(i)
-    } else solo.push(i)   // 0 anchors, ambiguous across 2+, placed on another node, or the name disagrees
+  // An anchor is the longest id of a chain, so it never attaches itself: every
+  // group is its anchor plus the rows that point at it.
+  const groups = new Map()
+  entries.forEach((_, i) => {
+    const root = attachTo.has(i) ? attachTo.get(i) : i
+    if (!groups.has(root)) groups.set(root, [])
+    groups.get(root).push(i)
   })
 
   // Every row in a group shows the anchor's name (the gate above), so the
   // newest one names the merged row, attribution and all.
-  const groups = [...attached.values(), ...solo.map((i) => [i])]
-  return groups.map((idxs) => {
+  return [...groups.values()].map((idxs) => {
     const group = idxs.map((i) => entries[i])
     const merged_ids = group.map(([id]) => id.toLowerCase()).sort()
     const [, best] = group.reduce((a, b) => (Date.parse(b[1].rx_at) > Date.parse(a[1].rx_at) ? b : a))
@@ -131,7 +141,41 @@ function dedupeSenders(records, ignore) {
     const prev = bySender.get(id)
     if (!prev || Date.parse(r.rx_at) > Date.parse(prev.rx_at)) bySender.set(id, r)
   }
-  return mergePrefixGroups([...bySender.entries()])
+  return withShownIds(mergePrefixGroups([...bySender.entries()]))
+}
+
+// 8 bytes: the longest a row prints. feed.js's rule is that a full-length id is
+// never shown, and two keys alike that far are not told apart by eye anyway.
+const SHOWN_ID_MAX_HEX_CHARS = 16
+
+// withShownIds gives a row `id_shown` when its 6-hex prefix is also another
+// row's while the ids differ (#625): two rows both reading `db11db` look like
+// one node listed twice. Each shows two hex more until it stands apart, or
+// until its id or the 8 bytes run out, so a short relay hash stays as it is and
+// the longer id beside it grows past it. Worked out over every row before the
+// list is sorted or cut, so the pinned section and the list print one node the
+// same way. Hex ids only: a channel name's id is its text.
+function withShownIds(rows) {
+  const hex = rows.filter((r) => HEX_PREFIX_KINDS.has(r.sender_kind) && HEX_ID.test(String(r.sender_id).toLowerCase()))
+  const byShown = new Map()
+  for (const r of hex) {
+    const k = idPrefix(r.sender_id).toLowerCase()
+    if (!byShown.has(k)) byShown.set(k, [])
+    byShown.get(k).push(r)
+  }
+  const shown = new Map()
+  for (const group of byShown.values()) {
+    if (group.length < 2) continue
+    for (const r of group) {
+      const id = String(r.sender_id)
+      const others = group.filter((o) => o !== r).map((o) => String(o.sender_id).toLowerCase())
+      let n = ID_PREFIX_HEX_CHARS
+      const max = Math.min(id.length, SHOWN_ID_MAX_HEX_CHARS)
+      while (n < max && others.some((o) => o.slice(0, n) === id.slice(0, n).toLowerCase())) n += 2
+      if (n > ID_PREFIX_HEX_CHARS) shown.set(r, id.slice(0, Math.min(n, max)))
+    }
+  }
+  return shown.size ? rows.map((r) => (shown.has(r) ? { ...r, id_shown: shown.get(r) } : r)) : rows
 }
 
 // rowIds lists the lowercased ids a target row answers to. A row from
@@ -222,7 +266,7 @@ export function targetParts(rec) {
   // is its newest reception (dedupeSenders), so it reads by that one's.
   const label = displayName(rec)
   if (!id) return { primary: label || '—', secondary: '' }
-  const prefix = idPrefix(id)
+  const prefix = rec.id_shown || idPrefix(id)
   if (label) return { primary: label, secondary: prefix }
   return { primary: `${prefix} (name not resolved)`, secondary: '' }
 }
@@ -279,13 +323,16 @@ export function pickName(rec) {
 // Silently dropping receptions for the node being hunted is the failure a user
 // is least likely to notice.
 //
-// The full pubkey is the identity when the cluster has one, because that is
-// what anchors it (see mergePrefixGroups) and it cannot change as prefixes
-// come and go. A row with no anchor stands only for itself.
+// The longest id of the cluster is the identity: that is what anchors it (see
+// mergePrefixGroups). With an advert in the window that is the full pubkey,
+// which cannot change as prefixes come and go. Without one it is the longest
+// prefix heard (#625); it used to be the row's own sender_id, the id of
+// whichever reception was newest, so the key of a merged row changed from one
+// reception to the next. It still moves once, when a longer id is first heard:
+// expandSelection follows that.
 export function clusterKey(rec) {
   const ids = (rec && rec.merged_ids) || []
-  const anchor = ids.find((id) => FULL_PUBKEY.test(id))
-  if (anchor) return anchor
+  if (ids.length) return ids.reduce((a, b) => (b.length > a.length ? b : a))
   return String((rec && rec.sender_id) || '').toLowerCase()
 }
 
@@ -319,7 +366,11 @@ export function expandSelection(keys, rows) {
   const out = new Set()
   for (const key of keys || []) {
     const k = String(key).toLowerCase()
+    // By key first, then by membership: a key taken before the node's advert
+    // was heard is a shorter id of the same chain, and the row's key has since
+    // become the pubkey (#625).
     const cluster = (rows || []).find((r) => clusterKey(r) === k)
+      || (rows || []).find((r) => (r.merged_ids || []).includes(k))
     if (cluster) for (const id of cluster.merged_ids || []) out.add(id)
     else out.add(k)
   }

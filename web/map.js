@@ -13,6 +13,7 @@ import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows
 import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
+import { windowKey, createWindowCache } from './windowpoints.js'
 import { latestWins } from './latestwins.js'
 import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
@@ -259,16 +260,32 @@ function viewportParams() {
 // the stand had supposedly lifted.
 let rxStand = 'filtered'
 
-function qs() {
-  const p = new URLSearchParams(viewportParams())
-  const f = tickerFilters((window.currentFilters && window.currentFilters()) || {}, rxStand)
+// The filters under the ticker's stand, written onto `p`.
+function appendFilters(p, f) {
   for (const [k, v] of Object.entries(f)) {
     // senderPairs is already [key, value][] and may repeat a key (#223), so it
     // appends rather than sets -- URLSearchParams.set would keep only the last.
     if (k === 'senderPairs' || k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
     if (v) p.set(k, v)
   }
-  return p.toString()
+  return p
+}
+const standFilters = () => tickerFilters((window.currentFilters && window.currentFilters()) || {}, rxStand)
+
+function qs() {
+  return appendFilters(new URLSearchParams(viewportParams()), standFilters()).toString()
+}
+
+// The receptions of the whole time window under `f`, with no bbox (#664,
+// windowpoints.js): what a node's estimate and a star's hub are made of, which
+// the view must not change. The query is the same from pan to pan, so the
+// draws between two live ticks share one fetch. The tick is 10 s
+// (timeRangeTimer); the age sits under it so the tick fetches fresh rows and
+// never reuses the set it fetched itself a tick ago.
+const windowCache = createWindowCache({ maxAgeMs: 9000 })
+function windowPoints(f) {
+  const key = windowKey(f, { from: document.getElementById('f-from').value, to: document.getElementById('f-to').value })
+  return windowCache.get(key, () => fetchPointsPaged(appendFilters(new URLSearchParams(), f).toString(), { maxTotal: 25000 }))
 }
 
 // The layers are rebuilt off-map and swapped in one go, rather than cleared
@@ -590,7 +607,7 @@ export function refresh() {
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
-    drawNodePositions()   // follows the same filter/bbox set as the points; the reach rides in it (#603)
+    drawNodePositions()   // the view picks the nodes, the whole window makes their estimates (#664); the reach rides in it (#603)
     if (rxTicker) rxTicker.refetch() // same trigger points as the map (#224)
   }, 250)
 }
@@ -1073,18 +1090,14 @@ function clearCoverageLayer() {
   coverageStarList = []
   starCache.clear()
 }
-// The receptions the stars are built from. With a target picked the view's
+// The receptions the stars are built from. With a target picked the layer's
 // points are already narrowed to it, and the other stars have to stay up at a
-// quarter, so the coverage set is fetched without the sender filter then.
+// quarter, so the coverage set is fetched without the sender filter then. The
+// whole window either way (#664): a ● hub is an estimate too.
 async function coveragePoints(viewPoints) {
   const f = (window.currentFilters && window.currentFilters()) || {}
   if (!(f.senderPairs && f.senderPairs.length)) return viewPoints
-  const p = new URLSearchParams(viewportParams())
-  for (const [k, v] of Object.entries(withoutSenderFilters(f))) {
-    if (k === 'ignorePairs') { for (const [pk, pv] of v || []) p.append(pk, pv); continue }
-    if (v) p.set(k, v)
-  }
-  try { return (await fetchPointsPaged(p.toString(), { maxTotal: 25000 })).points } catch (_) { return viewPoints }
+  try { return (await windowPoints(withoutSenderFilters(f))).points } catch (_) { return viewPoints }
 }
 // Builds the stars and their hues for one draw. A hearing placed on a node by
 // reach (attributionOf, #661) joins that node's star under its ▲, a collided
@@ -1396,10 +1409,13 @@ async function drawNodePositions() {
   // and the multi-hunter picture, was a strict subset of the app on the one
   // layer where it should be a superset. The receptions are still fetched, but
   // now only to pair an estimate onto a node the registry already places.
+  // They are the receptions of the whole window, not of the view (#664): with
+  // the bbox on, a node's estimate was made of the hearings on screen, and a
+  // 650 m shift between two views of the same node was measured.
   const view = wm.getBounds()
   const [registry, pointsRes] = await Promise.all([
     fetchNodeRegistry(view),
-    fetchPointsPaged(qs(), { maxTotal: 25000 }),
+    windowPoints(standFilters()),
   ])
   // A newer draw started, the layer was switched off, or Locate took over
   // while we were waiting (#390). The await is shorter than it was — the

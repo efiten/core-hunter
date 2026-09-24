@@ -5,6 +5,9 @@
 **Firmware read:** MeshCore `main` 0679dbe (2026-08-24), `companion-v1.17.1`; the table with line references is in the #553 thread
 **Related:** #576 (Share my node name, the other half of the contact condition), #552 (anonymous requests, repeaters only), #481 (trace-reply attribution, the pattern this follows)
 
+
+> **Amended 2026-09-21 (#636).** The setting is called *Introduce my node to targets* since #636; its hint says what the advert is for (a node answers only a sender it knows). "Share my node name" below is that setting.
+
 ## What a companion answers
 
 | Probe | `companion_radio` |

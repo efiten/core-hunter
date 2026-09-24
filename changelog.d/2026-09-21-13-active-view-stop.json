@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-active-view-stop",
+  "date": "2026-09-21",
+  "where": "map",
+  "title": "The filter panel shows which view is on",
+  "body": "Points, Hex or Both: the active one is filled now. The active quick range in the time picker is coloured too."
+}

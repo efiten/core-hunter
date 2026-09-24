@@ -28,7 +28,7 @@
   --ch-hue-0:  #2a63d6;  --ch-hue-1:  #d9600f;  --ch-hue-2:  #15934c;  --ch-hue-3:  #b8309b;
   --ch-hue-4:  #b8900a;  --ch-hue-5:  #0f9b9b;  --ch-hue-6:  #d12f2f;  --ch-hue-7:  #6a48d9;
   --ch-hue-8:  #5f9a12;  --ch-hue-9:  #d13f82;  --ch-hue-10: #9a6d22;  --ch-hue-11: #1d8fc4;
-  --ch-accent:#0e9f7e; --ch-accent-2:#b4530a;
+  --ch-accent:#0b7a60; --ch-accent-2:#b4530a;
   --ch-building:#cfc7b6;
 }
 /* Bar height as a layout token, not a theme one, so it is defined once outside
@@ -139,7 +139,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    :disabled, so a gated segment rendered identical to a live button. `#bar
    button:disabled` (1,1,1) rather than a bare `button:disabled`, because
    `#bar select, #bar input, #bar button` above sets colour at (1,0,1), and
-   it also outranks `.bf-seg button.active` (0,2,1) should both ever apply. */
+   `#bar .bf-seg button.active` (1,2,1) outranks it, which never shows:
+   applyPointLayerGate moves the mode off a gated stop, so a disabled stop is
+   never the active one. */
 #bar button:disabled { color:var(--ch-muted); opacity:.65; cursor:not-allowed; }
 /* .cs-cb and .cs-layer-toggle went with the checkboxes in #629: the CoreScope
    sightings are a source the node-position layer draws, so there is no control
@@ -270,12 +272,16 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    past the viewport (the list is already 12 rows). */
 .tr-quick { list-style: none; margin: 0; padding: 0; width: 168px;
   max-height: 264px; overflow-y: auto; border-left: 1px solid var(--ch-border); }
-.tr-item button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
+/* #bar-prefixed, all three, like .f-chip.active: the picker sits inside #bar,
+   and `#bar select, #bar input, #bar button` (1,0,1) outranked the bare rules.
+   The rows wore the bar's border, fill, radius and padding, and the active one
+   kept the text colour, so only its rail showed (#633). */
+#bar .tr-item button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0;
   background: transparent; color: var(--ch-text); font: inherit; font-size: 13px;
   padding: 6px 10px; cursor: pointer; }
-.tr-item button:hover { background: color-mix(in srgb, var(--ch-text) 10%, transparent); }
+#bar .tr-item button:hover { background: color-mix(in srgb, var(--ch-text) 10%, transparent); }
 /* Active quick range: an accent rail on the left, as in the reference UI. */
-.tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
+#bar .tr-item.active button { box-shadow: inset 3px 0 0 var(--ch-accent); color: var(--ch-accent); }
 /* ---- Reception ticker (#224) ----
    Parity with app's Receptions log (app/src/receptionlog.js, #130): frameless,
    log-style tail over the map. Newest at the bottom; a playhead lane
@@ -680,9 +686,10 @@ body.wb-onboarding-on #bar { z-index:710; }
 /* No rule in this sheet colours a link, so an unstyled one takes the UA's
    #0000ee on a #0b0e14 surface and purple once visited -- the #441 gap, on the
    dark theme this time. --ch-text with an underline, matching .ss-about-links,
-   rather than --ch-accent: the accent is 3.3:1 on the light surface, under the
-   4.5:1 this size of text needs. :visited is part of the rule, not an
-   afterthought; without it the UA still owns that state. */
+   rather than --ch-accent: the accent was 3.3:1 on the light surface then,
+   under the 4.5:1 this size of text needs (5.2:1 since #633 darkened it).
+   :visited is part of the rule, not an afterthought; without it the UA still
+   owns that state. */
 /* Links are accent-2 on every surface (#539). */
 .lc-signup a, .lc-signup a:visited { color: var(--ch-accent-2); text-decoration: underline; }
 
@@ -823,11 +830,17 @@ body.wb-onboarding-on #bar { z-index:710; }
 #bar-filters.bf-open #f-types, .bf-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Segmented layer control: one button per mode, the active one filled. */
 .bf-seg { display: inline-flex; }
-.bf-seg button { border-radius: 0; }
-.bf-seg button:first-child { border-radius: 6px 0 0 6px; }
-.bf-seg button:last-child { border-radius: 0 6px 6px 0; }
-.bf-seg button + button { border-left: none; }
-.bf-seg button.active { background: var(--ch-accent); border-color: var(--ch-accent);
+/* #bar-prefixed, all of them: `#bar button` (1,0,1) sets the radius and the
+   border, so the bare rules never shaped the segments either (#633). */
+#bar .bf-seg button { border-radius: 0; }
+#bar .bf-seg button:first-child { border-radius: 6px 0 0 6px; }
+#bar .bf-seg button:last-child { border-radius: 0 6px 6px 0; }
+#bar .bf-seg button + button { border-left: none; }
+/* #bar-prefixed for the same reason .ms-toggle above is: `#bar select, #bar
+   input, #bar button` sets background, colour and border at (1,0,1), so the
+   bare (0,2,1) rule this used to be left only its font-weight standing, and the
+   active stop looked like the other two (#633). */
+#bar .bf-seg button.active { background: var(--ch-accent); border-color: var(--ch-accent);
   color: var(--ch-bg); font-weight: 600; }
 /* Why Points and Both are off below member (#493) — filled and shown by
    applyPointLayerGate, in the View group right under the segments. */
