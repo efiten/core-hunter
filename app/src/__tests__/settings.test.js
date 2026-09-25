@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from '../settings.js'
+import { isSettingsActive, hasNews, settingsButtonLabel, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from '../settings.js'
 
 // A storage stub whose getItem throws, standing in for the contexts where
 // localStorage access raises SecurityError (Safari with cookies blocked, a
@@ -25,14 +25,36 @@ describe('isSettingsActive', () => {
     expect(isSettingsActive({})).toBe(false)
     expect(isSettingsActive(undefined)).toBe(false)
   })
-  // #421: the settings button's dot is the only pre-open signal there is, so
-  // unread release notes have to reach it. Asserted with the attenuator at its
-  // default, or the existing branch would answer for this one.
-  it('is true when release notes are unread, with every setting at its default', () => {
-    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: true })).toBe(true)
+  // #635: the button's tint means one thing, a setting that changes the
+  // measurement, and that is the attenuator alone. Unread notes are news
+  // (hasNews), the exaggeration is display, the introduction is transmission.
+  it('ignores everything that is not the attenuator', () => {
+    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: true, shareName: true, exaggeration: 4, updateAvailable: true })).toBe(false)
   })
-  it('is false when the notes have been read and nothing else is on', () => {
-    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false })).toBe(false)
+})
+
+// #635: news gets its own dot on the button, for either half: release notes
+// not read yet, or a newer build waiting.
+describe('hasNews', () => {
+  it('is true for unread notes, for a newer build, and for both', () => {
+    expect(hasNews({ unseenChangelog: true })).toBe(true)
+    expect(hasNews({ updateAvailable: true })).toBe(true)
+    expect(hasNews({ unseenChangelog: true, updateAvailable: true })).toBe(true)
+  })
+  it('is false with neither, and says nothing about the attenuator', () => {
+    expect(hasNews({ unseenChangelog: false, updateAvailable: false, attenuatorDb: -10 })).toBe(false)
+    expect(hasNews({})).toBe(false)
+    expect(hasNews(undefined)).toBe(false)
+  })
+})
+
+// The tint and the dot are colour only, so the button's name says them too.
+describe('settingsButtonLabel', () => {
+  it('names what the tint and the dot stand for, and nothing when neither is on', () => {
+    expect(settingsButtonLabel({})).toBe('Menu, connection status')
+    expect(settingsButtonLabel({ attenuatorDb: -10 })).toBe('Menu, connection status, attenuator on')
+    expect(settingsButtonLabel({ unseenChangelog: true })).toBe("Menu, connection status, what's new")
+    expect(settingsButtonLabel({ attenuatorDb: -10, updateAvailable: true })).toBe("Menu, connection status, attenuator on, what's new")
   })
 })
 
@@ -193,22 +215,6 @@ describe('loadExaggeration', () => {
   })
 })
 
-describe('isSettingsActive with the exaggeration', () => {
-  it('lights the dot for an exaggeration off the default, and not for the default', () => {
-    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, exaggeration: 4 })).toBe(true)
-    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, exaggeration: 7 })).toBe(false)
-  })
-})
-
-// The settings dot says "something behind this button is not at its default".
-// Sharing the node name is exactly that, and it is the one setting that
-// transmits, so it must reach the dot (#576).
-describe('isSettingsActive lights for Introduce my node to targets', () => {
-  it('is true with the name shared and everything else at default', () => {
-    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, shareName: true })).toBe(true)
-    expect(isSettingsActive({ attenuatorDb: 0, unseenChangelog: false, shareName: false })).toBe(false)
-  })
-})
 
 // Introduce my node to targets (#576): the first setting that puts the hunter's own
 // identity on air, so it is off unless the stored value says on, exactly.

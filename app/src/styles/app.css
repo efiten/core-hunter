@@ -299,12 +299,14 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #discover-btn.pulse::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
   border: 2px solid currentColor; animation: discover-pulse .5s ease-out; pointer-events: none; }
 
-/* Active-settings indicator: same accent dot, on the topbar settings button */
+/* Active-settings indicator (#635): the attenuator tints the menu button. */
 #settings-btn.active { color: var(--ch-accent); }
 /* The ticker's way back (#539): visible only while the card is closed, and
    accent once traffic has arrived unseen since it was closed. */
 #ticker-btn.active { color: var(--ch-accent); }
-#settings-btn.active::after { content: ''; position: absolute; top: -2px; right: -2px;
+/* The dot is news since #635 (variant B): unread release notes or a newer
+   build. The attenuator is the tint above, with no dot of its own. */
+#settings-btn.news::after { content: ''; position: absolute; top: -2px; right: -2px;
   width: 9px; height: 9px; border-radius: 50%;
   background: var(--ch-accent); border: 2px solid var(--ch-surface); }
 

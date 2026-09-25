@@ -102,12 +102,26 @@ function boxesOverlap(a, b) {
     && a.top < b.top + b.height && b.top < a.top + a.height
 }
 
+function insideBounds(box, b) {
+  return box.left >= b.left && box.top >= b.top
+    && box.left + box.width <= b.right && box.top + box.height <= b.bottom
+}
+
 // unclutteredLabels returns the ids that keep their label, in the order given.
 // A dropped label is NOT added to the blocker set: it is not on screen, so it
 // cannot hide anything, and treating it as a blocker would let one dense
 // cluster go on suppressing names well outside it.
+//
+// `opts.bounds` ({ left, top, right, bottom }) is the rectangle the labels are
+// drawn into, and `opts.obstacles` ([{ left, top, width, height }]) the
+// overlays over it whose place the caller knows: the FAB rail, the ticker, the
+// HUD (#639). A label that runs past the bounds or lands on an obstacle is
+// dropped the way a colliding one is; the ▲ stays and the name is still in
+// the popup. Without them the planner decides on the labels alone, as before.
 export function unclutteredLabels(items, opts) {
   if (!Array.isArray(items)) return []
+  const bounds = opts && opts.bounds
+  const obstacles = (opts && opts.obstacles) || []
   const placed = []
   const kept = []
   for (const item of items) {
@@ -115,9 +129,28 @@ export function unclutteredLabels(items, opts) {
     // Nothing is drawn for an empty name, so it neither takes a slot nor
     // blocks one.
     if (!box.width) continue
+    if (bounds && !insideBounds(box, bounds)) continue
+    if (obstacles.some((o) => boxesOverlap(box, o))) continue
     if (placed.some((p) => boxesOverlap(box, p))) continue
     placed.push(box)
     kept.push(item.id)
   }
   return kept
+}
+
+// screenObstacles turns overlay elements into obstacles in the coordinates the
+// labels are planned in, the map container's (#639). An element that is not
+// on screen (hidden, display:none, or no box) is left out, so a closed ticker
+// blocks nothing. `host` is the map container.
+export function screenObstacles(host, elements) {
+  if (!host || typeof host.getBoundingClientRect !== 'function') return []
+  const h = host.getBoundingClientRect()
+  const out = []
+  for (const el of elements || []) {
+    if (!el || el.hidden || typeof el.getBoundingClientRect !== 'function') continue
+    const r = el.getBoundingClientRect()
+    if (!r.width || !r.height) continue
+    out.push({ left: r.left - h.left, top: r.top - h.top, width: r.width, height: r.height })
+  }
+  return out
 }

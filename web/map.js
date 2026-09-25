@@ -11,7 +11,7 @@ import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.j
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, nextNotice } from './nodeposnotice.js'
-import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
+import { unclutteredLabels, createLabelMeasurer, screenObstacles } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { windowKey, createWindowCache } from './windowpoints.js'
 import { latestWins } from './latestwins.js'
@@ -1124,6 +1124,7 @@ window.__features = (id) => wm.features(id).map((f) => f.properties) // test hoo
 // Test hooks (#632): the glyphs of a kind, and where one paints, in page px.
 window.__glyphs = (kind) => [...wm.features(NODE_GLYPH_SOURCE), ...wm.features(NODE_DOT_SOURCE)].map((f) => f.properties).filter((p) => !kind || p.kind === kind)
 window.__glyphPagePoint = (key, kind) => wm.glyphPagePoint(String(key).toLowerCase(), kind)
+window.__glyphHit = (key, kind) => wm.glyphHit(String(key).toLowerCase(), kind) // test hook (#689)
 window.__measureLabel = (text) => labelMeasurer()(text)
 
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---
@@ -1385,6 +1386,16 @@ wireNarrowBar(narrowQuery)
 // the DOM. Kept across draws so the width cache survives panning and zooming,
 // which is where the saving is (#425).
 let nodeLabelMeasure = null
+// Where a name may go (#639): inside the map, and clear of what sits over it
+// (the elements marked data-map-overlay: the rail, the ticker, the readout).
+// Read on every draw, since the ticker and the readout change size.
+function labelRoom() {
+  const c = wm.getContainer()
+  return {
+    bounds: { left: 0, top: 0, right: c.clientWidth, bottom: c.clientHeight },
+    obstacles: screenObstacles(c, document.querySelectorAll('[data-map-overlay]')),
+  }
+}
 function labelMeasurer() {
   if (!nodeLabelMeasure) nodeLabelMeasure = createLabelMeasurer(wm.getContainer())
   return nodeLabelMeasure
@@ -1486,7 +1497,7 @@ async function drawNodePositions() {
         const pt = wm.project(d.advertised.lat, d.advertised.lon)
         return { id: d.id, x: pt.x, y: pt.y, label: rawLabel(d) }
       }),
-    { measure: labelMeasurer() },
+    { measure: labelMeasurer(), ...labelRoom() },
   ))
 
   // The coverage (#603) rides on this draw: same registry slice, same view.
