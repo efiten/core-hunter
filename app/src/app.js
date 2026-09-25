@@ -37,7 +37,7 @@ import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
 import { filterSheetMarkup } from './filtersheet.js'
 import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
+import { isSettingsActive, hasNews, settingsButtonLabel, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
@@ -706,11 +706,16 @@ function syncPopoverTriggers() {
   el('target-chip').setAttribute('aria-expanded', String(!el('target-sheet').hidden))
 }
 
-// Light the settings button's badge when a setting differs from default
-// (attenuator non-zero) or release notes are unread (#421). Call wherever
-// state.attenuatorDb or state.unseenChangelog changes.
+// Tint the menu button for the attenuator and put the news dot on it for
+// unread notes or a newer build (#421, #635). Call wherever
+// state.attenuatorDb, state.unseenChangelog or state.updateAvailable changes.
 function refreshSettingsIndicator() {
-  el('settings-btn').classList.toggle('active', isSettingsActive(state))
+  // Two signals since #635, variant B: the tint for the attenuator, the dot
+  // for news (unread notes or a newer build).
+  const btn = el('settings-btn')
+  btn.classList.toggle('active', isSettingsActive(state))
+  btn.classList.toggle('news', hasNews(state))
+  btn.setAttribute('aria-label', settingsButtonLabel(state))
 }
 
 // Ticker state (#539, resized in #560). The card can be put away with its ✕,
@@ -2420,8 +2425,9 @@ function buildSettingsSheet() {
   })
   refreshConnState()
 
-  // Introduce my node to targets (#576): a checkbox, saved on change, and the row and
-  // the settings dot both say when it is on.
+  // Introduce my node to targets (#576): a checkbox, saved on change, and the
+  // row says when it is on. It does not reach the menu button since #635: the
+  // button's tint is for a setting that changes the measurement.
   const share = el('ss-share-name')
   share.checked = state.shareName
   const syncShareRow = () => el('ss-row-share-name').classList.toggle('active', state.shareName)
@@ -2612,16 +2618,19 @@ function buildSettingsSheet() {
 // Fetch the deployed version (no-store so we always see the live file) and, if
 // it's newer than the running build, surface an "update available" hint and
 // flag the reload button. Failure (dev server, offline) is silent — the button
-// still reloads on demand. Runs when the Settings sheet opens.
+// still reloads on demand. Runs at start, where it feeds the news dot on the
+// menu button (#635), and again when the Settings sheet opens.
 async function checkForUpdate() {
-  const status = el('ss-update-status')
-  const btn = el('ss-reload-btn')
-  if (!status || !btn) return
   let latest = null
   try {
     latest = parseVersion(await (await fetch('/version.json', { cache: 'no-store' })).text())
   } catch { /* offline / dev server — leave as up-to-date */ }
   const stale = isUpdateAvailable(__APP_VERSION__, latest)
+  state.updateAvailable = stale
+  refreshSettingsIndicator()
+  const status = el('ss-update-status')
+  const btn = el('ss-reload-btn')
+  if (!status || !btn) return
   status.textContent = stale ? `v${latest} available` : ''
   status.hidden = !stale
   btn.classList.toggle('ss-reload-update', stale)
@@ -2709,8 +2718,8 @@ function renderWhatsNew(panel, entries, seen) {
   panel.appendChild(more)
 }
 
-// The dot is on the What's new tab, and the same unread state lights the
-// settings button on the HUD (#421) — that button is the only signal there is
+// The dot is on the What's new tab, and the same unread state puts the news
+// dot on the menu button (#421, #635): that button is the only signal there is
 // before the sheet is open. Reads storage rather than `whatsNewSeen` so
 // acknowledging clears both within the same session.
 function refreshWhatsNewBadge() {
@@ -3544,6 +3553,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   refreshFilterState()
   // Reflect persisted attenuator/manual-fix state on the settings button
   refreshSettingsIndicator()
+  // Once at start, so a newer build reaches the news dot before the sheet is
+  // ever opened (#635). Not on a timer: Kasper, 2026-09-21.
+  checkForUpdate()
   initSplashContent()
   refreshSplash()
 

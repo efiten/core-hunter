@@ -81,7 +81,8 @@ function placedElsewhere(rec, anchorId) {
 // prefix of the other.
 //
 // The name gate is the app's, stricter than the map's: both rows show a name
-// and it is the same one (Kasper, 2026-09-21). The map merges unnamed rows
+// and it is the same one (Kasper, 2026-09-21), and so does every member of the
+// chain that shows a name at all (#687). The map merges unnamed rows
 // too, because its 8-byte Discover ids carry no name; here a nameless relay
 // hop attached to the one longer id in the window would feed another node's
 // RSSI into the target. The names compared are the ones the two rows show
@@ -104,6 +105,10 @@ function mergePrefixGroups(entries) {
     const anchor = longer.reduce((a, b) => (b.id.length > a.id.length ? b : a))
     if (placedElsewhere(e.rec, anchor.id)) continue
     if (!sameResolvedName(shownName(e.rec), shownName(anchor.rec))) continue
+    // Every member of the chain that shows a name shows this one (#687). The
+    // chain test is on ids, so a middle member under another name is a second
+    // node on the prefix, and the row is as likely that node's.
+    if (longer.some((o) => shownName(o.rec) && !sameResolvedName(shownName(o.rec), shownName(e.rec)))) continue
     attachTo.set(e.i, anchor.i)
   }
 

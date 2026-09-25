@@ -224,6 +224,31 @@ describe('a node with no advert in the window is still one row (#625)', () => {
 // which for a merged row is the id of whichever reception is newest, so it
 // changed from one reception to the next. The longest id of the cluster is the
 // key now: a full pubkey when there is one, as before.
+// #687: the chain test was on ids and the name gate on the longest id alone.
+// With relay db11db named X and Discover db11db77… named Y, a db11 row named
+// Y attached to Y, although db11db shows a second node on that prefix. A row
+// attaches only when every member of its chain that shows a name shows its
+// own.
+describe('a chain whose members disagree on the name merges nothing into it (#687)', () => {
+  const D = 'db11db7700aa11bb'
+  it('leaves the short id alone when a middle member shows another name', () => {
+    const out = senderList([
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, sender_label: 'Y' }),
+      rec({ sender_kind: 'relay', sender_id: 'db11db', sender_label: 'X' }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', sender_label: 'Y' }),
+    ], {})
+    expect(out.find((r) => r.merged_ids.includes('db11')).merged_ids).toEqual(['db11'])
+  })
+  it('still merges when a middle member shows no name', () => {
+    const out = senderList([
+      rec({ sender_kind: 'discover_pubkey', sender_id: D, sender_label: 'Y' }),
+      rec({ sender_kind: 'relay', sender_id: 'db11db', sender_label: null }),
+      rec({ sender_kind: 'relay', sender_id: 'db11', sender_label: 'Y' }),
+    ], {})
+    expect(out.find((r) => r.merged_ids.includes('db11')).merged_ids).toContain(D)
+  })
+})
+
 describe('clusterKey and the selection for a chain with no full pubkey (#625)', () => {
   const name = { sender_label: 'NL-NIJ-Dikkeboom' }
   const D = 'db11db7700aa11bb'
