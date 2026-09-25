@@ -142,8 +142,8 @@ Not run against a real companion (signing, tracks while driving) or the DutchMes
 > **Amended 2026-09-25.** That result fits a collector 1 still running the image from before
 > Dutch-MeshCore/collector PR 5, which was merged on 21 September at 14:18 UTC. Before PR 5 the
 > region slot took an IATA code or `test` only. It refused anything else as not three letters
-> (`✗ Publish denied -> ... (invalid format)`) and closed the connection, so it refused
-> `wardriver` just as it refused `hunter`. Since PR 5, `PUBLISH_EXTRA_REGIONS` (`src/config.ts`
+> (`✗ Publish denied -> ... (invalid format)`), so it refused `wardriver` just as it refused
+> `hunter`, and no acknowledgement came. Since PR 5, `PUBLISH_EXTRA_REGIONS` (`src/config.ts`
 > there) defaults to `wardriver,hunter` when unset, so every collector on the new image takes the
 > same two labels unless its operator sets the variable to something else. A running collector picks the image up only after
 > `docker compose pull broker && docker compose up -d broker` (`docs/updating-the-container.md`
@@ -151,3 +151,17 @@ Not run against a real companion (signing, tracks while driving) or the DutchMes
 > logs `[AUTHZ] ✓ Using stream region -> meshcore/hunter/...` where the old one logged the denial.
 > The topics under either label carry `/wardriver/`, and the collector delivers those only to its
 > ADMIN and FULL_ACCESS subscribers, never to LIMITED ones (`authorizeForward` in `src/server.ts`).
+>
+> Run locally on 25 September against both collector versions (`a64d5c9`, main just before PR 5,
+> and `6e17036`, main after it), with this app's own `Publisher` and a token from
+> `buildBrokerToken`, signed by a fresh Ed25519 key, one obs and one track per label:
+>
+> | Label       | Before PR 5                 | After PR 5 |
+> |-------------|-----------------------------|------------|
+> | `test`      | acknowledged                | acknowledged |
+> | `hunter`    | not acknowledged, `(invalid format)` | acknowledged, `✓ Using stream region` |
+> | `wardriver` | not acknowledged, `(invalid format)` | acknowledged, `✓ Using stream region` |
+>
+> After PR 5 a FULL_ACCESS subscriber received all six messages and a LIMITED one received none.
+> Before PR 5 a LIMITED subscriber did receive the `test` messages. The live collectors could not
+> be reached from where this ran, so their state is still the open question.
