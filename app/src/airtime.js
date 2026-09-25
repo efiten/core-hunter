@@ -32,6 +32,11 @@
 //                       MAC 2 and the 13 bytes BaseChatMesh.cpp sendRequest
 //                       builds (tag 4, type 1, reserved 4, random 4) in one
 //                       16-byte AES block = 22
+//     Anonymous request (#552): header, path_len, no path (zero-hop), then
+//                       Mesh.cpp createAnonDatagram: dest hash 1, sender
+//                       pubkey 32, and encryptThenMAC: MAC 2 and the 6 bytes
+//                       BaseChatMesh.cpp sendAnonReq builds (tag 4, type 1,
+//                       reply_path_len 1) in one 16-byte AES block = 53
 //
 //   Budget. 869.618 MHz sits in the 869.400 to 869.650 MHz sub-band, which
 //   ERC 70-03 limits to a 10% duty cycle. The app reads the frequency since
@@ -44,6 +49,7 @@ export const BW_KHZ = 62.5
 export const DISCOVER_BYTES = 8
 export const TRACE_BYTES = 12
 export const TELEMETRY_REQ_BYTES = 22
+export const ANON_REQ_BYTES = 53
 
 // On-air bytes of the companion's self-advert (#577), for the name it
 // advertises. The location bytes always count, which is the conservative

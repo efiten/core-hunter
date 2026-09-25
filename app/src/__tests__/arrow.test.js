@@ -73,6 +73,7 @@ describe('registryMatch', () => {
     expect(registryMatch({ sender_kind: 'discover_pubkey', sender_id: 'a1b2c300' }, index)).toBe(NODE_A)
     expect(registryMatch({ sender_kind: 'trace_reply', sender_id: 'a1b2ff' }, index)).toBe(NODE_B)
     expect(registryMatch({ sender_kind: 'telemetry_reply', sender_id: NODE_B.pubkey.toUpperCase() }, index)).toBe(NODE_B)
+    expect(registryMatch({ sender_kind: 'anon_reply', sender_id: NODE_B.pubkey }, index)).toBe(NODE_B)
   })
   it('names no node for a prefix two nodes share, a short id, or another kind', () => {
     expect(registryMatch({ sender_kind: 'discover_pubkey', sender_id: 'a1b2' }, index)).toBe(null)
