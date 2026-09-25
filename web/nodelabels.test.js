@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { labelBox, unclutteredLabels, createLabelMeasurer, LABEL_CHAR_PX, LABEL_HEIGHT_PX, LABEL_OFFSET_PX } from './nodelabels.js'
+import { labelBox, unclutteredLabels, createLabelMeasurer, screenObstacles, LABEL_CHAR_PX, LABEL_HEIGHT_PX, LABEL_OFFSET_PX } from './nodelabels.js'
 
 // Screen-space items, as map.js hands them over after projecting each node's
 // advertised position. `label` is the text actually rendered next to the ▲.
@@ -145,5 +145,48 @@ describe('createLabelMeasurer', () => {
   it('returns null where there is no DOM, so the caller falls back', () => {
     expect(createLabelMeasurer(null)).toBe(null)
     expect(createLabelMeasurer({})).toBe(null)
+  })
+})
+
+// #639: the planner knew nothing of the screen. A label running past the edge
+// was kept and clipped, and one under the FAB rail kept and covered. `bounds`
+// is the rectangle the labels are drawn into, and `obstacles` the overlays
+// over it whose place the caller knows; a label that does not fit is dropped
+// the way a colliding one is, and the name stays in the popup.
+describe('unclutteredLabels keeps names on the screen and clear of the overlays (#639)', () => {
+  const measure = () => 50
+  const at = (id, x, y) => ({ id, x, y, label: 'NAME' })
+  it('drops a label that would run past an edge of the bounds', () => {
+    const bounds = { left: 0, top: 0, right: 400, bottom: 300 }
+    // Label box: x + 18 .. x + 68, y - 6.5 .. y + 6.5.
+    expect(unclutteredLabels([at('in', 100, 100), at('right', 340, 100), at('top', 100, 4), at('bottom', 100, 296)], { measure, bounds }))
+      .toEqual(['in'])
+  })
+  it('drops a label under an obstacle, and keeps one beside it', () => {
+    const obstacles = [{ left: 340, top: 200, width: 46, height: 46 }]
+    expect(unclutteredLabels([at('under', 300, 220), at('above', 300, 150)], { measure, obstacles }))
+      .toEqual(['above'])
+  })
+  it('does not let an obstacle or the edge block anything else once its label is dropped', () => {
+    const bounds = { left: 0, top: 0, right: 400, bottom: 300 }
+    expect(unclutteredLabels([at('off', 380, 100), at('next', 100, 100)], { measure, bounds })).toEqual(['next'])
+  })
+  it('is unchanged for a caller that gives neither', () => {
+    expect(unclutteredLabels([at('a', 380, 100), at('b', -50, -50)], { measure })).toEqual(['a', 'b'])
+  })
+})
+
+describe('screenObstacles (#639)', () => {
+  const el = (r, hidden = false) => ({ hidden, getBoundingClientRect: () => r })
+  const host = el({ left: 10, top: 48, width: 800, height: 600 })
+  it('puts each overlay in the map container\'s coordinates', () => {
+    expect(screenObstacles(host, [el({ left: 760, top: 400, width: 46, height: 46 })]))
+      .toEqual([{ left: 750, top: 352, width: 46, height: 46 }])
+  })
+  it('leaves out an overlay that is hidden or has no box', () => {
+    expect(screenObstacles(host, [el({ left: 0, top: 0, width: 40, height: 40 }, true), el({ left: 0, top: 0, width: 0, height: 0 }), null])).toEqual([])
+  })
+  it('is empty without a host', () => {
+    expect(screenObstacles(null, [el({ left: 0, top: 0, width: 4, height: 4 })])).toEqual([])
   })
 })

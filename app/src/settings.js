@@ -93,22 +93,31 @@ export function loadLegacyChangelogAck() {
   return readStored('core-hunter-changelog-seen')
 }
 
-// isSettingsActive reports whether the settings button deserves its dot: any
-// setting under the sheet differing from its default, or release notes the
-// reader has not opened yet (#421). Mirrors isFilterActive (filters.js).
-//
-// Unread notes ride the same dot deliberately. A second indicator on a 40px
-// button reads as noise, and the two mean the same thing to the person looking
-// at it — there is something behind this button you have not dealt with. What
-// it is, is one tap away, and the tab carries its own dot to say which.
-export function isSettingsActive({ attenuatorDb, unseenChangelog, shareName, exaggeration } = {}) {
-  if (attenuatorDb) return true
-  if (unseenChangelog) return true
-  // Sharing the node name is a non-default that transmits (#576), so it is
-  // exactly what the dot is for.
-  if (shareName === true) return true
-  if (exaggeration != null && exaggeration !== DEFAULT_EXAGGERATION) return true
-  return false
+// isSettingsActive reports whether the settings button is tinted: a setting
+// that changes the measurement is off its default. That is the attenuator and
+// nothing else (#635, Kasper 2026-09-12): the exaggeration is display, the
+// introduction is transmission, and unread notes are news (hasNews). It used
+// to light one dot for all four, and a dot that stands for four things says
+// nothing about which.
+export function isSettingsActive({ attenuatorDb } = {}) {
+  return Boolean(attenuatorDb)
+}
+
+// hasNews reports whether the button carries the news dot (#635): release
+// notes not read yet, or a newer build waiting (update.js, checked at start).
+// The What's new tab carries its own dot for the first half, and the Reload
+// button its own mark for the second, once the sheet is open.
+export function hasNews({ unseenChangelog, updateAvailable } = {}) {
+  return Boolean(unseenChangelog || updateAvailable)
+}
+
+// settingsButtonLabel is the button's accessible name: the tint and the dot are
+// colour only, so the name says what each stands for.
+export function settingsButtonLabel(state = {}) {
+  const parts = ['Menu, connection status']
+  if (isSettingsActive(state)) parts.push('attenuator on')
+  if (hasNews(state)) parts.push("what's new")
+  return parts.join(', ')
 }
 
 // initialSettingsTab picks the tab the sheet opens on. Unread release notes
