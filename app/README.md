@@ -66,13 +66,18 @@ cp public/config.example.json public/config.json
 
 | Field | Required | Description |
 |---|---|---|
-| `mqttUrl` | yes | WSS URL of your EMQX broker, e.g. `wss://broker.example.com:8084/mqtt` |
+| `mqttUrl` | yes, unless `brokers` has an entry | WSS URL of your EMQX broker, e.g. `wss://broker.example.com:8084/mqtt` |
 | `mqttUsername` | yes | Publish-only EMQX account username |
 | `mqttPassword` | yes | Publish-only EMQX account password |
+| `brokers` | no | More brokers every reception also goes to: an array of `{ id, name, url, username, password }`, or `{ id, name, url, auth: "companion" }` for a broker that takes a token signed by the companion's own key instead of a password. Add `format: "wardrive"` (and optionally `label`, default `hunter`) for a broker that reads receptions as `wardriver/obs` plus the phone's track as `wardriver/track`; without it a broker gets the `packets` format below. `mqttUrl` stays the first one. `id` is the key a broker's progress is stored under, so keep it stable; it defaults to the host. A broker the phone has not published to before receives what is heard from then on. |
 | `resolvers` | no | Array of `{ label, sf, url }` regional CoreScope name-resolver endpoints (back-compat: a single `resolveUrl` string also works) |
 | `rssiCalibrationOffset` | no | dBm offset added to every raw RSSI before band assignment (default: 0) |
 
 `config.json` is gitignored; never commit credentials.
+
+A hunter can add brokers of their own and switch any broker off, under Settings, MQTT brokers. Those
+choices are kept on the phone (`localStorage`), password included, and never leave it. A broker that
+is switched back on receives what is heard from then on, not what it missed while it was off.
 
 ### What gets captured
 

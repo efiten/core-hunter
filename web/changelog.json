@@ -133,6 +133,13 @@
     "body": "The light theme's teal is darker, so text on it and text in it read at the contrast small type needs."
   },
   {
+    "id": "2026-09-21-mqtt-brokers",
+    "date": "2026-09-21",
+    "where": "app",
+    "title": "Choose where your receptions go",
+    "body": "Settings lists every MQTT broker your receptions go to. Switch one off, or add your own, DutchMeshCore included."
+  },
+  {
     "id": "2026-09-15-direction-arrow",
     "date": "2026-09-15",
     "where": "app",

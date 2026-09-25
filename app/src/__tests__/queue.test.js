@@ -140,6 +140,122 @@ describe('Queue watermark — survives a reload', () => {
   })
 })
 
+describe('Queue watermark per broker (#554)', () => {
+  it('keeps one broker\'s progress apart from another\'s', async () => {
+    const q = new Queue()
+    await q.setWatermark(42)
+    await q.setWatermark(7, 'dmc')
+    expect(await q.getWatermark()).toBe(42)
+    expect(await q.getWatermark('dmc')).toBe(7)
+  })
+
+  it('counts what each broker is still owed, not what the first one is', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 4; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(3)
+    await q.setWatermark(1, 'dmc')
+    expect(await q.unpublishedCount()).toBe(1)
+    expect(await q.unpublishedCount('dmc')).toBe(3)
+  })
+
+  it('reads the pending identity above that broker\'s own watermark', async () => {
+    const q = new Queue()
+    await q.add(rec(iso(3 * MIN), { rx_pubkey: 'aa' }))
+    await q.add(rec(iso(2 * MIN), { rx_pubkey: 'bb' }))
+    await q.setWatermark(1)
+    expect(await q.pendingPubkey()).toBe('bb')
+    expect(await q.pendingPubkey('dmc')).toBe('aa')
+  })
+
+  // A broker added on a phone with a week of receptions must not get the week:
+  // it was not a destination when those were heard.
+  it('starts a broker it has not seen before at the newest reception', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 3; i++) await q.add(rec(iso(i * MIN)))
+    await q.startAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(3)
+    expect(await q.unpublishedFrom(await q.getWatermark('dmc'))).toEqual([])
+  })
+
+  it('leaves a broker it already knows where it was', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 3; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(1, 'dmc')
+    await q.startAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(1)
+  })
+
+  it('starts at 0 on an empty store', async () => {
+    const q = new Queue()
+    await q.startAtHead('dmc')
+    expect(await q.getWatermark('dmc')).toBe(0)
+  })
+})
+
+describe('Queue: switching a broker on again, and removing one (#554)', () => {
+  // Off means "do not send my receptions there". Sending the hours it was off
+  // the moment it is switched back on would undo that.
+
+  it('forgets a removed broker, so adding it again starts fresh', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 3; i++) await q.add(rec(iso(i * MIN)))
+    await q.setWatermark(1, 'user:be.example')
+    await q.forgetBroker('user:be.example')
+    await q.add(rec(iso(0)))
+    await q.startAtHead('user:be.example')
+    expect(await q.getWatermark('user:be.example')).toBe(4)
+  })
+})
+
+describe('Queue tracks: listening intervals for wardrive brokers (#554)', () => {
+  const track = (t1, extra = {}) => ({ t0: t1, t1, rx_pubkey: 'ab', lat: 52, lon: 5, rx_count: 0, listening: true, ...extra })
+
+  it('keeps tracks apart from receptions, so the map never reads one', async () => {
+    const q = new Queue()
+    await q.addTrack(track(iso(MIN)))
+    expect(await q.count()).toBe(0)
+    expect(await q.since(iso(DAY))).toEqual([])
+  })
+
+  it('hands a broker the tracks above its own track watermark, in order', async () => {
+    const q = new Queue()
+    for (let i = 3; i > 0; i--) await q.addTrack(track(iso(i * MIN)))
+    await q.setTrackWatermark(1, 'dmc')
+    expect((await q.unpublishedTracksFrom(await q.getTrackWatermark('dmc'))).map((t) => t.id)).toEqual([2, 3])
+    expect((await q.unpublishedTracksFrom(await q.getTrackWatermark('other'))).map((t) => t.id)).toEqual([1, 2, 3])
+  })
+
+  it('never moves a track watermark backwards', async () => {
+    const q = new Queue()
+    await q.setTrackWatermark(9, 'dmc')
+    await q.setTrackWatermark(4, 'dmc')
+    expect(await q.getTrackWatermark('dmc')).toBe(9)
+  })
+
+  it('starts a new broker at the newest track too, not only at the newest reception', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 4; i++) await q.addTrack(track(iso(i * MIN)))
+    await q.startAtHead('dmc')
+    expect(await q.getTrackWatermark('dmc')).toBe(4)
+  })
+
+  it('forgets a removed broker\'s track watermark along with the other', async () => {
+    const q = new Queue()
+    await q.setTrackWatermark(3, 'dmc')
+    await q.forgetBroker('dmc')
+    expect(await q.getTrackWatermark('dmc')).toBe(0)
+  })
+
+  it('prunes old tracks only below the floor it is given', async () => {
+    const q = new Queue()
+    await q.addTrack(track(iso(9 * DAY)))
+    await q.addTrack(track(iso(8 * DAY)))
+    await q.addTrack(track(iso(MIN)))
+    expect(await q.pruneTracks(iso(RETENTION_MS), 1)).toBe(1)
+    expect((await q.unpublishedTracksFrom(0)).map((t) => t.id)).toEqual([2, 3])
+  })
+})
+
 describe('Queue.prune — retention, gated on publication (#230)', () => {
   it('deletes published rows older than the cutoff', async () => {
     const q = new Queue()

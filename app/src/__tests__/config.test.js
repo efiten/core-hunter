@@ -66,3 +66,63 @@ describe('normalizeConfig channelKeys', () => {
     expect(c.channelKeys).toEqual({ good: '8b3387e9c5cdea6ac9e5edbaa115cd72' })
   })
 })
+
+describe('normalizeConfig brokers (#554)', () => {
+  it('turns the single-broker fields into the first broker', () => {
+    const c = normalizeConfig({ mqttUrl: 'wss://own.example/ws', mqttUsername: 'u', mqttPassword: 'p' })
+    expect(c.brokers).toEqual([{ id: 'default', name: 'Mesh-Hunter', url: 'wss://own.example/ws', username: 'u', password: 'p' }])
+  })
+
+  it('appends the brokers array after it, in order', () => {
+    const c = normalizeConfig({
+      mqttUrl: 'wss://own.example/ws',
+      brokers: [{ id: 'be', name: 'BE community', url: 'wss://be.example:443', username: 'h', password: 's' }],
+    })
+    expect(c.brokers.map((b) => b.id)).toEqual(['default', 'be'])
+    expect(c.brokers[1]).toEqual({ id: 'be', name: 'BE community', url: 'wss://be.example:443', username: 'h', password: 's' })
+  })
+
+  it('accepts a brokers array on its own, without mqttUrl', () => {
+    const c = normalizeConfig({ brokers: [{ id: 'be', url: 'wss://be.example' }] })
+    expect(c.brokers.map((b) => b.id)).toEqual(['be'])
+  })
+
+  it('still refuses a config with nowhere to publish', () => {
+    expect(() => normalizeConfig({ brokers: [] })).toThrow(/mqttUrl/)
+    expect(() => normalizeConfig({ brokers: [{ id: 'x' }] })).toThrow(/mqttUrl/)
+  })
+
+  it('names a broker after its host when the entry has no name or id', () => {
+    const c = normalizeConfig({ brokers: [{ url: 'wss://be.example:443/mqtt' }] })
+    expect(c.brokers[0].id).toBe('be.example')
+    expect(c.brokers[0].name).toBe('be.example')
+  })
+
+  // The id is the key the watermark is stored under: two entries sharing one
+  // would share progress, and the second would never get its own receptions.
+  it('drops a second entry that reuses an id', () => {
+    const c = normalizeConfig({ brokers: [{ id: 'a', url: 'wss://one.example' }, { id: 'a', url: 'wss://two.example' }] })
+    expect(c.brokers.map((b) => b.url)).toEqual(['wss://one.example'])
+  })
+
+  it('reads how a broker is signed in to, and defaults to a password', () => {
+    const c = normalizeConfig({ brokers: [
+      { id: 'a', url: 'wss://a.example', auth: 'companion', username: 'ignored', password: 'ignored' },
+      { id: 'b', url: 'wss://b.example', auth: 'nonsense' },
+    ] })
+    expect(c.brokers[0]).toEqual({ id: 'a', name: 'a.example', url: 'wss://a.example', auth: 'companion' })
+    expect(c.brokers[1].auth).toBeUndefined()
+  })
+
+  it('reads a broker\'s format and stream label, and leaves both out for the packets default', () => {
+    const c = normalizeConfig({ brokers: [
+      { id: 'a', url: 'wss://a.example', format: 'wardrive', label: 'Hunter ' },
+      { id: 'b', url: 'wss://b.example', format: 'wardrive' },
+      { id: 'c', url: 'wss://c.example', format: 'something', label: 'x' },
+    ] })
+    expect(c.brokers[0]).toMatchObject({ format: 'wardrive', label: 'hunter' })
+    expect(c.brokers[1]).toMatchObject({ format: 'wardrive', label: 'hunter' })
+    expect('format' in c.brokers[2]).toBe(false)
+    expect('label' in c.brokers[2]).toBe(false)
+  })
+})

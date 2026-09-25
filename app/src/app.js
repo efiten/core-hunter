@@ -18,11 +18,15 @@ import { initDecoder, decodePacket, channelNameFor, bytesToHex, verifyAdvertSign
 import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableReception, traceTagOf, heardUsSnr } from './meshpacket.js'
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
-import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark } from './queue.js'
+import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
+import { pruneFloor, owedBrokers, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary, presetsFrom } from './brokers.js'
+import { createBrokerSheet } from './brokersheet.js'
+import { createTrackWindow } from './wardrive.js'
+import { createSigner, buildBrokerToken, brokerUsername, brokerAudience, tokenUsable } from './companionsign.js'
 import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
-import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M } from './gps.js'
+import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M, isUsableFix } from './gps.js'
 import { requestSelfInfo, radioSummary } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
@@ -37,7 +41,7 @@ import { nextChipSelection, hiddenChipCount, ALL, CHIP_CAP } from './chiprow.js'
 import { filterSheetMarkup } from './filtersheet.js'
 import { activeFilterCount } from './barfilters.js'
 import { connectButton, connectFailureMessage } from './connectstate.js'
-import { isSettingsActive, hasNews, settingsButtonLabel, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
+import { isSettingsActive, hasNews, settingsButtonLabel, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration, loadBrokerPrefs, saveBrokerPrefs, loadBrokerTokens, saveBrokerTokens } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
 import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget, pruneAsks, ASK_TTL_MS } from './telemetryreq.js'
@@ -182,7 +186,22 @@ const state = {
   transport: null,
   gps: new Gps(),
   queue: new Queue(),
-  publisher: null,
+  // One entry per broker (#554): id -> { publisher, stall }. `stall` is how many
+  // consecutive drain passes have failed on one reception for that broker
+  // (#454), carried here because the drain loop restarts every 5 s.
+  publishers: new Map(),
+  // Brokers the hunter added, and the ids they switched off (#554).
+  brokerPrefs: loadBrokerPrefs(),
+  brokerSheet: null,
+  // Tokens the companion signed, by broker id, and the brokers that are
+  // waiting for it to sign (#554).
+  brokerTokens: loadBrokerTokens(),
+  needsCompanion: new Set(),
+  signRefused: new Set(),
+  signRetryAt: new Map(),
+  signer: null,
+  // The running listening interval, for brokers in the wardrive format.
+  trackWindow: createTrackWindow(),
   rxPubkey: '',
   name: '',
   sf: null,   // companion spreading factor (from SELF_INFO), null until known
@@ -258,9 +277,6 @@ const state = {
   // The splash status line for the ble-error state (#539): set from the
   // caught connect() rejection so the copy can name the cause.
   bleErrorMessage: null,
-  // How many consecutive drain passes have failed on one reception (#454).
-  // Carried on state because the drain loop restarts every 5 s.
-  drainStall: { id: null, count: 0 },
   // Which of the four connect phases the buttons render (#433). One field, so a
   // spontaneous drop cannot leave a label nobody rewrote. See connectstate.js.
   connectPhase: 'idle',
@@ -456,7 +472,7 @@ function floatModelNow() {
     mode: state.rxMode,
     hidden: following ? state.hudHidden : 0,
     ble: state.connected,
-    mqtt: Boolean(state.publisher && state.publisher.connected()),
+    mqtt: mqttDotState() !== 'off',
     offsetDb: effectivePlotOffset(getConfig() && getConfig().rssiCalibrationOffset, state.attenuatorDb),
     dir: state.arrow.floatDir,
   })
@@ -592,6 +608,124 @@ function wireHudTools() {
   })
 }
 
+// Every broker the sheet lists (#554): the site's from config.json, then the
+// hunter's own.
+function allBrokers() {
+  const cfg = getConfig()
+  return mergeBrokers((cfg && cfg.brokers) || [], state.brokerPrefs)
+}
+
+// The brokers every reception goes to: the ones that are on.
+function brokerList() {
+  return allBrokers().filter((b) => b.enabled)
+}
+
+async function brokerStatusOf(id) {
+  let queued = 0
+  try { queued = await state.queue.unpublishedCount(id) } catch (_) { queued = 0 }
+  return { connected: brokerConnected(id), queued, needsCompanion: state.needsCompanion.has(id), signRefused: state.signRefused.has(id) }
+}
+
+// What to sign in with. A password broker has its two fields. A broker the
+// companion signs in to needs a token for this companion and this host: the
+// stored one while it has time left, otherwise a fresh signature -- which takes
+// the radio, connected and the same one the receptions belong to. null means
+// not now.
+async function brokerCredentials(broker, owner) {
+  if (broker.auth !== 'companion') return { username: broker.username, password: broker.password }
+  const audience = brokerAudience(broker.url)
+  const nowSec = Math.floor(Date.now() / 1000)
+  const stored = state.brokerTokens[broker.id]
+  if (tokenUsable(stored, { pubkeyHex: owner, audience, nowSec })) return { username: brokerUsername(owner), password: stored }
+  if (!state.connected || !state.transport || state.rxPubkey !== owner) return null
+  if (!state.signer || state.signer.transport !== state.transport) {
+    state.signer = { transport: state.transport, sign: createSigner(state.transport) }
+  }
+  const token = await buildBrokerToken({ pubkeyHex: owner, audience, nowSec, sign: state.signer.sign })
+  state.brokerTokens = { ...state.brokerTokens, [broker.id]: token }
+  saveBrokerTokens(state.brokerTokens)
+  return { username: brokerUsername(owner), password: token }
+}
+
+function setBrokerPrefs(prefs) {
+  state.brokerPrefs = prefs
+  saveBrokerPrefs(prefs)
+}
+
+// Off stops the sending at once rather than on the next drain tick, and it
+// is a pause: on again drains from where the broker stopped, so a weekend
+// captured with the switch off still reaches the map (Kasper, 2026-09-23).
+// The backlog leaves once the switch is on, which is the hunter's decision,
+// made when they flip it.
+async function toggleBroker(id, enabled) {
+  const off = state.brokerPrefs.off.filter((x) => x !== id)
+  if (!enabled) off.push(id)
+  setBrokerPrefs({ ...state.brokerPrefs, off })
+  await ensureMqtt()
+  setMqttDot()
+}
+
+// Connect first, store second: a broker that does not answer is never saved.
+async function saveBroker(form, editingId) {
+  const taken = allBrokers().map((b) => b.id).filter((x) => x !== editingId)
+  const v = validateBroker(form, taken, { securePage: location.protocol === 'https:' })
+  if (!v.ok) return v
+  let creds = null
+  try { creds = await brokerCredentials(v.broker, state.rxPubkey) } catch (e) {
+    return { ok: false, errors: { url: `Your companion could not sign in (${e.message}).` } }
+  }
+  if (!creds) return { ok: false, errors: { url: 'Connect your companion first: it signs you in to this broker.' } }
+  // The live session goes first: the probe signs in with the same client id
+  // (the companion's key, which the broker's ACL binds topics to), and a
+  // second session under one id kicks the first. ensureMqtt rebuilds it below,
+  // or on the next drain tick if the probe fails.
+  if (editingId) dropPublisher(editingId)
+  const probe = await probeBroker(new Publisher({
+    url: v.broker.url, username: creds.username, password: creds.password,
+    clientId: state.rxPubkey || 'mesh-hunter-' + Math.random().toString(16).slice(2, 10),
+  }))
+  if (!probe.ok) return { ok: false, errors: { url: `Could not connect (${probe.reason}). Check the address and the sign-in.` } }
+  const added = state.brokerPrefs.added.filter((b) => b.id !== v.broker.id)
+  added.push(v.broker)
+  setBrokerPrefs({ ...state.brokerPrefs, added })
+  if (!editingId) { try { await state.queue.startAtHead(v.broker.id) } catch (_) { /* starts at 0 */ } }
+  await ensureMqtt()
+  return { ok: true, errors: {} }
+}
+
+async function removeBroker(id) {
+  setBrokerPrefs({
+    added: state.brokerPrefs.added.filter((b) => b.id !== id),
+    off: state.brokerPrefs.off.filter((x) => x !== id),
+  })
+  dropPublisher(id)
+  try { await state.queue.forgetBroker(id) } catch (_) { /* a stale watermark only matters if it is added again */ }
+  setMqttDot()
+}
+
+function dropPublisher(id) {
+  const entry = state.publishers.get(id)
+  if (!entry) return
+  entry.publisher.end()
+  state.publishers.delete(id)
+}
+
+function brokerConnected(id) {
+  const entry = state.publishers.get(id)
+  return Boolean(entry && entry.publisher.connected())
+}
+
+function mqttDotState() {
+  return dotState(brokerList().map((b) => brokerConnected(b.id)))
+}
+
+// One dot for several brokers: lit when all are up, amber when one is missing.
+function setMqttDot() {
+  const s = mqttDotState()
+  setDot('dot-mqtt', s !== 'off')
+  el('dot-mqtt').classList.toggle('low', s === 'partial')
+}
+
 function setDot(id, on) {
   const d = el(id)
   if (on) d.classList.add('on')
@@ -616,10 +750,12 @@ async function renderBacklog() {
   const elx = el('hud-backlog')
   if (!elx) return
   let pending = 0
-  try { pending = await state.queue.unpublishedCount() } catch (_) { return }
-  const s = backlogState(pending, {
-    connected: Boolean(state.publisher && state.publisher.connected()),
-  })
+  // "Not on the map yet" is about the broker that feeds the map: the first one,
+  // the site's own (#554). What another broker is owed is in the Status tab.
+  const own = brokerList()[0]
+  if (!own) return
+  try { pending = await state.queue.unpublishedCount(own.id) } catch (_) { return }
+  const s = backlogState(pending, { connected: brokerConnected(own.id) })
   elx.hidden = !s.show
   elx.textContent = s.text
   for (const lvl of ['warn', 'alarm']) elx.classList.toggle(`hud-backlog-${lvl}`, s.show && s.level === lvl)
@@ -1208,6 +1344,7 @@ async function processFrame(dv) {
   // and so does any other traffic from it, which is the cheaper of the two.
   if (rec.sender_id != null) state.sweep.heardAt.set(String(rec.sender_id).toLowerCase(), Date.now())
   await state.queue.add(rec)
+  state.trackWindow.heard()
   // After the add, so the store never keeps it: an attribution follows the
   // registry and the attenuator, which change after the reception (#661).
   rec._attr = attributeReception(rec, attributionContext())
@@ -1278,7 +1415,7 @@ function attributeRows(rowSets) {
 // spawning a second parallel setTimeout chain alongside the running one.
 async function drawOnce() {
   try {
-    setDot('dot-mqtt', state.publisher != null && state.publisher.connected())
+    setMqttDot()
     // The Status tab's MQTT group has no events of its own (mqttlifecycle
     // reconnects in the background), so while the sheet is open the tick is
     // what keeps its dot and queued count honest.
@@ -1365,6 +1502,7 @@ async function drawOnce() {
 
 async function renderTick() {
   await drawOnce()
+  await trackTick()
   setTimeout(renderTick, 1000)
 }
 
@@ -1386,56 +1524,28 @@ async function renderTick() {
 // published after publish() resolves, two overlapping passes could each publish
 // the same row (a redundant MQTT message — backend dedups on raw+rx_at).
 let draining = false
+// The brokers with a drain in flight. Each broker drains on its own watermark
+// and on its own promise (#554): a broker that is slow to acknowledge, or one
+// whose every publish waits out the ack timeout, keeps draining across ticks
+// while the others take every tick. Joined with Promise.all, the slow one ate
+// the site broker's tick as well, and its watermark stalled the prune.
+const brokerDrains = new Set()
 async function drainOnce() {
   if (draining) return
   // Before the guard, not after: the publisher this checks for is the one
   // ensureMqtt may have just created, and the old order meant a session that
   // lost its broker never rebuilt one (#454).
   await ensureMqtt()
-  if (!(state.publisher && state.publisher.connected())) return
   draining = true
   try {
-    const startedAt = Date.now()
-    let watermark = await state.queue.getWatermark()
-    // Keep taking batches until the store is drained or the budget is spent
-    // (#230). One batch per tick would leave a 50k backlog over half an hour
-    // behind; see shouldContinueDraining.
-    for (;;) {
-      const rows = await state.queue.unpublishedFrom(watermark)
-      const outcomes = []
-      for (const r of rows) {
-        try {
-          await state.publisher.publish(state.rxPubkey, r, state.name)
-          outcomes.push({ id: r.id, ok: true })
-        } catch (_) {
-          // Publish failed. Stop here rather than skipping ahead — the rest is
-          // retried next cycle. How far the watermark may move is
-          // nextWatermark's decision, not this loop's.
-          outcomes.push({ id: r.id, ok: false })
-          break
-        }
-      }
-      const failed = outcomes.some((o) => !o.ok)
-      // The stall state is carried across passes, not across ticks: it lives
-      // on state so a reception that fails every 5 s pass is eventually
-      // stepped over instead of blocking the queue behind it forever (#454).
-      const next = nextWatermark(watermark, outcomes, state.drainStall)
-      state.drainStall = next.stall
-      if (next.steppedOver !== null) {
-        // Worth a log rather than silence: this is the one case where a
-        // reception may not have reached the broker. It is the deliberate
-        // trade -- one possible loss against everything queued behind it --
-        // and a duplicate costs nothing now that the ingestor stores
-        // receptions idempotently.
-        console.warn('[drain] stepping over id', next.steppedOver, 'after repeated publish failures')
-      }
-      if (next.watermark > watermark) {
-        await state.queue.setWatermark(next.watermark)
-        console.debug('[drain] published through id', next.watermark)
-        watermark = next.watermark
-      }
-      if (failed && next.steppedOver === null) break
-      if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
+    for (const b of brokerList().filter((b) => brokerConnected(b.id))) {
+      if (brokerDrains.has(b.id)) continue
+      const entry = state.publishers.get(b.id)
+      brokerDrains.add(b.id)
+      drainBroker(b.id, entry)
+        .then(() => (entry.format === 'wardrive' ? drainTracks(b.id, entry) : null))
+        .catch(() => { /* this broker retries next cycle; the others carry on */ })
+        .finally(() => brokerDrains.delete(b.id))
     }
     await pruneOnce()
   } catch (_) {
@@ -1443,6 +1553,95 @@ async function drainOnce() {
   } finally {
     draining = false
   }
+}
+
+async function drainBroker(id, entry) {
+  const startedAt = Date.now()
+  let watermark = await state.queue.getWatermark(id)
+  // Keep taking batches until the store is drained or the budget is spent
+  // (#230). One batch per tick would leave a 50k backlog over half an hour
+  // behind; see shouldContinueDraining.
+  for (;;) {
+    const rows = await state.queue.unpublishedFrom(watermark)
+    const outcomes = []
+    for (const r of rows) {
+      try {
+        await entry.publisher.publish(state.rxPubkey, r, state.name)
+        outcomes.push({ id: r.id, ok: true })
+      } catch (_) {
+        // Publish failed. Stop here rather than skipping ahead: the rest is
+        // retried next cycle. How far the watermark may move is
+        // nextWatermark's decision, not this loop's.
+        outcomes.push({ id: r.id, ok: false })
+        break
+      }
+    }
+    const failed = outcomes.some((o) => !o.ok)
+    // The stall state is carried across passes, not across ticks: it lives
+    // on the broker's entry so a reception that fails every 5 s pass is
+    // eventually stepped over instead of blocking the queue behind it
+    // forever (#454).
+    const next = nextWatermark(watermark, outcomes, entry.stall)
+    entry.stall = next.stall
+    if (next.steppedOver !== null) {
+      // Worth a log rather than silence: this is the one case where a
+      // reception may not have reached the broker. It is the deliberate
+      // trade -- one possible loss against everything queued behind it --
+      // and a duplicate costs nothing now that the ingestor stores
+      // receptions idempotently.
+      console.warn('[drain]', id, 'stepping over id', next.steppedOver, 'after repeated publish failures')
+    }
+    if (next.watermark > watermark) {
+      await state.queue.setWatermark(next.watermark, id)
+      console.debug('[drain]', id, 'published through id', next.watermark)
+      watermark = next.watermark
+    }
+    if (failed && next.steppedOver === null) break
+    if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
+  }
+}
+
+// Tracks go to brokers in the wardrive format, after the receptions they
+// count. Same rule as the receptions, nextWatermark included: the watermark
+// moves over an unbroken run of acknowledged publishes, stops at the first
+// failure, and steps over a track that fails every pass rather than holding
+// every track behind it and the prune with them (#554 review).
+async function drainTracks(id, entry) {
+  const startedAt = Date.now()
+  let watermark = await state.queue.getTrackWatermark(id)
+  for (;;) {
+    const rows = await state.queue.unpublishedTracksFrom(watermark)
+    const outcomes = []
+    for (const row of rows) {
+      try { await entry.publisher.publishTrack(row); outcomes.push({ id: row.id, ok: true }) }
+      catch (_) { outcomes.push({ id: row.id, ok: false }); break }
+    }
+    const failed = outcomes.some((o) => !o.ok)
+    const next = nextWatermark(watermark, outcomes, entry.trackStall)
+    entry.trackStall = next.stall
+    if (next.steppedOver !== null) console.warn('[drain]', id, 'stepping over track', next.steppedOver, 'after repeated publish failures')
+    if (next.watermark > watermark) { await state.queue.setTrackWatermark(next.watermark, id); watermark = next.watermark }
+    if (failed && next.steppedOver === null) break
+    if (!shouldContinueDraining({ batchSize: rows.length, elapsedMs: Date.now() - startedAt })) break
+  }
+}
+
+// trackTick cuts a track when one is due (wardrive.js). Only while a broker in
+// the wardrive format is on: nobody else reads them. Listening means the radio
+// is connected; a dropped link closes the interval instead, so a gap in the
+// connection is never read as silence on the air.
+async function trackTick() {
+  if (!brokerList().some((b) => b.format === 'wardrive')) return
+  const fix = state.gps.latest()
+  const args = { nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey: state.rxPubkey }
+  const row = state.connected && state.rxPubkey ? state.trackWindow.tick(args) : null
+  if (row) { try { await state.queue.addTrack(row) } catch (_) { /* a lost track is a gap, not an error */ } }
+}
+
+async function closeTrack(rxPubkey) {
+  const fix = state.gps.latest()
+  const row = state.trackWindow.close({ nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey })
+  if (row && rxPubkey) { try { await state.queue.addTrack(row) } catch (_) { /* as above */ } }
 }
 
 // Retention (#230): drop receptions past RETENTION_MS, but only ones the broker
@@ -1454,7 +1653,17 @@ async function pruneOnce() {
   if (now - lastPrune < 3600_000) return
   lastPrune = now
   const cutoff = new Date(now - RETENTION_MS).toISOString()
-  const removed = await state.queue.prune(cutoff, await state.queue.getWatermark())
+  // A reception may only go once every broker that is owed it has it (#554).
+  // Which brokers are owed, a paused one included or not, is owedBrokers'.
+  const owedBy = owedBrokers(allBrokers())
+  const owed = []
+  for (const b of owedBy) owed.push({ id: b.id, watermark: await state.queue.getWatermark(b.id) })
+  const removed = await state.queue.prune(cutoff, pruneFloor(owed))
+  const owedTracks = []
+  for (const b of owedBy) {
+    if (b.format === 'wardrive') owedTracks.push({ id: b.id, watermark: await state.queue.getTrackWatermark(b.id) })
+  }
+  await state.queue.pruneTracks(cutoff, pruneFloor(owedTracks))
   if (removed > 0) console.debug('[prune] removed', removed, 'published record(s) past retention')
 }
 
@@ -1880,38 +2089,84 @@ function applyConnectButtons() {
 // the receptions are already on disk, they were heard by a real companion, and
 // they are owed to the broker whatever the link is doing now.
 async function ensureMqtt() {
-  const cfg = getConfig()
-  // The identity comes from the queue when live state has none: a deliberate
-  // disconnect clears state.rxPubkey, and the backlog still belongs to the
-  // companion that captured it.
-  let owner = state.rxPubkey
-  if (!owner) {
-    try { owner = await state.queue.pendingPubkey() } catch (_) { owner = '' }
+  const on = brokerList()
+  const nowSec = Math.floor(Date.now() / 1000)
+  for (const [id, entry] of [...state.publishers]) {
+    const broker = on.find((b) => b.id === id)
+    // mqtt.js reconnects with the password it was given, so a token that has
+    // run out would be refused for ever: drop the client and let the pass
+    // below sign in again.
+    const stale = broker && broker.auth === 'companion'
+      && !tokenUsable(entry.token, { pubkeyHex: entry.owner, audience: brokerAudience(broker.url), nowSec })
+    if (!broker || stale) dropPublisher(id)
   }
-  const run = mqttShouldRun({ configured: Boolean(cfg && cfg.mqttUrl), rxPubkey: owner })
-  switch (mqttAction(run, Boolean(state.publisher))) {
-    case 'connect': connectMqtt(owner); break
-    case 'end':
-      state.publisher.end()
-      state.publisher = null
-      setDot('dot-mqtt', false)
-      break
-    default: break
+  for (const broker of on) {
+    // The identity comes from the queue when live state has none: a deliberate
+    // disconnect clears state.rxPubkey, and the backlog still belongs to the
+    // companion that captured it.
+    let owner = state.rxPubkey
+    if (!owner) {
+      try { owner = await state.queue.pendingPubkey(broker.id) } catch (_) { owner = '' }
+    }
+    const run = mqttShouldRun({ configured: true, rxPubkey: owner })
+    switch (mqttAction(run, state.publishers.has(broker.id))) {
+      case 'connect': await connectMqtt(broker, owner); break
+      case 'end':
+        state.publishers.get(broker.id).publisher.end()
+        state.publishers.delete(broker.id)
+        setMqttDot()
+        break
+      default: break
+    }
   }
 }
 
-function connectMqtt(owner = state.rxPubkey) {
-  const cfg = getConfig()
-  if (!cfg || !cfg.mqttUrl || !owner) return
-  state.publisher = new Publisher({
-    url: cfg.mqttUrl,
-    username: cfg.mqttUsername,
-    password: cfg.mqttPassword,
-    clientId: owner,
-  })
-  state.publisher.connect()
-    .then(() => setDot('dot-mqtt', true))
-    .catch((e) => console.error('[mqtt]', e))
+// The brokers with a connect in flight: brokerCredentials can wait on the
+// companion signing, and ensureMqtt runs from the drain tick, a toggle and a
+// save, so two of them could each build a Publisher for one broker and the
+// overwritten one was never ended (#554 review).
+const connecting = new Set()
+async function connectMqtt(broker, owner = state.rxPubkey) {
+  if (!owner || connecting.has(broker.id)) return
+  // A companion that cannot sign (older firmware answers nothing) is asked
+  // again after a minute, not on every 5 s drain tick: each ask holds the BLE
+  // link for its full timeout.
+  if (Date.now() < (state.signRetryAt.get(broker.id) || 0)) return
+  connecting.add(broker.id)
+  try {
+    let creds = null
+    let refused = false
+    try { creds = await brokerCredentials(broker, owner) } catch (e) {
+      refused = true
+      state.signRetryAt.set(broker.id, Date.now() + 60_000)
+      console.error('[mqtt]', broker.id, 'sign-in', e)
+    }
+    // Two different waits, told apart on the brokers page: no companion to
+    // sign with, or a companion that answered the sign request with an error.
+    state.needsCompanion[creds || refused ? 'delete' : 'add'](broker.id)
+    state.signRefused[refused ? 'add' : 'delete'](broker.id)
+    if (!creds) return
+    if (state.publishers.has(broker.id)) return
+    const publisher = new Publisher({
+      url: broker.url,
+      username: creds.username,
+      password: creds.password,
+      clientId: owner,
+      format: broker.format,
+      label: broker.label,
+    })
+    state.publishers.set(broker.id, { publisher, stall: { id: null, count: 0 }, trackStall: { id: null, count: 0 }, owner, token: creds.password, format: broker.format })
+    publisher.connect()
+      .then(() => setMqttDot())
+      .catch((e) => console.error('[mqtt]', broker.id, e))
+  } finally {
+    connecting.delete(broker.id)
+  }
+}
+
+function endMqtt() {
+  for (const entry of state.publishers.values()) entry.publisher.end()
+  state.publishers.clear()
 }
 
 async function connectAll() {
@@ -1938,6 +2193,9 @@ async function connectAll() {
       setDot('dot-ble', on)
       if (!on) {
         state.connected = false
+        // The radio stopped listening: close the interval rather than let the
+        // next track count a dead link as silence (#554).
+        void closeTrack(state.rxPubkey)
         // A spontaneous drop reaches neither disconnectAll nor stopBatteryPoll
         // (#433). Without this the whole Connection section keeps describing a
         // link that is gone: the last voltage, the companion name, its pubkey
@@ -2068,20 +2326,42 @@ function refreshConnState() {
   renderBattery()
   el('ss-conn-ble').textContent = connected ? 'Connected' : 'Not connected'
   el('ss-ble-dot').classList.toggle('on', connected)
-  const mqttOn = Boolean(state.publisher && state.publisher.connected())
-  el('ss-conn-mqtt').textContent = mqttOn ? 'Connected' : 'Not connected'
-  el('ss-mqtt-dot').classList.toggle('on', mqttOn)
-  // While MQTT is down the one thing worth knowing is how much is waiting.
-  // Async on purpose: the count comes from IndexedDB and this refresher is
-  // called from sync paths; the row keeps its last value until the count
-  // lands, and the guard stops a late count from unhiding a row that a
-  // reconnect just hid.
-  el('ss-mqtt-queued-row').hidden = mqttOn
-  if (!mqttOn) {
-    state.queue.unpublishedCount().then((n) => {
-      if (!(state.publisher && state.publisher.connected())) el('ss-mqtt-queued').textContent = String(n)
+  renderMqttStatus()
+}
+
+// The MQTT group in the Status tab (#554): one line per broker that is on.
+// Rows are rebuilt only when the set of brokers changes, so the tick that
+// keeps them honest does not replace a row mid-tap.
+function renderMqttStatus() {
+  const on = brokerList()
+  const dot = mqttDotState()
+  el('ss-conn-mqtt').textContent = mqttSummary(on.map((b) => brokerConnected(b.id)))
+  el('ss-mqtt-dot').classList.toggle('on', dot !== 'off')
+  el('ss-mqtt-dot').classList.toggle('warn', dot === 'partial')
+  const box = el('ss-mqtt-rows')
+  const key = on.map((b) => b.id + '\u0000' + b.name).join('\u0001')
+  if (box.dataset.key !== key) {
+    box.dataset.key = key
+    box.replaceChildren(...on.map((b) => {
+      const row = document.createElement('div')
+      row.className = 'bk-status-row'
+      row.dataset.id = b.id
+      const d = document.createElement('i'); d.className = 'ss-state-dot'
+      const name = document.createElement('span'); name.className = 'bk-name'; name.textContent = b.name
+      const st = document.createElement('span'); st.className = 'bk-status'
+      row.append(d, name, st)
+      return row
+    }))
+  }
+  for (const row of box.children) {
+    brokerStatusOf(row.dataset.id).then((stat) => {
+      const view = brokerStatus({ enabled: true, ...stat })
+      row.firstChild.classList.toggle('on', view.dot === 'on')
+      row.firstChild.classList.toggle('warn', view.dot === 'warn')
+      row.lastChild.textContent = view.text
     }).catch(() => {})
   }
+  if (state.brokerSheet) state.brokerSheet.tick()
 }
 
 // nextPhase is where the buttons land afterwards: 'idle' for a deliberate
@@ -2091,6 +2371,8 @@ async function disconnectAll(nextPhase = 'idle') {
   setDot('dot-ble', false)
   setDot('dot-mqtt', false)
   state.connected = false
+  // Before the identity is cleared: the closing track belongs to it (#554).
+  void closeTrack(state.rxPubkey)
   state.rxPubkey = ''
   state.sf = null
   state.radio = null
@@ -2100,7 +2382,7 @@ async function disconnectAll(nextPhase = 'idle') {
   stopBatteryPoll()
 
   if (state.wakeLock) state.wakeLock.disable()
-  if (state.publisher) { state.publisher.end(); state.publisher = null }
+  endMqtt()
   try { state.gps.stop() } catch (_) {}
   if (state.transport) {
     try { await state.transport.disconnect() } catch (_) {}
@@ -2307,6 +2589,7 @@ let settingsSelectTab = () => {}
 function buildSettingsSheet() {
   const sheet = el('settings-sheet')
   sheet.innerHTML = `
+    <div class="bk-page" id="broker-page" hidden></div>
     <div class="settings-page-inner">
       <div class="sheet-head">
         <div class="ss-tabs" role="tablist" aria-label="Settings sections">
@@ -2343,9 +2626,8 @@ function buildSettingsSheet() {
             <span>MQTT</span>
             <span class="ss-grp-state"><i id="ss-mqtt-dot" class="ss-state-dot"></i><span id="ss-conn-mqtt">Not connected</span></span>
           </div>
-          <dl class="ss-conn-status" id="ss-mqtt-queued-row" hidden>
-            <dt>Queued</dt><dd id="ss-mqtt-queued">—</dd>
-          </dl>
+          <div class="bk-status-rows" id="ss-mqtt-rows"></div>
+          <button type="button" class="bk-manage" id="ss-mqtt-manage">Manage brokers<span aria-hidden="true">›</span></button>
         </div>
       </div>
       <div class="ss-account-section">
@@ -2394,6 +2676,11 @@ function buildSettingsSheet() {
           <select id="ss-exag">${EXAGGERATION_STEPS.map((x) => `<option value="${x}">${x}×</option>`).join('')}</select>
         </label>
         <p class="ss-row-hint">Exaggeration shows which way the ground rises, not how steep it is. Only 1× reads true for a line of sight; ${DEFAULT_EXAGGERATION}× is what makes the relief of the Low Countries visible at all. The 3D view raises the ground.</p>
+      </div>
+      <div class="ss-radio-section">
+        <h3>Publishing</h3>
+        <button type="button" class="bk-manage bk-manage-boxed" id="ss-brokers-open">MQTT brokers<span aria-hidden="true">›</span></button>
+        <p class="ss-hint">Where your receptions go. Add a broker of your own, or switch one off.</p>
       </div>
       <div class="ss-radio-section">
         <h3>Identity</h3>
@@ -2557,6 +2844,20 @@ function buildSettingsSheet() {
 
 
   el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+
+  // The brokers page lives inside the settings sheet (#554), so a tap in it is
+  // a tap inside the sheet for the outside-click dismissal below.
+  state.brokerSheet = createBrokerSheet({
+    root: el('broker-page'),
+    getBrokers: allBrokers,
+    getStatus: brokerStatusOf,
+    onToggle: toggleBroker,
+    onSave: saveBroker,
+    onRemove: removeBroker,
+    presets: presetsFrom(getConfig()),
+  })
+  el('ss-mqtt-manage').addEventListener('click', () => state.brokerSheet.open())
+  el('ss-brokers-open').addEventListener('click', () => state.brokerSheet.open())
 
   // Tab switching (#203): one panel at a time. All panels stay in the DOM so
   // each keeps its own scroll position independently.
@@ -3402,6 +3703,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.warn('[config]', e.message)
   }
   initDecoder((getConfig() || {}).channelKeys, (getConfig() || {}).channels)
+  // A broker this phone has not published to before gets what is heard from
+  // now on, not the week already in the store (#554). Never the broker from
+  // mqttUrl: it has no watermark on a phone that captured offline before it
+  // ever connected, and that backlog is owed to it in full.
+  for (const b of allBrokers()) {
+    if (b.id === DEFAULT_BROKER) continue
+    try { await state.queue.startAtHead(b.id) } catch (_) { /* retried on the next load */ }
+  }
   state.wakeLock = createWakeLock()
 
   // Theme before the map (#563): createHuntMap reads --ch-basemap off the
@@ -3554,6 +3863,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!sheet.hidden) {
       el('filter-sheet').hidden = true
       el('target-sheet').hidden = true
+      // Always open on the tabs, not on wherever the brokers page was left.
+      state.brokerSheet.close()
       refreshConnState()
       refreshAccount()
       checkForUpdate()

@@ -2,6 +2,7 @@ import { SOUND_MODES } from './sound.js'
 import { VIEW_STATES, viewKey } from './maplayers.js'
 import { THEME_PREFS } from './theme.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
+import { parseBrokerPrefs } from './brokers.js'
 
 // readStored returns the raw stored value for key, or null when it is absent
 // or storage is unavailable. Reading localStorage throws SecurityError where
@@ -14,6 +15,30 @@ function readStored(key) {
   } catch (_) {
     return null
   }
+}
+
+// The hunter's own brokers and the ones they switched off (#554). Kept on the
+// phone; config.json stays the site's list.
+export function loadBrokerPrefs() {
+  return parseBrokerPrefs(readStored('core-hunter-brokers'))
+}
+
+export function saveBrokerPrefs(prefs) {
+  try { localStorage.setItem('core-hunter-brokers', JSON.stringify(prefs)) } catch (_) {}
+}
+
+// Tokens the companion signed for brokers it signs in to (#554), by broker id.
+// Stored so the backlog can still go out after the radio is unplugged; a token
+// is good for a day and only for the host it names.
+export function loadBrokerTokens() {
+  try {
+    const raw = JSON.parse(readStored('core-hunter-broker-tokens'))
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  } catch (_) { return {} }
+}
+
+export function saveBrokerTokens(tokens) {
+  try { localStorage.setItem('core-hunter-broker-tokens', JSON.stringify(tokens)) } catch (_) {}
 }
 
 // Attenuator setting (dB, non-positive: 0/-10/-20/-30). Persisted; added back to

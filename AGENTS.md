@@ -511,6 +511,14 @@ Verify against the other surface, not only against the issue text: put the two C
 two screens side by side. Where a shared rule can be asserted, pin it in `web/parity.test.js` so
 it is mechanical instead of remembered.
 
+**A switch belongs to a row in a list; a loose boolean stays a checkbox (#554).** The brokers page
+has one on/off per broker, and that is a switch: 46x28 track in a 46x44 hit area, `role="switch"`
+with `aria-checked`, `--ch-accent` when on (`.bk-switch` in `app/src/styles/app.css`). It is the
+one place a native checkbox does not fit, because a 13x13 box at the end of a row is not a 44px
+target and a list of them does not read as "these are on". A yes/no that stands on its own (the
+two filter rows, Remember me, Share my node name) stays a checkbox, as #563 decided. A new list
+of things that are each on or off uses the switch; nothing else does.
+
 ### Prefix attribution: rows merge per surface, a relay id is placed by reach
 
 One physical node is named by several different-length ids in the same pubkey namespace — the full
@@ -733,6 +741,26 @@ absence into 0,0, a real coordinate off West Africa. `acc_m` may be absent or `n
 reports no accuracy figure; it is then stored as SQL `NULL`, never as `0` — which would mean the most
 accurate fix in the table (#346). Keep the ingestor's `gps` fields pointers for exactly this reason.
 
+### Other brokers, and the wardrive format (#554)
+
+The contract above is the one for a Mesh-Hunter server, and stays the format of the `mqttUrl`
+broker. A broker marked `format: "wardrive"` (config.json, or a broker a hunter adds) gets two
+other messages instead, built in `app/src/wardrive.js`:
+
+- `meshcore/{label}/{PUBKEY}/wardriver/obs`: one reception. `v, origin_id, rx_at, pub_at, hash,
+  raw, len, packet_type, route, payload_len, path[], RSSI, SNR, pos{lat, lon, accuracy, src}`.
+  `hash` is the firmware's packet hash (`Packet::calculatePacketHash`, 8 bytes, hex); a reception
+  whose frame cannot be hashed is passed over for these brokers.
+- `meshcore/{label}/{PUBKEY}/wardriver/track`: one listening interval, every 10 s or 25 m.
+  `v, origin_id, t0, t1, lat, lon, accuracy, rx_count, listening, src`. `rx_count: 0` with
+  `listening: true` is silence evidence, so `listening` is only true while the radio is connected,
+  and a dropped link closes the interval with `listening: false`.
+
+`{label}` is a stream label (`hunter`), never an airport code: a moving receiver must not be read
+as a fixed observer. `{PUBKEY}` is upper-case. The companion's name is not part of either message.
+A broker marked `auth: "companion"` is signed in to as `v1_{PUBKEY}` with a token the companion
+signs itself (`app/src/companionsign.js`).
+
 ---
 
 ## 10. Resilience invariants (do not break)
@@ -744,6 +772,11 @@ accurate fix in the table (#346). Keep the ingestor's `gps` fields pointers for 
   published is never deleted, however old — an offline phone keeps everything until it drains.
   IndexedDB is the working set; the backend deduplicates. Publication is tracked by a durable
   watermark, not an in-memory set, so a restart does not re-publish the store.
+  There is one watermark per broker (#554): each broker drains on its own, so one that is offline
+  does not hold the others back, and retention deletes only below the lowest watermark of the
+  brokers that are on. A broker switched off keeps its backlog for the retention window, not
+  beyond it; with every broker off, all of them count and nothing unsent is deleted
+  (`owedBrokers` in `app/src/brokers.js`).
   See `docs/2026-07-22-retention-and-bounded-reads.md` (#230); this replaces an earlier absolute
   "never deletes local rows" rule, which made the store unbounded.
 - Queue reads are **bounded** — never `getAll()` over the store. The display reads its time window via

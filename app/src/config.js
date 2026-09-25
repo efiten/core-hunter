@@ -3,8 +3,8 @@
 // config.json, not source. See config.example.json for the shape.
 let cfg = null;
 
-// normalizeConfig validates + normalizes a parsed config.json object. Throws on
-// a missing required field (mqttUrl). resolveUrl is optional (empty = node-name
+// normalizeConfig validates + normalizes a parsed config.json object. Throws when
+// there is no broker to publish to (mqttUrl, or a brokers entry). resolveUrl is optional (empty = node-name
 // resolution disabled).
 // resolvers: array of { label?, sf?, url } for name resolution. Back-compat:
 // a bare resolveUrl is synthesized into a one-element resolvers array.
@@ -19,7 +19,38 @@ export function normalizeConfig(raw) {
     resolvers: [],
     channelKeys: {},
   };
-  if (!c.mqttUrl) throw new Error('config.json: "mqttUrl" is required');
+  // Brokers (#554): every reception goes to each of these. mqttUrl and its two
+  // fields are the first one, under the id its watermark has always had; the
+  // brokers array follows it. The id is what a broker's progress is stored
+  // under, so a second entry reusing one is dropped rather than sharing it.
+  c.brokers = [];
+  const addBroker = (b) => {
+    if (!b || typeof b.url !== 'string' || !b.url.trim()) return;
+    const url = b.url.trim();
+    let host = url;
+    try { host = new URL(url).hostname || url; } catch (_) { /* keep the raw string as the name */ }
+    const id = String(b.id || host).trim();
+    if (c.brokers.some((x) => x.id === id)) return;
+    // auth 'companion': no password, the companion signs a token with its own
+    // key (companionsign.js). Anything else is a username and a password.
+    const entry = { id, name: String(b.name || host).trim(), url };
+    if (b.auth === 'companion') entry.auth = 'companion';
+    else {
+      entry.username = String(b.username || '').trim();
+      entry.password = b.password == null ? '' : String(b.password);
+    }
+    // format 'wardrive': receptions go out as obs plus the phone's track
+    // (wardrive.js), under a stream label. Anything else is the packets format.
+    if (b.format === 'wardrive') {
+      entry.format = 'wardrive';
+      entry.label = String(b.label || 'hunter').trim().toLowerCase();
+    }
+    c.brokers.push(entry);
+  };
+  // The mqttUrl broker has no name field of its own; it is the app's own.
+  if (c.mqttUrl) addBroker({ id: 'default', name: 'Mesh-Hunter', url: c.mqttUrl, username: c.mqttUsername, password: c.mqttPassword });
+  if (Array.isArray(raw.brokers)) raw.brokers.forEach(addBroker);
+  if (c.brokers.length === 0) throw new Error('config.json: "mqttUrl" or a "brokers" entry with a url is required');
 
   // Build normalized resolvers array.
   if (Array.isArray(raw.resolvers) && raw.resolvers.length > 0) {

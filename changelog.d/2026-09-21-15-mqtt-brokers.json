@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-21-mqtt-brokers",
+  "date": "2026-09-21",
+  "where": "app",
+  "title": "Choose where your receptions go",
+  "body": "Settings lists every MQTT broker your receptions go to. Switch one off, or add your own, DutchMeshCore included."
+}
