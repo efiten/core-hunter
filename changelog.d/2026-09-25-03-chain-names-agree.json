@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-25-chain-names-agree",
+  "date": "2026-09-25",
+  "where": "app",
+  "title": "Fewer wrong merges in the target list",
+  "body": "A short id no longer joins a node's row when a longer id between them carries another node's name."
+}
