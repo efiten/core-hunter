@@ -17,6 +17,7 @@ The chain rule is the map's (#331, `web/targetpicker.js`). The name gate stays t
 - A row attaches to the **longest** id it is a prefix of, and only when everything longer that it could be is one chain (`db11` → `db11db` → `db11db77…`). Two longer ids that are not prefixes of each other leave it on its own row. Candidates are counted by prefix alone; the name gate applies to the survivor (#268).
 - **Both rows show a name and it is the same one.** The map merges unnamed rows too, because its 8-byte Discover ids carry no name. In the app a nameless relay hop attached to the one longer id in the window would feed another node's RSSI into the target, so the gate is not loosened. A collision shows no name and never merges; a relay placed on another node never merges (#661, 15 September 2026). "The anchor's node" is the node whose pubkey the anchor's id is, or is a prefix of.
 - Merging starts at 2 bytes, as on the map.
+- **Amended 2026-09-25 (#687).** Every member of the chain that shows a name shows the row's own. The chain test is on ids, so a middle member under another name (relay `db11db` named X under Discover `db11db77…` named Y) is a second node on the prefix, and a `db11` named Y stays on its own row. A member that shows no name does not refuse.
 
 ## What changes besides the reported case
 
