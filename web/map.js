@@ -1124,6 +1124,7 @@ window.__features = (id) => wm.features(id).map((f) => f.properties) // test hoo
 // Test hooks (#632): the glyphs of a kind, and where one paints, in page px.
 window.__glyphs = (kind) => [...wm.features(NODE_GLYPH_SOURCE), ...wm.features(NODE_DOT_SOURCE)].map((f) => f.properties).filter((p) => !kind || p.kind === kind)
 window.__glyphPagePoint = (key, kind) => wm.glyphPagePoint(String(key).toLowerCase(), kind)
+window.__glyphHit = (key, kind) => wm.glyphHit(String(key).toLowerCase(), kind) // test hook (#689)
 window.__measureLabel = (text) => labelMeasurer()(text)
 
 // --- CoreScope mobile-observer layers (two optional toggles, default off) ---
