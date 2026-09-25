@@ -28,6 +28,13 @@
     "body": "The dot on the menu button means release notes or a newer version. A non-zero attenuator tints the button instead."
   },
   {
+    "id": "2026-09-25-ask-repeaters-about-themselves",
+    "date": "2026-09-25",
+    "where": "app",
+    "title": "Auto-discover asks a selected repeater about itself",
+    "body": "At most once a minute it asks for the repeater's regions, owner and clock. The answers are kept, not shown yet."
+  },
+  {
     "id": "2026-09-21-earlier-rides-stay-longer",
     "date": "2026-09-21",
     "where": "app",

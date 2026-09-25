@@ -186,6 +186,18 @@ describe('askAtZeroHop', () => {
     expect(r.asked).toBe(false)
   })
 
+  // #552: an anonymous request to a node that is not a contact goes out as it
+  // is: the companion adds it as a contact with a zero-hop route itself
+  // (companion_radio/MyMesh.cpp, CMD_SEND_ANON_REQ, FIRMWARE_VER_CODE 13+), so
+  // there is nothing to override and nothing to put back.
+  it('asks a node that is not a contact, when the ask takes that, and writes nothing', async () => {
+    vi.stubGlobal('localStorage', memoryStorage())
+    const c = fakeCompanion({ contacts: { [A]: { found: false } } })
+    const r = await askAtZeroHop(c.io, SELF, A, async () => { c.log.push('ask') }, { askNonContact: true })
+    expect(c.log).toEqual(['read ab', 'ask'])
+    expect(r).toEqual({ asked: true })
+  })
+
   // A contact read with no answer says nothing about the stored route, and a
   // contact added from its advert starts with the unknown route the firmware
   // floods (BaseChatMesh.cpp populateContactFromAdvert, sendRequest).

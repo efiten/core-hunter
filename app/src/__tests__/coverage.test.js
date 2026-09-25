@@ -19,6 +19,12 @@ describe('isRepeaterHearing', () => {
     expect(isRepeaterHearing({ sender_kind: 'discover_pubkey', sender_role: null })).toBe(true)
     expect(isRepeaterHearing({ sender_kind: 'trace_reply' })).toBe(true)
   })
+  // #552: a repeater's answer to an anonymous ask is its own zero-hop
+  // transmission to us, like a trace reply, and it heard us to send it.
+  it('takes an anonymous reply, and counts it as two-way', () => {
+    expect(isRepeaterHearing({ sender_kind: 'anon_reply' })).toBe(true)
+    expect(isTwoWay({ sender_kind: 'anon_reply' })).toBe(true)
+  })
   it('takes a path hash: a flood\'s 1-byte last hop is a repeater', () => {
     expect(isRepeaterHearing({ sender_kind: 'path_hash', sender_id: '64', sender_role: null })).toBe(true)
   })

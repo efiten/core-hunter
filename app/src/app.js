@@ -40,7 +40,8 @@ import { connectButton, connectFailureMessage } from './connectstate.js'
 import { isSettingsActive, hasNews, settingsButtonLabel, initialSettingsTab, loadAttenuator, loadSoundMode, loadViewIndex, loadChangelogSeen, saveChangelogSeen, loadLegacyChangelogAck, loadThemePref, loadShareName, loadExaggeration } from './settings.js'
 import { buildSelfAdvertFrame, announceThisCycle } from './announce.js'
 import { buildGetContactByKey, parseContactReply, askAtZeroHop, replayPendingRestores, RESP_CODE_OK, RESP_CODE_ERR } from './contactpath.js'
-import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget } from './telemetryreq.js'
+import { buildTelemetryRequest, parseSentAck, parseTelemetryResponse, rememberAsk, matchTelemetryTarget, nextTelemetryTarget, pruneAsks, ASK_TTL_MS } from './telemetryreq.js'
+import { buildAnonRequest, parseBinaryResponse, readRegionsReply, readOwnerReply, nextAnonAsk, directedAskKind, ANON_REQ_TYPE_REGIONS } from './anonreq.js'
 import { THEME_PREFS, resolveTheme } from './theme.js'
 import { whereLabel, hasUnseenEntries, unseenEntryCount, migratedSeenId } from './changelog.js'
 import { sinceLabel } from './elapsed.js'
@@ -53,7 +54,7 @@ import { buildDiscoverFrame, buildTracePathFrame } from './discover.js'
 import { selectedRepeaterIds, selectedCompanionIds, heardRepeaterIds, senderList, expandSelection, idPrefix, selectionKeyFor, rememberTargetName, refreshTargetNames } from './feed.js'
 import { shouldAutoFire, staggerTargets, autoPingCadenceText } from './autoping.js'
 import { nextSweepBatch, noteAsk } from './sweep.js'
-import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES, TELEMETRY_REQ_BYTES } from './airtime.js'
+import { minPeriodMs, advertBytes, DISCOVER_BYTES, TRACE_BYTES, TELEMETRY_REQ_BYTES, ANON_REQ_BYTES } from './airtime.js'
 import { createWakeLock } from './wakelock.js'
 import { planResume } from './lifecycle.js'
 import { splashState, splashRows, dismissBanner, SPLASH_ERRORS, SPLASH_DISCLAIMER, SPLASH_DISCLAIMER_SHORT, SPLASH_CALLOUTS, SPLASH_FAB_IDS, COACH_MARKS, APP_NAME } from './splash.js'
@@ -290,7 +291,14 @@ const state = {
   // Telemetry asks to selected companions (#553): the asks that may still be
   // answered (telemetryreq.js names the reply), the rotation cursor, and
   // whether a contact-path dance is in flight, since it holds the BLE link.
-  telemetry: { asks: [], cursor: 0, busy: false },
+  telemetry: { asks: [], cursor: 0 },
+  // Anonymous asks to selected repeaters (#552): when each was last asked and
+  // for what, the asks whose reply may still arrive (by the tag the ack
+  // carried), and the asks a RESPONSE on the RX log is named after.
+  anon: { last: {}, pending: [], asks: [] },
+  // One directed ask (telemetry or anonymous) at a time and one per cycle:
+  // the companion keeps a single pending request tag (clearPendingReqs).
+  directed: { busy: false, last: null },
   // Sweep state (#479): who we asked when, how many asks went unheard, and when
   // each node was last heard at all. sweep.js turns those three into "who next".
   sweep: { cursor: 0, attempts: new Map(), lastAskedAt: new Map(), heardAt: new Map() },
@@ -1144,7 +1152,12 @@ async function processFrame(dv) {
   // the 0x8B push that follows settles the identity on six bytes.
   if (decodedOk && cls.packetType === 'Response' && cls.sender.kind === 'direct_hash') {
     const target = matchTelemetryTarget(state.telemetry.asks, cls.sender.id, Date.now())
+    // A repeater's answer to an anonymous ask is the same kind of datagram
+    // (#552), named the same way after the ask it answers. The two lists are
+    // never both live for one node: a companion gets the one, a repeater the other.
+    const anonTarget = target ? null : matchTelemetryTarget(state.anon.asks, cls.sender.id, Date.now())
     if (target) cls = { ...cls, sender: { kind: 'telemetry_reply', id: target, label: null, role: null } }
+    else if (anonTarget) cls = { ...cls, sender: { kind: 'anon_reply', id: anonTarget, label: null, role: null } }
   }
   const fix = state.gps.latest()
   if (!shouldCapture(cls, fix)) {
@@ -1579,13 +1592,23 @@ function autoPingTick() {
   }
   // A selected companion cannot be trace-pinged; it gets the telemetry request
   // (#553), one per cycle, rotating: the firmware keeps one pending telemetry
-  // tag, so two in flight would orphan a reply. Only with a target selected,
-  // never in the sweep: the answer needs a reader.
+  // tag, so two in flight would orphan a reply. A selected repeater also gets
+  // an anonymous ask for its regions and clock, or its owner (#552), at most
+  // once a minute each. Both are directed asks and the companion keeps one
+  // pending request, so a cycle carries one of them, taking turns when both
+  // are due (directedAskKind). Only with a target selected, never in the
+  // sweep: the answer needs a reader. The trace-pings above are unchanged.
   const companions = selectedCompanionTargets()
-  if (companions.length) {
+  const anon = sweeping ? null : nextAnonAsk(ids, state.anon.last, now)
+  const kind = directedAskKind({ telemetryDue: companions.length > 0, anonDue: !!anon, last: state.directed.last })
+  if (kind === 'telemetry') {
     const next = nextTelemetryTarget(companions, state.telemetry.cursor)
     state.telemetry.cursor = next.cursor
+    state.directed.last = 'telemetry'
     askTelemetry(next.id).catch(() => {})
+  } else if (kind === 'anon') {
+    state.directed.last = 'anon'
+    askAnon(anon.id, anon.type).catch(() => {})
   }
 }
 
@@ -1608,7 +1631,7 @@ const FULL_PUBKEY = /^[0-9a-f]{64}$/
 // recognises, or null on a timeout or a send failure. Every reply the
 // companion gives to these commands carries no correlator, so the argument
 // is that nothing else in the app issues them concurrently: askTelemetry
-// runs one dance at a time (state.telemetry.busy), and a dance and the restore
+// runs one dance at a time (state.directed.busy), and a dance and the restore
 // replay take turns on the link (contactpath.js).
 function sendAndWait(frame, accept, timeoutMs) {
   const t = state.transport
@@ -1655,9 +1678,9 @@ async function maybeReplayPendingRestores() {
 }
 
 async function askTelemetry(pubkey) {
-  if (!state.connected || !state.transport || state.telemetry.busy) return
+  if (!state.connected || !state.transport || state.directed.busy) return
   if (!FULL_PUBKEY.test(pubkey)) return   // the firmware looks the contact up by all 32 bytes
-  state.telemetry.busy = true
+  state.directed.busy = true
   try {
     const r = await askAtZeroHop(contactIo, state.rxPubkey, pubkey, async () => {
       if (!state.connected || !state.transport) return
@@ -1677,8 +1700,54 @@ async function askTelemetry(pubkey) {
     if (r.skipped) console.debug(`[telemetry] ${r.skipped}, not asking:`, idPrefix(pubkey))
     if (r.restored === false) console.debug('[telemetry] restore did not ack, kept for the next connect:', idPrefix(pubkey))
   } finally {
-    state.telemetry.busy = false
+    state.directed.busy = false
   }
+}
+
+// askAnon sends one anonymous request to a selected repeater (#552) over the
+// same zero-hop dance as the telemetry request. A repeater that is not a
+// contact yet is asked as it is: the companion adds it itself, zero-hop. The
+// repeater answers only a direct request, so a flood ack means no answer is
+// coming and nothing is remembered. The minute per target starts at the ack:
+// a request that never left the phone costs the repeater's bucket nothing.
+async function askAnon(pubkey, type) {
+  if (!state.connected || !state.transport || state.directed.busy) return
+  if (!FULL_PUBKEY.test(pubkey)) return
+  state.directed.busy = true
+  try {
+    const r = await askAtZeroHop(contactIo, state.rxPubkey, pubkey, async () => {
+      if (!state.connected || !state.transport) return
+      const ack = await sendAndWait(buildAnonRequest(pubkey, type), parseSentAck, SENT_ACK_TIMEOUT_MS)
+      if (!ack) return
+      const now = Date.now()
+      state.anon.last = { ...state.anon.last, [pubkey]: { at: now, type } }
+      state.autoPing.sentBytes.push(ANON_REQ_BYTES)
+      renderAutoPingCadence()
+      pulseDiscoverBtn()
+      sound.txBlip('trace')
+      if (ack.isFlood) { console.debug('[anon] asked over flood, no answer will come:', idPrefix(pubkey)); return }
+      state.anon.pending = [...pruneAsks(state.anon.pending, now), { tag: ack.tag, pubkey, type, sentAt: now }]
+      state.anon.asks = rememberAsk(state.anon.asks, pubkey, now)
+    }, { askNonContact: true })
+    if (r.skipped) console.debug(`[anon] ${r.skipped}, not asking:`, idPrefix(pubkey))
+    if (r.restored === false) console.debug('[anon] restore did not ack, kept for the next connect:', idPrefix(pubkey))
+  } finally {
+    state.directed.busy = false
+  }
+}
+
+// What an anonymous reply says, per node, next to the telemetry (queue.putNode):
+// the regions it forwards (and whether the list may have holes), its owner
+// line, and its clock as an offset from ours when it answered. Rendering and
+// publishing are #375 and #554's.
+function anonPatch(type, data, nowMs) {
+  const at = new Date(nowMs).toISOString()
+  if (type === ANON_REQ_TYPE_REGIONS) {
+    const r = readRegionsReply(data)
+    return { regions: r.regions, regions_truncated: r.truncated, regions_at: at, clock_offset_s: r.repeaterClock - Math.floor(nowMs / 1000), clock_at: at }
+  }
+  const o = readOwnerReply(data)
+  return { owner_name: o.name, owner_info: o.owner, owner_at: at, clock_offset_s: o.repeaterClock - Math.floor(nowMs / 1000), clock_at: at }
 }
 
 // onCompanionFrame reads the pushes the probe answers arrive on. The telemetry
@@ -1688,6 +1757,17 @@ async function askTelemetry(pubkey) {
 // not one hearing of it.
 function onCompanionFrame(dv) {
   const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength)
+  // An anonymous reply carries the tag our ack did (#552), so it is matched on
+  // that, not on a prefix.
+  const b = parseBinaryResponse(bytes)
+  if (b) {
+    const now = Date.now()
+    const ask = pruneAsks(state.anon.pending, now, ASK_TTL_MS).find((a) => a.tag === b.tag)
+    if (!ask) return
+    state.anon.pending = state.anon.pending.filter((a) => a !== ask)
+    state.queue.putNode(ask.pubkey, anonPatch(ask.type, b.data, now)).catch(() => {})
+    return
+  }
   const r = parseTelemetryResponse(bytes)
   if (!r) return
   const known = [...state.telemetry.asks.map((a) => a.pubkey), ...selectedCompanionTargets()]
@@ -1718,6 +1798,8 @@ function stopAutoPing() {
   for (const handle of state.autoPing.pendingPings) clearTimeout(handle)
   state.autoPing.pendingPings = []
   state.telemetry.asks = []
+  state.anon.asks = []
+  state.anon.pending = []
   updateDiscoverBtnVisual()
   renderAutoPingCadence()
 }
