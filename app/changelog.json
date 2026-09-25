@@ -7,6 +7,13 @@
     "body": "A short id no longer joins a node's row when a longer id between them carries another node's name."
   },
   {
+    "id": "2026-09-25-menu-dot-is-news",
+    "date": "2026-09-25",
+    "where": "app",
+    "title": "The menu's dot means news",
+    "body": "The dot on the menu button means release notes or a newer version. A non-zero attenuator tints the button instead."
+  },
+  {
     "id": "2026-09-21-earlier-rides-stay-longer",
     "date": "2026-09-21",
     "where": "app",
