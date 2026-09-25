@@ -51,7 +51,9 @@
 </head>
 <body>
   <div id="map"></div>
-  <header id="topbar">
+  <!-- data-map-overlay marks what sits over the map, so the node labels keep
+       clear of it (#639, nodelabels.js screenObstacles). -->
+  <header id="topbar" data-map-overlay>
     <div id="topbar-left">
       <div id="topbar-controls" role="group" aria-label="Target and filters">
         <button id="target-chip" aria-haspopup="true" aria-expanded="false">Select target</button>
@@ -99,8 +101,8 @@
     </div>
     <div id="nodepos-key" role="status" hidden></div>
   </div>
-  <div id="rx-log" aria-label="Receptions"></div>
-  <section id="hud">
+  <div id="rx-log" aria-label="Receptions" data-map-overlay></div>
+  <section id="hud" data-map-overlay>
     <!-- Row 1 is the reading, row 2 the sender line (#618). Before the first
          reception the reading is empty and the sender line says so, here in
          the markup, so a slow config.json or module never shows two blank
@@ -165,8 +167,8 @@
        apps, often a dark navigation app (#615). -->
   <canvas id="float-canvas" data-theme="dark" aria-hidden="true"></canvas>
   <video id="float-video" data-theme="dark" muted playsinline aria-label="Float readout"></video>
-  <button id="layer-toggle" aria-label="View"></button>
-  <button id="discover-btn" aria-label="Auto-discover: off" disabled>
+  <button id="layer-toggle" aria-label="View" data-map-overlay></button>
+  <button id="discover-btn" aria-label="Auto-discover: off" disabled data-map-overlay>
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
       <circle cx="10" cy="10" r="1.6" fill="currentColor" stroke="none"/>
       <path d="M13 7a4.2 4.2 0 0 1 0 6"/>
@@ -175,8 +177,8 @@
       <path d="M4.4 15.4a8 8 0 0 1 0-10.8"/>
     </svg>
   </button>
-  <button id="recenter-btn" aria-label="Compass: north up"></button>
-  <button id="nodepos-toggle" aria-label="Node positions: off" aria-pressed="false">
+  <button id="recenter-btn" aria-label="Compass: north up" data-map-overlay></button>
+  <button id="nodepos-toggle" aria-label="Node positions: off" aria-pressed="false" data-map-overlay>
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M10 17V9"/>
       <path d="M7 17h6l-3-4z" fill="currentColor"/>
@@ -184,7 +186,7 @@
       <path d="M4.6 4.8a7.6 7.6 0 0 1 10.8 0"/>
     </svg>
   </button>
-  <button id="sound-toggle" aria-label="Sound: off"></button>
+  <button id="sound-toggle" aria-label="Sound: off" data-map-overlay></button>
   <aside id="filter-sheet" hidden></aside>
   <aside id="settings-sheet" hidden></aside>
   <aside id="target-sheet" hidden></aside>

@@ -319,7 +319,7 @@
       <button id="role-notice-close" type="button" aria-label="Dismiss">&times;</button>
     </span>
   </div>
-  <div id="map-readout">
+  <div id="map-readout" data-map-overlay>
     <span id="status"></span>
     <span id="sf-counts"></span>
   </div>
@@ -338,7 +338,7 @@
        the DOM, so the tab order reaches the rail once the bar and the notices
        are done and before the map canvas. map.js wires every button; node
        positions keeps the app's icon, and map.js adds the ring around it. -->
-  <div id="map-rail">
+  <div id="map-rail" data-map-overlay>
     <button id="zoom-in" type="button" aria-label="Zoom in">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
         <path d="M10 4v12M4 10h12"/>
@@ -503,7 +503,7 @@
     <button type="button" id="wb-close" class="wb-close" aria-label="Close">✕</button>
   </aside>
   <div id="map"></div>
-  <div id="rx-log"></div>
+  <div id="rx-log" data-map-overlay></div>
   <!-- MapLibre GL (#465), the app's map, pinned to the same version app/index.html carries. -->
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script type="module">
