@@ -374,6 +374,10 @@ below member) is an explanation, not a label, and it stays up while that state
 lasts. Fading it makes "we got nothing" and "there is nothing here" look alike.
 A notice that only repeats what the splash or About already says does not go
 over the map at all (#662, `docs/2026-09-15-position-notices.md`).
+An outage is the exception on the map (#591, #604): the registry or the map
+server not answering no longer leaves the layer empty, since every reach star
+then hangs from its estimate, so the line saying which one is out shows once
+for 3 s per outage and goes. The switch stays on.
 
 **Where the notices sit** (#630). On a desktop, at the top centre under the bar,
 between the ticker's first-visit corner at the top left and the FAB rail on the

@@ -171,10 +171,12 @@ test('the +N cap shows six types, not five plus All', async ({ page }) => {
 // an element that receives pointer events.
 test('an open panel paints over the Locate readout and the node-position notice on a phone (#590)', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 740 })
-  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
+  // A standing line: since #591 an outage's line is a 3 s glance, gone before
+  // the panel opens, so the empty registry's line stands in for it.
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ status: 503, json: { error: 'registry_empty' } }))
   await page.goto('/?mode=points')
   await setNodePos(page, 'positions')
-  await expect(page.locator('#nodepos-key')).toContainText('Node registry unreachable', { timeout: 10000 })
+  await expect(page.locator('#nodepos-key')).toContainText('No positions from the node registry', { timeout: 10000 })
   await page.waitForFunction(() => typeof window.__locateRender === 'function')
   await page.evaluate(() => window.__locateRender([
     { lat: 51.000, lon: 4.000, rssi: -52 }, { lat: 51.010, lon: 4.000, rssi: -88 },
