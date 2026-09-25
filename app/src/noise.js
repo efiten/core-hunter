@@ -21,12 +21,15 @@ export function buildStatsRadioRequest() {
 
 // parseStatsRadio reads the noise floor, and only that (#410's scope). The
 // frame is 14 bytes: [24][1][noise_floor int16 LE][last_rssi][last_snr]
-// [tx_air_secs u32][rx_air_secs u32]. The firmware reports -140 to +10 dBm;
-// a value outside it is no reading.
+// [tx_air_secs u32][rx_air_secs u32]. The firmware holds the value at 0 from
+// begin() and every AGC reset until 64 samples are averaged
+// (src/helpers/radiolib/RadioLibWrappers.cpp), so 0 is "not measured yet",
+// and a noise floor is never 0 dBm or above. It clamps at -120 from below;
+// -140 keeps room for firmware that does not.
 export function parseStatsRadio(bytes) {
   if (!bytes || bytes.length < 14 || bytes[0] !== RESP_CODE_STATS || bytes[1] !== STATS_TYPE_RADIO) return null
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt16(2, true)
-  return { noiseFloor: v >= -140 && v <= 10 ? v : null }
+  return { noiseFloor: v >= -140 && v < 0 ? v : null }
 }
 
 // shouldSampleNoise: auto-discover's rhythm (Kasper, 2026-09-25), every

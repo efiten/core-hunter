@@ -26,8 +26,9 @@ const TRACK_WATERMARK_KEY = 'tracks_through';
 // RETENTION_MS and never published, so age alone prunes them.
 const NOISE = 'noise';
 // The most samples one read hands back. A week at one sample per 10 s is
-// ~60k; the map's window is hours, and a bounded read is the rule here
-// (docs/2026-07-22-retention-and-bounded-reads.md).
+// ~60k, and a bounded read is the rule here
+// (docs/2026-07-22-retention-and-bounded-reads.md); past it the oldest drop
+// out, since noiseSince reads the newest.
 export const NOISE_READ_LIMIT = 20000;
 const WATERMARK_KEY = 'published_through';
 // The first broker. Its watermark keeps the key it always had, so an install
@@ -386,16 +387,17 @@ export class Queue {
   }
 
   // noiseSince reads the samples taken at or after `fromIso`, oldest first,
-  // at most `limit` of them.
+  // at most `limit` of them: the newest, read backwards, so a week past the
+  // bound drops its oldest drive rather than the latest.
   async noiseSince(fromIso, limit = NOISE_READ_LIMIT) {
     const db = await openDB();
     const idx = db.transaction(NOISE, 'readonly').objectStore(NOISE).index('at');
     const out = [];
-    const req = idx.openCursor(IDBKeyRange.lowerBound(fromIso));
+    const req = idx.openCursor(IDBKeyRange.lowerBound(fromIso), 'prev');
     return new Promise((resolve, reject) => {
       req.onsuccess = () => {
         const cur = req.result;
-        if (!cur || out.length >= limit) { resolve(out); return; }
+        if (!cur || out.length >= limit) { resolve(out.reverse()); return; }
         out.push(cur.value);
         cur.continue();
       };

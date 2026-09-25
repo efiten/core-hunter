@@ -21,6 +21,13 @@ describe('the stats request and its radio reply (#410)', () => {
     expect(parseStatsRadio(frame(-112))).toEqual({ noiseFloor: -112 })
     expect(parseStatsRadio(frame(-140))).toEqual({ noiseFloor: -140 })
   })
+  it('reads 0 as not measured yet, not as a loud place', () => {
+    // The firmware holds the noise floor at 0 from begin() and every AGC
+    // reset until 64 samples are averaged (RadioLibWrappers.cpp:37, :82-100).
+    expect(parseStatsRadio(frame(0))).toEqual({ noiseFloor: null })
+    expect(parseStatsRadio(frame(5))).toEqual({ noiseFloor: null })
+    expect(parseStatsRadio(frame(-120))).toEqual({ noiseFloor: -120 })
+  })
   it('refuses another sub-type, another code, and a short frame', () => {
     const core = frame(-100); core[1] = 0
     expect(parseStatsRadio(core)).toBeNull()

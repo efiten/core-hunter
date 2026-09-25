@@ -590,10 +590,11 @@ describe('noise samples', () => {
     const got = await q.noiseSince(iso(5 * MIN))
     expect(got.map((s) => s.noise_floor)).toEqual([-120, -110])
   })
-  it('bounds the read, so a long window cannot pull the whole store', async () => {
+  it('bounds the read to the newest samples, so a full week drops the oldest drive, not the latest', async () => {
     const q = new Queue()
-    for (let i = 0; i < 5; i++) await q.addNoise(sample(i * MIN))
-    expect((await q.noiseSince(iso(DAY), 3)).length).toBe(3)
+    for (let i = 4; i >= 0; i--) await q.addNoise(sample(i * MIN, { noise_floor: -100 - i }))
+    const got = await q.noiseSince(iso(DAY), 3)
+    expect(got.map((s) => s.noise_floor)).toEqual([-102, -101, -100])
   })
   it('prunes samples past the cutoff and keeps the rest', async () => {
     const q = new Queue()
@@ -601,6 +602,32 @@ describe('noise samples', () => {
     await q.addNoise(sample(DAY))
     expect(await q.pruneNoise(iso(RETENTION_MS))).toBe(1)
     expect((await q.noiseSince(iso(30 * DAY))).length).toBe(1)
+  })
+  it('keeps the tracks when a v4 database gains the noise store', async () => {
+    // #554 shipped v4 with the tracks store; this is v5 on top of it. A phone
+    // on v4 must keep its tracks and gain the noise store in one upgrade.
+    await new Promise((resolve, reject) => {
+      const req = indexedDB.open('core-hunter', 4)
+      req.onupgradeneeded = () => {
+        const db = req.result
+        db.createObjectStore('receptions', { keyPath: 'id', autoIncrement: true }).createIndex('rx_at', 'rx_at')
+        db.createObjectStore('meta', { keyPath: 'k' })
+        db.createObjectStore('nodes', { keyPath: 'pubkey' })
+        db.createObjectStore('tracks', { keyPath: 'id', autoIncrement: true }).createIndex('t1', 't1')
+      }
+      req.onsuccess = () => {
+        const db = req.result
+        const tx = db.transaction('tracks', 'readwrite')
+        tx.objectStore('tracks').add({ t0: iso(MIN), t1: iso(MIN), rx_pubkey: 'ab', lat: 52, lon: 5, rx_count: 0, listening: true })
+        tx.oncomplete = () => { db.close(); resolve() }
+        tx.onerror = () => reject(tx.error)
+      }
+      req.onerror = () => reject(req.error)
+    })
+    const q = new Queue()
+    expect((await q.unpublishedTracksFrom(0)).length).toBe(1)
+    await q.addNoise(sample(MIN))
+    expect((await q.noiseSince(iso(DAY))).length).toBe(1)
   })
   it('keeps the receptions and the nodes when the store is added to an existing database', async () => {
     await openV1WithRows([rec(iso(MIN))])

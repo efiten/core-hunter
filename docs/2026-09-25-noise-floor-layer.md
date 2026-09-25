@@ -10,7 +10,7 @@ A stretch with no receptions reads the same whether it was out of coverage or dr
 
 ## The reading
 
-- `CMD_GET_STATS` (56) with `STATS_TYPE_RADIO` (1), answered by `RESP_CODE_STATS` (24): `docs/stats_binary_frames.md` in meshcore-dev/MeshCore. Only the noise floor is read, an int16 in dBm; outside -140..+10 it is no reading.
+- `CMD_GET_STATS` (56) with `STATS_TYPE_RADIO` (1), answered by `RESP_CODE_STATS` (24): `docs/stats_binary_frames.md` in meshcore-dev/MeshCore. Only the noise floor is read, an int16 in dBm. The firmware holds it at 0 until it has averaged 64 samples, after a start and after every AGC reset (`RadioLibWrappers.cpp`), so 0 and anything above it is no reading, as is anything below -140 (the firmware clamps at -120).
 - A local BLE query: nothing goes on the air. So it runs whenever a companion is connected, auto-discover on or off.
 - **Rhythm:** auto-discover's, every 10 s or sooner after 50 m (`INTERVAL_MS`, `MOVE_THRESHOLD_M`).
 - **No fix, no sample.** A reading needs a place.
@@ -21,6 +21,7 @@ A stretch with no receptions reads the same whether it was out of coverage or dr
 - One row per sample in the `noise` store (IndexedDB v5; v4 is #554's tracks): time, place, accuracy, noise floor, the connection it belongs to, the companion's key, and whether it was stationary.
 - **Session = one connection.** A sample within 50 m of the previous one is stationary.
 - **Retention 7 days**, by age alone: samples are never published, so no watermark holds them.
+- **The layer reads at most 20,000**, the newest: a week past that drops its oldest drive, not the latest.
 
 ## The layer
 
