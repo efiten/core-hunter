@@ -230,6 +230,10 @@ test('new receptions appear on the map without touching it', async ({ page }) =>
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
   await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [] } }))
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points } }))
+  // The refresh is a 10 s interval. Waiting it out in real time made this the
+  // slowest test in the suite, so the page gets a controllable clock instead.
+  // It still ticks on its own, so the map renders as it normally would.
+  await page.clock.install()
   await page.goto('/?mode=points')
   await expect(page.locator('#tr-label')).toContainText('Last 30 days')
   // The points layer renders to a canvas, so there are no DOM markers to
@@ -237,9 +241,10 @@ test('new receptions appear on the map without touching it', async ({ page }) =>
   // which is what a hunter reads anyway.
   const status = page.locator('#status')
   await expect(status).toHaveText('2 points', { timeout: 10000 })
-  // Six more arrive at the server. Nothing touches the map.
+  // Six more arrive at the server. Nothing touches the map; only time passes.
   points = [pt(0), pt(1), pt(2), pt(3), pt(4), pt(5), pt(6), pt(7)]
-  await expect(status).toHaveText('8 points', { timeout: 25000 })
+  await page.clock.fastForward(10_000)
+  await expect(status).toHaveText('8 points')
 })
 
 // #440 follow-up: "N cells (capped)" under a range button reading "All time" is

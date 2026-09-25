@@ -491,6 +491,17 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
       const p = map.project(f.geometry.coordinates), r = map.getContainer().getBoundingClientRect()
       return { x: r.left + p.x, y: r.top + p.y }
     },
+    // Test hook (#689): whether a click at that glyph would reach it now, asked
+    // the way the click handler asks (glyphAt). The source holding the feature
+    // is not enough: setData hands it to a worker, and until the layer has
+    // drawn it, queryRenderedFeatures finds nothing there.
+    glyphHit(key, kind) {
+      const src = kind === 'advert' ? NODE_GLYPH_SOURCE : NODE_DOT_SOURCE
+      const f = (pending.get(src) || { features: [] }).features.find((x) => x.properties.key === key && (!kind || x.properties.kind === kind))
+      if (!f) return false
+      const g = glyphAt(map.project(f.geometry.coordinates))
+      return !!g && g.properties.key === key && (!kind || g.properties.kind === kind)
+    },
     setReach, rayCount() { return rays.rayCount() }, raysVisible() { return rays.isVisible() },
     addMarker, clearMarkers, markerCount, markerLatLng,
     // Counts what a source holds, for the tests that used to count Leaflet's

@@ -268,12 +268,16 @@ export const labelsOnMap = (page) => glyphs(page, 'advert').then((g) => g.map((a
 // (or a hub's star id); the first ▲ when omitted.
 // Waits for the glyph and for the map to settle first: a click by pixel misses
 // a glyph the fit-to-points animation is still carrying past it, where the
-// marker it replaced was an element the click followed.
+// marker it replaced was an element the click followed. Then waits until a
+// click there would reach it (__glyphHit, #689): the source can hold the
+// feature a frame or more before the layer has drawn it, and a click in that
+// gap found nothing and opened no popup.
 export async function tapGlyph(page, key = null, kind = 'advert') {
   await expect.poll(async () => (await glyphs(page, kind)).length, { timeout: 15000 }).toBeGreaterThan(0)
   await mapSettled(page)
   const k = key || (await glyphs(page, kind))[0]?.key
   expect(k, `no ${kind} glyph to tap`).toBeTruthy()
+  await expect.poll(() => page.evaluate(([kk, kd]) => window.__glyphHit(kk, kd), [k, kind]), { timeout: 10000, message: `the ${kind} glyph of ${k} is not under a click` }).toBe(true)
   const pt = await page.evaluate(([kk, kd]) => window.__glyphPagePoint(kk, kd), [k, kind])
   expect(pt, `no ${kind} glyph for ${k}`).not.toBeNull()
   await page.mouse.click(pt.x, pt.y)
