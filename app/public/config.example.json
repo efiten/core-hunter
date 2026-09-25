@@ -6,7 +6,8 @@
     { "id": "second", "name": "Second broker", "url": "wss://second-broker.example:443", "username": "core-hunter", "password": "<publish-only account>" }
   ],
   "brokerPresets": [
-    { "key": "collector", "name": "Community collector", "url": "wss://collector.example:443", "auth": "companion", "format": "wardrive", "label": "<the stream label the collector acknowledges>" }
+    { "key": "collector-hunter", "name": "Community collector · hunter", "url": "wss://collector.example:443", "auth": "companion", "format": "wardrive", "label": "hunter" },
+    { "key": "collector-wardriver", "name": "Community collector · wardriver", "url": "wss://collector.example:443", "auth": "companion", "format": "wardrive", "label": "wardriver" }
   ],
   "resolvers": [
     { "label": "BE", "sf": 8, "url": "https://corescope-be.example/api/nodes/resolve" },

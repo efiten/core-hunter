@@ -78,6 +78,21 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
   password of a password broker is kept the same way.
 - **The DMC topic is `meshcore/hunter/...`, not an airport code.** On an airport topic a publisher
   is a fixed observer with one position. A hunter moves.
+  > **Amended 2026-09-25 (Kasper, answering the review of #671).** DMC has two production stream
+  > labels, and both belong to this app: `wardriver` for a coverage drive (DMC's wardrive map and
+  > coverage hexes) and `hunter` for direction-finding and fox hunts (its hunter map and tactical
+  > layer). On DMC's side the label decides a session's icon, its role column and the map that
+  > shows it, so a hunt published under `wardriver` loses that. Both are fixed values, not the
+  > hunter's region. `test` is the collector's sandbox region, not a production label: the live
+  > app sends nothing there. The default stays `hunter`, since hunting is what this app is for. A
+  > site lists each collector once per label in `brokerPresets`, and the hunter picks the preset
+  > that fits the drive.
+  >
+  > A phone holds one label per collector. A broker's id is its address (`validateBroker`), so the
+  > add form refuses the second preset of a collector that is already in the list. Going from a
+  > hunt to a coverage drive means removing the broker and adding the other preset. Like any new
+  > broker, that one starts at the newest reception, and whatever the removed one was still owed
+  > is not sent.
 - **One signature at a time.** The companion has a single sign buffer and a second
   `CMD_SIGN_START` empties it, so two brokers that both need a token queue up.
 - **Each broker drains on its own promise** (2026-09-23, review of #671). A broker whose every
@@ -123,3 +138,16 @@ broker received both receptions.
 Not run against a real companion (signing, tracks while driving) or the DutchMeshCore brokers. On
 21 September 2026 collector 1 accepted a companion-style sign-in and acknowledged a publish on the
 `test` region, and did not acknowledge one on the `hunter` label.
+
+> **Amended 2026-09-25.** That result fits a collector 1 still running the image from before
+> Dutch-MeshCore/collector PR 5, which was merged on 21 September at 14:18 UTC. Before PR 5 the
+> region slot took an IATA code or `test` only. It refused anything else as not three letters
+> (`✗ Publish denied -> ... (invalid format)`) and closed the connection, so it refused
+> `wardriver` just as it refused `hunter`. Since PR 5, `PUBLISH_EXTRA_REGIONS` (`src/config.ts`
+> there) defaults to `wardriver,hunter` when unset, so every collector on the new image takes the
+> same two labels unless its operator sets the variable to something else. A running collector picks the image up only after
+> `docker compose pull broker && docker compose up -d broker` (`docs/updating-the-container.md`
+> there). **Not verified:** whether collectors 1 and 2 have been updated since. An updated one
+> logs `[AUTHZ] ✓ Using stream region -> meshcore/hunter/...` where the old one logged the denial.
+> The topics under either label carry `/wardriver/`, and the collector delivers those only to its
+> ADMIN and FULL_ACCESS subscribers, never to LIMITED ones (`authorizeForward` in `src/server.ts`).
