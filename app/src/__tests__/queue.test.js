@@ -576,3 +576,37 @@ describe('nodes store — what a node answered about itself', () => {
     expect((await q.getNode('ab'.repeat(32))).voltage_v).toBe(4)
   })
 })
+
+// #410: the noise-floor samples, a store of their own, read by time and kept
+// for the same seven days as the receptions. Nothing is published, so age
+// alone decides.
+describe('noise samples', () => {
+  const sample = (msAgo, extra = {}) => ({ at: iso(msAgo), lat: 51.84, lon: 5.84, noise_floor: -110, session: 's', rx_pubkey: 'ab', stationary: false, ...extra })
+  it('keeps what is added and reads back what falls in a window, oldest first', async () => {
+    const q = new Queue()
+    await q.addNoise(sample(3 * MIN, { noise_floor: -120 }))
+    await q.addNoise(sample(2 * MIN, { noise_floor: -110 }))
+    await q.addNoise(sample(30 * MIN, { noise_floor: -100 }))
+    const got = await q.noiseSince(iso(5 * MIN))
+    expect(got.map((s) => s.noise_floor)).toEqual([-120, -110])
+  })
+  it('bounds the read, so a long window cannot pull the whole store', async () => {
+    const q = new Queue()
+    for (let i = 0; i < 5; i++) await q.addNoise(sample(i * MIN))
+    expect((await q.noiseSince(iso(DAY), 3)).length).toBe(3)
+  })
+  it('prunes samples past the cutoff and keeps the rest', async () => {
+    const q = new Queue()
+    await q.addNoise(sample(8 * DAY))
+    await q.addNoise(sample(DAY))
+    expect(await q.pruneNoise(iso(RETENTION_MS))).toBe(1)
+    expect((await q.noiseSince(iso(30 * DAY))).length).toBe(1)
+  })
+  it('keeps the receptions and the nodes when the store is added to an existing database', async () => {
+    await openV1WithRows([rec(iso(MIN))])
+    const q = new Queue()
+    expect(await q.count()).toBe(1)
+    await q.addNoise(sample(MIN))
+    expect((await q.noiseSince(iso(DAY))).length).toBe(1)
+  })
+})

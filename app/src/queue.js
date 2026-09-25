@@ -22,6 +22,13 @@ const NODES = 'nodes';
 // not a reception, so it has a store of its own and the map never reads one.
 const TRACKS = 'tracks';
 const TRACK_WATERMARK_KEY = 'tracks_through';
+// The noise-floor samples (#410): one per reading, with its position, kept for
+// RETENTION_MS and never published, so age alone prunes them.
+const NOISE = 'noise';
+// The most samples one read hands back. A week at one sample per 10 s is
+// ~60k; the map's window is hours, and a bounded read is the rule here
+// (docs/2026-07-22-retention-and-bounded-reads.md).
+export const NOISE_READ_LIMIT = 20000;
 const WATERMARK_KEY = 'published_through';
 // The first broker. Its watermark keeps the key it always had, so an install
 // that was already draining carries on from where it was (#554).
@@ -126,7 +133,9 @@ export function watermarkAfter(watermark, outcomes) {
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 4);
+    // v5 (#410) on top of #554's v4. Every step is guarded by a contains-check,
+    // so an install on any earlier version upgrades in one go.
+    const req = indexedDB.open(DB_NAME, 5);
     req.onupgradeneeded = (e) => {
       const db = req.result;
       const store = e.oldVersion < 1
@@ -142,6 +151,8 @@ function openDB() {
       if (!db.objectStoreNames.contains(TRACKS)) {
         db.createObjectStore(TRACKS, { keyPath: 'id', autoIncrement: true }).createIndex('t1', 't1');
       }
+      // v5 (#410): the noise samples, indexed on their time. Additive.
+      if (!db.objectStoreNames.contains(NOISE)) db.createObjectStore(NOISE, { keyPath: 'id', autoIncrement: true }).createIndex('at', 'at');
     };
     // An older tab still holding an older connection blocks this tab's upgrade.
     // Without this the promise never settles and every await on it — including
@@ -365,6 +376,48 @@ export class Queue {
   // The merge is written from the read's own success callback, where the spec
   // keeps the transaction active. After an await it is active only while the
   // continuation still runs inside that callback's dispatch.
+  // ---- Noise-floor samples (#410) ------------------------------------------
+
+  async addNoise(sample) {
+    const db = await openDB();
+    const tx = db.transaction(NOISE, 'readwrite');
+    tx.objectStore(NOISE).add(sample);
+    return done(tx);
+  }
+
+  // noiseSince reads the samples taken at or after `fromIso`, oldest first,
+  // at most `limit` of them.
+  async noiseSince(fromIso, limit = NOISE_READ_LIMIT) {
+    const db = await openDB();
+    const idx = db.transaction(NOISE, 'readonly').objectStore(NOISE).index('at');
+    const out = [];
+    const req = idx.openCursor(IDBKeyRange.lowerBound(fromIso));
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (!cur || out.length >= limit) { resolve(out); return; }
+        out.push(cur.value);
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // pruneNoise deletes the samples older than `cutoffIso`.
+  async pruneNoise(cutoffIso) {
+    const db = await openDB();
+    const tx = db.transaction(NOISE, 'readwrite');
+    const req = tx.objectStore(NOISE).index('at').openCursor(IDBKeyRange.upperBound(cutoffIso, true));
+    let removed = 0;
+    req.onsuccess = () => {
+      const cur = req.result;
+      if (!cur) return;
+      cur.delete(); removed++;
+      cur.continue();
+    };
+    return done(tx, () => removed);
+  }
+
   async putNode(pubkey, patch) {
     const pk = String(pubkey || '').trim().toLowerCase();
     if (!/^[0-9a-f]{64}$/.test(pk)) throw new TypeError('putNode: pubkey must be 64 hex characters');

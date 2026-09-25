@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-25-noise-floor-layer",
+  "date": "2026-09-25",
+  "where": "app",
+  "title": "A noise-floor layer on the map",
+  "body": "Your companion's noise floor, per cell. Loud cells explain a stretch with nothing heard. Switch it on under Filters, Map."
+}
