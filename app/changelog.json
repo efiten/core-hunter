@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-25-reach-through-registry-outage",
+    "date": "2026-09-25",
+    "where": "map",
+    "title": "The reach stays up when the registry is out",
+    "body": "Every star hangs from its estimate until the registry answers again. The outage line shows for 3 s and says whether the registry or the map server is unreachable."
+  },
+  {
     "id": "2026-09-21-earlier-rides-stay-longer",
     "date": "2026-09-21",
     "where": "app",

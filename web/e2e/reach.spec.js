@@ -332,3 +332,46 @@ test('without 32-bit indices the rays stay off the 3D map, and the console says 
   expect(await page.evaluate(() => window.__uintWarnings)).toBe(1)
   expect(await page.evaluate(() => window.__layerVisible('reach-3d'))).toBe(false)
 })
+
+// #604: the registry out does not take the reach with it. Every star hangs
+// from its estimate, no ▲ is drawn, and the line says the registry is out,
+// for 3 s (#591). Once it answers again the ▲ come back.
+test('with the registry out the stars still draw, every one from its estimate (#604)', async ({ page }) => {
+  let registryUp = false, asked = 0
+  await page.route('**/api/nodes/positions*', (r) => {
+    asked++
+    return registryUp
+      ? r.fulfill({ json: { nodes: [{ pubkey: R1, name: 'Repeater-Zuid', lat: 51.0005, lon: 4.0005 }] } })
+      : r.fulfill({ status: 503, json: { error: 'registry_unavailable' } })
+  })
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+  // R1 has no registry position now, so its star hangs from a ● like R2's.
+  await expectGlyphs(page, 'hub', 2)
+  await expectGlyphs(page, 'advert', 0)
+  const key = page.locator('#nodepos-key')
+  await expect(key).toHaveText(/Node registry unreachable/)
+  await expect(key).toBeHidden({ timeout: 5000 })
+  // A redraw during the same outage does not bring the line back. Read once,
+  // right after that redraw asked the registry: an assertion that retries
+  // would wait out the next 3 s timer and pass either way.
+  const before = asked
+  await page.evaluate(() => window.__refresh())
+  await expect.poll(() => asked).toBeGreaterThan(before)
+  await page.waitForTimeout(500)
+  expect(await key.isHidden(), 'the outage line came back on a redraw').toBe(true)
+  // The registry answers again: the ▲ is back and R1's star hangs from it.
+  registryUp = true
+  await page.evaluate(() => window.__refresh())
+  await expectGlyphs(page, 'advert', 1)
+  await expectGlyphs(page, 'hub', 1)
+})
+
+// #591: a 5xx that is not our server's JSON is the map server not answering,
+// a different thing to wait for than the registry being out.
+test('a bare 5xx says the map server is unreachable, not the registry (#591)', async ({ page }) => {
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ status: 504, contentType: 'text/html', body: '<html>Gateway Timeout</html>' }))
+  await page.goto('/?mode=points&lat=51&lon=4&z=13&nodepos=reach')
+  await expect(page.locator('#nodepos-key')).toHaveText(/Map server unreachable/, { timeout: 10000 })
+  await expect.poll(() => rays(page), { timeout: 10000 }).toBe(11)
+})

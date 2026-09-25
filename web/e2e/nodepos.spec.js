@@ -45,10 +45,11 @@ test.beforeEach(async ({ page }) => {
 // to read. So the collision is pinned in one of those states.
 test('the notice, the readout and the attribution share a phone screen without overlapping', async ({ page }) => {
   await routes(page, { lat: 51.0005, lon: 4.0, points: ring(51, 4, 250, 8) })
-  // An unreachable registry: the layer is on, nothing is drawn, and the line
-  // saying so stays up for as long as that is true (#307, docs/design-system.md).
+  // An empty registry: the layer is on, nothing is drawn, and the line saying
+  // so stays up for as long as that is true (#307, docs/design-system.md). An
+  // outage would not do here: since #591 its line is a 3 s glance.
   await page.route('**/api/nodes/positions*', (r) =>
-    r.fulfill({ status: 503, json: { error: 'registry_unavailable' } }))
+    r.fulfill({ status: 503, json: { error: 'registry_empty' } }))
   // The reported case had a full readout, and the per-SF node counts are what
   // make it wide enough to reach the notice (index.html fills #sf-counts from
   // these two). Without them the readout is "8 points", which fits beside the
@@ -328,7 +329,7 @@ for (const [label, fulfil, expected] of [
   ['the registry holds no positions', { status: 503, json: { error: 'registry_empty' } }, 'No positions from the node registry'],
   ['no registry is configured', { status: 503, json: { error: 'registry_not_configured' } }, 'no node registry configured'],
   ['the registry is unreachable', { status: 503, json: { error: 'registry_unavailable' } }, 'Node registry unreachable'],
-  ['the server errors in a way we do not know', { status: 500, body: 'boom' }, 'Node registry unreachable'],
+  ['the server errors in a way we do not know', { status: 500, body: 'boom' }, 'Map server unreachable'],
   ['the view is empty but the registry answered', { json: { nodes: [] } }, 'No registry nodes in this view'],
 ]) {
   test(`says so when ${label} (#376)`, async ({ page }) => {

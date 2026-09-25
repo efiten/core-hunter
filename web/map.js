@@ -10,7 +10,7 @@ import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, reso
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
-import { nodePosPresentation, registryStatusFor } from './nodeposnotice.js'
+import { nodePosPresentation, registryStatusFor, nextNotice } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
 import { windowKey, createWindowCache } from './windowpoints.js'
@@ -1346,7 +1346,8 @@ async function fetchNodeRegistry(view) {
     if (status !== 'ok') return { status, nodes: [], stale: false }
     return { status, nodes: body.nodes || [], stale: Boolean(body.stale), truncated: Boolean(body.truncated) }
   } catch (_) {
-    return null
+    // No answer from the map server at all (#591).
+    return { status: 'server_unreachable', nodes: [], stale: false }
   }
 }
 
@@ -1356,13 +1357,18 @@ async function fetchNodeRegistry(view) {
 // `on` defaults to the stop, but the role branch passes it explicitly: it
 // turns the stop off before it can explain itself, and "the account is why"
 // is precisely what a guest who deep-linked ?nodepos= needs to be told.
+// An outage is a glance (#591): nextNotice says when to show it and for how
+// long, and the timer hides it. Any other line cancels a running glance.
+let noticeGlanced = '', noticeTimer = null
 function showNodePosNotice({ on = nodePosCb.checked, reason = null, registry = null, drawn = 0 } = {}) {
-  const { key } = nodePosPresentation({ on, reason, registry, drawn })
+  const next = nextNotice(nodePosPresentation({ on, reason, registry, drawn }), noticeGlanced)
+  noticeGlanced = next.glanced
   const keyEl = document.getElementById('nodepos-key')
-  if (keyEl) {
-    keyEl.hidden = !key
-    keyEl.textContent = key
-  }
+  if (!keyEl || next.text === null) return
+  clearTimeout(noticeTimer)
+  keyEl.hidden = !next.text
+  keyEl.textContent = next.text
+  if (next.hideAfterMs) noticeTimer = setTimeout(() => { keyEl.hidden = true }, next.hideAfterMs)
 }
 
 // Narrow is 640px, the line the bar and the ticker answer "is this a phone"
@@ -1424,13 +1430,18 @@ async function drawNodePositions() {
   // and Locate suppresses refresh() for the whole session, so anything that
   // repaints into it stays until Locate is switched off.
   if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
-  if (!registry || registry.status !== 'ok') {
-    // Leave the last good layer up — a transient failure should not wipe
-    // markers that are still the best thing we know — but say so, because
-    // markers under no explanation read as a working, current layer.
+  // Refused for this account: nothing to draw, and the line says why.
+  if (registry && registry.status === 'forbidden') {
     showNodePosNotice({ registry })
     return
   }
+  // Any other answer that is not a registry draws from no registry (#604):
+  // no ▲, and every star hangs from its estimate, as a relay hash's always
+  // does. The line says the registry is out; once it answers again, the ▲
+  // come back on the next draw. It used to leave the last good layer up and
+  // draw no stars at all, although none of them needs the registry to exist
+  // (Kasper, 2026-09-25: every star from its estimate, no stale ▲).
+  const nodes = registry && registry.status === 'ok' ? registry.nodes : []
   const points = pointsRes.points
 
   // A reception pairs with a registry node by the app's rule (#661, AGENTS.md
@@ -1440,10 +1451,10 @@ async function drawNodePositions() {
   // RSSI, since the map is never told a hunter's calibration or attenuator.
   // The markers are the nodes in view; the rest of the slice only counts as
   // candidates.
-  const index = registryIndex(registry.nodes)
+  const index = registryIndex(nodes)
   const attributionOf = (pt) => attributeReception(pt, { index })
-  const inView = nodesInView(registry.nodes, { minLat: view.south, maxLat: view.north, minLon: view.west, maxLon: view.east })
-  const draw = nodeRows(inView, groupSenderPointsForNodes(points, registry.nodes, { attributionOf }))
+  const inView = nodesInView(nodes, { minLat: view.south, maxLat: view.north, minLon: view.west, maxLon: view.east })
+  const draw = nodeRows(inView, groupSenderPointsForNodes(points, nodes, { attributionOf }))
     // estimate-only cannot occur here (every row has an advertised position by
     // construction), but 'none' can if a registry row arrives unplottable.
     .filter((r) => r.p.kind !== 'none')
@@ -1481,7 +1492,7 @@ async function drawNodePositions() {
   // The coverage (#603) rides on this draw: same registry slice, same view.
   // Built before the signature, since the hues and the selection are part
   // of what the markers show.
-  const cov = buildCoverage(coverageOn() ? await coveragePoints(points) : [], registry.nodes, attributionOf)
+  const cov = buildCoverage(coverageOn() ? await coveragePoints(points) : [], nodes, attributionOf)
   if (gen !== nodePosGen || !nodePosCb.checked || locateActive) return
   const sig = deduped.map((d) => [d.id, d.name, d.p.kind, Math.round(d.p.driftM ?? -1),
     Math.round(d.p.circle ? d.p.circle.radiusM : -1),

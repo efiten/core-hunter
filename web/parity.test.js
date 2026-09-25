@@ -1049,8 +1049,8 @@ describe('nodeposnotice: parity of the shared line', () => {
       expect(webNotice[n], n).toBeDefined()
     }
     expect(Object.keys(webNotice).filter((n) => !(n in appNotice)).sort())
-      .toEqual(['NODEPOS_GUEST_TEXT', 'NODEPOS_NONE_IN_VIEW_TEXT', 'NODEPOS_STALE_TEXT',
-        'NODEPOS_UNAVAILABLE_TEXT', 'NODEPOS_UNCONFIGURED_TEXT', 'nodePosPresentation', 'registryStatusFor'])
+      .toEqual(['NODEPOS_GLANCE_MS', 'NODEPOS_GUEST_TEXT', 'NODEPOS_NONE_IN_VIEW_TEXT', 'NODEPOS_SERVER_UNREACHABLE_TEXT', 'NODEPOS_STALE_TEXT',
+        'NODEPOS_UNAVAILABLE_TEXT', 'NODEPOS_UNCONFIGURED_TEXT', 'nextNotice', 'nodePosPresentation', 'registryStatusFor'])
   })
 })
 
