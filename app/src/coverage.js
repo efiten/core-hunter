@@ -8,8 +8,8 @@ import { estimateFor } from './nodelayer.js'
 
 // Attribution is classifyReception's rule (AGENTS.md §1): the originator at
 // zero hops, or the last relay of a flood. On the record that is a Repeater
-// role, a relay hash, a flood's 1-byte last hop (path_hash), a Discover reply
-// or a trace reply. The feed's repeater rule plus the Discover reply, which is
+// role, a relay hash, a flood's 1-byte last hop (path_hash), a Discover reply,
+// a trace reply or a reply to an anonymous ask (#552). The feed's repeater rule plus the Discover reply, which is
 // the node itself answering our ask, and the path hash, which the feed keeps
 // out of its target list but which reach can place on its node (#661,
 // attribution.js). A direct hash is not one: zero hops is the originator. Same
@@ -18,14 +18,14 @@ import { estimateFor } from './nodelayer.js'
 export function isRepeaterHearing(pt) {
   if (!pt) return false
   return pt.sender_role === 'Repeater' || pt.sender_kind === 'relay' || pt.sender_kind === 'path_hash'
-    || pt.sender_kind === 'discover_pubkey' || pt.sender_kind === 'trace_reply'
+    || pt.sender_kind === 'discover_pubkey' || pt.sender_kind === 'trace_reply' || pt.sender_kind === 'anon_reply'
 }
 
-// A hearing where the repeater also heard us: a Discover or trace reply to
-// our own ask (#481/#482). It proves the link works both ways from that spot,
-// which overhearing a relay does not.
+// A hearing where the repeater also heard us: a Discover, trace or anonymous
+// reply to our own ask (#481/#482, #552). It proves the link works both ways
+// from that spot, which overhearing a relay does not.
 export function isTwoWay(pt) {
-  return !!pt && (pt.sender_kind === 'discover_pubkey' || pt.sender_kind === 'trace_reply')
+  return !!pt && (pt.sender_kind === 'discover_pubkey' || pt.sender_kind === 'trace_reply' || pt.sender_kind === 'anon_reply')
 }
 
 // The palette: HUE_COUNT hues as --ch-hue-<n> tokens (tokens.css), one per

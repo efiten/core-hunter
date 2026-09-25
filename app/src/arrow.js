@@ -59,9 +59,9 @@ export function arrowFor({ target, fix, lastFixAt, heading, now }) {
 }
 
 // The kinds whose id is a node's own key or a prefix of it: an advert carries
-// the whole key, a Discover reply and a trace or telemetry reply come from a
-// node we asked, by its key or a prefix of it.
-const REGISTRY_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'trace_reply', 'telemetry_reply'])
+// the whole key, a Discover reply and a trace, telemetry or anonymous reply
+// come from a node we asked, by its key or a prefix of it.
+const REGISTRY_KINDS = new Set(['advert_pubkey', 'discover_pubkey', 'trace_reply', 'telemetry_reply', 'anon_reply'])
 
 // registryMatch: the one registry node whose key starts with the reception's
 // id, for those kinds, from 2 bytes up. Two nodes sharing the prefix name

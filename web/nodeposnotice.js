@@ -18,6 +18,12 @@
 // (docs/2026-09-15-position-notices.md). What is left here is one line that
 // explains an absence or an old registry, and it does not fade, because the
 // reason a map is blank has to stay for as long as the map is.
+//
+// The exception is an outage (#591): since #604 the layer still draws through
+// one, every star from its estimate, so the map is not blank and the line
+// that says why the ▲ are gone is a glance, 3 s once per outage (nextNotice).
+// On a phone a line that never went was a notice over the map for the rest
+// of the drive (Kasper, 2026-09-06).
 
 // The registry answered and holds no position at all. Names the registry,
 // because that is the half that is missing; "no nodes in view right now" is a
@@ -40,6 +46,15 @@ export const NODEPOS_UNCONFIGURED_TEXT = 'This server has no node registry confi
 // The proxy could not reach its registry. Distinct from the empty case: there
 // may well be positions, we just do not have them.
 export const NODEPOS_UNAVAILABLE_TEXT = 'Node registry unreachable — advertised positions cannot be fetched right now'
+
+// The browser did not get an answer from the map server itself: the fetch
+// failed, or a 5xx came back without an error code of ours, which is what a
+// proxy in front of the server sends when it gives up (#591). A different
+// thing to wait for than the registry being out, so a different line.
+export const NODEPOS_SERVER_UNREACHABLE_TEXT = 'Map server unreachable: advertised positions cannot be fetched right now'
+
+// How long an outage line stays up (#591).
+export const NODEPOS_GLANCE_MS = 3000
 
 // The registry answered for this viewport and had nothing in it. The one state
 // where the layer is genuinely working and the area is genuinely empty, which
@@ -79,12 +94,13 @@ export function nodePosPresentation({ on = false, reason = null, registry = null
   if (!on) return { key: '' }
   if (reason) return { key: reason }
 
-  const status = registry ? registry.status : 'unavailable'
+  const status = registry ? registry.status : 'server_unreachable'
   const stale = Boolean(registry && registry.stale)
   if (status === 'forbidden') return { key: NODEPOS_GUEST_TEXT }
   if (status === 'not_configured') return { key: NODEPOS_UNCONFIGURED_TEXT }
   if (status === 'empty') return { key: nodePosKeyText({ registryEmpty: true }) }
-  if (status !== 'ok') return { key: NODEPOS_UNAVAILABLE_TEXT }
+  if (status === 'server_unreachable') return { key: NODEPOS_SERVER_UNREACHABLE_TEXT, glance: true }
+  if (status !== 'ok') return { key: NODEPOS_UNAVAILABLE_TEXT, glance: true }
 
   // Joined rather than concatenated, so a part that is not there takes its
   // separator with it: the stale warning is the whole line when the layer drew
@@ -97,10 +113,27 @@ export function nodePosPresentation({ on = false, reason = null, registry = null
 // Maps one /api/nodes/positions response onto the status above. The server
 // answers 403 below member and three distinct 503s (nodes.go), and collapsing
 // them here would undo the reason they are distinct there.
+//
+// A 5xx without an error code is not the server speaking (#591): our server
+// answers its registry outages as JSON, so a bare 5xx is a proxy in front of
+// it giving up, or the server falling over.
 export function registryStatusFor(httpStatus, errorCode) {
   if (httpStatus === 200) return 'ok'
   if (httpStatus === 403) return 'forbidden'
   if (errorCode === 'registry_not_configured') return 'not_configured'
   if (errorCode === 'registry_empty') return 'empty'
+  if (httpStatus >= 500 && !errorCode) return 'server_unreachable'
   return 'unavailable'
+}
+
+// nextNotice decides what the line does on one draw, given the glance it last
+// showed (#591). A line that is no glance is shown as it is, and clears the
+// memory, so an outage that comes back after it ended shows again. A glance
+// shows once, for NODEPOS_GLANCE_MS, and on the draws after it `text` is null:
+// leave the line as the timer left it. The layer redraws on every pan and
+// every tick, so without the memory an outage would flash on each of them.
+export function nextNotice({ key = '', glance = false } = {}, glanced = '') {
+  if (!glance) return { text: key, hideAfterMs: 0, glanced: '' }
+  if (key !== glanced) return { text: key, hideAfterMs: NODEPOS_GLANCE_MS, glanced: key }
+  return { text: null, hideAfterMs: 0, glanced }
 }

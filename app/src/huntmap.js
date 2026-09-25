@@ -2,7 +2,7 @@ import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
-import { unclutteredLabels, createLabelMeasurer } from './nodelabels.js'
+import { unclutteredLabels, createLabelMeasurer, screenObstacles } from './nodelabels.js'
 import { advertFeature, dotFeature, nodeGlyphLayers, nearestGlyph, hitBox, drawTriangle, fc as glyphFc, EMPTY_FC as GLYPH_EMPTY, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE, NODE_ADVERT_LAYER, NODE_DOT_LAYER, NODE_GLYPH_LAYERS, TRI_IMAGE, TRI_W, TRI_H } from './nodeglyphs.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
@@ -235,6 +235,16 @@ export function createHuntMap(containerId) {
   // measured inside the map container, where .np-label's font actually
   // applies (a body probe reads the page's font and measures wrong).
   let npMeasure = null
+  // Where a name may go (#639): inside the map, and clear of what sits over it
+  // (the elements marked data-map-overlay: the top bar, the ticker, the HUD,
+  // the FABs). Read on every draw, since the ticker and the HUD change size.
+  function labelRoom() {
+    const c = map.getContainer()
+    return {
+      bounds: { left: 0, top: 0, right: c.clientWidth, bottom: c.clientHeight },
+      obstacles: screenObstacles(c, document.querySelectorAll('[data-map-overlay]')),
+    }
+  }
   const labelMeasurer = () => npMeasure || (npMeasure = createLabelMeasurer(map.getContainer()))
   let nodePosSig = null   // signature guard: skip the rebuild when nothing changed, so a tapped popup survives the tick
   // The repeater whose popup comes back after a selecting tap (#623). A tap
@@ -1043,7 +1053,7 @@ export function createHuntMap(containerId) {
           const pt = map.project([d.n.lon, d.n.lat])
           return { id: d.n.pubkey, x: pt.x, y: pt.y, label: d.n.name || d.n.pubkey }
         }),
-      { measure: labelMeasurer() },
+      { measure: labelMeasurer(), ...labelRoom() },
     ))
 
     // Compute signature of what would be drawn — if unchanged, skip rebuild to preserve open popups

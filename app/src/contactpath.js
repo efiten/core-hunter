@@ -153,17 +153,26 @@ function onLink(exchange) {
 // contact is held zero-hop for. The result is { asked } and, when it did not
 // ask, { skipped } saying why; `restored` says whether the restore it wrote
 // acked.
-export function askAtZeroHop(io, self, target, ask) {
-  return onLink(() => dance(io, self, target, ask))
+//
+// `askNonContact` is for an anonymous request (#552): the companion adds a
+// node that is not a contact yet itself, zero-hop (CMD_SEND_ANON_REQ,
+// FIRMWARE_VER_CODE 13+), so the ask goes out with nothing to override. A
+// telemetry request to a non-contact is refused by the firmware, so it stays off.
+export function askAtZeroHop(io, self, target, ask, { askNonContact = false } = {}) {
+  return onLink(() => dance(io, self, target, ask, askNonContact))
 }
 
-async function dance(io, self, target, ask) {
+async function dance(io, self, target, ask, askNonContact) {
   const contact = await io.getContact(target)
   // No answer says nothing about the stored route, and the unknown route is
   // the one the firmware floods, so no reading means no ask.
   if (!contact) return { asked: false, skipped: 'the contact read got no answer' }
   // Not a contact yet: our companion has not heard its advert, or has no slot.
-  if (!contact.found) return { asked: false, skipped: 'not a contact yet' }
+  if (!contact.found) {
+    if (!askNonContact) return { asked: false, skipped: 'not a contact yet' }
+    await ask()
+    return { asked: true }
+  }
   if (!needsPathOverride(contact)) {
     await ask()
     return { asked: true }
