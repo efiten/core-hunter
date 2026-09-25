@@ -662,3 +662,38 @@ test('a pan reuses the receptions the node layer already has (#664)', async ({ p
   await mapSettled(page)
   expect(windowFetches()).toBe(1)
 })
+
+// #639: the planner knew nothing of the screen, so a name ran past the edge or
+// under the rail and was kept, clipped or covered. Now it is dropped the way a
+// colliding one is: the ▲ stays, and the name is in the popup.
+test('a name that would run under the rail or past the edge is dropped, and its ▲ stays (#639)', async ({ page }) => {
+  let nodes = []
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
+  await page.route('**/api/nodes/positions*', (r) => r.fulfill({ json: { nodes } }))
+  await page.setViewportSize({ width: 390, height: 780 })
+  await page.goto('/?mode=points&lat=51&lon=4&z=15')
+  await mapSettled(page)
+  // Where on screen a longitude lands, so the nodes can be put under the rail
+  // and at the right edge whatever zoom the map settled at.
+  const place = await page.evaluate(() => {
+    const a = window.__mapProject(51, 4), b = window.__mapProject(51, 4.01)
+    const lonAt = (x) => 4 + ((x - a.x) / (b.x - a.x)) * 0.01
+    const rail = document.getElementById('map-rail').getBoundingClientRect()
+    const map = document.getElementById('map').getBoundingClientRect()
+    const railMidY = rail.top + rail.height / 2 - map.top
+    const latAt = (y) => { const c = window.__mapProject(51, 4), d = window.__mapProject(51.01, 4); return 51 + ((y - c.y) / (d.y - c.y)) * 0.01 }
+    return {
+      free: { lat: latAt(map.height * 0.3), lon: lonAt(map.width * 0.2) },
+      rail: { lat: latAt(railMidY), lon: lonAt(rail.left - map.left - 30) },
+      edge: { lat: latAt(map.height * 0.2), lon: lonAt(map.width - 30) },
+    }
+  })
+  nodes = [
+    { pubkey: 'a1'.repeat(32), name: 'NL-FREE', ...place.free },
+    { pubkey: 'b2'.repeat(32), name: 'NL-UNDER-THE-RAIL', ...place.rail },
+    { pubkey: 'c3'.repeat(32), name: 'NL-AT-THE-EDGE', ...place.edge },
+  ]
+  await setNodePos(page, 'positions')
+  await expectGlyphs(page, 'advert', 3, { timeout: 15000 })
+  await expect.poll(() => labelsOnMap(page)).toEqual(['NL-FREE'])
+})
