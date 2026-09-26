@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.1](https://github.com/efiten/core-hunter/compare/web-v1.25.0...web-v1.25.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **app:** keep the broker presets from config.json for the add form ([#702](https://github.com/efiten/core-hunter/issues/702)) ([5826ef7](https://github.com/efiten/core-hunter/commit/5826ef7b6de91db6d83bf3d6976f72f7789663ff))
+
 ## [1.25.0](https://github.com/efiten/core-hunter/compare/web-v1.24.0...web-v1.25.0) (2026-09-26)
 
 
