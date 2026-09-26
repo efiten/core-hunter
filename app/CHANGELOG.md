@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.29.0](https://github.com/efiten/core-hunter/compare/app-v1.28.0...app-v1.29.0) (2026-09-26)
+
+
+### Features
+
+* **app:** ask a selected repeater for its regions, owner and clock ([#695](https://github.com/efiten/core-hunter/issues/695)) ([9c77066](https://github.com/efiten/core-hunter/commit/9c7706691f96bff3ec4a02c576aeaaa52bd86b5b))
+* **app:** map the companion's noise floor per cell ([#698](https://github.com/efiten/core-hunter/issues/698)) ([363a0d8](https://github.com/efiten/core-hunter/commit/363a0d88a85a6062cb98ec660be97e2c1d8759ae))
+* **app:** publish to several MQTT brokers, with a page to manage them ([#671](https://github.com/efiten/core-hunter/issues/671)) ([27c41df](https://github.com/efiten/core-hunter/commit/27c41dfb5ac0ea850b59aaff58acaf5d41f9c1b8))
+
+
+### Bug Fixes
+
+* **app,web:** keep node names on the screen and clear of what sits over the map ([#692](https://github.com/efiten/core-hunter/issues/692)) ([35c8963](https://github.com/efiten/core-hunter/commit/35c8963d2c7a33ba919dcd068422dd19f0eabf2f))
+* **app:** attach a short id only when its whole chain agrees on the name ([#693](https://github.com/efiten/core-hunter/issues/693)) ([4723ff7](https://github.com/efiten/core-hunter/commit/4723ff7ead78c28d9f06c27b1312f307485baef7))
+* **app:** let the menu button's tint mean the attenuator and its dot mean news ([#694](https://github.com/efiten/core-hunter/issues/694)) ([a258012](https://github.com/efiten/core-hunter/commit/a258012ef6261e7c775e985a6ab250576d8aa730))
+* **web:** draw the reach through a registry outage, and say for 3 s which side is out ([#691](https://github.com/efiten/core-hunter/issues/691)) ([688827a](https://github.com/efiten/core-hunter/commit/688827add183e76f6442b1aa386eb930492ba984))
+
+
+### Documentation
+
+* **app:** record hunter and wardriver as DutchMeshCore's production labels ([#700](https://github.com/efiten/core-hunter/issues/700)) ([533bc84](https://github.com/efiten/core-hunter/commit/533bc84de9c2ffcd5913a1c6d5bd6da8a6ca37b2))
+
 ## [1.28.0](https://github.com/efiten/core-hunter/compare/app-v1.27.0...app-v1.28.0) (2026-09-24)
 
 
