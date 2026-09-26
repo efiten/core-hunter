@@ -51,6 +51,9 @@ export function normalizeConfig(raw) {
   if (c.mqttUrl) addBroker({ id: 'default', name: 'Mesh-Hunter', url: c.mqttUrl, username: c.mqttUsername, password: c.mqttPassword });
   if (Array.isArray(raw.brokers)) raw.brokers.forEach(addBroker);
   if (c.brokers.length === 0) throw new Error('config.json: "mqttUrl" or a "brokers" entry with a url is required');
+  // The add form's presets, kept as the file has them: presetsFrom (brokers.js)
+  // checks each entry when the form is built (#701).
+  c.brokerPresets = Array.isArray(raw.brokerPresets) ? raw.brokerPresets : [];
 
   // Build normalized resolvers array.
   if (Array.isArray(raw.resolvers) && raw.resolvers.length > 0) {
