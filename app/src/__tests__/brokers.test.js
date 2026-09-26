@@ -245,6 +245,15 @@ describe('presetsFrom', () => {
       { key: 'k', url: 'wss://a.example' },
     ] })).toEqual([{ key: 'k', name: 'a.example', url: 'wss://a.example', auth: 'companion', format: 'wardrive', label: null }])
   })
+  // DMC has two production labels, hunter for a hunt and wardriver for a
+  // coverage drive, and each collector takes both, so a site lists every
+  // collector once per label: one address, two presets.
+  it('offers one address under each label it is listed with', () => {
+    expect(presetsFrom({ brokerPresets: [
+      { key: 'c1-hunter', name: 'Collector 1 · hunter', url: 'wss://c1.example:443', label: 'hunter' },
+      { key: 'c1-wardriver', name: 'Collector 1 · wardriver', url: 'wss://c1.example:443', label: 'wardriver' },
+    ] }).map((p) => [p.key, p.label])).toEqual([['c1-hunter', 'hunter'], ['c1-wardriver', 'wardriver']])
+  })
   it('is empty without config, or without the key', () => {
     expect(presetsFrom(null)).toEqual([])
     expect(presetsFrom({})).toEqual([])

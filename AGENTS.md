@@ -756,10 +756,13 @@ other messages instead, built in `app/src/wardrive.js`:
   `listening: true` is silence evidence, so `listening` is only true while the radio is connected,
   and a dropped link closes the interval with `listening: false`.
 
-`{label}` is a stream label (`hunter`), never an airport code: a moving receiver must not be read
-as a fixed observer. `{PUBKEY}` is upper-case. The companion's name is not part of either message.
-A broker marked `auth: "companion"` is signed in to as `v1_{PUBKEY}` with a token the companion
-signs itself (`app/src/companionsign.js`).
+`{label}` is a stream label, never an airport code: a moving receiver must not be read as a fixed
+observer. DutchMeshCore has two production labels, `hunter` for direction-finding and fox hunts and
+`wardriver` for a coverage drive. The label decides which of its maps shows the session, and the
+default is `hunter`. `test` is a collector's sandbox region, not a label for live data. See
+`docs/2026-09-21-mqtt-brokers.md`. `{PUBKEY}` is upper-case. The companion's name is not part of
+either message. A broker marked `auth: "companion"` is signed in to as `v1_{PUBKEY}` with a token
+the companion signs itself (`app/src/companionsign.js`).
 
 ---
 
