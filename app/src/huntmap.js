@@ -19,6 +19,7 @@ import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { followAfter, paddingAction } from './rotation.js'
 import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
+import { noiseFill, withNoise, noiseHexFC } from './noise.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -53,6 +54,9 @@ export const LAYER_ORDER = [
   'hillshade',      // terrain shading, under everything we draw
   'trail',
   'hex', 'hex-3d',
+  // The noise floor per cell (#410) takes the signal cells' place while it is
+  // on, so it sits where they do: under the buildings and the points.
+  'noise',
   'buildings-3d',
   'reach',          // the coverage rays, under the dots so a hub stays readable
   'points', 'pulse', 'points-3d', 'pulse-3d',
@@ -99,7 +103,7 @@ const POINT_PILLAR_MIN_RADIUS_PX = 4
 const TRAIL_OPACITY = 0.5
 
 export function createHuntMap(containerId) {
-  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, pulse() {}, destroy() {} }
+  const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, setNoise() {}, pulse() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre did not
   // load, or when WebGL is unavailable — GPU blocklist, an older
   // device, or a lost context — since `new maplibregl.Map` throws synchronously
@@ -570,6 +574,13 @@ export function createHuntMap(containerId) {
     applyTerrain()
   }
 
+  // The noise samples while the noise layer is on (#410), null while it is off.
+  let noiseSamples = null
+  let noiseGen = 0
+  const noiseCache = lastValueCache()
+  // Which layers show: the view's decision, then the noise layer's (withNoise).
+  const visibleLayers = () => withNoise(layerVisibility({ mode, mode3D }), noiseSamples !== null)
+
   function addOverlays() {
     clearTimeout(styleTimer); overlaysReady = true
     applySky()
@@ -577,19 +588,24 @@ export function createHuntMap(containerId) {
     // darkened a bar against its own cell (#412). Re-applied here like the
     // sky, since setStyle drops it. Guarded for an older MapLibre.
     if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
-    for (const id of ['trail', 'hex', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]) {
+    for (const id of ['trail', 'hex', 'noise', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
     // this block and setView() read it, so a style reload and a FAB tap can no
     // longer disagree about what is on screen.
-    const vis = layerVisibility({ mode, mode3D })
+    const vis = visibleLayers()
     const shown = (id) => (vis[id] ? 'visible' : 'none')
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
       paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': TRAIL_OPACITY } })
     if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
       layout: { visibility: shown('hex') },
       paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
+    // Flat in 3D too: a noise floor has no height to give a pillar. The band
+    // colours are baked in like every overlay's; a theme swap re-adds them.
+    if (!map.getLayer('noise')) map.addLayer({ id: 'noise', type: 'fill', source: 'noise',
+      layout: { visibility: shown('noise') },
+      paint: { 'fill-color': noiseFill([1, 2, 3, 4].map((i) => cssVar(`--ch-noise-${i}`))) } })
     // 3D twin of 'hex': same source, extruded to 'height' (RSSI/SNR tier, #147).
     // fill-extrusion-opacity is not data-driven, and one opacity for every
     // tier is what made a faint bar a solid purple on a 19% tint (#412). The
@@ -817,7 +833,7 @@ export function createHuntMap(containerId) {
     // of the two point collections was always tessellated and shipped to the
     // GPU for a layer set to visibility:none. hex and hex-3d share one source,
     // so it is built when either is on.
-    const vis = layerVisibility({ mode, mode3D })
+    const vis = visibleLayers()
     const cov = drawCoverage(records)
     // With a star selected, the rest of the map steps back, not only the other
     // stars (#624). null outside the reach stop, since drawCoverage answers
@@ -830,6 +846,7 @@ export function createHuntMap(containerId) {
     // nothing dims, so the fold is skipped there.
     const owners = cov ? ownersKey(records, ownerOf) : ''
     map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records, sel, owners) : EMPTY)
+    map.getSource('noise').setData(vis.noise ? buildNoiseFC() : EMPTY)
     map.getSource('points').setData(vis.points ? buildPointsFC(records, sel, owners) : EMPTY)
     map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, sel, owners) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
@@ -841,6 +858,13 @@ export function createHuntMap(containerId) {
     map.getSource('here').setData(buildHereFC())
     drawNodeLayer(records, cov)
     drawHexLabels(records, vis['hex-labels'])
+  }
+
+  // The noise cells at this zoom's resolution, rebuilt when a sample arrives
+  // or the resolution changes.
+  function buildNoiseFC() {
+    const res = hexResForZoom(map.getZoom())
+    return noiseCache.get(`${noiseGen}|${noiseSamples.length}|${res}`, () => noiseHexFC(noiseSamples, (lat, lon) => hexCellAt(lat, lon, res), hexBoundary))
   }
 
   // ---- hex labels (#556) ----
@@ -1208,12 +1232,12 @@ export function createHuntMap(containerId) {
   // switch and the 3D toggle need it: in 3D the mode decides whether hex is
   // drawn flat (under the pillars) or extruded (#266).
   function applyLayerVisibility() {
-    const vis = layerVisibility({ mode, mode3D })
+    const vis = visibleLayers()
     // Every layer layerVisibility decides, or the FAB and the style load
     // disagree again — the exact drift #266 pulled the decision out for. The
     // 3D pulse is the one that shows it: it loads 'none' in 2D, so a tap into
     // 3D that skipped it would leave the flash off until the next style load.
-    for (const id of ['hex', 'hex-3d', 'points', 'points-3d', 'pulse', 'pulse-3d']) {
+    for (const id of ['hex', 'hex-3d', 'noise', 'points', 'points-3d', 'pulse', 'pulse-3d']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
     }
   }
@@ -1265,6 +1289,15 @@ export function createHuntMap(containerId) {
   function setAttenuator(db) { attenuatorDb = Number(db) || 0; draw() }
   // Re-add the overlays after the style swap, with the safety net armed again.
   // styleAttempt resets: this swap gets its own retry before the bare fallback.
+  // setNoise(samples): the noise layer on with these samples, or off with null
+  // (#410). The caller appends to the array it passed, so a new array is a
+  // new generation and within one the count keys the cache.
+  function setNoise(samples) {
+    noiseSamples = samples ? samples : null
+    noiseGen++
+    applyLayerVisibility()
+    draw()
+  }
   function applyBasemap() { overlaysReady = false; styleAttempt = 0; map.setStyle(styleFor()); afterStyle(addOverlays); armStyleFallback() }
   // Pan to a reception, no popup: the ticker row that triggers this (#309) sits
   // over the map on a phone, and a popup on top of it would cover the very list
@@ -1278,7 +1311,7 @@ export function createHuntMap(containerId) {
     centerOn(rec.lat, rec.lon)
   }
   function destroy() { clearInterval(skyTimer); clearTimeout(styleTimer); if (pulseTimer) clearInterval(pulseTimer); clearHexLabels(); map.remove() }
-  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, releaseFollow, setLookAhead, setNodeLayer, setExaggeration, pulse, destroy }
+  return { setPosition, centerOn, recenter, onFollowChange, render, setView, applyBasemap, focusReception, setAttenuator, setBearing, onGestureRotate, setHighlight, onMarkerFocus, setNodePositions, releaseFollow, setLookAhead, setNodeLayer, setExaggeration, setNoise, pulse, destroy }
 }
 
 // popupHtml is the point popup's markup, exported for its test.

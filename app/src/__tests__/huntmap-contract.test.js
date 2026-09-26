@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createHuntMap } from '../huntmap.js'
 import { layerVisibility } from '../maplayers.js'
+import { withNoise } from '../noise.js'
 
 // createHuntMap returns a no-op fallback when MapLibre's script did not load
 // or WebGL is unavailable, so app init never throws. app.js then calls the
@@ -50,7 +51,8 @@ describe('applyLayerVisibility covers every layer layerVisibility decides', () =
     // Every state is the same set of keys (maplayers.test.js pins that), so any
     // one of them names the full set. hex-labels is the single exception: it is
     // not a style layer but DOM markers, applied through drawHexLabels().
-    const decided = Object.keys(layerVisibility({ mode: 'both', mode3D: true })).filter((id) => id !== 'hex-labels')
+    // The noise layer (#410) is decided on top of it, by withNoise.
+    const decided = Object.keys(withNoise(layerVisibility({ mode: 'both', mode3D: true }), true)).filter((id) => id !== 'hex-labels')
     expect([...applied].sort()).toEqual([...decided].sort())
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { FILTER_GROUPS, filterSheetMarkup, groupHeadings } from '../filtersheet.js'
+import { FILTER_GROUPS, APP_ONLY_GROUPS, filterSheetMarkup, groupHeadings } from '../filtersheet.js'
 import { FILTER_PACKET_TYPES, SENDER_ID_CLASSES } from '../filters.js'
 import { TIME_WINDOWS, windowMs } from '../timewindows.js'
 
@@ -10,10 +10,16 @@ import { TIME_WINDOWS, windowMs } from '../timewindows.js'
 const html = () => filterSheetMarkup({ types: FILTER_PACKET_TYPES, idClasses: SENDER_ID_CLASSES })
 
 describe('the filter sheet structure', () => {
-  it('renders the groups FILTER_GROUPS names, in that order', () => {
+  it('renders the groups FILTER_GROUPS names, in that order, then the app\'s own', () => {
     // Read back out of the markup, so the list cannot claim an order the sheet
     // does not have.
-    expect(groupHeadings(html())).toEqual(FILTER_GROUPS)
+    expect(groupHeadings(html())).toEqual([...FILTER_GROUPS, ...APP_ONLY_GROUPS])
+  })
+
+  it('offers the noise layer under Map, off until it is switched on (#410)', () => {
+    const map = html().slice(html().indexOf('>Map<'))
+    expect(map).toContain('<input type="checkbox" id="fs-noise" />')
+    expect(map).toContain('Noise floor')
   })
 
   it('gives every group a heading', () => {

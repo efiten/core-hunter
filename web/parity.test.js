@@ -23,7 +23,7 @@ import * as webChangelog from './changelog.js'
 import * as appChangelog from '../app/src/changelog.js'
 import { FILTER_PACKET_TYPES as webTypes, packetTypeLabel as webPacketTypeLabel, SENDER_ID_CLASSES as webClasses, senderIdClass as webSenderIdClass } from './packettypes.js'
 import { FILTER_PACKET_TYPES as appTypes, packetTypeLabel as appPacketTypeLabel, SENDER_ID_CLASSES as appClasses, senderIdClass as appSenderIdClass } from '../app/src/filters.js'
-import { FILTER_GROUPS as appFilterGroups, filterSheetMarkup as appFilterSheetMarkup, groupHeadings as appGroupHeadings } from '../app/src/filtersheet.js'
+import { FILTER_GROUPS as appFilterGroups, APP_ONLY_GROUPS as appOnlyGroups, filterSheetMarkup as appFilterSheetMarkup, groupHeadings as appGroupHeadings } from '../app/src/filtersheet.js'
 import * as webCallout from './calloutPosition.js'
 import * as appCallout from '../app/src/calloutPosition.js'
 import { initialSettingsTab as webInitialTab } from './settingssheet.js'
@@ -1267,7 +1267,9 @@ describe('--ch-* token parity (#407)', () => {
   // ground and (#630) the width the FAB rail's column takes from the right
   // edge, which the readouts beside it keep clear. Named so an addition to
   // either list is a decision, not drift.
-  const APP_ONLY = ['--ch-basemap', '--ch-bar-track']
+  // The noise bands (#410) are the app's while the noise layer is: it is
+  // measured by the companion, and the map has no noise data yet.
+  const APP_ONLY = ['--ch-basemap', '--ch-bar-track', ...Array.from({ length: 4 }, (_, i) => `--ch-noise-${i + 1}`)]
   const WEB_ONLY = ['--ch-bar-h', '--ch-input-bg', '--ch-rail-clear']
   for (const theme of ['dark', 'light']) {
     it(`${theme}: the shared tokens carry one value`, () => {
@@ -1414,8 +1416,10 @@ describe('the filter panels are one panel (#564)', () => {
     // Not just the two lists: the app's list is checked against its own markup
     // in app/src/__tests__/filtersheet.test.js, and the map's comes from
     // index.html above, so neither can claim an order it does not render.
+    // Minus Map, the app's own after the shared groups (#410): its noise layer
+    // is measured by the companion, which the map has no data from.
     expect(appGroupHeadings(appFilterSheetMarkup({ types: appTypes, idClasses: appClasses })))
-      .toEqual(appFilterGroups)
+      .toEqual([...appFilterGroups, ...appOnlyGroups])
   })
 
   it('keeps View after the shared groups, not among them', () => {

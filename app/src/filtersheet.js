@@ -16,6 +16,11 @@ import { TIME_WINDOWS, windowMs } from './timewindows.js'
 // who is silenced.
 export const FILTER_GROUPS = ['Time', 'Traffic types', 'Sender id', 'Only show', 'Ignored senders']
 
+// After the shared groups, the app's own, as View is the map's. Map holds the
+// noise layer (#410): a setting rather than a filter, here until the map has
+// settings of its own (Kasper, 2026-09-25), so Clear filters leaves it alone.
+export const APP_ONLY_GROUPS = ['Map']
+
 // One vocabulary across the surfaces: the app said "Types" where the map says
 // "Traffic types", and the app labelled only its two chip rows while the map
 // gave every group a heading.
@@ -68,6 +73,14 @@ export function filterSheetMarkup({ types, idClasses }) {
           <div id="ss-ignore-list"></div>
           <button id="ss-ignore-clear">Clear ignore-list</button>
         </div>
+      </div>
+      <div class="fs-group">
+        <div class="fs-group-head">Map</div>
+        <label class="fs-row" id="fs-row-noise">
+          <input type="checkbox" id="fs-noise" />
+          <span>Noise floor</span>
+        </label>
+        <p class="ss-hint">Colours the cells by the noise your companion measured there, instead of by signal. Loud cells explain a stretch with nothing heard.</p>
       </div>
       <div class="fs-foot">
         <span class="fs-live">Changes apply immediately</span>

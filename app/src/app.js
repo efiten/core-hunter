@@ -27,6 +27,7 @@ import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M, isUsableFix } from './gps.js'
+import { buildStatsRadioRequest, parseStatsRadio, shouldSampleNoise, noiseSample } from './noise.js'
 import { requestSelfInfo, radioSummary } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
@@ -321,6 +322,12 @@ const state = {
   // Companion battery (#281): polled periodically while connected, since it
   // doesn't arrive with each packet the way RSSI/SNR do.
   battery: { mv: null, timer: null, failures: 0 },
+  // The noise-floor sampler (#410): the connection the samples belong to, the
+  // last sample's time and place for the rhythm, and the misses in a row.
+  noise: { session: null, last: null, failures: 0, busy: false },
+  // The noise layer on the map (#410): a setting, kept across launches, and
+  // while it is on the samples it draws, which noiseTick appends to.
+  noiseLayer: { on: loadNoiseLayer(), samples: null },
 }
 
 // ---------------------------------------------------------------------------
@@ -1503,7 +1510,64 @@ async function drawOnce() {
 async function renderTick() {
   await drawOnce()
   await trackTick()
+  noiseTick()
   setTimeout(renderTick, 1000)
+}
+
+// ---------------------------------------------------------------------------
+// Noise floor (#410): sampled on auto-discover's rhythm, mapped per hex cell
+// ---------------------------------------------------------------------------
+// A local BLE query (CMD_GET_STATS, STATS_TYPE_RADIO) that puts nothing on the
+// air, so it runs whenever a companion is connected, auto-discover on or off
+// (Kasper, 2026-09-25). A reading needs a fix to be placed, so without one the
+// companion is not asked. A companion that does not answer three times in a
+// row (older firmware has no stats) is not asked again until the next connect.
+const NOISE_REPLY_TIMEOUT_MS = 3000
+const NOISE_FAILURES_BEFORE_GIVING_UP = 3
+
+// The noise layer's setting. A setting rather than a filter, so Clear filters
+// leaves it alone; it sits in the filter sheet until the map has settings of
+// its own (Kasper, 2026-09-25).
+function loadNoiseLayer() {
+  try { return localStorage.getItem('core-hunter-noise') === '1' } catch (_) { return false }
+}
+function saveNoiseLayer(on) {
+  try {
+    if (on) localStorage.setItem('core-hunter-noise', '1')
+    else localStorage.removeItem('core-hunter-noise')
+  } catch (_) {}
+}
+// Reads the retained samples once when the layer goes on; from then on
+// noiseTick appends each new one, so the map never reads the store per tick.
+async function applyNoiseLayer() {
+  const layer = state.noiseLayer
+  if (!layer.on) { layer.samples = null; if (state.map) state.map.setNoise(null); return }
+  const rows = await state.queue.noiseSince(new Date(Date.now() - RETENTION_MS).toISOString()).catch(() => [])
+  if (!layer.on) return   // switched off while the read ran
+  layer.samples = rows
+  if (state.map) state.map.setNoise(rows)
+}
+
+function noiseTick() {
+  const n = state.noise
+  if (!state.connected || !state.transport || n.busy || !n.session || n.failures >= NOISE_FAILURES_BEFORE_GIVING_UP) return
+  const fix = state.gps.latest()
+  if (!isUsableFix(fix)) return
+  const now = Date.now()
+  if (!shouldSampleNoise({ last: n.last, now, lat: fix.lat, lon: fix.lon })) return
+  n.busy = true
+  sendAndWait(buildStatsRadioRequest(), parseStatsRadio, NOISE_REPLY_TIMEOUT_MS)
+    .then(async (r) => {
+      if (!r) { n.failures++; return }
+      n.failures = 0
+      const sample = noiseSample({ noiseFloor: r.noiseFloor, fix, session: n.session, rxPubkey: state.rxPubkey, nowMs: now, last: n.last })
+      n.last = { at: now, lat: fix.lat, lon: fix.lon }
+      if (!sample) return
+      await state.queue.addNoise(sample)
+      if (state.noiseLayer.samples) state.noiseLayer.samples.push(sample)
+    })
+    .catch(() => {})
+    .finally(() => { n.busy = false })
 }
 
 // ---------------------------------------------------------------------------
@@ -1665,6 +1729,8 @@ async function pruneOnce() {
   }
   await state.queue.pruneTracks(cutoff, pruneFloor(owedTracks))
   if (removed > 0) console.debug('[prune] removed', removed, 'published record(s) past retention')
+  // Noise samples are never published, so age alone prunes them (#410).
+  await state.queue.pruneNoise(cutoff).catch(() => {})
 }
 
 async function drainLoop() {
@@ -2215,6 +2281,8 @@ async function connectAll() {
     // 2. Self info (companion pubkey + name + spreading factor)
     const info = await requestSelfInfo(state.transport, 'core-hunter')
     state.rxPubkey = info.pubkey.toLowerCase()
+    // A noise session is one connection (#410, Kasper 2026-09-25).
+    state.noise = { session: new Date().toISOString(), last: null, failures: 0, busy: false }
     state.name = info.name || ''
     state.sf = info.sf ?? null
     // The rest of the radio (#650): what the companion reports, for the Status
@@ -2419,6 +2487,14 @@ function buildFilterSheet() {
   syncDirectRow(); syncWindowRow()
 
   chk.addEventListener('change', () => { state.filter.directOnly = chk.checked; syncDirectRow(); refreshFilterState() })
+
+  const noise = el('fs-noise')
+  noise.checked = state.noiseLayer.on
+  noise.addEventListener('change', () => {
+    state.noiseLayer.on = noise.checked
+    saveNoiseLayer(noise.checked)
+    applyNoiseLayer().catch(() => {})
+  })
   sel.addEventListener('change', () => { applyWindowMs(Number(sel.value) || null) })
 
   // Chip rows — the "All" chip (default) means no filter on that dimension.
@@ -3798,6 +3874,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   el('layer-toggle').addEventListener('click', cycleView)
   const restoredView = VIEW_STATES[viewIdx]
   state.map.setView(restoredView.mode, restoredView.mode3D)
+  applyNoiseLayer().catch(() => {})
   el('nodepos-toggle').addEventListener('click', () => { cycleNodePositions().catch(() => {}) })
   // The registry loads whether the layer is on or not: the HUD and the ticker
   // name a relay id by it (#661). One fetch; applyNodePosMode shares it.
