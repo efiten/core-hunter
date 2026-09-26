@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { normalizeConfig } from '../config.js'
+import { presetsFrom } from '../brokers.js'
 
 const BASE = { mqttUrl: 'mqtt://test' }
 
@@ -124,5 +125,20 @@ describe('normalizeConfig brokers (#554)', () => {
     expect(c.brokers[1]).toMatchObject({ format: 'wardrive', label: 'hunter' })
     expect('format' in c.brokers[2]).toBe(false)
     expect('label' in c.brokers[2]).toBe(false)
+  })
+})
+
+// The add form reads its presets through getConfig(), which holds the
+// normalized config, not the raw file (#701).
+describe('normalizeConfig brokerPresets (#701)', () => {
+  it('keeps the presets for the add form', () => {
+    const c = normalizeConfig({ mqttUrl: 'wss://x/ws', brokerPresets: [
+      { key: 'c1-hunter', name: 'Collector 1 · hunter', url: 'wss://c1.example:443', auth: 'companion', format: 'wardrive', label: 'hunter' },
+    ] })
+    expect(presetsFrom(c).map((p) => [p.key, p.label])).toEqual([['c1-hunter', 'hunter']])
+  })
+  it('is an empty list without the key, or with something other than a list', () => {
+    expect(normalizeConfig({ mqttUrl: 'wss://x/ws' }).brokerPresets).toEqual([])
+    expect(normalizeConfig({ mqttUrl: 'wss://x/ws', brokerPresets: 'nope' }).brokerPresets).toEqual([])
   })
 })
