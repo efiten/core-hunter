@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-27-float-no-prev-next",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "The floating readout has no buttons of its own",
+    "body": "Previous and next are gone from the floating window; step through receptions in the ticker."
+  },
+  {
     "id": "2026-09-26-broker-presets-shown",
     "date": "2026-09-26",
     "where": "app",

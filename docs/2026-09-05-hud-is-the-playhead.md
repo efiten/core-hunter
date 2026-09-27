@@ -14,7 +14,8 @@ The narrow fix, redrawing the line when the name lands, kept a model with two re
 showed the last reception, the ticker's playhead could be scrubbed away from it, and since #555
 the float readout followed the playhead while the HUD did not. Kasper's call: one readout. The
 HUD shows the reception on the ticker's playhead, the float shows the same, and the
-previous/next buttons on the float window move all three.
+previous/next buttons on the float window move all three. (Those buttons were withdrawn on 27
+September, #716: scrubbing the ticker is what moves the playhead.)
 
 - **A reception that passes the filter goes on the HUD**, at capture, before the tick, as it
   always did. If a scrub had moved the playhead, this puts the ticker back on the newest row
