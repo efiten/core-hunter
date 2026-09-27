@@ -113,6 +113,9 @@ The float button promises a floating window, so that is what it asks for first, 
    lock is only allowed then. The 16:9 canvas would turn the phone sideways without it. A refused
    lock still leaves the readout out. The lock is released as soon as fullscreen ends, and the
    600 ms wait for Android's fullscreen-to-window hand-over stays as it was.
+   (Amended 27 September, #707: the lock is `'any'`. Measured on a phone: it opens upright, turns
+   with the phone, and keeps to Android's auto-rotate switch, while `'portrait'` held the readout
+   sideways on a phone in a landscape holder. No lock still opens it sideways, which was #616.)
 
 **On Android the two swap places (#669).** #616 took Android Chrome's API to be off. In the field
 (21 September) the window opened without the fullscreen step, the sound parked and GPS logging
