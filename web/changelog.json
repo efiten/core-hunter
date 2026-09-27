@@ -21,6 +21,13 @@
     "body": "Sound uses a larger output buffer, against ticking while the app is busy right after start."
   },
   {
+    "id": "2026-09-27-dutchmeshcore-by-default",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "Your receptions also go to DutchMeshCore",
+    "body": "Your receptions now also go to DutchMeshCore, with one switch under Manage brokers."
+  },
+  {
     "id": "2026-09-26-broker-presets-shown",
     "date": "2026-09-26",
     "where": "app",

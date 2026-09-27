@@ -19,7 +19,7 @@ import { classifyReception, carriesSignedIdentity, stripIdentity, undecodableRec
 import { rememberPing, matchTraceTarget } from './tracetag.js'
 import { buildRecord, shouldCapture } from './capture.js'
 import { Queue, RETENTION_MS, shouldContinueDraining, nextWatermark, DEFAULT_BROKER } from './queue.js'
-import { pruneFloor, owedBrokers, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary, presetsFrom } from './brokers.js'
+import { pruneFloor, owedLegs, liveBrokers, dotState, mergeBrokers, validateBroker, probeBroker, brokerStatus, mqttSummary, presetsFrom, legsOf, foldLegs, hostOf, sharedWith } from './brokers.js'
 import { createBrokerSheet } from './brokersheet.js'
 import { createTrackWindow } from './wardrive.js'
 import { createSigner, buildBrokerToken, brokerUsername, brokerAudience, tokenUsable } from './companionsign.js'
@@ -623,11 +623,33 @@ function allBrokers() {
 }
 
 // The brokers every reception goes to: the ones that are on.
+// A broker that clashes with a site broker's host stays off the wire
+// (liveBrokers); its row says so.
 function brokerList() {
-  return allBrokers().filter((b) => b.enabled)
+  return liveBrokers(allBrokers()).filter((b) => b.enabled)
 }
 
+// The connections behind those rows (#704): one per stream of a broker that
+// has streams, the broker itself otherwise. What is per connection (the
+// socket, the watermark, the companion token) keys on these ids; a row and
+// its switch stay the broker's.
+function allLegs() {
+  return liveBrokers(allBrokers()).flatMap(legsOf)
+}
+
+function legList() {
+  return brokerList().flatMap(legsOf)
+}
+
+// A row's status, folded over its connections (#704).
 async function brokerStatusOf(id) {
+  const broker = allBrokers().find((b) => b.id === id)
+  const stats = []
+  for (const leg of broker ? legsOf(broker) : [{ id }]) stats.push(await legStatusOf(leg.id))
+  return foldLegs(stats)
+}
+
+async function legStatusOf(id) {
   let queued = 0
   try { queued = await state.queue.unpublishedCount(id) } catch (_) { queued = 0 }
   return { connected: brokerConnected(id), queued, needsCompanion: state.needsCompanion.has(id), signRefused: state.signRefused.has(id) }
@@ -675,7 +697,8 @@ async function toggleBroker(id, enabled) {
 // Connect first, store second: a broker that does not answer is never saved.
 async function saveBroker(form, editingId) {
   const taken = allBrokers().map((b) => b.id).filter((x) => x !== editingId)
-  const v = validateBroker(form, taken, { securePage: location.protocol === 'https:' })
+  const takenHosts = allLegs().filter((l) => l.source === 'site').map((l) => hostOf(l.url))
+  const v = validateBroker(form, taken, { securePage: location.protocol === 'https:', takenHosts })
   if (!v.ok) return v
   let creds = null
   try { creds = await brokerCredentials(v.broker, state.rxPubkey) } catch (e) {
@@ -723,7 +746,7 @@ function brokerConnected(id) {
 }
 
 function mqttDotState() {
-  return dotState(brokerList().map((b) => brokerConnected(b.id)))
+  return dotState(legList().map((l) => brokerConnected(l.id)))
 }
 
 // One dot for several brokers: lit when all are up, amber when one is missing.
@@ -759,7 +782,7 @@ async function renderBacklog() {
   let pending = 0
   // "Not on the map yet" is about the broker that feeds the map: the first one,
   // the site's own (#554). What another broker is owed is in the Status tab.
-  const own = brokerList()[0]
+  const own = legList()[0]
   if (!own) return
   try { pending = await state.queue.unpublishedCount(own.id) } catch (_) { return }
   const s = backlogState(pending, { connected: brokerConnected(own.id) })
@@ -1005,6 +1028,16 @@ function splashArgs(overrides) {
   }
 }
 
+// Where receptions go (#704), on the splash and in About: every broker that
+// is on, by name, from config.json and the hunter's own list.
+function renderSharedWith() {
+  const text = sharedWith(brokerList().map((b) => b.name))
+  for (const id of ['splash-shared', 'ss-about-shared']) {
+    const e = el(id)
+    if (e && e.textContent !== text) e.textContent = text
+  }
+}
+
 // Splash gate (#539): the connect block IS the splash — brand band, two
 // status rows (Bluetooth, GPS), the ways forward, one-sentence disclaimer.
 // Shown until the first GPS fix (per splashState) or the ✕; re-openable
@@ -1018,6 +1051,7 @@ function splashArgs(overrides) {
 // spotlight behaviour unchanged (body.onboarding): every control lifted and
 // ringed, the three callouts placed beside them.
 function refreshSplash() {
+  renderSharedWith()
   const s = splashState(splashArgs())
   const reopened = state.showOnboarding && s === 'hidden'
   const visible = s !== 'hidden' || reopened
@@ -1602,7 +1636,7 @@ async function drainOnce() {
   await ensureMqtt()
   draining = true
   try {
-    for (const b of brokerList().filter((b) => brokerConnected(b.id))) {
+    for (const b of legList().filter((b) => brokerConnected(b.id))) {
       if (brokerDrains.has(b.id)) continue
       const entry = state.publishers.get(b.id)
       brokerDrains.add(b.id)
@@ -1718,8 +1752,8 @@ async function pruneOnce() {
   lastPrune = now
   const cutoff = new Date(now - RETENTION_MS).toISOString()
   // A reception may only go once every broker that is owed it has it (#554).
-  // Which brokers are owed, a paused one included or not, is owedBrokers'.
-  const owedBy = owedBrokers(allBrokers())
+  // Which connections are owed, a paused one included or not, is owedLegs'.
+  const owedBy = owedLegs(allBrokers())
   const owed = []
   for (const b of owedBy) owed.push({ id: b.id, watermark: await state.queue.getWatermark(b.id) })
   const removed = await state.queue.prune(cutoff, pruneFloor(owed))
@@ -2155,7 +2189,7 @@ function applyConnectButtons() {
 // the receptions are already on disk, they were heard by a real companion, and
 // they are owed to the broker whatever the link is doing now.
 async function ensureMqtt() {
-  const on = brokerList()
+  const on = legList()
   const nowSec = Math.floor(Date.now() / 1000)
   for (const [id, entry] of [...state.publishers]) {
     const broker = on.find((b) => b.id === id)
@@ -2403,7 +2437,7 @@ function refreshConnState() {
 function renderMqttStatus() {
   const on = brokerList()
   const dot = mqttDotState()
-  el('ss-conn-mqtt').textContent = mqttSummary(on.map((b) => brokerConnected(b.id)))
+  el('ss-conn-mqtt').textContent = mqttSummary(on.map((b) => legsOf(b).every((l) => brokerConnected(l.id))))
   el('ss-mqtt-dot').classList.toggle('on', dot !== 'off')
   el('ss-mqtt-dot').classList.toggle('warn', dot === 'partial')
   const box = el('ss-mqtt-rows')
@@ -2429,6 +2463,7 @@ function renderMqttStatus() {
       row.lastChild.textContent = view.text
     }).catch(() => {})
   }
+  renderSharedWith()
   if (state.brokerSheet) state.brokerSheet.tick()
 }
 
@@ -2802,6 +2837,7 @@ function buildSettingsSheet() {
           </div>
         </div>
         <p class="ss-about-desc">Hunt MeshCore nodes by their radio signal. Your logged receptions build a shared coverage map. Built by amateur-radio operators.</p>
+        <p class="ss-about-desc" id="ss-about-shared"></p>
         <nav class="ss-about-links">
           <button type="button" id="ss-about-howto">
             <span class="ss-link-title">How it works</span>
@@ -3783,7 +3819,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // now on, not the week already in the store (#554). Never the broker from
   // mqttUrl: it has no watermark on a phone that captured offline before it
   // ever connected, and that backlog is owed to it in full.
-  for (const b of allBrokers()) {
+  for (const b of allLegs()) {
     if (b.id === DEFAULT_BROKER) continue
     try { await state.queue.startAtHead(b.id) } catch (_) { /* retried on the next load */ }
   }

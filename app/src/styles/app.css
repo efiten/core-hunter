@@ -478,6 +478,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 .bk-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bk-status, .bk-host { font-size: 12px; color: var(--ch-muted); min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A broker on a host the site already publishes to (#704): amber, the alert
+   token, because the row asks for a hand. */
+.bk-clash { color: var(--ch-accent-2); }
 .bk-host { font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace; }
 .bk-manage { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 44px;
   margin-top: 4px; padding: 0; border: none; border-top: 1px solid var(--ch-border); background: transparent;
