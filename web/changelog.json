@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-27-sound-playback-buffer",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "A larger audio buffer",
+    "body": "Sound uses a larger output buffer, against ticking while the app is busy right after start."
+  },
+  {
     "id": "2026-09-26-broker-presets-shown",
     "date": "2026-09-26",
     "where": "app",
