@@ -133,12 +133,11 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   background: var(--ch-surface); backdrop-filter: blur(10px);
   display: flex; flex-direction: column; gap: 8px; z-index: 500; }
 
-/* Row 1, the reading: hero RSSI, SNR, and the age pushed right (#618). The
-   height is fixed, so the direction arrow (#660) that goes before the number
-   cannot grow the HUD: #hud is bottom-anchored and the FAB rail sits a fixed
-   distance above it (#264). The gap is 8px, not 12: the worst row with the
-   30px arrow ('-120', 'SNR -20.0 dB', '59m 59s') needs 329px of the 328px a
-   360px screen leaves at 12px, and fits with 8. */
+/* Row 1, the number and who (#708, after #618): the arrow, the RSSI, the
+   sender and the backlog pill. The height is fixed, so the direction arrow
+   (#660) that goes before the number cannot grow the HUD: #hud is
+   bottom-anchored and the FAB rail sits a fixed distance above it (#264).
+   The sender is the one thing in the row that gives up width. */
 #hud-readout-row { display: flex; align-items: baseline; gap: 8px; height: 38px; }
 /* The direction arrow (#660), before the number: a fixed 30px box centred in
    the 38px row, so it never grows the row. The colour is the reading's tier,
@@ -155,23 +154,24 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-variant-numeric: tabular-nums; line-height: 1;
   white-space: nowrap; flex: none; }
 
-/* The SNR never shrinks (#637). It used to share the row's deficit with the
-   sender (min-width:0 and an ellipsis), so a long relay name cut it to
-   "SNR -1..." at 360 and at 412px. The sender has a row of its own now,
-   and row 1 holds only numbers of a known widest form. */
-#hud-snr { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+/* Row 2, the measurements (#708): the SNR, the noise floor while its layer
+   is on, and the age pushed right. Numbers of a known widest form only
+   ('SNR -12.5 dB', 'Noise -104 dBm', '59m 59s' fit 328px at 360 wide with
+   the 12px gap), so none of them ever shrinks (#637: a long relay name once
+   cut the SNR to "SNR -1..." when the two shared a row). Fixed height, like
+   row 1. */
+#hud-measure-row { display: flex; align-items: baseline; gap: 12px; height: 20px; }
+#hud-snr, #hud-noise { font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums;
   flex: none; white-space: nowrap; }
 
-/* Age of the reception on the HUD, at the right edge of row 1. Empty before
+#hud-noise:empty { display: none; }
+
+/* Age of the reception on the HUD, at the right edge of row 2. Empty before
    the first reception, like the RSSI and the SNR. */
 #hud-since { margin-left: auto; font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 15px; color: var(--ch-muted); font-variant-numeric: tabular-nums;
   white-space: nowrap; flex: none; }
-
-/* Row 2, the sender line (#618), with the backlog pill at its right end. Fixed
-   height, like row 1. */
-#hud-sender-row { display: flex; align-items: center; gap: 8px; height: 20px; min-width: 0; }
 
 /* Who the reception came from (#281): the origin, or "via <repeater>" when it
    reached us through a relay. Only "via " and the guess mark are muted; the
@@ -180,8 +180,8 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    on anonymous flex items (AGENTS.md 5.4 item 2), and the leading muted span
    survives the cut. A reception without a sender, and the line before the
    first reception, read as one muted note. */
-#hud-sender { flex: 1; min-width: 0; font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
-  font-size: 15px; color: var(--ch-text);
+#hud-sender { flex: 1; min-width: 0; align-self: center; font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 17px; color: var(--ch-text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #hud-sender .hud-via, #hud-sender.empty { color: var(--ch-muted); }
 
@@ -609,7 +609,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    map is not. The amber is the UI's alert token, not a signal tier: the tiers
    are for readings only (docs/design-system.md), and a backlog is the app's
    state. The alarm level keeps only its weight. */
-#hud-backlog { flex: none; white-space: nowrap;
+#hud-backlog { flex: none; white-space: nowrap; align-self: center;
   font-family: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
   font-size: 11px; line-height: 1; padding: 3px 7px;
   border: 1px solid var(--ch-accent-2); border-radius: 999px;

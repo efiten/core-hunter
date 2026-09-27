@@ -42,6 +42,13 @@
     "body": "The HUD's buttons no longer sit on Android's navigation bar."
   },
   {
+    "id": "2026-09-27-noise-values",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "The noise floor as a number",
+    "body": "Noise cells show their median in dBm from zoom 16, and the HUD shows the latest reading. The sender moved beside the number."
+  },
+  {
     "id": "2026-09-27-float-no-pause",
     "date": "2026-09-27",
     "where": "app",

@@ -80,7 +80,7 @@ export function filterSheetMarkup({ types, idClasses }) {
           <input type="checkbox" id="fs-noise" />
           <span>Noise floor</span>
         </label>
-        <p class="ss-hint">Colours the cells by the noise your companion measured there, instead of by signal. Loud cells explain a stretch with nothing heard.</p>
+        <p class="ss-hint">Shows the noise your companion measured, as soft spots in place of the signal cells. A loud spot explains a stretch with nothing heard.</p>
       </div>
       <div class="fs-foot">
         <span class="fs-live">Changes apply immediately</span>

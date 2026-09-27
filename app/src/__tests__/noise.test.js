@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildStatsRadioRequest, parseStatsRadio, shouldSampleNoise, noiseSample, noiseCells, noiseFill, withNoise, noiseHexFC, NOISE_BANDS, CMD_GET_STATS, RESP_CODE_STATS, STATS_TYPE_RADIO } from '../noise.js'
+import { buildStatsRadioRequest, parseStatsRadio, shouldSampleNoise, noiseSample, noiseCells, noiseFill, withNoise, noiseSpotFC, noiseRadius, noiseLabelItems, noiseReadout, NOISE_LIVE_MS, NOISE_SPOT_SPREAD, PX_PER_MERCATOR_M_Z0, NOISE_BANDS, CMD_GET_STATS, RESP_CODE_STATS, STATS_TYPE_RADIO } from '../noise.js'
 import { INTERVAL_MS, MOVE_THRESHOLD_M } from '../autoping.js'
 
 // STATS_TYPE_RADIO (docs/stats_binary_frames.md in meshcore-dev/MeshCore), 14
@@ -125,22 +125,75 @@ describe('the noise layer on the map (#410)', () => {
     expect(withNoise(both, false)).toEqual({ ...both, noise: false })
   })
 
-  it('draws one hex per cell, carrying its median', () => {
+  // Kasper, 28 September: the same cells and medians, drawn as soft spots
+  // rather than hexes. A hex read as one of the signal cells, while a noise
+  // floor is a property of the place around the sample. One blurred circle
+  // per cell at its centre, wider than the cell so neighbours flow together.
+  it('draws one spot per cell at its centre, carrying its median and the cell radius', () => {
     const samples = [
       { lat: 51.84, lon: 5.85, noise_floor: -100, stationary: false, session: 's' },
       { lat: 51.84, lon: 5.85, noise_floor: -110, stationary: false, session: 's' },
       { lat: 52.0, lon: 5.0, noise_floor: -120, stationary: false, session: 's' },
     ]
     const cellAt = (lat) => (lat > 51.9 ? 'far' : 'near')
-    const boundary = (id) => (id === 'near' ? [[0, 0], [0, 1], [1, 1], [0, 0]] : [[2, 2], [2, 3], [3, 3], [2, 2]])
-    const fc = noiseHexFC(samples, cellAt, boundary)
-    expect(fc.features.map((f) => f.properties)).toEqual([{ nf: -105, count: 2 }, { nf: -120, count: 1 }])
-    // hexBoundary answers [lat, lon]; GeoJSON wants [lon, lat].
-    expect(fc.features[0].geometry).toEqual({ type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] })
+    const centreOf = (id) => (id === 'near' ? [51.8401, 5.8499] : [52.0002, 5.0001])
+    const fc = noiseSpotFC(samples, cellAt, centreOf, 360)
+    expect(fc.features.map((f) => f.properties)).toEqual([{ id: 'near', nf: -105, count: 2, r: 360 }, { id: 'far', nf: -120, count: 1, r: 360 }])
+    // hexgrid answers [lat, lon]; GeoJSON wants [lon, lat].
+    expect(fc.features[0].geometry).toEqual({ type: 'Point', coordinates: [5.8499, 51.8401] })
   })
 
-  it('skips a cell whose boundary does not parse', () => {
-    const fc = noiseHexFC([{ lat: 1, lon: 1, noise_floor: -100 }], () => 'x', () => null)
+  it('skips a cell whose centre does not parse', () => {
+    const fc = noiseSpotFC([{ lat: 1, lon: 1, noise_floor: -100 }], () => 'x', () => null, 360)
     expect(fc.features).toEqual([])
+  })
+
+  // The radius follows the zoom so a spot stays the cell's size on the
+  // ground: r is in Web Mercator metres, and at zoom z a mercator metre is
+  // 512 * 2^z / (2 * pi * 6378137) px, so the expression doubles per zoom.
+  it('sizes a spot to its cell on the ground, wider by the spread, at every zoom', () => {
+    expect(NOISE_SPOT_SPREAD).toBe(1.3)
+    expect(PX_PER_MERCATOR_M_Z0).toBeCloseTo(512 / (2 * Math.PI * 6378137), 12)
+    expect(noiseRadius()).toEqual(['interpolate', ['exponential', 2], ['zoom'],
+      0, ['*', ['get', 'r'], NOISE_SPOT_SPREAD * PX_PER_MERCATOR_M_Z0],
+      24, ['*', ['get', 'r'], NOISE_SPOT_SPREAD * PX_PER_MERCATOR_M_Z0 * 2 ** 24]])
+  })
+})
+
+describe('the measured value, on the map and in the HUD (#708)', () => {
+  // A spot is a Point at the cell's centre ([lon, lat]), so the label sits
+  // where the spot is.
+  const cell = (id, nf, lon, lat) => ({ type: 'Feature', properties: { id, nf, count: 1, r: 360 }, geometry: { type: 'Point', coordinates: [lon, lat] } })
+
+  it('labels each cell with its median in whole dBm, at the centre of the cell', () => {
+    const fc = { type: 'FeatureCollection', features: [cell('a', -104.5, 1, 1), cell('b', -97.4, 11, 11)] }
+    expect(noiseLabelItems(fc, () => true)).toEqual([
+      { id: 'a', label: '-104', lat: 1, lon: 1 },
+      { id: 'b', label: '-97', lat: 11, lon: 11 },
+    ])
+  })
+
+  it('labels only the cells whose centre is in view', () => {
+    const fc = { type: 'FeatureCollection', features: [cell('a', -104, 1, 1), cell('b', -97, 11, 11)] }
+    expect(noiseLabelItems(fc, (lat) => lat < 5).map((it) => it.id)).toEqual(['a'])
+  })
+
+  const T = 1_000_000
+  it('reads the latest value in the HUD while the layer is on and the companion answers', () => {
+    expect(noiseReadout({ on: true, connected: true, value: -104, at: T, now: T + 5000 })).toBe('Noise -104 dBm')
+  })
+
+  it('says nothing with the layer off, without a companion, or without a reading', () => {
+    expect(noiseReadout({ on: false, connected: true, value: -104, at: T, now: T })).toBe('')
+    expect(noiseReadout({ on: true, connected: false, value: -104, at: T, now: T })).toBe('')
+    expect(noiseReadout({ on: true, connected: true, value: null, at: T, now: T })).toBe('')
+  })
+
+  it('drops a reading older than three rounds, so a lost fix does not leave an old value standing', () => {
+    // The companion is only asked with a fix (noiseTick): without one the
+    // last value would stay on screen, looking live, for as long as it lasts.
+    expect(noiseReadout({ on: true, connected: true, value: -104, at: T, now: T + NOISE_LIVE_MS })).toBe('Noise -104 dBm')
+    expect(noiseReadout({ on: true, connected: true, value: -104, at: T, now: T + NOISE_LIVE_MS + 1 })).toBe('')
+    expect(NOISE_LIVE_MS).toBe(3 * INTERVAL_MS)
   })
 })
