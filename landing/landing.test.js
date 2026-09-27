@@ -48,39 +48,71 @@ describe('landing pages', () => {
   })
 })
 
-describe('the hero shot', () => {
-  const svg = read('hero.svg')
+// The site fetches nothing from another host (the v7 redesign). The display
+// face is served from here for that reason, so a stylesheet or font that
+// quietly points at a CDN would break the rule the fonts/ folder exists for.
+describe('self-contained', () => {
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
 
-  it('is self-contained: no network references', () => {
-    // It is loaded through <img>, which blocks external subresources anyway --
-    // so a remote reference would silently render nothing. The xmlns namespace
-    // URI is not one: it is an identifier, never fetched, and matching it was
-    // this test's own first bug.
-    const fetched = [...svg.matchAll(/(?:href|src)\s*=\s*"([^"]+)"/g)].map((m) => m[1])
-      .concat([...svg.matchAll(/url\(\s*['"]?([^'")]+)/g)].map((m) => m[1]))
-    expect(fetched.filter((u) => /^https?:/i.test(u))).toEqual([])
+  it.each(pages)('%s loads its stylesheet and icon from this site', (f) => {
+    const links = [...read(f).matchAll(/<link\b[^>]*\bhref="([^"]+)"/g)].map((m) => m[1])
+    expect(links.length).toBeGreaterThan(0)
+    expect(links.filter((u) => /^(https?:)?\/\//i.test(u))).toEqual([])
   })
 
-  it('carries its own animation and honours reduced motion', () => {
-    // One @keyframes per pillar: the phase is baked into the percentages rather
-    // than set with animation-delay, so every pillar shares one timeline and
-    // the scene can clear before the next drive starts.
-    expect(svg.match(/@keyframes /g)?.length ?? 0).toBeGreaterThan(20)
-    expect(svg).toMatch(/@keyframes drive/)
-    expect(svg).toMatch(/prefers-reduced-motion/)
+  it('points every url() in the stylesheet at a file that exists here', () => {
+    const urls = [...css.matchAll(/url\(\s*['"]?([^'")]+)/g)].map((m) => m[1])
+    expect(urls.length, 'no url() to check').toBeGreaterThan(0)
+    for (const u of urls) {
+      expect(u, `${u} is not local`).not.toMatch(/^(https?:)?\/\//i)
+      expect(() => readFileSync(new URL(`./${u.replace(/^\//, '')}`, import.meta.url)), `${u} does not exist`).not.toThrow()
+    }
+    expect(css).not.toMatch(/@import/)
+  })
+})
+
+// The four surfaces as tabs above one shot. The markup is what a reader
+// without the script gets, so it has to be right on its own: one tab
+// selected, its panel shown, the others hidden, and each tab naming a panel
+// that exists.
+describe('the tour', () => {
+  const html = read('index.html')
+  const tabs = [...html.matchAll(/<button\b[^>]*role="tab"[^>]*>/g)].map((m) => ({
+    controls: m[0].match(/aria-controls="([^"]+)"/)?.[1],
+    selected: m[0].match(/aria-selected="([^"]+)"/)?.[1],
+  }))
+  const panel = (id) => html.match(new RegExp(`<div\\b[^>]*role="tabpanel"[^>]*id="${id}"[^>]*>`))?.[0]
+
+  it('has a tab per surface, each with its own panel', () => {
+    expect(tabs.length).toBe(4)
+    for (const t of tabs) expect(panel(t.controls), `no panel ${t.controls}`).toBeTruthy()
   })
 
-  it('clears the trail before the drive restarts', () => {
-    // The failure this guards: pillars still on screen when the hunter comes
-    // round again, so each lap draws over the last one's coverage.
-    const ends = [...svg.matchAll(/([\d.]+)%,100%\{transform:scaleY\(1\);opacity:0\}/g)]
-    expect(ends.length, 'no pillar keyframe ends at opacity 0').toBeGreaterThan(20)
-    for (const m of ends) expect(Number(m[1])).toBeLessThan(100)
+  it('selects one tab and shows only its panel', () => {
+    expect(tabs.filter((t) => t.selected === 'true').length).toBe(1)
+    for (const t of tabs) {
+      expect(/\bhidden=/.test(panel(t.controls)), `${t.controls}`).toBe(t.selected !== 'true')
+    }
   })
 
-  it('describes itself for a screen reader', () => {
-    expect(svg).toMatch(/role="img"/)
-    expect(svg).toMatch(/aria-label="[^"]{40,}"/)
+  it('describes each shot for a screen reader', () => {
+    const shots = [...html.matchAll(/<svg\b[^>]*viewBox="0 0 640 470"[^>]*>/g)].map((m) => m[0])
+    expect(shots.length).toBe(4)
+    for (const s of shots) {
+      expect(s).toMatch(/role="img"/)
+      expect(s).toMatch(/aria-label="[^"]{40,}"/)
+    }
+  })
+
+  // AGENTS.md §7: output that implies where a node is carries the
+  // disclaimer, visible while it is (the review of #92). The Hunt & Locate
+  // and Reach shots draw an estimated position, so their captions say what
+  // that is.
+  it.each(['panel-hunt', 'panel-reach'])('says under %s that a position is inferred, not tracked', (id) => {
+    const at = html.indexOf(`id="${id}"`)
+    expect(at).toBeGreaterThan(-1)
+    const panel = html.slice(at, html.indexOf('</p>', at))
+    expect(panel).toMatch(/inferred from RSSI and SNR, not from GPS tracking/)
   })
 })
 
@@ -108,55 +140,57 @@ describe('link colours', () => {
   })
 })
 
-// #490: how you get an account was one sentence in the two-column block at the
-// foot of the page, after the blog card. A visitor who clicks "Open the map"
-// meets a login form with nothing to register against, so the answer belongs
-// with the product sections it follows from, not in the small print.
+// #490: a visitor who opens the map meets a login form with nothing to
+// register against, so how to get an account has to be one click from the
+// front page. Since the v7 redesign the steps live in the FAQ answer, the
+// place the question is asked, and the front page links that answer.
 describe('getting an account', () => {
-  const html = read('index.html')
-  const section = (() => {
-    const start = html.indexOf('id="get-an-account"')
-    return start === -1 ? '' : html.slice(start, html.indexOf('</section>', start))
+  const faq = read('faq.html')
+  const answer = (() => {
+    const start = faq.indexOf('id="account"')
+    return start === -1 ? '' : faq.slice(start, faq.indexOf('</details>', start))
   })()
 
-  it('has a section of its own', () => {
-    expect(section).not.toBe('')
+  it('has its own FAQ answer, with the steps', () => {
+    expect(answer).not.toBe('')
+    expect(answer.match(/<li>/g)?.length ?? 0).toBeGreaterThan(3)
   })
 
   it('names the RX webapp as the only place that can register you', () => {
-    expect(section).toContain('https://rx.mesh-hunter.eu')
-    expect(section).toMatch(/companion/i)
+    expect(answer).toContain('https://rx.mesh-hunter.eu')
+    expect(answer).toMatch(/companion/i)
   })
 
   it('names the admin step, which no amount of self-service replaces', () => {
-    expect(section).toMatch(/member/i)
-    expect(section).toMatch(/admin/i)
+    expect(answer).toMatch(/member/i)
+    expect(answer).toMatch(/admin/i)
   })
 
-  it('sits with the product sections, not in the small print at the bottom', () => {
-    // Where it used to live: one sentence inside "About & access", in the
-    // two-column footer block after the blog card. This is the placement the
-    // issue is about, so it is worth pinning.
-    const at = html.indexOf('id="get-an-account"')
-    expect(at).toBeGreaterThan(-1)
-    expect(at).toBeLessThan(html.indexOf('lp-sub'))
-    expect(at).toBeLessThan(html.indexOf('Read the FAQ'))
+  it('is linked from the front page', () => {
+    expect(read('index.html')).toContain('href="/faq.html#account"')
   })
 })
 
-describe('in-page anchors', () => {
+describe('fragment targets', () => {
   const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-  const html = read('index.html')
+  const faq = read('faq.html')
+  const links = pages.flatMap((f) => [...read(f).matchAll(/href="\/faq\.html#([\w-]+)"/g)].map((m) => m[1]))
+
+  it('links to FAQ answers that exist', () => {
+    expect(links.length).toBeGreaterThan(0)
+    for (const id of links) expect(faq, `#${id}`).toContain(`id="${id}"`)
+  })
 
   // .lp-top is sticky, so a fragment jump parks the target heading underneath
-  // it: the reader lands on a section whose title is hidden. Measured at 59px
-  // for the header, so the reserve has to clear that.
+  // it: the reader lands on a section whose title is hidden. The header is
+  // 64px tall since the v7 redesign, so the reserve has to clear that.
   it('reserves more than the sticky header above a fragment target', () => {
-    expect([...html.matchAll(/href="#([\w-]+)"/g)].length).toBeGreaterThan(0)
+    const header = Number(css.match(/\.lp-top \.lp-wrap\s*\{[^}]*height:\s*(\d+)px/)?.[1])
+    expect(header).toBeGreaterThan(0)
     const rule = css.match(/:target\s*\{([^}]*)\}/)
     expect(rule, 'no :target rule').not.toBeNull()
     const px = Number(rule[1].match(/scroll-margin-top:\s*(\d+)px/)?.[1])
-    expect(px).toBeGreaterThan(59)
+    expect(px).toBeGreaterThan(header)
   })
 })
 

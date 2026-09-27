@@ -1,12 +1,22 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Mesh-Hunter · MeshCore mapping and node-hunting</title>
   <meta name="description" content="Map the MeshCore mesh: pair a companion radio to the Mesh-Hunter RX webapp and every packet it hears lands on a shared coverage map, alongside every other mapper." />
+  <meta name="color-scheme" content="light dark" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="style.css" />
+  <script>
+    // The theme before the first paint: a saved choice, else the system's.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('ch-theme'); } catch (e) {}
+      if (!(t === 'light' || t === 'dark')) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <link rel="stylesheet" href="/style.css" />
     <!-- Matomo (self-hosted, cookieless; production hosts only) -->
     <script>
       if (location.hostname === 'mesh-hunter.eu' || location.hostname.endsWith('.mesh-hunter.eu')) {
@@ -28,134 +38,247 @@
 </head>
 <body>
   <header class="lp-top">
-    <span class="lp-brand">
-      <svg width="22" height="22" viewBox="0 0 512 512" aria-hidden="true">
-        <polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="24" stroke-linejoin="round"/>
-        <g fill="none" stroke-width="26" stroke-linecap="round">
-          <path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/>
-          <path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/>
-        </g>
-        <circle cx="256" cy="256" r="34" fill="var(--ch-sig-hot)"/>
-      </svg>
-      Mesh-Hunter</span>
-    <nav class="lp-nav">
-      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
-      <a href="https://map.mesh-hunter.eu">Map</a>
-      <a href="/faq.html">FAQ</a>
+    <div class="lp-wrap">
+      <a class="lp-brand" href="/"><svg width="26" height="26" viewBox="0 0 512 512" aria-hidden="true"><polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="24" stroke-linejoin="round"/><g fill="none" stroke-width="26" stroke-linecap="round"><path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/><path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/></g><circle cx="256" cy="256" r="34" fill="var(--ch-sig-hot)"/></svg>Mesh-Hunter</a>
+      <nav class="lp-nav">
+        <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+        <a class="lp-map" href="https://map.mesh-hunter.eu">Map</a>
+        <a href="/faq.html">FAQ</a>
+        <a class="lp-wide" href="/#community">Community</a>
+        <a class="lp-wide" href="https://github.com/efiten/core-hunter">GitHub</a>
+      </nav>
       <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">
         <svg class="lp-th-moon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 12.5A7 7 0 0 1 7.5 4 7 7 0 1 0 16 12.5z"/></svg>
         <svg class="lp-th-sun" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
       </button>
-    </nav>
+      <a class="lp-btn lp-btn-primary" href="https://rx.mesh-hunter.eu">Start mapping</a>
+    </div>
   </header>
 
-  <main class="lp-main">
+  <main class="lp-wrap">
     <section class="lp-hero">
-      <!-- Drawn, not a capture: an illustration of what the map shows, so it
-           does not claim a mode the web map has (3D is the app's; #465). Kept
-           dark in both themes on purpose, the way a product shot is. -->
-      <img class="lp-hero-bg" src="/hero.svg" alt="A 3D view of the coverage map: a mapper drives a route through a city and signal pillars rise where receptions land." />
-      <div class="lp-hero-inner">
-        <h1>Mesh-Hunter</h1>
-        <p class="lp-lead">A MeshCore mapping and node-hunting toolkit. Pair your companion to the RX
-          webapp and map the mesh while you move: every packet your radio hears is placed on the
-          shared map, next to what every other mapper heard.</p>
+      <div>
+        <div class="lp-eyebrow">MeshCore mapping and node-hunting</div>
+        <h1>Map the mesh <br />as you move and <br />find hidden nodes.</h1>
+        <p class="lp-lead">Pair your companion to the RX webapp. Every packet your radio hears lands on the shared map, next to what every other mapper heard.</p>
         <div class="lp-cta">
           <a class="lp-btn lp-btn-primary" href="https://rx.mesh-hunter.eu">Start mapping</a>
           <a class="lp-btn" href="https://map.mesh-hunter.eu">See the map</a>
         </div>
+        <ul class="lp-proof">
+          <li><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><polygon points="10,1 18,5.5 18,14.5 10,19 2,14.5 2,5.5" fill="var(--ch-accent)"/><path d="M6 10.2l2.6 2.6L14 7.4" stroke="var(--ch-bg)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Find hidden LoRa traffic sources</li>
+          <li><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><polygon points="10,1 18,5.5 18,14.5 10,19 2,14.5 2,5.5" fill="var(--ch-accent)"/><path d="M6 10.2l2.6 2.6L14 7.4" stroke="var(--ch-bg)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Map repeater coverage</li>
+          <li><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><polygon points="10,1 18,5.5 18,14.5 10,19 2,14.5 2,5.5" fill="var(--ch-accent)"/><path d="M6 10.2l2.6 2.6L14 7.4" stroke="var(--ch-bg)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Analyze on the desktop map</li>
+          <li><svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true"><polygon points="10,1 18,5.5 18,14.5 10,19 2,14.5 2,5.5" fill="var(--ch-accent)"/><path d="M6 10.2l2.6 2.6L14 7.4" stroke="var(--ch-bg)" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Free, code on GitHub</li>
+        </ul>
+      </div>
+
+      <!-- The four surfaces, one mockup each, in the style of the product. The
+           numbers are real receptions; the drawings are illustrations, not
+           captures. Dark in both themes. On a phone the shot is taller than the
+           drawing, so it is cropped: RX, Hunt and Reach keep their right side,
+           where the target is. -->
+      <div class="lp-tour">
+        <div class="lp-tabs" role="tablist" aria-label="What Mesh-Hunter does">
+          <button class="lp-tab" type="button" role="tab" id="tab-rx" aria-controls="panel-rx" aria-selected="true">RX webapp</button>
+          <button class="lp-tab" type="button" role="tab" id="tab-map" aria-controls="panel-map" aria-selected="false" tabindex="-1">Map</button>
+          <button class="lp-tab" type="button" role="tab" id="tab-hunt" aria-controls="panel-hunt" aria-selected="false" tabindex="-1">Hunt &amp; Locate</button>
+          <button class="lp-tab" type="button" role="tab" id="tab-reach" aria-controls="panel-reach" aria-selected="false" tabindex="-1">Reach</button>
+        </div>
+
+        <div class="lp-panel" role="tabpanel" id="panel-rx" aria-labelledby="tab-rx">
+          <div class="lp-shot" data-theme="dark">
+            <svg viewBox="0 0 640 470" preserveAspectRatio="xMaxYMid slice" role="img" aria-label="A drive through the mesh: the route, with a dot in its signal colour wherever the radio heard a packet.">
+              <defs><pattern id="hx-rx" width="48" height="42" patternUnits="userSpaceOnUse"><polygon class="shot-grid" points="24,1 46,12 46,33 24,44 2,33 2,12"/></pattern></defs><rect width="640" height="470" fill="url(#hx-rx)"/><g class="shot-wave"><path d="M420 250 q 20 -34 40 0 t 40 0"/><path d="M400 250 q 40 -67 80 0 t 80 0"/></g><path class="shot-route" d="M40 436 C 150 395, 210 311, 300 286 S 470 210, 610 76"/><g class="shot-dots"><circle class="t-cold" cx="130" cy="403" r="9"/><circle class="t-cool" cx="215" cy="332" r="10"/><circle class="t-mid" cx="300" cy="286" r="11"/><circle class="t-warm" cx="395" cy="252" r="12"/><circle class="t-hot" cx="480" cy="202" r="13"/></g><polygon class="shot-target" points="560.0,98.0 584.2,112.0 584.2,140.0 560.0,154.0 535.8,140.0 535.8,112.0"/><circle class="t-hot" cx="560" cy="126" r="5"/>
+            </svg>
+            <div class="shot-bar"><span class="shot-chip on"><i class="dotc"></i>Mapping</span><span class="shot-chip">Paired</span><span class="shot-chip">GPS fix</span><span class="shot-chip end">326 heard</span></div>
+            <div class="shot-pip mono" aria-hidden="true">
+              <div class="pip-tier"></div>
+              <div class="pip-body">
+                <div class="pip-rssi">−111<small>dBm</small></div>
+                <div class="pip-name">NL-NIJ-NIMBUS</div>
+                <div class="pip-foot"><span class="on">Filtered</span><span><span class="pip-dot">BLE</span><span class="pip-dot">MQTT</span></span></div>
+              </div>
+            </div>
+            <div class="shot-read" aria-hidden="true">
+              <div class="read-k mono">LAST RECEPTION · REPEATER NL-NIJ-NIMBUS</div>
+              <div class="read-n">−111<small>dBm</small></div>
+              <div class="read-tier"><i class="on-cold"></i><i></i><i></i><i></i><i></i></div>
+              <div class="read-k mono read-line"><span>SNR 5.5 dB</span><span>0 hops</span></div>
+            </div>
+            <div class="shot-bytes mono" aria-hidden="true">25 JUL 2026 · 14:26:51<br />ADVERT · DIRECT</div>
+          </div>
+          <p class="lp-tabcap"><strong>The RX webapp</strong>. It pairs with your MeshCore companion over Web Bluetooth and logs every packet it hears, placed with your phone's GPS. The HUD reads out the last reception, and on the road the readout floats on top of your navigation app. <a href="https://rx.mesh-hunter.eu">Open the RX webapp →</a></p>
+        </div>
+
+        <div class="lp-panel" role="tabpanel" id="panel-map" aria-labelledby="tab-map" hidden="hidden">
+          <div class="lp-shot" data-theme="dark">
+            <svg viewBox="0 0 640 470" preserveAspectRatio="xMidYMid slice" role="img" aria-label="The coverage map: hexagons coloured by the strongest signal any mapper heard in them.">
+              <defs><pattern id="hx-map" width="48" height="42" patternUnits="userSpaceOnUse"><polygon class="shot-grid" points="24,1 46,12 46,33 24,44 2,33 2,12"/></pattern></defs><rect width="640" height="470" fill="url(#hx-map)"/><g class="shot-hex"><polygon class="t-faint" points="147.4,236.2 161.9,244.6 161.9,261.4 147.4,269.8 132.8,261.4 132.8,244.6"/><polygon class="t-faint" points="162.9,263.2 177.5,271.6 177.5,288.4 162.9,296.8 148.4,288.4 148.4,271.6"/><polygon class="t-faint" points="209.7,344.2 224.3,352.6 224.3,369.4 209.7,377.8 195.2,369.4 195.2,352.6"/><polygon class="t-faint" points="147.4,182.2 161.9,190.6 161.9,207.4 147.4,215.8 132.8,207.4 132.8,190.6"/><polygon class="t-faint" points="162.9,209.2 177.5,217.6 177.5,234.4 162.9,242.8 148.4,234.4 148.4,217.6"/><polygon class="t-faint" points="225.3,317.2 239.8,325.6 239.8,342.4 225.3,350.8 210.7,342.4 210.7,325.6"/><polygon class="t-faint" points="162.9,155.2 177.5,163.6 177.5,180.4 162.9,188.8 148.4,180.4 148.4,163.6"/><polygon class="t-faint" points="194.1,209.2 208.7,217.6 208.7,234.4 194.1,242.8 179.6,234.4 179.6,217.6"/><polygon class="t-faint" points="225.3,263.2 239.8,271.6 239.8,288.4 225.3,296.8 210.7,288.4 210.7,271.6"/><polygon class="t-cold" points="240.9,290.2 255.4,298.6 255.4,315.4 240.9,323.8 226.3,315.4 226.3,298.6"/><polygon class="t-faint" points="256.5,317.2 271.0,325.6 271.0,342.4 256.5,350.8 241.9,342.4 241.9,325.6"/><polygon class="t-faint" points="272.1,344.2 286.6,352.6 286.6,369.4 272.1,377.8 257.5,369.4 257.5,352.6"/><polygon class="t-faint" points="303.2,398.2 317.8,406.6 317.8,423.4 303.2,431.8 288.7,423.4 288.7,406.6"/><polygon class="t-faint" points="178.5,128.2 193.1,136.6 193.1,153.4 178.5,161.8 164.0,153.4 164.0,136.6"/><polygon class="t-faint" points="209.7,182.2 224.3,190.6 224.3,207.4 209.7,215.8 195.2,207.4 195.2,190.6"/><polygon class="t-cold" points="225.3,209.2 239.8,217.6 239.8,234.4 225.3,242.8 210.7,234.4 210.7,217.6"/><polygon class="t-cold" points="256.5,263.2 271.0,271.6 271.0,288.4 256.5,296.8 241.9,288.4 241.9,271.6"/><polygon class="t-cold" points="272.1,290.2 286.6,298.6 286.6,315.4 272.1,323.8 257.5,315.4 257.5,298.6"/><polygon class="t-cool" points="287.6,317.2 302.2,325.6 302.2,342.4 287.6,350.8 273.1,342.4 273.1,325.6"/><polygon class="t-faint" points="209.7,128.2 224.3,136.6 224.3,153.4 209.7,161.8 195.2,153.4 195.2,136.6"/><polygon class="t-faint" points="225.3,155.2 239.8,163.6 239.8,180.4 225.3,188.8 210.7,180.4 210.7,163.6"/><polygon class="t-faint" points="240.9,182.2 255.4,190.6 255.4,207.4 240.9,215.8 226.3,207.4 226.3,190.6"/><polygon class="t-cool" points="272.1,236.2 286.6,244.6 286.6,261.4 272.1,269.8 257.5,261.4 257.5,244.6"/><polygon class="t-cold" points="287.6,263.2 302.2,271.6 302.2,288.4 287.6,296.8 273.1,288.4 273.1,271.6"/><polygon class="t-cool" points="303.2,290.2 317.8,298.6 317.8,315.4 303.2,323.8 288.7,315.4 288.7,298.6"/><polygon class="t-cold" points="318.8,317.2 333.4,325.6 333.4,342.4 318.8,350.8 304.3,342.4 304.3,325.6"/><polygon class="t-faint" points="334.4,344.2 349.0,352.6 349.0,369.4 334.4,377.8 319.9,369.4 319.9,352.6"/><polygon class="t-cool" points="272.1,182.2 286.6,190.6 286.6,207.4 272.1,215.8 257.5,207.4 257.5,190.6"/><polygon class="t-cool" points="287.6,209.2 302.2,217.6 302.2,234.4 287.6,242.8 273.1,234.4 273.1,217.6"/><polygon class="t-mid" points="303.2,236.2 317.8,244.6 317.8,261.4 303.2,269.8 288.7,261.4 288.7,244.6"/><polygon class="t-mid" points="318.8,263.2 333.4,271.6 333.4,288.4 318.8,296.8 304.3,288.4 304.3,271.6"/><polygon class="t-mid" points="334.4,290.2 349.0,298.6 349.0,315.4 334.4,323.8 319.9,315.4 319.9,298.6"/><polygon class="t-faint" points="381.2,371.2 395.7,379.6 395.7,396.4 381.2,404.8 366.6,396.4 366.6,379.6"/><polygon class="t-cold" points="256.5,101.2 271.0,109.6 271.0,126.4 256.5,134.8 241.9,126.4 241.9,109.6"/><polygon class="t-cold" points="272.1,128.2 286.6,136.6 286.6,153.4 272.1,161.8 257.5,153.4 257.5,136.6"/><polygon class="t-mid" points="287.6,155.2 302.2,163.6 302.2,180.4 287.6,188.8 273.1,180.4 273.1,163.6"/><polygon class="t-cool" points="303.2,182.2 317.8,190.6 317.8,207.4 303.2,215.8 288.7,207.4 288.7,190.6"/><polygon class="t-mid" points="318.8,209.2 333.4,217.6 333.4,234.4 318.8,242.8 304.3,234.4 304.3,217.6"/><polygon class="t-warm" points="334.4,236.2 349.0,244.6 349.0,261.4 334.4,269.8 319.9,261.4 319.9,244.6"/><polygon class="t-mid" points="350.0,263.2 364.5,271.6 364.5,288.4 350.0,296.8 335.5,288.4 335.5,271.6"/><polygon class="t-cold" points="381.2,317.2 395.7,325.6 395.7,342.4 381.2,350.8 366.6,342.4 366.6,325.6"/><polygon class="t-cool" points="287.6,101.2 302.2,109.6 302.2,126.4 287.6,134.8 273.1,126.4 273.1,109.6"/><polygon class="t-mid" points="303.2,128.2 317.8,136.6 317.8,153.4 303.2,161.8 288.7,153.4 288.7,136.6"/><polygon class="t-mid" points="318.8,155.2 333.4,163.6 333.4,180.4 318.8,188.8 304.3,180.4 304.3,163.6"/><polygon class="t-hot" points="334.4,182.2 349.0,190.6 349.0,207.4 334.4,215.8 319.9,207.4 319.9,190.6"/><polygon class="t-hot" points="350.0,209.2 364.5,217.6 364.5,234.4 350.0,242.8 335.5,234.4 335.5,217.6"/><polygon class="t-hot" points="365.6,236.2 380.1,244.6 380.1,261.4 365.6,269.8 351.0,261.4 351.0,244.6"/><polygon class="t-cool" points="381.2,263.2 395.7,271.6 395.7,288.4 381.2,296.8 366.6,288.4 366.6,271.6"/><polygon class="t-cool" points="396.8,290.2 411.3,298.6 411.3,315.4 396.8,323.8 382.2,315.4 382.2,298.6"/><polygon class="t-cold" points="303.2,74.2 317.8,82.6 317.8,99.4 303.2,107.8 288.7,99.4 288.7,82.6"/><polygon class="t-cold" points="318.8,101.2 333.4,109.6 333.4,126.4 318.8,134.8 304.3,126.4 304.3,109.6"/><polygon class="t-cool" points="334.4,128.2 349.0,136.6 349.0,153.4 334.4,161.8 319.9,153.4 319.9,136.6"/><polygon class="t-hot" points="350.0,155.2 364.5,163.6 364.5,180.4 350.0,188.8 335.5,180.4 335.5,163.6"/><polygon class="t-warm" points="365.6,182.2 380.1,190.6 380.1,207.4 365.6,215.8 351.0,207.4 351.0,190.6"/><polygon class="t-warm" points="381.2,209.2 395.7,217.6 395.7,234.4 381.2,242.8 366.6,234.4 366.6,217.6"/><polygon class="t-cool" points="396.8,236.2 411.3,244.6 411.3,261.4 396.8,269.8 382.2,261.4 382.2,244.6"/><polygon class="t-cool" points="412.4,263.2 426.9,271.6 426.9,288.4 412.4,296.8 397.8,288.4 397.8,271.6"/><polygon class="t-cold" points="427.9,290.2 442.5,298.6 442.5,315.4 427.9,323.8 413.4,315.4 413.4,298.6"/><polygon class="t-faint" points="443.5,317.2 458.1,325.6 458.1,342.4 443.5,350.8 429.0,342.4 429.0,325.6"/><polygon class="t-cool" points="350.0,101.2 364.5,109.6 364.5,126.4 350.0,134.8 335.5,126.4 335.5,109.6"/><polygon class="t-cool" points="365.6,128.2 380.1,136.6 380.1,153.4 365.6,161.8 351.0,153.4 351.0,136.6"/><polygon class="t-warm" points="381.2,155.2 395.7,163.6 395.7,180.4 381.2,188.8 366.6,180.4 366.6,163.6"/><polygon class="t-warm" points="396.8,182.2 411.3,190.6 411.3,207.4 396.8,215.8 382.2,207.4 382.2,190.6"/><polygon class="t-mid" points="412.4,209.2 426.9,217.6 426.9,234.4 412.4,242.8 397.8,234.4 397.8,217.6"/><polygon class="t-cool" points="427.9,236.2 442.5,244.6 442.5,261.4 427.9,269.8 413.4,261.4 413.4,244.6"/><polygon class="t-cold" points="365.6,74.2 380.1,82.6 380.1,99.4 365.6,107.8 351.0,99.4 351.0,82.6"/><polygon class="t-cool" points="381.2,101.2 395.7,109.6 395.7,126.4 381.2,134.8 366.6,126.4 366.6,109.6"/><polygon class="t-mid" points="396.8,128.2 411.3,136.6 411.3,153.4 396.8,161.8 382.2,153.4 382.2,136.6"/><polygon class="t-mid" points="412.4,155.2 426.9,163.6 426.9,180.4 412.4,188.8 397.8,180.4 397.8,163.6"/><polygon class="t-mid" points="427.9,182.2 442.5,190.6 442.5,207.4 427.9,215.8 413.4,207.4 413.4,190.6"/><polygon class="t-mid" points="443.5,209.2 458.1,217.6 458.1,234.4 443.5,242.8 429.0,234.4 429.0,217.6"/><polygon class="t-faint" points="459.1,236.2 473.7,244.6 473.7,261.4 459.1,269.8 444.6,261.4 444.6,244.6"/><polygon class="t-faint" points="474.7,263.2 489.3,271.6 489.3,288.4 474.7,296.8 460.2,288.4 460.2,271.6"/><polygon class="t-faint" points="490.3,290.2 504.8,298.6 504.8,315.4 490.3,323.8 475.7,315.4 475.7,298.6"/><polygon class="t-mid" points="412.4,101.2 426.9,109.6 426.9,126.4 412.4,134.8 397.8,126.4 397.8,109.6"/><polygon class="t-cold" points="427.9,128.2 442.5,136.6 442.5,153.4 427.9,161.8 413.4,153.4 413.4,136.6"/><polygon class="t-mid" points="443.5,155.2 458.1,163.6 458.1,180.4 443.5,188.8 429.0,180.4 429.0,163.6"/><polygon class="t-cool" points="474.7,209.2 489.3,217.6 489.3,234.4 474.7,242.8 460.2,234.4 460.2,217.6"/><polygon class="t-cold" points="490.3,236.2 504.8,244.6 504.8,261.4 490.3,269.8 475.7,261.4 475.7,244.6"/><polygon class="t-faint" points="521.5,290.2 536.0,298.6 536.0,315.4 521.5,323.8 506.9,315.4 506.9,298.6"/><polygon class="t-faint" points="427.9,74.2 442.5,82.6 442.5,99.4 427.9,107.8 413.4,99.4 413.4,82.6"/><polygon class="t-cool" points="459.1,128.2 473.7,136.6 473.7,153.4 459.1,161.8 444.6,153.4 444.6,136.6"/><polygon class="t-cool" points="474.7,155.2 489.3,163.6 489.3,180.4 474.7,188.8 460.2,180.4 460.2,163.6"/><polygon class="t-cold" points="490.3,182.2 504.8,190.6 504.8,207.4 490.3,215.8 475.7,207.4 475.7,190.6"/><polygon class="t-cold" points="505.9,209.2 520.4,217.6 520.4,234.4 505.9,242.8 491.3,234.4 491.3,217.6"/><polygon class="t-faint" points="537.1,263.2 551.6,271.6 551.6,288.4 537.1,296.8 522.5,288.4 522.5,271.6"/><polygon class="t-faint" points="474.7,101.2 489.3,109.6 489.3,126.4 474.7,134.8 460.2,126.4 460.2,109.6"/><polygon class="t-cold" points="505.9,155.2 520.4,163.6 520.4,180.4 505.9,188.8 491.3,180.4 491.3,163.6"/><polygon class="t-cold" points="521.5,182.2 536.0,190.6 536.0,207.4 521.5,215.8 506.9,207.4 506.9,190.6"/><polygon class="t-faint" points="537.1,209.2 551.6,217.6 551.6,234.4 537.1,242.8 522.5,234.4 522.5,217.6"/><polygon class="t-faint" points="552.6,236.2 567.2,244.6 567.2,261.4 552.6,269.8 538.1,261.4 538.1,244.6"/><polygon class="t-faint" points="490.3,74.2 504.8,82.6 504.8,99.4 490.3,107.8 475.7,99.4 475.7,82.6"/><polygon class="t-faint" points="537.1,155.2 551.6,163.6 551.6,180.4 537.1,188.8 522.5,180.4 522.5,163.6"/><polygon class="t-faint" points="552.6,182.2 567.2,190.6 567.2,207.4 552.6,215.8 538.1,207.4 538.1,190.6"/><polygon class="t-faint" points="568.2,209.2 582.8,217.6 582.8,234.4 568.2,242.8 553.7,234.4 553.7,217.6"/></g><path class="shot-route" d="M60 420 C 170 380, 250 300, 330 236 S 500 150, 600 96"/>
+            </svg>
+            <div class="shot-bar"><span class="shot-chip on">Hex</span><span class="shot-chip">Last 30 days</span><span class="shot-chip">All hunters</span><span class="shot-chip end">4,559 receptions</span></div>
+            <div class="shot-read" aria-hidden="true">
+              <div class="read-k mono">COVERAGE · BEST RSSI PER CELL</div>
+              <div class="read-scale"></div>
+              <div class="read-k mono read-line"><span>≥ −80</span><span>&lt; −115 dBm</span></div>
+            </div>
+          </div>
+          <p class="lp-tabcap"><strong>The map</strong>. Every mapper's receptions meet on one coverage map, so you see what a node reaches beyond your own radio. Reading it takes no account. <a href="https://map.mesh-hunter.eu">See the map →</a></p>
+        </div>
+
+        <div class="lp-panel" role="tabpanel" id="panel-hunt" aria-labelledby="tab-hunt" hidden="hidden">
+          <div class="lp-shot" data-theme="dark">
+            <svg viewBox="0 0 640 470" preserveAspectRatio="xMaxYMid slice" role="img" aria-label="Hunting a hidden source: packets with no path and no name, a drive that gets warmer toward it, and the search area its signal points to.">
+              <defs><pattern id="hx-hunt" width="48" height="42" patternUnits="userSpaceOnUse"><polygon class="shot-grid" points="24,1 46,12 46,33 24,44 2,33 2,12"/></pattern></defs><rect width="640" height="470" fill="url(#hx-hunt)"/><circle class="shot-area" cx="540" cy="215" r="56"/><circle class="shot-ping" cx="540" cy="215" r="14"/><circle class="shot-ping" cx="540" cy="215" r="26"/><circle class="shot-ping" cx="540" cy="215" r="38"/><path class="shot-route" d="M632 470 C 640 420, 634 360, 620 318 S 586 246, 540 215"/><g class="shot-dots"><circle class="t-cold" cx="636" cy="420" r="6"/><circle class="t-cool" cx="630" cy="366" r="6"/><circle class="t-mid" cx="614" cy="306" r="7"/><circle class="t-warm" cx="590" cy="262" r="7"/><circle class="t-hot" cx="564" cy="232" r="7"/></g><circle class="t-hot" cx="540" cy="215" r="6"/><text class="shot-lab" x="472" y="220" text-anchor="end">search area · 353 m</text>
+            </svg>
+            <div class="shot-bar"><span class="shot-chip on"><i class="dotc"></i>Hunting</span><span class="shot-chip">#77</span><span class="shot-chip">no path</span></div>
+            <div class="shot-ticker mono" aria-hidden="true">
+              <div class="tk-head">LIVE · #77</div>
+              <div class="tk-row"><span>04:08:34</span><span>Request</span><span class="t-hot-text">−57</span></div>
+              <div class="tk-row"><span>04:08:48</span><span>Request</span><span class="t-hot-text">−74</span></div>
+              <div class="tk-row"><span>04:08:53</span><span>Request</span><span class="t-hot-text">−74</span></div>
+              <div class="tk-row"><span>04:08:58</span><span>Request</span><span class="t-hot-text">−74</span></div>
+            </div>
+            <div class="shot-read" aria-hidden="true">
+              <div class="read-k mono">SOURCE #77 · NO NAME</div>
+              <div class="read-n"><svg class="read-arrow read-arrow-hot" width="26" height="26" viewBox="0 0 26 26"><path d="M13 3 L21 21 L13 16 L5 21 Z" transform="rotate(50 13 13)"/></svg>−57<small>dBm</small></div>
+              <div class="read-tier"><i class="on-cold"></i><i class="on-cool"></i><i class="on-mid"></i><i class="on-warm"></i><i class="on-hot"></i></div>
+              <div class="read-k mono read-line"><span>21 in the last hour</span><span>0 hops</span></div>
+            </div>
+          </div>
+          <p class="lp-tabcap"><strong>Hunt &amp; Locate</strong>. Find a hidden LoRa source: a node that fills the air with packets that carry no path and no name, so only its signal gives it away. Follow the signal, and Locate turns the receptions into a search area, inferred from RSSI and SNR, not from GPS tracking of the node. <a href="/faq.html#node-position">How positions work →</a></p>
+        </div>
+
+        <div class="lp-panel" role="tabpanel" id="panel-reach" aria-labelledby="tab-reach" hidden="hidden">
+          <div class="lp-shot" data-theme="dark">
+            <svg viewBox="0 0 640 470" preserveAspectRatio="xMaxYMid slice" role="img" aria-label="One repeater's reach: a ray from the position its receptions put it at to every place it was heard, and the position it advertises, 3.1 km away.">
+              <defs><pattern id="hx-reach" width="48" height="42" patternUnits="userSpaceOnUse"><polygon class="shot-grid" points="24,1 46,12 46,33 24,44 2,33 2,12"/></pattern></defs><rect width="640" height="470" fill="url(#hx-reach)"/><g class="shot-rays"><line class="t-mid" x1="387" y1="217" x2="279.0" y2="186.7"/><line class="t-mid" x1="387" y1="217" x2="321.7" y2="169.2"/><line class="t-warm" x1="387" y1="217" x2="365.5" y2="160.2"/><line class="t-cool" x1="387" y1="217" x2="396.1" y2="172.2"/><line class="t-mid" x1="387" y1="217" x2="406.9" y2="88.6"/><line class="t-warm" x1="387" y1="217" x2="374.0" y2="276.6"/><line class="t-cool" x1="387" y1="217" x2="330.7" y2="270.5"/><line class="t-cold" x1="387" y1="217" x2="240.7" y2="222.3"/><line class="t-cool" x1="387" y1="217" x2="350.0" y2="359.2"/><line class="t-faint" x1="387" y1="217" x2="385.3" y2="435.0"/><line class="t-hot" x1="387" y1="217" x2="442.5" y2="199.0"/><line class="t-warm" x1="387" y1="217" x2="504.3" y2="167.3"/></g><g class="shot-dots"><circle class="t-mid" cx="279.0" cy="186.7" r="6"/><circle class="t-mid" cx="321.7" cy="169.2" r="6"/><circle class="t-warm" cx="365.5" cy="160.2" r="6"/><circle class="t-cool" cx="396.1" cy="172.2" r="6"/><circle class="t-mid" cx="406.9" cy="88.6" r="6"/><circle class="t-warm" cx="374.0" cy="276.6" r="6"/><circle class="t-cool" cx="330.7" cy="270.5" r="6"/><circle class="t-cold" cx="240.7" cy="222.3" r="6"/><circle class="t-cool" cx="350.0" cy="359.2" r="6"/><circle class="t-faint" cx="385.3" cy="435.0" r="6"/><circle class="t-hot" cx="442.5" cy="199.0" r="6"/><circle class="t-warm" cx="504.3" cy="167.3" r="6"/></g><line class="shot-offset" x1="387" y1="217" x2="420" y2="238"/><polygon class="shot-adv" points="420,227 430,245 410,245"/><circle class="shot-est" cx="387" cy="217" r="7"/><text class="shot-lab" x="436" y="243">adv.</text><text class="shot-lab" x="396" y="200">est.</text>
+            </svg>
+            <div class="shot-bar"><span class="shot-chip on">DTIS | NL NIJ | 6525HT</span><span class="shot-chip end">36 receptions</span></div>
+            <div class="shot-read" aria-hidden="true">
+              <div class="read-k mono">REACH · FARTHEST RECEPTION</div>
+              <div class="read-n">10.7<small>km</small></div>
+              <div class="read-k mono read-line"><span>● our estimate</span><span>▲ advertised, 3.1 km off</span></div>
+            </div>
+          </div>
+          <p class="lp-tabcap"><strong>Reach</strong>. How far one repeater gets through: a ray from where its receptions put it to every place it was heard, next to the position it advertises. Positions are inferred from RSSI and SNR, not from GPS tracking of the node. <a href="/faq.html#node-position">How positions work →</a></p>
+        </div>
       </div>
     </section>
 
-    <section class="lp-feature">
-      <h2>The RX webapp</h2>
-      <p>This is where the mapping happens. The RX webapp at
-        <a href="https://rx.mesh-hunter.eu">rx.mesh-hunter.eu</a> pairs with a MeshCore companion
-        radio over Web Bluetooth and logs every packet that radio hears, timestamped and placed with
-        your phone's GPS. Walk or drive, and coverage appears behind you.</p>
-      <p>It installs as a PWA: open it on your phone and add it to your home screen. Your account is
-        made here too, from the companion you paired, and it is what puts your own receptions on the
-        map in full detail.</p>
-      <p><a href="https://rx.mesh-hunter.eu">Start mapping &rarr;</a></p>
+    <!-- Counted on 27 Sep 2026 from the map's own API: /api/hunters for the
+         receptions and companions, /api/points in 14-day windows for the
+         nodes (ids of 4 bytes or more, a prefix folded into the longer id).
+         Update them at a release. -->
+    <section class="lp-section">
+      <div class="lp-head">
+        <div><div class="lp-eyebrow">What the map holds</div><h2>Measured, not guessed.</h2></div>
+        <p>Every hex on the map is a real reception with RSSI and SNR, logged by a volunteer with a radio. No modelled coverage.</p>
+      </div>
+      <ul class="lp-tiles">
+        <li class="lp-tile"><div class="n">427</div><h3>Nodes heard</h3><p>Repeaters and companions heard by their key at least once.</p></li>
+        <li class="lp-tile"><div class="n">68<small>k</small></div><h3>Receptions logged</h3><p>Each one with a position, RSSI and SNR.</p></li>
+        <li class="lp-tile"><div class="n">75</div><h3>Companions mapping</h3><p>Radios that sent receptions to the map.</p></li>
+        <li class="lp-tile"><div class="n">MQTT</div><h3>Open data</h3><p>Send your receptions to any broker you choose, as well as to this map.</p></li>
+      </ul>
+      <p class="lp-asof">Numbers as of 27 September 2026.</p>
     </section>
 
-    <section class="lp-feature">
-      <h2>The map</h2>
-      <p>The map at <a href="https://map.mesh-hunter.eu">map.mesh-hunter.eu</a> is where every
-        mapper's receptions meet: all of them, on one coverage map, so you can see what a node
-        reaches beyond your own radio. It is also the hunting surface, where you follow one node's
-        signal to where it transmits from.</p>
-      <p>Reading it takes no account. Log in with the one you made in the RX webapp to see your own
-        receptions in full detail.</p>
-      <p><a href="https://map.mesh-hunter.eu">See the map &rarr;</a></p>
+    <section class="lp-section">
+      <div class="lp-card">
+        <div>
+          <h2><a href="/faq.html">Questions before you start?</a></h2>
+          <p>What you need to start mapping, what the map shows about your node, and what an account adds.</p>
+          <ul class="lp-qs">
+            <li><a href="/faq.html#what-do-i-need">What do I need?</a></li>
+            <li><a href="/faq.html#account">Do I need an account?</a></li>
+            <li><a href="/faq.html#node-position">Does the map show my node?</a></li>
+            <li><a href="/faq.html#cost">Does it cost anything?</a></li>
+          </ul>
+        </div>
+        <a class="lp-btn" href="/faq.html">Read the FAQ</a>
+      </div>
     </section>
 
-    <section class="lp-feature" id="get-an-account">
-      <h2>Get an account</h2>
-      <p>The map reads fine without one: all-time coverage, coarse positions, and the last 24 hours
-        of individual receptions. An account sharpens that, and it starts with a radio rather than
-        with a sign-up form, which is why it is made in the RX webapp.</p>
-      <ol class="lp-steps">
-        <li>Pair your MeshCore companion to the <a href="https://rx.mesh-hunter.eu">RX webapp</a> over
-          Bluetooth and start mapping.</li>
-        <li>Register there. The account is made from the companion you paired, which is why the map
-          itself has no sign-up form.</li>
-        <li>Log in with it on the map. Your own receptions now show in full detail, everyone else's
-          stay coarse and recent.</li>
-        <li>Ask an admin for member verification. That opens the full history, Locate and the
-          CoreScope layers for everyone's data, not only your own.</li>
-      </ol>
+    <section class="lp-section" id="community">
+      <div class="lp-head">
+        <div><div class="lp-eyebrow">Community</div><h2>Built next to the tools<br />you already use.</h2></div>
+        <p>Mesh-Hunter is run by volunteers and builds on the MeshCore community. These are the projects it sits next to.</p>
+      </div>
+      <ul class="lp-grid6">
+        <li><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" fill="none" stroke="var(--ch-accent)" stroke-width="2"/><circle cx="17" cy="17" r="4" fill="var(--ch-sig-hot)"/></svg><h3>MeshCore</h3><p>The mesh networking project this tool is built for.</p><a href="https://meshcore.io">meshcore.io →</a></li>
+        <li><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" fill="none" stroke="var(--ch-accent)" stroke-width="2"/><circle cx="17" cy="17" r="5" fill="var(--ch-sig-cool)"/></svg><h3>CoreScope</h3><p>The mesh observatory Mesh-Hunter builds on.</p><a href="https://analyzer.on8ar.eu/#/home">analyzer.on8ar.eu →</a></li>
+        <li><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" fill="none" stroke="var(--ch-accent)" stroke-width="2"/><path d="M11 17h12M17 11v12" stroke="var(--ch-sig-warm)" stroke-width="2.5" stroke-linecap="round"/></svg><h3>Dutch MeshCore Community</h3><p>Firmware, tools and MQTT infrastructure.</p><a href="https://dutchmeshcore.nl/">dutchmeshcore.nl →</a></li>
+        <li><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" fill="none" stroke="var(--ch-accent)" stroke-width="2"/><path d="M9 23L17 10l8 13z" fill="none" stroke="var(--ch-sig-hot)" stroke-width="2" stroke-linejoin="round"/></svg><h3>DMC Triangulator</h3><p>Locates a node from which repeaters heard it.</p><a href="https://triangulator.dutchmeshcore.nl/">triangulator.dutchmeshcore.nl →</a></li>
+        <li><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" fill="none" stroke="var(--ch-accent)" stroke-width="2"/><circle cx="17" cy="17" r="7" fill="none" stroke="var(--ch-sig-cool)" stroke-width="2"/><circle cx="17" cy="17" r="2" fill="var(--ch-sig-cool)"/></svg><h3>MC Radar</h3><p>Live network metrics, map and node inspector.</p><a href="https://mc-radar.woodwar.com/">mc-radar.woodwar.com →</a></li>
+        <li><svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><polygon points="17,2 30,9.5 30,24.5 17,32 4,24.5 4,9.5" fill="none" stroke="var(--ch-accent)" stroke-width="2"/><path d="M11 12h12M11 17h12M11 22h8" stroke="var(--ch-sig-mid)" stroke-width="2.5" stroke-linecap="round"/></svg><h3>MeshWiki</h3><p>Dutch knowledge base for MeshCore and mesh networks.</p><a href="https://meshwiki.nl/">meshwiki.nl →</a></li>
+      </ul>
     </section>
-
-    <section class="lp-card">
-      <h2><a href="/faq.html">FAQ</a></h2>
-      <p>What you need to start mapping, what the map shows about your node, and what an account
-        adds.</p>
-      <p><a href="/faq.html">Read the FAQ &rarr;</a></p>
-    </section>
-
-    <div class="lp-sub">
-      <section id="community">
-        <h3>Community</h3>
-        <ul class="lp-links">
-          <li><a href="https://meshcore.io">MeshCore</a>, the mesh networking project this tool is built for.</li>
-          <li><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a>, the mesh observatory Mesh-Hunter builds on.</li>
-          <li><a href="https://dutchmeshcore.nl/">Dutch MeshCore Community</a>, firmware, tools and MQTT infrastructure.</li>
-          <li><a href="https://triangulator.dutchmeshcore.nl/">DMC Triangulator</a>, locates a node from which repeaters heard it.</li>
-          <li><a href="https://mc-radar.woodwar.com/">MC Radar</a>, live network metrics, map and node inspector.</li>
-          <li><a href="https://meshwiki.nl/">MeshWiki</a>, Dutch knowledge base for MeshCore and mesh networks.</li>
-        </ul>
-      </section>
-      <section>
-        <h3>About &amp; access</h3>
-        <p>Mesh-Hunter is run by amateur-radio operators. Coverage is inferred from radio measurements
-          via mesh topology, not from GPS tracking of any target node.</p>
-        <p>Verification to a member account (full map access) is granted by the admins. See
-          <a href="#get-an-account">Get an account</a> for the steps.</p>
-      </section>
-    </div>
-
   </main>
 
-  <footer class="lp-foot">
-    <span>Mesh-Hunter</span>
+  <footer class="lp-foot" data-theme="dark">
+    <div class="lp-wrap">
+      <div class="lp-foot-top">
+        <div>
+          <a class="lp-brand" href="/"><svg width="26" height="26" viewBox="0 0 512 512" aria-hidden="true"><polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="24" stroke-linejoin="round"/><g fill="none" stroke-width="26" stroke-linecap="round"><path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/><path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/></g><circle cx="256" cy="256" r="34" fill="var(--ch-sig-hot)"/></svg>Mesh-Hunter</a>
+          <p>Run by amateur-radio operators. Coverage is inferred from radio measurements via mesh topology, not from GPS tracking of any target node.</p>
+          <a class="lp-btn lp-btn-primary" href="https://rx.mesh-hunter.eu">Start mapping</a>
+        </div>
+        <div><h2>Toolkit</h2><ul><li><a href="https://rx.mesh-hunter.eu">RX webapp</a></li><li><a href="https://map.mesh-hunter.eu">Map</a></li><li><a href="/faq.html#account">Get an account</a></li><li><a href="/faq.html">FAQ</a></li></ul></div>
+        <div><h2>Community</h2><ul><li><a href="https://meshcore.io">MeshCore</a></li><li><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a></li><li><a href="https://dutchmeshcore.nl/">Dutch MeshCore</a></li><li><a href="https://meshwiki.nl/">MeshWiki</a></li></ul></div>
+        <div><h2>Code</h2><ul><li><a href="https://github.com/efiten/core-hunter">GitHub</a></li><li><a href="https://github.com/efiten/core-hunter/blob/master/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/efiten/core-hunter/issues">Report an issue</a></li></ul></div>
+      </div>
+      <div class="lp-wordmark" aria-hidden="true">Mesh-Hunter</div>
+      <div class="lp-foot-bottom"><span>Free, code on GitHub, run by volunteers</span><span class="rb"></span><span>mesh-hunter.eu</span></div>
+    </div>
   </footer>
 
   <script>
+    // The theme button swaps the theme and remembers the choice.
     (function () {
-      var KEY = 'ch-theme';
       var root = document.documentElement;
-      var saved = null;
-      try { saved = localStorage.getItem(KEY); } catch (e) {}
-      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
-      var btn = document.getElementById('lp-theme');
-      function sync() { /* the two SVGs swap on data-theme via CSS */ }
-      sync();
-      btn.addEventListener('click', function () {
-        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
-        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
-        sync();
+      document.getElementById('lp-theme').addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem('ch-theme', root.dataset.theme); } catch (e) {}
       });
+    })();
+    // The four surfaces as a slideshow (WAI-ARIA tabs). The progress line under
+    // the active tab times each slide in CSS; when its animation ends, the next
+    // tab is selected. A pointer over it pauses it. A click picks a tab and the
+    // show goes on from there (Kasper, 28 September): the line starts over on
+    // the picked tab. Keyboard focus and the arrow keys stop it, so it never
+    // moves away from under a keyboard user (the carousel pattern), and a
+    // reader who asked the system for less motion never gets it started.
+    (function () {
+      var tour = document.querySelector('.lp-tour');
+      var tabs = [].slice.call(document.querySelectorAll('.lp-tab'));
+      function select(t, focus) {
+        tabs.forEach(function (x) {
+          var on = x === t;
+          x.setAttribute('aria-selected', on ? 'true' : 'false');
+          x.tabIndex = on ? 0 : -1;
+          document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+        });
+        if (focus) t.focus();
+      }
+      function playing(on) { tour.classList.toggle('is-playing', on); }
+      tabs.forEach(function (t, i) {
+        t.addEventListener('animationend', function () {
+          if (tour.classList.contains('is-playing')) select(tabs[(i + 1) % tabs.length], false);
+        });
+        t.addEventListener('click', function () { select(t, false); });
+        // Keyboard focus stops the show; a click focuses the tab too, so only
+        // a focus the browser would ring (:focus-visible) counts.
+        t.addEventListener('focus', function () { if (t.matches(':focus-visible')) playing(false); });
+        t.addEventListener('keydown', function (e) {
+          var keys = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };
+          if (!(e.key in keys)) return;
+          e.preventDefault();
+          playing(false);
+          select(tabs[(keys[e.key] + tabs.length) % tabs.length], true);
+        });
+      });
+      playing(!window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     })();
   </script>
 </body>
