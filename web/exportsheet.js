@@ -3,28 +3,30 @@
 // Built like the settings sheet: the .lc-modal shell, focus kept inside while
 // open and handed back to the button on close.
 //
-// The first item is "Repeaters heard". `heard` is the caller's async export:
-// it returns { blob, fileName }, or { empty: text } when there is nothing to
-// draw, and throws when it cannot finish. `reason()` answers why the item
-// cannot be used by this account, or null.
+// Each item is { button, status, run, reason }: the ids of its button and
+// its status line, the async export, which returns { blob, fileName }, or
+// { empty: text } when there is nothing to draw, and throws when it cannot
+// finish; and reason(), why the item cannot be used now, or null.
 import { trapFocus } from './focustrap.js'
 
-export function initExportSheet({ heard, reason = () => null }) {
+export function initExportSheet({ items }) {
   const btn = document.getElementById('export-btn')
   const modal = document.getElementById('export-modal')
   const close = document.getElementById('ex-close')
-  const item = document.getElementById('ex-heard')
-  const status = document.getElementById('ex-heard-status')
-  if (!btn || !modal || !item) return
+  if (!btn || !modal) return
   trapFocus(modal.querySelector('.lc-card'))
-  let busy = false
 
-  const say = (text) => { status.textContent = text; status.hidden = !text }
-
-  function sync() {
-    const why = reason()
-    item.disabled = busy || !!why
-    if (!busy) say(why || '')
+  const rows = items.map((it) => ({
+    ...it,
+    el: document.getElementById(it.button),
+    line: document.getElementById(it.status),
+    busy: false,
+  })).filter((r) => r.el && r.line)
+  const say = (row, text) => { row.line.textContent = text; row.line.hidden = !text }
+  const sync = (row) => {
+    const why = row.reason()
+    row.el.disabled = row.busy || !!why
+    if (!row.busy) say(row, why || '')
   }
 
   function open() {
@@ -34,7 +36,7 @@ export function initExportSheet({ heard, reason = () => null }) {
     if (settings && !settings.hidden) settings.hidden = true
     modal.hidden = false
     btn.setAttribute('aria-expanded', 'true')
-    sync()
+    rows.forEach(sync)
     close.focus()
   }
   // Focus goes back to the button, or, below 900px where the button sits in
@@ -52,24 +54,26 @@ export function initExportSheet({ heard, reason = () => null }) {
   modal.addEventListener('click', (e) => { if (e.target === modal) hide() })
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) hide() })
 
-  item.addEventListener('click', async () => {
-    if (busy) return
-    busy = true
-    item.disabled = true
-    say('Drawing the map…')
-    try {
-      const out = await heard()
-      if (out.empty) { say(out.empty); return }
-      download(out.blob, out.fileName)
-      say(`Saved as ${out.fileName}`)
-    } catch (err) {
-      console.error('[export]', err)
-      say('The picture could not be made. Try again in a moment.')
-    } finally {
-      busy = false
-      item.disabled = !!reason()
-    }
-  })
+  for (const row of rows) {
+    row.el.addEventListener('click', async () => {
+      if (row.busy) return
+      row.busy = true
+      row.el.disabled = true
+      say(row, 'Drawing the map…')
+      try {
+        const out = await row.run()
+        if (out.empty) { say(row, out.empty); return }
+        download(out.blob, out.fileName)
+        say(row, `Saved as ${out.fileName}`)
+      } catch (err) {
+        console.error('[export]', err)
+        say(row, 'The picture could not be made. Try again in a moment.')
+      } finally {
+        row.busy = false
+        row.el.disabled = !!row.reason()
+      }
+    })
+  }
 }
 
 // A download the browser saves under `name`. The object URL outlives the

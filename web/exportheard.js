@@ -12,6 +12,7 @@ import { assignHues, rayStyle, rayStrength } from './coverage.js'
 import { hexCellAt, hexBoundary, hexSizeForRes } from './hexgrid.js'
 import { haversineM } from './locate.js'
 import { isHashIdKind } from './names.js'
+import { TIER_BANDS } from './signal.js'
 
 export const EXPORT_W = 1200
 export const EXPORT_H = 1200
@@ -28,8 +29,8 @@ export const ROUTE_GAP_KM = 3
 
 // The cell of #720's reference, by its size: 360 Mercator units from centre
 // to corner, about 445 m point to point on the ground at 52°N. The resolution
-// is whichever the grid gives closest to it, so the export keeps its cell
-// when the grid's table changes (#734).
+// is whichever the grid gives closest to it: since #734 that is res 13, 268
+// units, about 330 m point to point.
 export const CELL_SIZE = 360
 export const CELL_RES = closestRes(CELL_SIZE)
 function closestRes(size) {
@@ -65,22 +66,72 @@ export function fitText(text, maxW, measure) {
   return s + '…'
 }
 
+// titleRoom: how wide the band's title may run. The numbers stand
+// right-aligned at R with BAND_GAP between them (drawBand); the title starts
+// at L and stops a gap short of the first.
+export const BAND_L = 44
+export const BAND_GAP = 44
+export function titleRoom(widths) {
+  const R = EXPORT_W - BAND_L
+  if (!widths.length) return R - BAND_L
+  const numbersLeft = R - widths.reduce((a, b) => a + b, 0) - BAND_GAP * (widths.length - 1)
+  return numbersLeft - BAND_GAP - BAND_L
+}
+
+// exportPoints: the receptions an export's picture is built from, with the
+// cap and the failure of that fetch. With a target picked the view's points
+// are narrowed to it, and the stars and the cells driven come from a fetch
+// without the sender filter (fetchAll). That fetch reaches the cap sooner,
+// and when it fails the picture holds the target's hearings only: the band
+// says both, for the fetch the picture used.
+export async function exportPoints(view, { narrowed, fetchAll }) {
+  const own = { points: view.points, capped: Boolean(view.capped), failed: false }
+  if (!narrowed) return own
+  try {
+    const all = await fetchAll()
+    return { points: all.points, capped: Boolean(all.capped), failed: false }
+  } catch (_) {
+    return { ...own, failed: true }
+  }
+}
+
+// starName: how a star is named on a picture. The registry's name first;
+// the resolver's (cachedNameOf) for a key only, since a relay hash with no
+// candidate in reach is not named by a resolver (AGENTS.md §7 rule 2);
+// otherwise idLabel's reading.
+export function starName(star, { nameOf = () => null, cachedNameOf = () => null } = {}) {
+  const kind = star.points[0] && star.points[0].sender_kind
+  return nameOf(star.id) || (!isHashId(star.id, kind) && cachedNameOf(star.id)) || idLabel(star.id, kind)
+}
+
 const inside = (v, p) => p.lat >= v.south && p.lat <= v.north && p.lon >= v.west && p.lon <= v.east
+
+// nearestKm: how far a star hangs from its nearest hearing. Farther than
+// FAR_KM, its position cannot be right (heardModel leaves it off, #720's
+// export refuses it).
+export function nearestKm(star) {
+  return Math.min(...star.points.map((p) => kmBetween(star.origin, p)))
+}
+
+// tierLegend: the RSSI tiers as [tier, words], from the bands rssiTier
+// draws by, so the legend on a picture cannot drift from the map's colours.
+export function tierLegend() {
+  const out = TIER_BANDS.map(([tier, floor], i) => [tier, i === 0 ? `≥ ${floor}` : `${TIER_BANDS[i - 1][1] - 1} … ${floor}`])
+  out.push(['faint', `< ${TIER_BANDS[TIER_BANDS.length - 1][1]}`])
+  return out
+}
 
 // heardModel: what the image draws, from the stars the map builds
 // (coverageStars) and the view it has. A star is drawn when its origin is in
 // view and its nearest hearing is within FAR_KM; the numbers count what is
-// drawn. nameOf(id) is the registry's name; cachedNameOf(id) the resolver's,
-// asked for a key only, since a relay hash with no candidate in reach is not
-// named by a resolver (AGENTS.md §7 rule 2); otherwise idLabel's reading.
+// drawn. Each star is named by starName.
 export function heardModel({ stars, view, nameOf = () => null, cachedNameOf = () => null }) {
   const drawn = []
   const offMap = []
   for (const s of stars || []) {
     if (!inside(view, s.origin)) continue
-    const nearest = Math.min(...s.points.map((p) => kmBetween(s.origin, p)))
-    const kind = s.points[0] && s.points[0].sender_kind
-    const name = nameOf(s.id) || (!isHashId(s.id, kind) && cachedNameOf(s.id)) || idLabel(s.id, kind)
+    const nearest = nearestKm(s)
+    const name = starName(s, { nameOf, cachedNameOf })
     if (nearest > FAR_KM) { offMap.push({ name, km: Math.round(nearest) }); continue }
     drawn.push({
       id: s.id, name, origin: s.origin, n: s.points.length,
@@ -114,7 +165,7 @@ export function routeSegments(points) {
   return out
 }
 
-// mappedCells: one res-8 cell per place a reception was taken, as a closed
+// mappedCells: one export cell (CELL_RES) per place a reception was taken, as a closed
 // [lon, lat] ring.
 export function mappedCells(points, res = CELL_RES) {
   const ids = new Set()
@@ -174,10 +225,22 @@ export function huntersText(names) {
   return `${list.length} ${list.length === 1 ? 'hunter' : 'hunters'}: ${list.join(', ')}`
 }
 
-export function exportFileName(nowMs) {
+// exportFileName: the export's kind, a subject when it has one (the repeater
+// of #720, in letters, digits and hyphens only), and the day. An accent is
+// split off its letter first, so "Zürich" keeps its u. A name in another
+// script has no letters left and goes without a subject.
+export function exportFileName(nowMs, kind = 'repeaters-heard', subject = '') {
   const d = new Date(nowMs)
   const pad = (v) => String(v).padStart(2, '0')
-  return `mesh-hunter-repeaters-heard-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.png`
+  const slug = String(subject).normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  return `mesh-hunter-${kind}${slug ? `-${slug}` : ''}-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.png`
+}
+
+// reliefNote: the words beside the scale bar when the relief is shaded
+// steeper than it is, at the exaggeration from Settings. None at 1×, where
+// it is true to scale.
+export function reliefNote(exaggeration) {
+  return exaggeration > 1 ? `relief ${exaggeration}× exaggerated` : ''
 }
 
 // scaleBar: the longest round length that fits in `maxPx`, at `metresPerPx`.
