@@ -174,16 +174,12 @@ export function senderIdMatches(senderId, senderKind, nodePubkey) {
 const HEAD_HEX = 4
 export function groupSenderPointsForNodes(records, nodes, { attributionOf = () => null } = {}) {
   const out = new Map()
-  const byHead = new Map()
   for (const n of nodes || []) {
     const k = n && n.pubkey ? String(n.pubkey).toLowerCase() : null
-    if (!k) continue
-    out.set(k, [])
-    const head = k.slice(0, HEAD_HEX)
-    if (!byHead.has(head)) byHead.set(head, [])
-    byHead.get(head).push(k)
+    if (k) out.set(k, [])
   }
   if (!Array.isArray(records) || out.size === 0) return out
+  const nodeOf = registryMatcher(nodes)
 
   for (const r of records) {
     if (!r || r.sender_id == null) continue
@@ -194,16 +190,39 @@ export function groupSenderPointsForNodes(records, nodes, { attributionOf = () =
       if (bucket) bucket.push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
       continue
     }
-    if (!isRegistryIdKind(r.sender_kind)) continue
+    const n = nodeOf(r)
+    if (n) out.get(String(n.pubkey).toLowerCase()).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+  }
+  return out
+}
+
+// registryMatcher: the node a reception's own id names among `nodes`, by
+// senderIdMatches, or null when it names none or more than one (ambiguous ids
+// contribute to nothing, as above). An advert names its whole key, a discover
+// reply a prefix of it; a relay hash is left to the attribution by reach.
+// groupSenderPointsForNodes and the reach stars (coverage.js, #723) both pair
+// by it, so a repeater heard by Discover has one ▲ and its star under it.
+export function registryMatcher(nodes) {
+  const byHead = new Map()
+  const byKey = new Map()
+  for (const n of nodes || []) {
+    const k = n && n.pubkey ? String(n.pubkey).toLowerCase() : null
+    if (!k) continue
+    byKey.set(k, n)
+    const head = k.slice(0, HEAD_HEX)
+    if (!byHead.has(head)) byHead.set(head, [])
+    byHead.get(head).push(k)
+  }
+  return (r) => {
+    if (!r || r.sender_id == null || !isRegistryIdKind(r.sender_kind)) return null
     let matched = null
     for (const k of byHead.get(String(r.sender_id).toLowerCase().slice(0, HEAD_HEX)) || []) {
       if (!senderIdMatches(r.sender_id, r.sender_kind, k)) continue
-      if (matched !== null) { matched = null; break }   // ambiguous -> drop it
+      if (matched !== null) return null   // ambiguous -> nothing
       matched = k
     }
-    if (matched) out.get(matched).push({ lat: r.lat, lon: r.lon, rssi: r.rssi })
+    return matched ? byKey.get(matched) : null
   }
-  return out
 }
 
 // estimateFor is locate() without the density grid: the layer needs a centroid

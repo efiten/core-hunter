@@ -872,7 +872,7 @@ describe('calloutPosition — parity between the app and web copies', () => {
 describe('nodelayer — parity of the shared core', () => {
   const SHARED = ['TIGHT_DRIFT_M', 'TRUSTED_ENCIRCLEMENT', 'circleRing', 'drawableNodes',
     'driftPresentation', 'estimateFor', 'groupSenderPointsForNodes', 'inBounds',
-    'isRegistryIdKind', 'nodesInView', 'senderIdMatches']
+    'isRegistryIdKind', 'nodesInView', 'registryMatcher', 'senderIdMatches']
 
   it('keeps the shared core present on both sides, and the divergence deliberate', () => {
     const names = (m) => Object.keys(m).sort()
@@ -890,6 +890,22 @@ describe('nodelayer — parity of the shared core', () => {
   // reception with a registry node the same way. An advert by its whole key, a
   // discover prefix from 2 bytes when it starts one key only, and a relay, path
   // or direct hash through its attribution by reach, never by comparing keys.
+  // #723: the reach stars pair by the same matcher, so one surface cannot
+  // hang a Discover star from its node while the other hangs it from an
+  // estimate.
+  it('names the same registry node for a reception on both surfaces', () => {
+    const key = (head, fill) => head + fill.repeat((64 - head.length) / 2)
+    const A = { pubkey: key('db11db', '11'), lat: 51.84, lon: 5.84 }
+    const B = { pubkey: key('db11aa', '22'), lat: 51.9, lon: 5.9 }
+    const cases = [['db11db', 'discover_pubkey'], ['db11', 'discover_pubkey'], [A.pubkey, 'advert_pubkey'], ['db', 'path_hash']]
+    const web = webLayer.registryMatcher([A, B]), app = appLayer.registryMatcher([A, B])
+    for (const [id, kind] of cases) {
+      const r = { sender_id: id, sender_kind: kind }
+      expect(web(r), `${kind} ${id}`).toBe(app(r))
+    }
+    expect(web({ sender_id: 'db11db', sender_kind: 'discover_pubkey' })).toBe(A)
+  })
+
   it('attributes relays through attribution and refuses an ambiguous discover prefix the same way on both surfaces', () => {
     const key = (head, fill) => head + fill.repeat((64 - head.length) / 2)
     const P = { pubkey: key('cc', 'cc'), name: 'Advertiser', lat: 51.01, lon: 4 }

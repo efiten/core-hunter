@@ -1,7 +1,7 @@
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
 import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, starSelected } from './coverage.js'
 import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
@@ -9,7 +9,7 @@ import { API_BASE } from './config.js'
 import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
-import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
+import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows, registryMatcher } from './nodelayer.js'
 import { nodePosPresentation, registryStatusFor, nextNotice } from './nodeposnotice.js'
 import { unclutteredLabels, createLabelMeasurer, screenObstacles } from './nodelabels.js'
 import { fetchPointsPaged } from './pagedpoints.js'
@@ -1054,10 +1054,12 @@ const coverageSel = new Set()
 let coverageHue = new Map()
 // Each star's estimate, kept from one draw to the next (coverage.js).
 const starCache = new Map()
-// Each hearing's attribution by reach in the last draw (#661, attribution.js),
-// for the dots' hues between draws: a relay id placed on a node takes that
-// node's hue, a collided one none.
-let coverageAttributionOf = () => null
+// What the stars of the last draw were keyed with (starKeyOf): the
+// attribution by reach (#661, attribution.js) and the registry match (#723),
+// for the dots' hues and the dimming between draws. A relay id placed on a
+// node and a Discover prefix of one node take that node's hue, a collided
+// hearing none.
+let coverageStarKeys = { attributionOf: () => null }
 // The stars of the last draw, so a repaint between draws can tell which star a
 // selection picks (starSelected) without building them again.
 let coverageStarList = []
@@ -1110,12 +1112,15 @@ function buildCoverage(points, registryNodes, attributionOf) {
   if (!coverageOn()) return null
   const byKey = new Map((registryNodes || []).map((n) => [String(n.pubkey).toLowerCase(), n]))
   const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
-  const stars = coverageStars(points, { positionOf, cache: starCache, attributionOf })
+  // registryNodeOf (#723): a Discover prefix joins its node's star, as it
+  // joins the node on the node layer.
+  const starKeys = { attributionOf, registryNodeOf: registryMatcher(registryNodes) }
+  const stars = coverageStars(points, { positionOf, cache: starCache, ...starKeys })
   const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
   const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
   const selected = coverageSelected()
   const selectedStars = new Set(selected.size ? stars.filter((st) => starSelected(st, selected)).map((st) => st.id) : [])
-  return { stars, hues, colorOf, selected, selectedStars, attributionOf, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
+  return { stars, hues, colorOf, selected, selectedStars, starKeys, fc: coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected }) }
 }
 window.__coverageSel = () => [...coverageSel] // test hook
 window.__rayCount = () => wm.rayCount() // test hook
@@ -1593,7 +1598,7 @@ wm.onGlyphTap(({ kind, key }, at) => {
 function drawCoverage(cov) {
   if (!cov) { clearCoverageLayer(); repaintSelection(); return }
   coverageHue = new Map([...cov.hues].map(([id, slot]) => [id, cov.colorOf(slot)]))
-  coverageAttributionOf = cov.attributionOf
+  coverageStarKeys = cov.starKeys
   coverageStarList = cov.stars
   wm.setData('reach', cov.fc)
   // The ● hub of a star with no registry position, in the star's hue. A
@@ -1627,7 +1632,7 @@ function repaintSelection() {
 // point (coverageSelected builds a fresh Set each call). Only in the reach
 // stop, where a selection means something, so a target picked with the reach
 // off leaves the map at full strength. dimFor asks about a reception's
-// repeater by the stars' own attribution: the star starKey puts it in (#661),
+// repeater by the stars' own attribution: the star starKeyOf puts it in (#661),
 // none for a collision, lit when that star is picked by its own id or by the
 // raw id of a hearing in it (starSelected), so a hearing placed on the node of
 // a picked relay id stays lit with its star. cellDim is the single factor
@@ -1637,12 +1642,12 @@ function selectionDimmer() {
   const lit = sel && sel.size
     ? new Set([...sel, ...coverageStarList.filter((st) => starSelected(st, sel)).map((st) => st.id)])
     : sel
-  const owner = (pt) => (isRepeaterHearing(pt) && pt.sender_id != null ? starKey(pt, coverageAttributionOf(pt)) : null)
+  const owner = (pt) => starKeyOf(pt, coverageStarKeys)
   return { dimFor: (pt) => selectionDim(lit, owner(pt)), cellDim: selectionDim(sel) }
 }
 function pointHue(pt) {
-  if (!coverageHue.size || !isRepeaterHearing(pt) || pt.sender_id == null) return null
-  const key = starKey(pt, coverageAttributionOf(pt))
+  if (!coverageHue.size) return null
+  const key = starKeyOf(pt, coverageStarKeys)
   return key == null ? null : coverageHue.get(key) || null
 }
 

@@ -166,6 +166,22 @@ export function starKey(pt, attr) {
   return String(pt.sender_id).toLowerCase()
 }
 
+// starKeyOf: the star a reception hangs from, by the rules coverageStars
+// uses: reach first (attributionOf), then the one registry node a Discover
+// prefix or an advert key names (registryNodeOf, #723). null for a reception
+// that belongs to no repeater or to no star (a collision). The dots' hue and
+// the selection's dimming ask with the same two functions the stars were
+// built with, so a dot always names its own star.
+function starAttribution(pt, attributionOf, registryNodeOf) {
+  const reach = attributionOf(pt)
+  const named = reach ? null : registryNodeOf(pt)
+  return named ? { rule: 'node', node: named } : reach
+}
+export function starKeyOf(pt, { attributionOf = () => null, registryNodeOf = () => null } = {}) {
+  if (!isRepeaterHearing(pt) || pt.sender_id == null) return null
+  return starKey(pt, starAttribution(pt, attributionOf, registryNodeOf))
+}
+
 // starSelected: a selection holds raw ids (the app's selected senders, the
 // map's picker), while a star is keyed by its node once a hearing is
 // attributed. A star is selected by its own id or by the id of any hearing in it.
@@ -176,7 +192,11 @@ export function starSelected(star, selected) {
 
 // coverageStars groups the repeater hearings by starKey and hangs each star
 // from its origin. attributionOf(pt) answers a hearing's attribution, or null
-// where none was worked out, which groups by id as before. A star keyed by an
+// where none was worked out, which groups by id as before. registryNodeOf(pt)
+// (nodelayer.js registryMatcher) answers the registry node a hearing's own id
+// names, an advert key or a discover prefix that starts one key only (#723):
+// such a hearing joins that node's star, as it joins the node on the node
+// layer, rather than hanging a star of its own from an estimate. A star keyed by an
 // attributed node hangs from that node's advertised position; otherwise
 // positionOf(id) answers the registry's advertised position or null.
 // estimate(points) is the node layer's estimateFor unless a test says
@@ -189,13 +209,13 @@ export function starSelected(star, selected) {
 // hear nothing new. So a star's estimate is reused while its hearings are the
 // same positions and RSSIs in the same order, and the cache keeps only the
 // stars of this call. The registry position is read every call.
-export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null, attributionOf = () => null } = {}) {
+export function coverageStars(points, { positionOf = () => null, estimate = estimateFor, cache = null, attributionOf = () => null, registryNodeOf = () => null } = {}) {
   const byId = new Map()
   const nodeOf = new Map()
   for (const pt of points || []) {
     if (!isRepeaterHearing(pt) || pt.sender_id == null) continue
     if (!Number.isFinite(pt.lat) || !Number.isFinite(pt.lon)) continue
-    const attr = attributionOf(pt)
+    const attr = starAttribution(pt, attributionOf, registryNodeOf)
     const id = starKey(pt, attr)
     if (id == null) continue
     if (attr && attr.rule === 'node') nodeOf.set(id, attr.node)
