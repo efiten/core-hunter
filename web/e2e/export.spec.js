@@ -151,3 +151,32 @@ test('Reach of one repeater fills along the lines, and leaves out what the terra
   expect(hidden.heard).toBe(open.heard)
   expect(hidden.filled).toBeLessThan(open.filled)
 })
+
+// #728: Heard with these filters. The filters here are the bar's Channel and
+// 1 byte; the server answers a query that narrows by type or id size with the
+// channel messages, any other with all of the hunter's receptions.
+test('Heard with these filters draws what the filters select, against all the cells the hunter drove', async ({ page }) => {
+  await stub(page, 'member')
+  const rx = (lat, lon, rssi, over) => ({ lat, lon, rssi, snr: 4, hops: 1, hunter_name: 'kas', rx_at: '2026-09-07T12:00:00Z', ...over })
+  const channel = { sender_id: 'db', sender_kind: 'path_hash', packet_type: 'GroupText' }
+  const selected = [rx(51.845, 5.865, -80, channel), rx(51.8451, 5.8651, -85, channel), rx(52.5, 6.5, -90, channel)]
+  const drove = [rx(51.85, 5.87, -95, { sender_id: 'ffee', sender_kind: 'relay', packet_type: 'Control' }),
+    rx(51.835, 5.85, -99, { sender_id: 'ffee', sender_kind: 'relay', packet_type: 'Control' })]
+  await page.route('**/api/points*', (r) => {
+    const q = new URL(r.request().url()).searchParams
+    r.fulfill({ json: { points: q.get('types') || q.get('idclass') ? selected : [...selected, ...drove] } })
+  })
+  await page.goto('/?mode=points&lat=51.84&lon=5.86&z=12&from=2026-09-07T00:00&to=2026-09-08T00:00&types=GroupText&idclass=1b')
+  await expect(async () => {
+    if (await page.locator('#export-modal').isHidden()) await page.click('#export-btn')
+    await expect(page.locator('#export-modal')).toBeVisible()
+  }).toPass({ timeout: 15000 })
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#ex-sel')])
+  expect(download.suggestedFilename()).toMatch(/^mesh-hunter-selection-channel-1-byte-\d{4}-\d{2}-\d{2}\.png$/)
+  const png = readFileSync(await download.path())
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 1200])
+  // The reception far out of view is left out; the two cells the hunter
+  // drove without a channel message count against the one that heard them;
+  // the 1-byte id is placed on the node it alone can be within reach.
+  expect(await page.evaluate(() => window.__lastSelection())).toEqual({ receptions: 2, heardCells: 1, drivenCells: 3, share: 33, nodes: ['NL-NIJ-Dikkeboom'] })
+})

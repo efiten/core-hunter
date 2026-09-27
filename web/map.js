@@ -5,10 +5,11 @@ import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures,
 import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, starSelected } from './coverage.js'
 import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
-import { heardModel, routeSegments, mappedCells, windowText, huntersText, exportFileName, nearestKm, FAR_KM } from './exportheard.js'
+import { heardModel, routeSegments, mappedCells, windowText, huntersText, exportFileName, nearestKm, idLabel, isHashId, FAR_KM, inside } from './exportheard.js'
 import { reachModel, pickReachStar } from './exportreach.js'
 import { loadTerrain } from './exportterrain.js'
-import { renderHeardImage, renderReachImage, lightTokens } from './exportrender.js'
+import { selectionModel, targetPositions, selectionTitle, heardNodes, selectionRes } from './exportselection.js'
+import { renderHeardImage, renderReachImage, renderSelectionImage, lightTokens } from './exportrender.js'
 import { initExportSheet } from './exportsheet.js'
 import { createRowAttributor } from './rowattribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
@@ -1196,13 +1197,14 @@ async function exportStars() {
 }
 // The band's second line: the window as dates, the hunters, and the cap
 // when the window held more receptions than one fetch brings.
-function exportSubline(points, hunters, capped, registryOk) {
+function exportSubline(points, hunters, capped, registryOk, notes = []) {
   const f = (window.currentFilters && window.currentFilters()) || {}
   const oldest = points.reduce((m, p) => (p.rx_at && p.rx_at < m ? p.rx_at : m), new Date().toISOString())
   const sub = [windowText(f.from || oldest, f.to || new Date().toISOString()), huntersText(hunters)]
   if (capped) sub.push(`the first ${POINTS_CAP} receptions`)
   // Without the registry every star is an estimate and none has a name.
   if (!registryOk) sub.push('node list unavailable, every position estimated')
+  sub.push(...notes)
   return sub.filter(Boolean).join(' · ')
 }
 const toPng = (canvas) => new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('no PNG'))), 'image/png'))
@@ -1249,6 +1251,52 @@ async function reachExport() {
   return { blob: await toPng(canvas), fileName: exportFileName(Date.now(), 'reach', model.name) }
 }
 window.__lastReach = () => lastReach && { heard: lastReach.heard.length, filled: lastReach.filled.length } // test hook
+
+// "Heard with these filters": what the map's filters select in view,
+// whatever kind of node was heard, and the cells the same hunters drove
+// through without it. Those come from all their receptions in the window:
+// the filters with everything that narrows what was heard left out, the id
+// sizes included. The nodes drawn are the picked targets and the nodes the
+// receptions were placed on, by the rules the map's layers use.
+let lastSelection = null
+async function selectionExport() {
+  const f = standFilters()
+  const view = wm.getBounds()
+  const everything = { ...f, sender: '', senderPairs: [], types: '', idclass: '', hops: '' }
+  const [sel, all, registry] = await Promise.all([windowPoints(f), windowPoints(everything), fetchNodeRegistry(view)])
+  const inView = (p) => Number.isFinite(p.lat) && Number.isFinite(p.lon) && inside(view, p)
+  const points = sel.points.filter(inView)
+  const hunters = new Set(points.map((p) => p.hunter_name).filter(Boolean))
+  const mapped = all.points.filter((p) => hunters.has(p.hunter_name) && inView(p))
+  const registryOk = Boolean(registry && registry.status === 'ok')
+  const nodes = registryOk ? registry.nodes : []
+  const index = registryIndex(nodes)
+  const registryNodeOf = registryMatcher(nodes)
+  // What the stand applies: under the ticker's "all" the sender inputs are
+  // dropped (tickerFilters), so the title names no target then.
+  const pairs = f.senderPairs || []
+  const picked = pairs.filter(([k]) => k === 'senders').map(([, v]) => v)
+  const prefix = (pairs.find(([k]) => k === 'sender') || [])[1] || ''
+  const targets = targetPositions(picked, registryNodeOf)
+  const heardFrom = heardNodes(points, { attributionOf: (pt) => attributeReception(pt, { index }), registryNodeOf })
+  const drawn = [...targets.map((t) => ({ ...t, n: Infinity })), ...heardFrom.filter((h) => !targets.some((t) => t.id === h.id))].filter((n) => inside(view, n))
+  // Finer than the cells the map draws, on purpose (selectionCellSize).
+  const res = selectionRes(leafletZoom(wm.getZoom()))
+  const model = selectionModel({ points, mapped, nodes: drawn, res })
+  lastSelection = model
+  if (!model.heard.length) return { empty: 'Nothing was heard with these filters in this view. Pan to where it was heard, widen the time window, or pick other targets.' }
+  const names = picked.map((id) => (targets.find((t) => t.pick === String(id).toLowerCase()) || {}).name || (!isHashId(id) && cachedName(id)) || idLabel(id))
+  const title = selectionTitle({ names, prefix, noPath: f.hops === '0', types: f.types, idClasses: f.idclass })
+  // The cells driven through come from a query without the selection's
+  // filters, which reaches the cap first.
+  const notes = all.capped && !sel.capped ? [`the cells driven from the first ${POINTS_CAP} receptions`] : []
+  const canvas = await renderSelectionImage({
+    model, exaggeration: exag,
+    text: { title, sub: exportSubline(points, [...hunters], sel.capped, registryOk, notes), off: '' }, tokens: lightTokens(),
+  })
+  return { blob: await toPng(canvas), fileName: exportFileName(Date.now(), 'selection', title) }
+}
+window.__lastSelection = () => lastSelection && { ...lastSelection.numbers, nodes: lastSelection.nodes.map((n) => n.name) } // test hook
 
 // The receptions the stars are built from. With a target picked the layer's
 // points are already narrowed to it, and the other stars have to stay up at a
@@ -2805,5 +2853,6 @@ initExportSheet({
     { button: 'ex-heard', status: 'ex-heard-status', run: heardExport, reason: exportReason },
     { button: 'ex-reach', status: 'ex-reach-status', run: reachExport,
       reason: () => exportReason() || (coverageSelected().size ? null : SELECT_ONE) },
+    { button: 'ex-sel', status: 'ex-sel-status', run: selectionExport, reason: exportReason },
   ],
 })

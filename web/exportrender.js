@@ -153,28 +153,44 @@ export function renderHeardImage({ model, routes, cells, text, tokens, exaggerat
 // first, a faint one stays a tint. The reference render's values.
 const HEARD_OPACITY = { hot: 0.7, warm: 0.58, mid: 0.46, cool: 0.34, cold: 0.26, faint: 0.19 }
 
+// addCells draws the measured cells on the RSSI tiers: not heard in grey,
+// heard in the tier of its strongest reception, stronger more opaque. The
+// reach export's filled-in cells go between the two, lighter than heard:
+// what the repeater reaches, not what was measured.
+function addCells(map, { silent, filled, heard }, tokens) {
+  const tierC = (t) => tokens.tiers[t] || tokens.none
+  map.addSource('silent', { type: 'geojson', data: fc(silent.map((c) => poly(c.ring))) })
+  map.addLayer({ id: 'silent', type: 'fill', source: 'silent', paint: { 'fill-color': tokens.none, 'fill-opacity': 0.32 } })
+  map.addLayer({ id: 'silent-line', type: 'line', source: 'silent', paint: { 'line-color': tokens.none, 'line-width': 0.8, 'line-opacity': 0.8 } })
+  if (filled) {
+    map.addSource('filled', { type: 'geojson', data: fc(filled.map((c) => poly(c.ring, { c: tierC(c.tier) }))) })
+    map.addLayer({ id: 'filled', type: 'fill', source: 'filled', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': 0.3 } })
+    map.addLayer({ id: 'filled-line', type: 'line', source: 'filled', paint: { 'line-color': tokens.bg, 'line-width': 0.8, 'line-opacity': 0.7 } })
+  }
+  map.addSource('heard', { type: 'geojson', data: fc(heard.map((c) => poly(c.ring, { c: tierC(c.tier), a: HEARD_OPACITY[c.tier] || 0.3 }))) })
+  map.addLayer({ id: 'heard', type: 'fill', source: 'heard', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': ['get', 'a'] } })
+  map.addLayer({ id: 'heard-line', type: 'line', source: 'heard', paint: { 'line-color': ['get', 'c'], 'line-width': 1, 'line-opacity': 0.9 } })
+}
+
+// addDots draws a dot at every reception in its tier, the weakest first so a
+// strong one is never under a weak one.
+function addDots(map, dots, tokens) {
+  const tierC = (t) => tokens.tiers[t] || tokens.none
+  const sorted = dots.slice().sort((a, b) => a.rssi - b.rssi)
+  map.addSource('dots', { type: 'geojson', data: fc(sorted.map((d) => dot(d.lon, d.lat, { c: tierC(d.tier) }))) })
+  map.addLayer({ id: 'dots', type: 'circle', source: 'dots', paint: { 'circle-color': ['get', 'c'], 'circle-radius': 3.2, 'circle-stroke-color': tokens.bg, 'circle-stroke-width': 0.8 } })
+}
+
 // renderReachImage (#720) returns the finished 1200×1200 canvas for one
 // repeater: exportreach.js's model on the RSSI tiers, over the relief. The
 // relief is exaggerated; the fill was checked against the real heights.
 export function renderReachImage({ model, text, tokens, exaggeration = DEFAULT_EXAGGERATION, maplib = globalThis.maplibregl, timeoutMs = 20000 }) {
   const tierC = (t) => tokens.tiers[t] || tokens.none
   return withMap({ tokens, maplib, timeoutMs }, async (map) => {
-    map.addSource('silent', { type: 'geojson', data: fc(model.silent.map((c) => poly(c.ring))) })
-    map.addLayer({ id: 'silent', type: 'fill', source: 'silent', paint: { 'fill-color': tokens.none, 'fill-opacity': 0.32 } })
-    map.addLayer({ id: 'silent-line', type: 'line', source: 'silent', paint: { 'line-color': tokens.none, 'line-width': 0.8, 'line-opacity': 0.8 } })
-    // Filled in lighter than heard: what the repeater reaches, not what was
-    // measured.
-    map.addSource('filled', { type: 'geojson', data: fc(model.filled.map((c) => poly(c.ring, { c: tierC(c.tier) }))) })
-    map.addLayer({ id: 'filled', type: 'fill', source: 'filled', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': 0.3 } })
-    map.addLayer({ id: 'filled-line', type: 'line', source: 'filled', paint: { 'line-color': tokens.bg, 'line-width': 0.8, 'line-opacity': 0.7 } })
-    map.addSource('heard', { type: 'geojson', data: fc(model.heard.map((c) => poly(c.ring, { c: tierC(c.tier), a: HEARD_OPACITY[c.tier] || 0.3 }))) })
-    map.addLayer({ id: 'heard', type: 'fill', source: 'heard', paint: { 'fill-color': ['get', 'c'], 'fill-opacity': ['get', 'a'] } })
-    map.addLayer({ id: 'heard-line', type: 'line', source: 'heard', paint: { 'line-color': ['get', 'c'], 'line-width': 1, 'line-opacity': 0.9 } })
+    addCells(map, model, tokens)
     map.addSource('rays', { type: 'geojson', data: fc(model.rays.map((r) => line([[r.from.lon, r.from.lat], [r.lon, r.lat]], { c: tierC(r.tier) }))) })
     map.addLayer({ id: 'rays', type: 'line', source: 'rays', paint: { 'line-color': ['get', 'c'], 'line-width': 1.4, 'line-opacity': 0.75 } })
-    const dots = model.dots.slice().sort((a, b) => a.rssi - b.rssi)
-    map.addSource('dots', { type: 'geojson', data: fc(dots.map((d) => dot(d.lon, d.lat, { c: tierC(d.tier) }))) })
-    map.addLayer({ id: 'dots', type: 'circle', source: 'dots', paint: { 'circle-color': ['get', 'c'], 'circle-radius': 3.2, 'circle-stroke-color': tokens.bg, 'circle-stroke-width': 0.8 } })
+    addDots(map, model.dots, tokens)
     if (model.advertised && model.estimate) {
       map.addSource('offset', { type: 'geojson', data: line([[model.advertised.lon, model.advertised.lat], [model.estimate.lon, model.estimate.lat]]) })
       map.addLayer({ id: 'offset', type: 'line', source: 'offset', paint: { 'line-color': tokens.text, 'line-width': 1.5, 'line-dasharray': [2, 2] } })
@@ -199,6 +215,60 @@ export function renderReachImage({ model, text, tokens, exaggeration = DEFAULT_E
   })
 }
 
+// renderSelectionImage returns the finished 1200×1200 canvas for what the
+// map's filters select (exportselection.js): heard and not heard, the nodes
+// it was heard from where the registry places them, over the relief. Fitted
+// to the receptions: a node outside that frame is left off.
+export function renderSelectionImage({ model, text, tokens, exaggeration = DEFAULT_EXAGGERATION, maplib = globalThis.maplibregl, timeoutMs = 20000 }) {
+  return withMap({ tokens, maplib, timeoutMs }, async (map) => {
+    addCells(map, model, tokens)
+    addDots(map, model.dots, tokens)
+    const first = model.dots[0]
+    const b = new maplib.LngLatBounds([first.lon, first.lat], [first.lon, first.lat])
+    for (const d of model.dots) b.extend([d.lon, d.lat])
+    map.fitBounds(b, { padding: 80, maxZoom: 14, animate: false })
+    addRelief(map, exaggeration, 'silent')
+
+    const { canvas, ctx, bar } = await snapshot(map, tokens, timeoutMs)
+    drawNodes(ctx, map, model.nodes, tokens)
+    drawMapFurniture(ctx, bar, tokens, exaggeration)
+    const cols = [
+      [String(model.numbers.receptions), 'receptions'],
+      [String(model.numbers.heardCells), 'cells heard'],
+      [`${model.numbers.share}%`, 'of the cells driven'],
+    ]
+    reachLegend(ctx, drawBand(ctx, { ...text, cols }, tokens), tokens, { targets: model.nodes.length > 0, estimate: false })
+    return canvas
+  })
+}
+
+// A ▲ at `p`, the mark of an advertised position.
+function triangle(ctx, p, tokens) {
+  ctx.beginPath(); ctx.moveTo(p.x, p.y - 10); ctx.lineTo(p.x + 10, p.y + 8); ctx.lineTo(p.x - 10, p.y + 8); ctx.closePath()
+  ctx.fillStyle = tokens.text; ctx.strokeStyle = tokens.bg; ctx.lineWidth = 2
+  ctx.fill(); ctx.stroke()
+}
+
+// Each node inside the frame: its ▲, and its name where it fits
+// (placeLabels, the most-heard first).
+function drawNodes(ctx, map, nodes, tokens) {
+  const at = nodes.map((n) => ({ n, p: map.project([n.lon, n.lat]) }))
+    .filter(({ p }) => p.x >= 0 && p.x <= EXPORT_W && p.y >= 0 && p.y <= EXPORT_MAP_H)
+  ctx.save()
+  ctx.font = `600 14px ${FONT}`
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  for (const { p } of at) triangle(ctx, p, tokens)
+  const kept = placeLabels(at.map(({ n, p }) => ({ id: n.id, x: p.x, y: p.y, label: n.name, n: n.n })),
+    { measure: (t) => ctx.measureText(t).width, width: EXPORT_W, height: EXPORT_MAP_H, dx: 14 })
+  ctx.fillStyle = tokens.text
+  for (const { n, p } of at) {
+    if (!kept.has(n.id)) continue
+    halo(ctx, tokens.bg, (how) => (how === 'stroke' ? ctx.strokeText(n.name, p.x + 14, p.y) : ctx.fillText(n.name, p.x + 14, p.y)))
+  }
+  ctx.restore()
+}
+
 // The ▲ labelled "adv." at the advertised position and the ● labelled
 // "est." at the RSSI estimate; without an advertised position the ● is
 // where the rays start.
@@ -209,9 +279,7 @@ function drawPositions(ctx, map, model, tokens) {
   ctx.lineJoin = 'round'
   if (model.advertised) {
     const p = map.project([model.advertised.lon, model.advertised.lat])
-    ctx.beginPath(); ctx.moveTo(p.x, p.y - 10); ctx.lineTo(p.x + 10, p.y + 8); ctx.lineTo(p.x - 10, p.y + 8); ctx.closePath()
-    ctx.fillStyle = tokens.text; ctx.strokeStyle = tokens.bg; ctx.lineWidth = 2
-    ctx.fill(); ctx.stroke()
+    triangle(ctx, p, tokens)
     halo(ctx, tokens.bg, (how) => (how === 'stroke' ? ctx.strokeText('adv.', p.x + 14, p.y) : ctx.fillText('adv.', p.x + 14, p.y)))
   }
   if (model.estimate) {
@@ -416,7 +484,9 @@ function heardLegend(ctx, y, tokens) {
 // the ▲ and the ● on the second. No route, and no line for the filled-in
 // cells: where the hunters drove shows in the heard and the mapped cells,
 // and the lighter cells speak for themselves (Kasper, 27 September).
-function reachLegend(ctx, y, tokens) {
+// The selection export has no ●, and a ▲ only for targets the registry
+// places: `targets` and `estimate` leave those out.
+function reachLegend(ctx, y, tokens, { targets = true, estimate = true } = {}) {
   let lx = 44
   ctx.save()
   ctx.font = `13px ${FONT}`
@@ -436,13 +506,17 @@ function reachLegend(ctx, y, tokens) {
   hexSwatch(ctx, lx, y, tokens.none, 0.45)
   lx += 20
   say('mapped, not heard', 18)
-  ctx.fillStyle = tokens.text
-  ctx.beginPath(); ctx.moveTo(lx + 6, y - 11); ctx.lineTo(lx + 12, y); ctx.lineTo(lx, y); ctx.closePath(); ctx.fill()
-  lx += 18
-  say('advertised position', 18)
-  ctx.fillStyle = tokens.text
-  ctx.beginPath(); ctx.arc(lx + 5, y - 5, 5, 0, Math.PI * 2); ctx.fill()
-  lx += 16
-  say('estimated position (RSSI)')
+  if (targets) {
+    ctx.fillStyle = tokens.text
+    ctx.beginPath(); ctx.moveTo(lx + 6, y - 11); ctx.lineTo(lx + 12, y); ctx.lineTo(lx, y); ctx.closePath(); ctx.fill()
+    lx += 18
+    say('advertised position', 18)
+  }
+  if (estimate) {
+    ctx.fillStyle = tokens.text
+    ctx.beginPath(); ctx.arc(lx + 5, y - 5, 5, 0, Math.PI * 2); ctx.fill()
+    lx += 16
+    say('estimated position (RSSI)')
+  }
   ctx.restore()
 }

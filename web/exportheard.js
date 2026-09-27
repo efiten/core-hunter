@@ -32,8 +32,9 @@ export const ROUTE_GAP_KM = 3
 // is whichever the grid gives closest to it: since #734 that is res 13, 268
 // units, about 330 m point to point.
 export const CELL_SIZE = 360
-export const CELL_RES = closestRes(CELL_SIZE)
-function closestRes(size) {
+export const CELL_RES = resForSize(CELL_SIZE)
+// resForSize: the resolution whose hexSizeForRes is closest to a size.
+export function resForSize(size) {
   let best = 0
   for (let res = 1; res <= 21; res++) if (Math.abs(hexSizeForRes(res) - size) < Math.abs(hexSizeForRes(best) - size)) best = res
   return best
@@ -75,7 +76,7 @@ export function starName(star, { nameOf = () => null, cachedNameOf = () => null 
   return nameOf(star.id) || (!isHashId(star.id, kind) && cachedNameOf(star.id)) || idLabel(star.id, kind)
 }
 
-const inside = (v, p) => p.lat >= v.south && p.lat <= v.north && p.lon >= v.west && p.lon <= v.east
+export const inside = (v, p) => p.lat >= v.south && p.lat <= v.north && p.lon >= v.west && p.lon <= v.east
 
 // nearestKm: how far a star hangs from its nearest hearing. Farther than
 // FAR_KM, its position cannot be right (heardModel leaves it off, #720's
