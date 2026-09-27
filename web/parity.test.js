@@ -1359,7 +1359,8 @@ describe('files copied whole from the app (#595)', () => {
   // nodeposmode.js (#630) join it too: the map's node-positions button is the
   // app's FAB, with the same stops, labels and ring. attribution.js (#661)
   // joins it: which node a relay id belongs to is one rule on both surfaces.
-  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js', 'attribution.js']) {
+  // hexgrid.js (#666) joins it: the export's mapped cells are the app's grid.
+  for (const name of ['signal.js', 'maplayers.js', 'pointmarker.js', 'terrain.js', 'coverage.js', 'raylayer.js', 'fabring.js', 'nodeposmode.js', 'attribution.js', 'hexgrid.js']) {
     it(`web/${name} is app/src/${name}`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')

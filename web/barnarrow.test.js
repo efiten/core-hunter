@@ -109,6 +109,7 @@ describe('finding the control a slot moves', () => {
         node('hunter picker', { classes: ['ms-wrap'] }, [node('hunter toggle', { id: 'hp-toggle' })]),
         node('time range', { classes: ['tr-wrap'] }),
       ]),
+      node('Export', { id: 'export-btn' }),
       node('Start mapping', { id: 'rx-cta' }),
       node('Log in', { id: 'auth-btn' }),
     ]),
@@ -120,6 +121,6 @@ describe('finding the control a slot moves', () => {
 
   it('finds every control without a selector only some engines parse', () => {
     const found = NARROW_SLOTS.map((entry) => findControl(entry, doc)?.name)
-    expect(found).toEqual(['time range', 'hunter picker', 'Start mapping', 'Log in'])
+    expect(found).toEqual(['time range', 'hunter picker', 'Export', 'Start mapping', 'Log in'])
   })
 })

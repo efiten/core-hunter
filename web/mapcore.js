@@ -26,7 +26,8 @@ import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
 import { nodeGlyphLayers, nearestGlyph, hitBox, drawTriangle, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE, NODE_DOT_LAYER, NODE_ADVERT_LAYER, NODE_GLYPH_LAYERS, TRI_IMAGE, TRI_W, TRI_H } from './nodeglyphs.js'
 
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-const STYLES = {
+// The hosted styles; the export (#666) draws on the light one too.
+export const STYLES = {
   dark: 'https://tiles.openfreemap.org/styles/dark',
   light: 'https://tiles.openfreemap.org/styles/positron',
 }
