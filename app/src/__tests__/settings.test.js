@@ -149,7 +149,7 @@ describe('loadViewIndex', () => {
     vi.stubGlobal('localStorage', storageWith({ 'core-hunter-view': 'points2d' }))
     expect(loadViewIndex()).toBe(0)
   })
-  it('falls back to both/2D (index 1) for a missing or unknown value', () => {
+  it('falls back to auto/2D (index 1) for a missing or unknown value', () => {
     vi.stubGlobal('localStorage', storageWith({}))
     expect(loadViewIndex()).toBe(1)
     vi.stubGlobal('localStorage', storageWith({ 'core-hunter-view': 'hex4d' }))

@@ -94,13 +94,13 @@ describe('canSeePointLayer', () => {
 
 describe('modeForRole — a deep link cannot open a gated layer', () => {
   it('holds a degraded role on hex, whatever was asked for', () => {
-    for (const m of ['points', 'both', 'hex']) {
+    for (const m of ['points', 'auto', 'hex']) {
       expect(modeForRole(m, 'guest'), m).toBe('hex')
       expect(modeForRole(m, 'hunter'), m).toBe('hex')
     }
   })
   it('leaves a member on the mode they picked', () => {
-    for (const m of ['points', 'both', 'hex']) expect(modeForRole(m, 'member'), m).toBe(m)
+    for (const m of ['points', 'auto', 'hex']) expect(modeForRole(m, 'member'), m).toBe(m)
   })
 })
 

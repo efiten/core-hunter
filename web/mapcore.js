@@ -18,6 +18,7 @@
 // terrain.js; both are the app's files, pinned byte for byte.
 import { skyForHour, currentHour } from './sky.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
+import { hexRamp, hexFillOpacity, hexBarHeight, hexBarSwitch, pointRamp, pillarSwitch, pointShare, resForZoom } from './zoomfade.js'
 import { createRayLayer } from './raylayer.js'
 import { northResetEase } from './maprail.js'
 import { EXTRUSION_LIGHT_INTENSITY } from './signal.js'
@@ -46,7 +47,9 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 // here, mounted through raylayer.js and above everything by construction.
 export const LAYER_ORDER = [
   'hillshade',
-  'hex', 'hex-outline', 'hex-3d',
+  // Two cell sizes at a time (#634): the -b layers hold the size that is
+  // taking over from, or handing over to, the other.
+  'hex', 'hex-b', 'hex-outline', 'hex-outline-b', 'hex-3d', 'hex-3d-b',
   'buildings-3d',
   'locate-heat',
   'reach',          // the reach lines, under the dots so a hub stays readable
@@ -60,7 +63,7 @@ export const LAYER_ORDER = [
   'rxhighlight',    // the ticker's playhead ring, never under a point
 ]
 // The sources the data layers read, all GeoJSON, all set through setData.
-const GEO_SOURCES = ['hex', 'reach', 'points', 'points-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]
+const GEO_SOURCES = ['hex', 'hex-b', 'reach', 'points', 'points-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out', 'rxhighlight', 'nodedrift', 'nodecircle', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]
 // The app's ceiling (huntmap.js MAX_PITCH): a near-horizontal camera for the
 // tilt gesture; the view button itself eases to PITCH_3D (maplayers.js).
 const MAX_PITCH = 85
@@ -166,8 +169,9 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   function applyLayerVisibility() {
     const vis = layerVisibility({ mode: layerMode, mode3D: is3D })
     const set = (id, on) => { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none') }
-    for (const id of ['hex', 'hex-3d', 'points', 'points-3d']) set(id, vis[id])
+    for (const id of ['hex', 'hex-b', 'hex-3d', 'hex-3d-b', 'points', 'points-3d']) set(id, vis[id])
     set('hex-outline', vis.hex)
+    set('hex-outline-b', vis['hex-b'])
     set('buildings-3d', is3D)
     applyReachVisibility()
   }
@@ -188,18 +192,28 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // Bottom to top: the hex heat and its bars, the buildings, the locate
     // cloud, then the dots and pillars, then the lines and rings that must
     // never sink under a hot cell.
-    if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex', layout: shown(vis.hex),
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
-    if (!map.getLayer('hex-outline')) map.addLayer({ id: 'hex-outline', type: 'line', source: 'hex', layout: shown(vis.hex),
-      paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.9 } })
+    // What a zoom fades is written by applyFades (zoomfade.js, #634): the
+    // opacity of the cells, their outline and the points, and the height of
+    // the bars. Nothing shows until it has, and a style load drops it with
+    // the layers, so the signature is cleared here.
+    fadeSig = ''
+    const hexPaint = { 'fill-color': ['get', 'color'], 'fill-opacity': 0 }
+    const outlinePaint = { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0 }
+    if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex', layout: shown(vis.hex), paint: hexPaint })
+    if (!map.getLayer('hex-b')) map.addLayer({ id: 'hex-b', type: 'fill', source: 'hex-b', layout: shown(vis['hex-b']), paint: hexPaint })
+    if (!map.getLayer('hex-outline')) map.addLayer({ id: 'hex-outline', type: 'line', source: 'hex', layout: shown(vis.hex), paint: outlinePaint })
+    if (!map.getLayer('hex-outline-b')) map.addLayer({ id: 'hex-outline-b', type: 'line', source: 'hex-b', layout: shown(vis['hex-b']), paint: outlinePaint })
     // 3D twin of 'hex': same source, extruded to 'height' by tier, painted
     // 'pillar', the cell's tint pre-mixed over the background (#412), opaque:
     // fill-extrusion-opacity is one number for the layer, and one opacity for
     // every tier made a faint bar a solid block on a 19% cell. No vertical
     // gradient: colour is the signal, and shading read as another tier.
-    if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex', layout: shown(vis['hex-3d']),
-      paint: { 'fill-extrusion-color': ['get', 'pillar'], 'fill-extrusion-height': ['get', 'height'],
-        'fill-extrusion-vertical-gradient': false, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
+    // Opacity 0 until applyFades has written the switch: a bar of no height
+    // still draws an opaque polygon on the ground.
+    const barPaint = { 'fill-extrusion-color': ['get', 'pillar'], 'fill-extrusion-height': 0,
+      'fill-extrusion-vertical-gradient': false, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0 }
+    if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex', layout: shown(vis['hex-3d']), paint: barPaint })
+    if (!map.getLayer('hex-3d-b')) map.addLayer({ id: 'hex-3d-b', type: 'fill-extrusion', source: 'hex-b', layout: shown(vis['hex-3d-b']), paint: barPaint })
     // Buildings reuse the hosted style's own vector source, already fetched
     // for the 2D basemap, so 3D adds no request; absent on the bare fallback,
     // hence the guard. minzoom 13 is the floor of OpenFreeMap's building
@@ -218,8 +232,8 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     if (!map.getLayer('reach')) map.addLayer({ id: 'reach', type: 'line', source: 'reach', layout: shown(reachOn && !is3D),
       paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': ['get', 'op'] } })
     if (!map.getLayer('points')) map.addLayer({ id: 'points', type: 'circle', source: 'points', layout: shown(vis.points),
-      paint: { 'circle-radius': 5, 'circle-color': ['get', 'color'], 'circle-opacity': ['get', 'op'],
-        'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1 } })
+      paint: { 'circle-radius': 5, 'circle-color': ['get', 'color'], 'circle-opacity': 0,
+        'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 1, 'circle-stroke-opacity': 0 } })
     // 3D twin of 'points' (#250 in the app): an octagon pillar per reception,
     // tier colour and height as the hex bars, so a point still reads at
     // pitch instead of a flat circle sinking under the bars and buildings.
@@ -274,6 +288,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     // style. The basemap's own layers are not in the list, so they keep their
     // places underneath.
     for (const id of LAYER_ORDER) if (map.getLayer(id)) map.moveLayer(id)
+    applyFades()
     rays.addTo(map)
     rays.setVisible(reachOn && is3D)
     // Terrain rides every style load like the sky: setStyle drops the source.
@@ -303,6 +318,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     layerMode = m
     is3D = !!v
     applyLayerVisibility()
+    applyFades()
     const pitch = pitchTransition(was3D, is3D)
     if (pitch !== null) {
       if (!is3D) applyTerrain()
@@ -339,6 +355,59 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     if (map.getLayer('reach')) map.setLayoutProperty('reach', 'visibility', reachOn && !is3D ? 'visible' : 'none')
     rays.setVisible(reachOn && is3D)
   }
+  // The zoom expressions of the hex and point layers (zoomfade.js, #634).
+  // Which cell size each hex layer holds is map.js's to say (setHexSizes): the
+  // cells come from the server, and what it sent is what is drawn. The sizes
+  // held are the whole range the ramps know of, so the coarser one stays in
+  // full below its level and the finer one above it: a zoom that runs past
+  // the pair keeps its cells until the refetch on moveend replaces them. Where
+  // the server answered one size, that one is in full at every zoom.
+  let hexSizes = { a: null, b: null }, fadeSig = ''
+  function setHexSizes(sizes) {
+    hexSizes = { a: sizes.a ?? null, b: sizes.b ?? null }
+    applyFades()
+  }
+  function applyFades() {
+    if (!overlaysReady || !map.getLayer('hex')) return
+    const view = { mode: layerMode, mode3D: is3D }
+    const held = [hexSizes.a, hexSizes.b].filter((r) => r != null)
+    const lo = Math.min(...held), hi = Math.max(...held)
+    const sig = [layerMode, is3D ? 3 : 2, hexSizes.a, hexSizes.b].join('|')
+    if (sig === fadeSig) return
+    fadeSig = sig
+    for (const [flat, outline, bar, res] of [['hex', 'hex-outline', 'hex-3d', hexSizes.a], ['hex-b', 'hex-outline-b', 'hex-3d-b', hexSizes.b]]) {
+      if (res == null) {
+        map.setPaintProperty(flat, 'fill-opacity', 0)
+        map.setPaintProperty(outline, 'line-opacity', 0)
+        map.setPaintProperty(bar, 'fill-extrusion-opacity', 0)
+        continue
+      }
+      map.setPaintProperty(flat, 'fill-opacity', hexFillOpacity(res, view, hi, lo))
+      map.setPaintProperty(outline, 'line-opacity', hexRamp(res, view, hi, (v) => Math.round(900 * v) / 1000, lo))
+      map.setPaintProperty(bar, 'fill-extrusion-height', hexBarHeight(res, view, hi, lo))
+      map.setPaintProperty(bar, 'fill-extrusion-opacity', hexBarSwitch(res, view, hi, lo))
+    }
+    map.setPaintProperty('points', 'circle-opacity', pointRamp(view, (v) => ['*', ['get', 'op'], v]))
+    map.setPaintProperty('points', 'circle-stroke-opacity', pointRamp(view, (v) => v))
+    map.setPaintProperty('points-3d', 'fill-extrusion-opacity', pillarSwitch(view))
+  }
+  // Whether a layer's features may take the pointer (#634). Both cell sizes
+  // are loaded and a point can sit at a share near nothing, and
+  // queryRenderedFeatures and layer events ignore paint opacity. So a cell
+  // answers only from the size drawn in full at this zoom (the one the line
+  // under the map counts), and a point only from half its strength on.
+  const HEX_LAYER_SLOT = { hex: 'a', 'hex-3d': 'a', 'hex-b': 'b', 'hex-3d-b': 'b' }
+  function takesPointer(layerId) {
+    const slot = HEX_LAYER_SLOT[layerId]
+    if (slot) {
+      const held = [hexSizes.a, hexSizes.b].filter((r) => r != null)
+      if (!held.length) return false
+      const full = Math.max(Math.min(...held), resForZoom(map.getZoom(), Math.max(...held)))
+      return hexSizes[slot] === full
+    }
+    if (layerId === 'points' || layerId === 'points-3d') return pointShare(map.getZoom(), { mode: layerMode, mode3D: is3D }) >= 0.5
+    return true
+  }
   function setReach(on) { reachOn = !!on; if (overlaysReady) applyReachVisibility() }
   function setData(id, fcOrNull) {
     const data = fcOrNull || EMPTY
@@ -368,7 +437,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   let hover = null
   function hoverText(layerId, textOf) {
     map.on('mousemove', layerId, (e) => {
-      const f = e.features && e.features[0]; if (!f) return
+      const f = e.features && e.features[0]; if (!f || !takesPointer(layerId)) return
       const text = textOf(f.properties)
       if (!text) return
       if (!hover) hover = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: 'ch-hover', offset: 8 })
@@ -381,7 +450,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   // A click goes to the topmost layer under the pointer that has a handler,
   // and to none below it. MapLibre's own layer listener fires for every layer
   // with a feature under the click, where Leaflet's stopped at the marker: in
-  // 'both' mode a click on a point also ran its hex cell's handler, which
+  // auto mode a click on a point also ran its hex cell's handler, which
   // moved the ticker off the row the point had just focused.
   const clickCbs = new Map()
   // The glyph a click lands on (#632): the nearest ▲ or ● inside the 30px
@@ -400,19 +469,19 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     if (glyph) { for (const cb of glyphCbs) cb(glyph.properties, glyph.geometry.coordinates); return }
     const layers = [...clickCbs.keys()].filter((id) => map.getLayer(id))
     // queryRenderedFeatures lists the topmost feature first.
-    const f = layers.length ? map.queryRenderedFeatures(e.point, { layers })[0] : null
+    const f = layers.length ? map.queryRenderedFeatures(e.point, { layers }).find((x) => takesPointer(x.layer.id)) : null
     if (!f) return
     for (const cb of clickCbs.get(f.layer.id)) cb(f.properties, e.lngLat, e)
   })
 
   // A click on bare map: no feature of a clickable layer under the pointer,
   // and no glyph in the tap box. This is what clears a selection.
-  const clickable = ['points', 'points-3d', 'hex', 'hex-3d', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out']
+  const clickable = ['points', 'points-3d', 'hex', 'hex-b', 'hex-3d', 'hex-3d-b', 'observer-advert', 'observer-rxlog', 'locate-in', 'locate-out']
   function onEmptyClick(cb) {
     map.on('click', (e) => {
       if (glyphAt(e.point)) return
       const layers = clickable.filter((id) => map.getLayer(id))
-      const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers }) : []
+      const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers }).filter((x) => takesPointer(x.layer.id)) : []
       if (!hit.length) cb(e.lngLat)
     })
   }
@@ -481,7 +550,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     },
     onOverlaysReady(cb) { readyCbs.push(cb); if (overlaysReady) cb() },
     isReady() { return overlaysReady },
-    setData, setHeat, syncSize,
+    setData, setHeat, syncSize, setHexSizes,
     openPopup, closePopup, onPopup(cb) { popupCbs.push(cb) }, hoverText, onLayerClick, onEmptyClick, onGlyphTap,
     // Test hook (#632): where a glyph paints, in page px, for a real click on it.
     glyphPagePoint(key, kind) {

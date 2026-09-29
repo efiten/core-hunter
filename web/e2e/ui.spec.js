@@ -29,7 +29,7 @@ test('theme toggle flips data-theme, persists, reflects in URL, and swaps the gl
 // The layer mode is a segmented control in the filter panel (#539); the
 // pressed segment is the mode. aria-pressed is readable panel-open or shut.
 const expectMode = async (page, mode) => {
-  for (const m of ['points', 'hex', 'both']) {
+  for (const m of ['points', 'hex', 'auto']) {
     await expect(page.locator(`#lm-${m}`)).toHaveAttribute('aria-pressed', String(m === mode))
   }
 }
@@ -60,15 +60,15 @@ test('settings survive a reload via localStorage (no URL params)', async ({ page
   await openSettings(page)
   await page.click('#theme-toggle') // -> light
   await page.click('#ss-close')
-  await setLayerMode(page, 'both')
-  await expectMode(page, 'both')
+  await setLayerMode(page, 'auto')
+  await expectMode(page, 'auto')
 
   // Reload with a bare URL: the URL was rewritten by replaceState, so strip it to
   // prove the state is also restored from localStorage alone.
   await page.evaluate(() => history.replaceState(null, '', location.pathname))
   await page.reload()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await expectMode(page, 'both')
+  await expectMode(page, 'auto')
 })
 
 test('map starts in hex mode (#141), fetches /api/heatmap, and the segments switch it', async ({ page }) => {
@@ -77,8 +77,8 @@ test('map starts in hex mode (#141), fetches /api/heatmap, and the segments swit
   await expectMode(page, 'hex')
   await heatmapReq // the cold default drew the heatmap layer
 
-  await setLayerMode(page, 'both')
-  await expectMode(page, 'both')
+  await setLayerMode(page, 'auto')
+  await expectMode(page, 'auto')
   await setLayerMode(page, 'points')
   await expectMode(page, 'points')
   await setLayerMode(page, 'hex')
