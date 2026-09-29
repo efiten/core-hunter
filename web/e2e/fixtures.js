@@ -164,7 +164,7 @@ export async function openSettings(page, tab = 'settings') {
 
 // setFilter toggles one of the secondary filters, at any width.
 //
-// Since #423 those controls live behind the Filters pill below 640px, so a
+// Since #423 those controls live behind the Filters pill below 768px, so a
 // phone-width test has to open it the way a user does; above the breakpoint the
 // pill is not rendered and this is a plain check(). The panel is shut again
 // afterwards because it overlays the map, and most callers go on to assert

@@ -30,7 +30,7 @@ import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeFo
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, clampUnlessNarrow, serialise, parse as parsePlacement } from './tickerplace.js'
 import { noticesPlacement } from './noticeplace.js'
-import { wireNarrowBar } from './barnarrow.js'
+import { wireNarrowBar, NARROW_MEDIA } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 import { compassNeedleTransform, zoomButtonsDisabled, nodePosTap } from './maprail.js'
 import { NODEPOS_MODES, NODEPOS_LABELS, parseNodePosMode } from './nodeposmode.js'
@@ -1372,10 +1372,10 @@ function showNodePosNotice({ on = nodePosCb.checked, reason = null, registry = n
   if (next.hideAfterMs) noticeTimer = setTimeout(() => { keyEl.hidden = true }, next.hideAfterMs)
 }
 
-// Narrow is 640px, the line the bar and the ticker answer "is this a phone"
-// with. matchMedia rather than innerWidth so the answer arrives as an event.
-const narrowQuery = window.matchMedia('(max-width: 640px)')
-// The bar's group keeps two of its four controls below 640px and the filter
+// Narrow is NARROW_MEDIA, the line the bar and the ticker answer "is this a
+// phone" with. matchMedia rather than innerWidth so the answer arrives as an event.
+const narrowQuery = window.matchMedia(NARROW_MEDIA)
+// The bar's group keeps two of its four controls below 768px and the filter
 // panel takes the other two (#561). Wired to the same query rather than a
 // second matchMedia, so the bar and everything else that answers "is this a
 // phone" cannot disagree about where the line is.
@@ -1931,7 +1931,7 @@ urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 // the box is pulled inside the viewport, or a ticker left at the edge of a wide
 // monitor would be unreachable on a laptop.
 //
-// Below 640px there is no placement at all (#643): the stylesheet pins the card
+// Below 768px there is no placement at all (#643): the stylesheet pins the card
 // centred under the bar, as in the app. The stored x,y is kept rather than
 // clamped there, so the position dragged on a wide screen is still there when
 // the screen is wide again.
@@ -1961,7 +1961,7 @@ if (rxLog) {
   })
 
   function apply() {
-    // Removed rather than left stale below 640px: the narrow rule takes its top
+    // Removed rather than left stale below 768px: the narrow rule takes its top
     // from the var's own fallback, under the bar, so a written --rx-y would
     // hang the pinned card at the wide screen's height.
     if (narrowQuery.matches) {
@@ -2019,7 +2019,7 @@ if (rxLog) {
   resized.observe(rxLog)
   if (notices) resized.observe(notices)
 
-  // Also what lands a resize across 640px (#643), either way: the crossing is a
+  // Also what lands a resize across 768px (#643), either way: the crossing is a
   // window resize and re-lays the bar, and both call this, so no listener on the
   // query itself is needed. matches is read live, so it is already the new side.
   function reflow() {
@@ -2074,7 +2074,7 @@ if (rxLog) {
   // Pointer events rather than mouse so a drag works from a pen or a touch
   // screen on a wide display, where the frame is reached the same way.
   //
-  // Dragging stops below 640px (#561). The card is pinned there at
+  // Dragging stops below 768px (#561). The card is pinned there at
   // `calc(100vw - 20px)` (#643), so there is no "out of the way" to drag it to:
   // it spans the map whatever its height. Shrinking and dismissing are what
   // move it aside on a phone, which is exactly what the app does at every width.

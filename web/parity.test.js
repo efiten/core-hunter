@@ -608,7 +608,7 @@ describe('receptions ticker CSS parity (#322)', () => {
   // lane counts, so it drifted until someone looked at the two side by side.
   // This pins the chrome itself. What is deliberately per-surface is #rx-log's
   // own box, which is placed and draggable on a wide map and centred in the app
-  // (and on a map below 640px, #643).
+  // (and on a map below 768px, #643).
   it('draws the same card on both surfaces', () => {
     const decls = (block, selector) => {
       const found = declBlock(block, selector)
@@ -1397,7 +1397,7 @@ describe('--ch-building matches the app in both themes (#595)', () => {
 // "Types" where the other said "Traffic types".
 //
 // The map adds View after the shared five, and Hunters and Time carry the
-// controls the bar hands over below 640px (#561). Those are the deliberate
+// controls the bar hands over below 768px (#561). Those are the deliberate
 // difference: analysis is map-only, because the map is the superset. Overlays
 // went with #630: node positions, its one control, is a button in the map's FAB
 // rail now, as it is in the app's.

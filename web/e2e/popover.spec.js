@@ -1,4 +1,8 @@
 import { test, expect, openPicker, openFilters } from './fixtures.js'
+import { NARROW_MEDIA } from '../barnarrow.js'
+
+// The width at and under which the bar and the ticker are narrow.
+const NARROW_MAX = Number(NARROW_MEDIA.match(/(\d+)px/)[1])
 
 // #372: on a phone #bar wrapped, #tr-toggle started its own row, and the
 // right-anchored time-range panel grew off the left edge — what showed was its
@@ -34,7 +38,7 @@ async function expectOnScreen(page, selector) {
   }, { message: `${selector} on screen` }).toBe('on screen')
 }
 
-// Below 640px the time range and the hunter picker are reached through Filters
+// Below 768px the time range and the hunter picker are reached through Filters
 // (#561): the bar's group keeps Select target and the pill at that width, and
 // the other two live in the panel. Which is where the popovers have to open
 // fully on screen from now -- the constraint #372 named has not changed, only
@@ -45,7 +49,7 @@ const reach = async (page, toggle, panel, narrow) => {
 }
 
 for (const [label, width, height] of [['a phone', 412, 915], ['a desktop', 1280, 720]]) {
-  const narrow = width <= 640
+  const narrow = width <= NARROW_MAX
   test(`the time-range picker opens fully on screen on ${label}`, async ({ page }) => {
     await page.setViewportSize({ width, height })
     await page.goto('/')
@@ -77,7 +81,7 @@ for (const [label, width, height] of [['a phone', 412, 915], ['a desktop', 1280,
 
 test('an open panel follows its toggle when a resize moves it', async ({ page }) => {
   // The bar no longer rewraps (#561), so the toggle does not change rows. What
-  // it does at 640px is move house: #tr-wrap leaves the bar's group for the
+  // it does at 768px is move house: #tr-wrap leaves the bar's group for the
   // filter panel. An open popover cannot follow it there -- the panel is shut,
   // and a popover inside a shut panel is a control that has silently vanished
   // while its toggle still claims to be expanded. It closes instead.
