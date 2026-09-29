@@ -4,9 +4,10 @@ import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures,
 import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
 import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
+import { createRowAttributor } from './rowattribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey, isHashIdKind } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
@@ -325,10 +326,19 @@ const ignoreSuffix = () => (ignored.size ? ` · ${ignored.size} ignored` : '')
 // the Locate and Ignore buttons are handled by the delegated document
 // listeners further down, so nothing here needs a reference to the popup.
 let currentPoints = []
+// The rows a name is printed on carry their attribution by reach (#663), so
+// the popup and the ticker name a relay the way the app does. One attributor
+// each: the points are the view's, the ticker's lines are the latest wherever
+// they were heard, and each keeps the registry slice that covers its own rows.
+// Below member the registry is refused, so nothing is asked.
+const mayReadRegistry = () => roleKnown && canSeeObserverPoints(currentRole)
+const pointAttribution = createRowAttributor({ fetchRegistry: (b) => fetchNodeRegistry(b), allowed: mayReadRegistry })
+const tickerAttribution = createRowAttributor({ fetchRegistry: (b) => fetchNodeRegistry(b), allowed: mayReadRegistry })
 function pointPopupHtml(pt) {
   const role = pt.sender_role ? ` · ${esc(pt.sender_role)}` : ''
   const sid = pt.sender_id || ''
-  const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
+  // A relay or direct hash reads '#' and the id, as the ticker has it.
+  const idLine = sid ? `<br><span class="pp-id">${esc(isHashIdKind(pt.sender_kind) ? '#' + sid : sid)}</span>` : ''
   const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
   // Ignoring is per person and needs no role: it only ever removes rows from
   // the asker's own view. Same wording as the app's popup (huntmap.js).
@@ -338,10 +348,14 @@ function pointPopupHtml(pt) {
 // Reception ticker two-way sync (#224): clicking a point scrolls the ticker
 // to the matching line, keyed by receptionKey since /api/points rows carry no
 // stable id.
+// A tap before the registry answered opens by the label; the open popup is
+// named again when the answer lands.
+let pointsAttributed = Promise.resolve()
 const onPointClick = (props) => {
   const pt = currentPoints[props.i]
   if (!pt) return
-  wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
+  const popup = wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
+  if (pt._attr === undefined) pointsAttributed.then(() => { if (popup.isOpen()) popup.setHTML(pointPopupHtml(pt)) })
   if (rxTicker) rxTicker.focusRecord(receptionKey(pt))
 }
 // The pillar carries the index of the reception it stands for (#595), so a
@@ -373,6 +387,10 @@ async function drawPoints() {
   // until the new ones are here. The array is kept for the click handler,
   // which gets a feature index back rather than a marker object.
   currentPoints = points
+  // Not awaited: the popup reads _attr when a point is tapped, and the draw
+  // does not wait for a registry. A tap that lands first reads by the label
+  // until this settles (onPointClick).
+  pointsAttributed = pointAttribution.attribute(points).catch(() => {})
   // A selection dims what is not part of it (#624), on a fresh draw as well as
   // on a tap, or a pan would bring the whole map back to full strength.
   const { dimFor } = selectionDimmer()
@@ -543,6 +561,8 @@ function announceRoleRise(role) {
 function applyRole(me) {
   currentRole = me.role || 'guest'
   roleKnown = true
+  // The registry is the role's to read or not (#663).
+  pointAttribution.reset(); tickerAttribution.reset()
   announceRoleRise(currentRole)
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
@@ -785,7 +805,12 @@ async function fetchTickerPage(mode) {
   // truncated travels with the rows: QueryPoints fetches one past the limit to
   // detect it precisely, and the ticker's header needs it to say whether more
   // receptions exist behind this page (#638).
-  return { points: d.points || [], truncated: !!d.truncated }
+  // Attributed before the lines render, so a line never prints a name first
+  // and drops it a moment later. A registry that does not answer leaves the
+  // rows as a guest's (rowattribution.js).
+  const points = d.points || []
+  await tickerAttribution.attribute(points).catch(() => {})
+  return { points, truncated: !!d.truncated }
 }
 
 // Snap the map to the selected hunter(s) (#195).
