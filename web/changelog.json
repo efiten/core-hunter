@@ -7,6 +7,13 @@
     "body": "The server fetches the node registry on its own, so nobody sees it as unreachable after a restart."
   },
   {
+    "id": "2026-09-30-quieter-send-sounds",
+    "date": "2026-09-30",
+    "where": "app",
+    "title": "Quieter send sounds",
+    "body": "The pops for Discover and trace-pings are a third as loud and shorter, so a weak reception is heard over them."
+  },
+  {
     "id": "2026-09-27-hud-bottom-space",
     "date": "2026-09-27",
     "where": "app",
