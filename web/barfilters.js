@@ -2,7 +2,7 @@
 // presentation).
 //
 // Fourteen type chips, the id-class chips, two checkboxes, the layer
-// controls and Clear used to lay out inline in #bar above 640px — a full
+// controls and Clear used to lay out inline in #bar on a wide screen — a full
 // bar row that read as one long strip without groups. The bar now keeps
 // five controls (hunters, sender, time, the Filters pill, the right-side
 // meta) and everything else lives in this panel at every width, in named

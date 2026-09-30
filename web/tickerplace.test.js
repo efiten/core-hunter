@@ -6,7 +6,7 @@ const DESKTOP = { vw: 1280, vh: 800, top: 48 }
 const PHONE = { vw: 390, vh: 780, top: 96 }
 // The card at its full height: ten lanes of 26px plus the 36px header.
 const FULL = { w: 680, h: 296 }
-// A phone held sideways. Wider than the 640px breakpoint, so nothing about the
+// A phone held sideways. Wider than the 767px breakpoint, so nothing about the
 // width says "phone", and only 309px of map under the bar.
 const LANDSCAPE = { vw: 844, vh: 390, top: 81 }
 
@@ -38,7 +38,7 @@ describe('clampToViewport', () => {
 })
 
 describe('clampUnlessNarrow', () => {
-  // #643: below 640px the CSS pins the card under the bar, so x,y are not where
+  // #643: below 768px the CSS pins the card under the bar, so x,y are not where
   // it is. They are where it was left on a wide screen, and urlstate saves them
   // on every load: clamping them here would overwrite that position with one
   // measured against a phone.
@@ -77,7 +77,7 @@ describe('initialPlacement', () => {
 
   it('leaves a desktop position alone when it loads on a phone', () => {
     // The reload that used to lose it (#643): saved at 1100,700 on a monitor,
-    // opened below 640px, written back to the link and to storage as 0,580.
+    // opened below 768px, written back to the link and to storage as 0,580.
     const saved = { x: 1100, y: 700, collapse: 0, hidden: false }
     const p = initialPlacement({ saved, size: SIZE, viewport: PHONE, narrow: true })
     expect(serialise(p)).toBe(serialise(saved))
