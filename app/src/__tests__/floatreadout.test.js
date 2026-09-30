@@ -268,7 +268,7 @@ describe('createFloatReadout open path on Android (#669)', () => {
     h.doc.fullscreenElement = h.video
     h.resolve('requestFullscreen')
     await settle()
-    h.resolve('lock portrait')
+    h.resolve('lock any')
     await settle()
     expect(h.float.isOpen()).toBe(true)
     expect(h.count('requestPictureInPicture')).toBe(0)
@@ -301,7 +301,7 @@ describe('createFloatReadout open path (#616)', () => {
     h.doc.fullscreenElement = h.video
     h.resolve('requestFullscreen')
     await settle()
-    h.resolve('lock portrait')
+    h.resolve('lock any')
     await settle()
   }
 
@@ -318,7 +318,11 @@ describe('createFloatReadout open path (#616)', () => {
     expect(h.opened).toEqual([true])
   })
 
-  it('goes fullscreen when picture-in-picture is disabled, and locks portrait only once fullscreen is up', async () => {
+  // #707: 'any' follows how the phone is held and Android's auto-rotate
+  // switch (measured on a phone, 27 September), where 'portrait' held a phone
+  // in a landscape holder sideways. Without a lock Chrome turns the screen to
+  // the landscape video, which was #616.
+  it('goes fullscreen when picture-in-picture is disabled, and locks to the sensor only once fullscreen is up', async () => {
     const h = makeFloat({ pip: false })
     h.float.open()
     await settle()
@@ -328,8 +332,8 @@ describe('createFloatReadout open path (#616)', () => {
     h.doc.fullscreenElement = h.video
     h.resolve('requestFullscreen')
     await settle()
-    expect(h.count('lock portrait')).toBe(1)
-    h.resolve('lock portrait')
+    expect(h.count('lock any')).toBe(1)
+    h.resolve('lock any')
     await settle()
     expect(h.float.isOpen()).toBe(true)
   })
@@ -344,7 +348,7 @@ describe('createFloatReadout open path (#616)', () => {
     expect(h.float.isOpen()).toBe(false)
     h.resolve('requestFullscreen')
     await settle()
-    h.resolve('lock portrait')
+    h.resolve('lock any')
     await settle()
     expect(h.float.isOpen()).toBe(true)
   })
@@ -357,7 +361,7 @@ describe('createFloatReadout open path (#616)', () => {
     await settle()
     h.resolve('requestFullscreen')
     await settle()
-    h.reject('lock portrait')
+    h.reject('lock any')
     await settle()
     expect(h.float.isOpen()).toBe(true)
     expect(h.opened).toEqual([true])

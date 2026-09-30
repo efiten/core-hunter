@@ -3,9 +3,10 @@
 // picture-in-picture API on, the video goes straight into its floating
 // window. Not on Android (#669): there that call puts the video in a window
 // of its own and the tab behind it is hidden, so the GPS watch stops and
-// nothing is recorded. Android goes fullscreen instead, locked upright, and
-// Chrome shrinks itself into the floating window when the user presses Home
-// or switches apps, which keeps the page visible and capturing.
+// nothing is recorded. Android goes fullscreen instead, turning with the
+// phone (#707), and Chrome shrinks itself into the floating window when the
+// user presses Home or switches apps, which keeps the page visible and
+// capturing.
 // Chrome's automatic PiP through the Media Session API is desktop-only.
 //
 // floatModel, floatSupported and createFloatReadout's open path are
@@ -224,15 +225,18 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
     try { await video.requestPictureInPicture(); return true } catch (_) { return false }
   }
 
-  // Fullscreen, the Android path (first there, #669). The canvas is landscape, so Chrome would
-  // turn the phone's screen sideways; the portrait lock keeps the readout
-  // upright. A lock is only allowed while fullscreen, so it waits for that,
+  // Fullscreen, the Android path (first there, #669). The canvas is landscape, so
+  // without a lock Chrome would turn the phone's screen sideways (#616). 'any'
+  // lets the readout follow how the phone is held instead, and it keeps to
+  // Android's auto-rotate switch: measured on a phone on 27 September (#707),
+  // where 'portrait' held the readout sideways on a phone in a landscape
+  // holder. A lock is only allowed while fullscreen, so it waits for that,
   // and a refused lock still leaves the readout out. iPhone Safari has no
   // element fullscreen, only the video's own player.
   async function fullscreen() {
     if (video.requestFullscreen) {
       try { await video.requestFullscreen() } catch (_) { return false }
-      try { if (orientation && orientation.lock) await orientation.lock('portrait') } catch (_) {}
+      try { if (orientation && orientation.lock) await orientation.lock('any') } catch (_) {}
       return true
     }
     if (!video.webkitEnterFullscreen) return false
@@ -266,7 +270,7 @@ export function createFloatReadout({ canvas, video, colors, onChange, orientatio
       if (!stillOut && out) { try { video.pause() } catch (_) {} setOpen(false) }
     }, 600)
   }
-  // The portrait lock belongs to the fullscreen step only, so it is released
+  // The lock belongs to the fullscreen step only, so it is released
   // the moment fullscreen ends, not after the hand-over wait.
   doc.addEventListener('fullscreenchange', () => {
     if (doc.fullscreenElement !== video) { try { if (orientation && orientation.unlock) orientation.unlock() } catch (_) {} }
