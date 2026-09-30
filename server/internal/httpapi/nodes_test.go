@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -36,6 +35,13 @@ func registryUpstream(hits *int32, body string) *httptest.Server {
 const twoNodes = `{"count":2,"nodes":[
 	{"pubkey":"aa11","name":"Antwerpen","lat":51.2,"lon":4.4},
 	{"pubkey":"bb22","name":"Groningen","lat":53.2,"lon":6.5}]}`
+
+// warmed is the API after the fetch Run does at boot. Positions itself never
+// reaches an upstream (#591), so a test about what it serves fetches first.
+func warmed(h *NodesAPI) *NodesAPI {
+	h.refresh()
+	return h
+}
 
 func nodesReq(bbox string, a Auth) *http.Request {
 	r := httptest.NewRequest("GET", "/api/nodes/positions?bbox="+bbox, nil)
@@ -76,7 +82,7 @@ func TestNodePositionsReturnsOnlyNodesInBBox(t *testing.T) {
 	var hits int32
 	up := registryUpstream(&hits, twoNodes)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
@@ -96,7 +102,7 @@ func TestNodePositionsRequiresBBox(t *testing.T) {
 	var hits int32
 	up := registryUpstream(&hits, twoNodes)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
 
 	for _, q := range []string{"", "50,3,54", "a,b,c,d"} {
 		w := httptest.NewRecorder()
@@ -107,12 +113,25 @@ func TestNodePositionsRequiresBBox(t *testing.T) {
 	}
 }
 
-func TestNodePositionsCachesAcrossRequests(t *testing.T) {
+func TestNodePositionsNeverFetchesOnARequest(t *testing.T) {
+	// #591: a member's request used to carry the cold fetch, the whole registry
+	// walk with the client timeout per page, and a proxy with less patience
+	// answered 504 for it. Cold or warm, a request reads memory and nothing else.
 	var hits int32
 	up := registryUpstream(&hits, twoNodes)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Minute}
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
 
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "registry_unavailable") {
+		t.Fatalf("cold: got %d %s, want 503 registry_unavailable", w.Code, w.Body.String())
+	}
+	if hits != 0 {
+		t.Fatalf("a cold request fetched the upstream %d times, want 0", hits)
+	}
+
+	h.refresh()
 	for i := 0; i < 5; i++ {
 		w := httptest.NewRecorder()
 		h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -125,19 +144,153 @@ func TestNodePositionsCachesAcrossRequests(t *testing.T) {
 	}
 }
 
-func TestNodePositionsRefetchesAfterTTL(t *testing.T) {
+// positionsCode asks for the whole test area as a member and answers the status.
+func positionsCode(h *NodesAPI) int {
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	return w.Code
+}
+
+// eventually polls cond for up to two seconds: Run works on its own goroutine,
+// so what it stored is observed, not awaited.
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("never happened: %s", what)
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+func TestNodesRunWarmsTheRegistryAtBoot(t *testing.T) {
 	var hits int32
 	up := registryUpstream(&hits, twoNodes)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Nanosecond}
+	// An hour between refreshes: what answers below is the fetch at boot.
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Interval: time.Hour}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go h.Run(ctx)
 
-	for i := 0; i < 2; i++ {
+	eventually(t, "a 200 without any request having fetched", func() bool { return positionsCode(h) == 200 })
+}
+
+func TestNodesRunRefreshesOnATimer(t *testing.T) {
+	// The second fetch carries a node the first did not: the registry served
+	// must become the newer one with no request in between asking for it.
+	var hits int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if atomic.AddInt32(&hits, 1) == 1 {
+			fmt.Fprint(w, `{"nodes":[{"pubkey":"aa11","lat":51.2,"lon":4.4}]}`)
+			return
+		}
+		fmt.Fprint(w, twoNodes)
+	}))
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Interval: 5 * time.Millisecond}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go h.Run(ctx)
+
+	eventually(t, "the refreshed registry being served", func() bool {
 		w := httptest.NewRecorder()
 		h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
-		time.Sleep(time.Millisecond)
+		return w.Code == 200 && len(decodeNodes(t, w).Nodes) == 2
+	})
+}
+
+func TestNodesRunAsksAgainSoonAfterAFailedFetch(t *testing.T) {
+	// A fetch at boot that fails leaves nothing in memory. With an hour to the
+	// next refresh, the only way to a 200 here is the retry.
+	var hits int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) == 1 {
+			w.WriteHeader(502)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, twoNodes)
+	}))
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Interval: time.Hour, Retry: 5 * time.Millisecond,
+		Logf: func(string, ...any) {}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go h.Run(ctx)
+
+	eventually(t, "a 200 after the first fetch failed", func() bool { return positionsCode(h) == 200 })
+}
+
+func TestNodesRunStopsWithItsContext(t *testing.T) {
+	var hits int32
+	up := registryUpstream(&hits, twoNodes)
+	defer up.Close()
+	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Interval: time.Millisecond}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { h.Run(ctx); close(done) }()
+	eventually(t, "a first fetch", func() bool { return atomic.LoadInt32(&hits) > 0 })
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run kept going after its context was cancelled")
 	}
-	if hits != 2 {
-		t.Fatalf("upstream fetched %d times, want 2 — an expired cache must refetch", hits)
+}
+
+func TestNodesLogAFailedFetchWithItsURLAndError(t *testing.T) {
+	// #591: the fetch error was dropped, so an outage seen on a phone could not
+	// be read back from the log, nor which of the upstreams it was.
+	good := registryUpstream(new(int32), twoNodes)
+	defer good.Close()
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+	}))
+	defer bad.Close()
+	var lines []string
+	h := &NodesAPI{Upstreams: []string{good.URL, bad.URL + "/sf8/api/nodes/positions"}, Client: good.Client(),
+		Logf: func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }}
+
+	h.refresh()
+	if len(lines) != 1 {
+		t.Fatalf("one failed upstream is one line, got %q", lines)
+	}
+	if !strings.Contains(lines[0], bad.URL+"/sf8/api/nodes/positions") || !strings.Contains(lines[0], "404") {
+		t.Fatalf("the line must name the URL and the error: %q", lines[0])
+	}
+	// A request is not a fetch, so it logs nothing either.
+	for i := 0; i < 3; i++ {
+		positionsCode(h)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("requests must not add lines: %q", lines)
+	}
+}
+
+func TestNodesLogAPageThatFailsAfterTheFirst(t *testing.T) {
+	// A later page failing keeps what the earlier ones gave, which makes it a
+	// registry that is silently short. The line is the only trace of it.
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("offset") != "" {
+			w.WriteHeader(500)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"nodes":[{"public_key":"a","lat":51,"lon":4},{"public_key":"b","lat":51,"lon":4}]}`)
+	}))
+	defer up.Close()
+	var lines []string
+	h := &NodesAPI{Upstreams: []string{up.URL + "?limit=2"}, Client: up.Client(),
+		Logf: func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }}
+
+	if !h.refresh() {
+		t.Fatal("the first page is a registry")
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "offset=2") || !strings.Contains(lines[0], "500") {
+		t.Fatalf("want one line naming the failed page and its status, got %q", lines)
 	}
 }
 
@@ -152,7 +305,7 @@ func TestNodePositionsMergesUpstreamsAndDedupes(t *testing.T) {
 		{"pubkey":"cc33","name":"OnlySF8","lat":51.3,"lon":4.5}]}`)
 	defer a.Close()
 	defer b.Close()
-	h := &NodesAPI{Upstreams: []string{a.URL, b.URL}, Client: a.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{a.URL, b.URL}, Client: a.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -185,18 +338,18 @@ func TestNodePositionsServesWarmCacheWhenUpstreamFails(t *testing.T) {
 		fmt.Fprint(w, twoNodes)
 	}))
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Nanosecond}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Logf: func(string, ...any) {}})
 
 	// The narrow bbox keeps this at one node, so "still served" is a claim about
 	// the cached registry rather than about an empty filter passing everything.
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
-	if len(decodeNodes(t, w).Nodes) != 1 {
-		t.Fatalf("warm-up request should have returned the in-bbox node: %s", w.Body.String())
+	if res := decodeNodes(t, w); len(res.Nodes) != 1 || res.Stale {
+		t.Fatalf("the warm registry should have returned the in-bbox node, not stale: %s", w.Body.String())
 	}
 
 	atomic.StoreInt32(&fail, 1)
-	time.Sleep(time.Millisecond)
+	h.refresh()
 	w2 := httptest.NewRecorder()
 	h.Positions(w2, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
 	// A registry that is a few minutes stale is worth far more than an error
@@ -207,6 +360,15 @@ func TestNodePositionsServesWarmCacheWhenUpstreamFails(t *testing.T) {
 	if !decodeNodes(t, w2).Stale {
 		t.Fatal("a served-from-stale-cache response must say so")
 	}
+
+	// And the mark goes once a refresh gives a registry again.
+	atomic.StoreInt32(&fail, 0)
+	h.refresh()
+	w3 := httptest.NewRecorder()
+	h.Positions(w3, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
+	if decodeNodes(t, w3).Stale {
+		t.Fatal("a refreshed registry must not be served as stale")
+	}
 }
 
 func TestNodePositionsErrorsWithNothingCached(t *testing.T) {
@@ -214,12 +376,12 @@ func TestNodePositionsErrorsWithNothingCached(t *testing.T) {
 		w.WriteHeader(500)
 	}))
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Logf: func(string, ...any) {}})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
-	if w.Code != 503 {
-		t.Fatalf("cold cache + dead upstream: got %d, want 503", w.Code)
+	if w.Code != 503 || !strings.Contains(w.Body.String(), "registry_unavailable") {
+		t.Fatalf("cold cache + dead upstream: got %d %s, want 503 registry_unavailable", w.Code, w.Body.String())
 	}
 }
 
@@ -235,7 +397,7 @@ func TestNodePositionsCapsAndFlagsTruncation(t *testing.T) {
 	body += `]}`
 	up := registryUpstream(&hits, body)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Cap: 3}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), Cap: 3})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -251,7 +413,7 @@ func TestNodePositionsSkipsNodesWithoutCoordinates(t *testing.T) {
 		{"pubkey":"aa11","name":"Placed","lat":51.2,"lon":4.4},
 		{"pubkey":"bb22","name":"NoCoords"}]}`)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -278,10 +440,10 @@ func TestNodePositionsSaysWhenUnconfigured(t *testing.T) {
 	}
 }
 
-func TestNodePositionsDoesNotBlockOnASlowRefresh(t *testing.T) {
-	// The mutex used to be held across the upstream fetch, so every member
-	// request arriving after the TTL expired queued behind one slow registry
-	// while a serviceable set sat in memory. A warm cache must answer at once.
+func TestNodePositionsDoesNotWaitForARefreshInFlight(t *testing.T) {
+	// A refresh that hangs on a slow registry must cost a visitor nothing: the
+	// set in memory answers at once, and it is not stale, since no refresh has
+	// failed.
 	release := make(chan struct{})
 	var hits int32
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -293,62 +455,25 @@ func TestNodePositionsDoesNotBlockOnASlowRefresh(t *testing.T) {
 	}))
 	defer up.Close()
 	defer close(release)
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Nanosecond}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
 
-	w := httptest.NewRecorder()
-	h.Positions(w, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
-	if len(decodeNodes(t, w).Nodes) != 1 {
-		t.Fatalf("warm-up: %s", w.Body.String())
-	}
-	// The clock has to have moved past the TTL. time.Since can return exactly 0
-	// inside one tick on Windows, which reads as "not due yet" against a
-	// nanosecond TTL — the same reason TestNodePositionsRefetchesAfterTTL sleeps.
-	time.Sleep(time.Millisecond)
+	go h.refresh()
+	eventually(t, "the second fetch reaching the upstream", func() bool { return atomic.LoadInt32(&hits) == 2 })
 
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		w2 := httptest.NewRecorder()
-		h.Positions(w2, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
-		done <- w2
+		w := httptest.NewRecorder()
+		h.Positions(w, nodesReq("50.5,3.0,52.0,5.0", Auth{Role: "member"}))
+		done <- w
 	}()
 	select {
-	case w2 := <-done:
-		res := decodeNodes(t, w2)
-		if len(res.Nodes) != 1 || !res.Stale {
-			t.Fatalf("a warm cache must be served immediately and marked stale: %+v", res)
+	case w := <-done:
+		res := decodeNodes(t, w)
+		if len(res.Nodes) != 1 || res.Stale {
+			t.Fatalf("the set in memory must be served at once, and not as stale: %+v", res)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("request blocked on the in-flight refresh instead of serving the cached set")
-	}
-}
-
-func TestNodePositionsFetchesOnceOnAColdConcurrentStart(t *testing.T) {
-	// A cold start under load must not become one upstream fetch per caller.
-	var hits int32
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
-		time.Sleep(50 * time.Millisecond) // wide enough for the others to pile up
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, twoNodes)
-	}))
-	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Minute}
-
-	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			w := httptest.NewRecorder()
-			h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
-			if w.Code != 200 {
-				t.Errorf("concurrent cold request: %d %s", w.Code, w.Body.String())
-			}
-		}()
-	}
-	wg.Wait()
-	if hits != 1 {
-		t.Fatalf("upstream fetched %d times for one cold start, want 1", hits)
 	}
 }
 
@@ -359,19 +484,38 @@ func TestNodePositionsSaysWhenTheRegistryIsEmpty(t *testing.T) {
 	var hits int32
 	up := registryUpstream(&hits, `{"count":0,"nodes":[]}`)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client(), TTL: time.Minute}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
 	if w.Code != 503 || !strings.Contains(w.Body.String(), "registry_empty") {
 		t.Fatalf("got %d %s, want 503 registry_empty", w.Code, w.Body.String())
 	}
-	// And it does not re-ask on every request while that answer is fresh.
-	for i := 0; i < 3; i++ {
-		h.Positions(httptest.NewRecorder(), nodesReq("50,3,54,7", Auth{Role: "member"}))
+}
+
+func TestNodePositionsKeepTheRegistryWhenARefreshComesBackEmpty(t *testing.T) {
+	// An upstream that starts answering 200 with nothing in it is broken, not
+	// a world that lost its nodes: the registry in memory stays, marked stale.
+	empty := int32(0)
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if atomic.LoadInt32(&empty) == 1 {
+			fmt.Fprint(w, `{"count":0,"nodes":[]}`)
+			return
+		}
+		fmt.Fprint(w, twoNodes)
+	}))
+	defer up.Close()
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
+
+	atomic.StoreInt32(&empty, 1)
+	if h.refresh() {
+		t.Fatal("an empty answer is no registry, so Run must ask again soon")
 	}
-	if hits != 1 {
-		t.Fatalf("upstream fetched %d times, want 1 — an empty answer must not be retried per request", hits)
+	w := httptest.NewRecorder()
+	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
+	if res := decodeNodes(t, w); w.Code != 200 || len(res.Nodes) != 2 || !res.Stale {
+		t.Fatalf("got %d %s, want the two cached nodes marked stale", w.Code, w.Body.String())
 	}
 }
 
@@ -389,7 +533,7 @@ func TestNodePositionsAcceptsTheCoreScopeShape(t *testing.T) {
 	var hits int32
 	up := registryUpstream(&hits, csPage)
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -418,7 +562,7 @@ func TestNodePositionsMergesTheTwoRegistryShapes(t *testing.T) {
 		{"public_key":"only8","name":"Only8","lat":51.4,"lon":4.6}]}`)
 	defer sf7.Close()
 	defer sf8.Close()
-	h := &NodesAPI{Upstreams: []string{sf7.URL, sf8.URL}, Client: sf7.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{sf7.URL, sf8.URL}, Client: sf7.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -459,7 +603,7 @@ func TestNodePositionsWalksPagesWhenTheURLAsksForThem(t *testing.T) {
 		fmt.Fprintf(w, `{"total":%d,"nodes":[%s]}`, len(page), strings.Join(page, ","))
 	}))
 	defer up.Close()
-	h := &NodesAPI{Upstreams: []string{up.URL + "/api/nodes?limit=3"}, Client: up.Client()}
+	h := warmed(&NodesAPI{Upstreams: []string{up.URL + "/api/nodes?limit=3"}, Client: up.Client()})
 
 	w := httptest.NewRecorder()
 	h.Positions(w, nodesReq("50,3,54,7", Auth{Role: "member"}))
@@ -480,7 +624,7 @@ func TestNodePositionsDoesNotPageAnUpstreamWithoutALimit(t *testing.T) {
 	defer up.Close()
 	h := &NodesAPI{Upstreams: []string{up.URL}, Client: up.Client()}
 
-	h.Positions(httptest.NewRecorder(), nodesReq("50,3,54,7", Auth{Role: "member"}))
+	h.refresh()
 	if hits != 1 {
 		t.Fatalf("an upstream with no ?limit= returns everything at once: %d requests", hits)
 	}
@@ -505,7 +649,7 @@ func TestNodePositionsStopsPagingAtTheCap(t *testing.T) {
 	defer up.Close()
 	h := &NodesAPI{Upstreams: []string{up.URL + "?limit=2"}, Client: up.Client()}
 
-	h.Positions(httptest.NewRecorder(), nodesReq("50,3,54,7", Auth{Role: "member"}))
+	h.refresh()
 	if reqs > int32(maxRegistryPages) {
 		t.Fatalf("paging ran %d times, cap is %d", reqs, maxRegistryPages)
 	}

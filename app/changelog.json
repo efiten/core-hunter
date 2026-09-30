@@ -1,5 +1,26 @@
 [
   {
+    "id": "2026-09-30-node-positions-after-restart",
+    "date": "2026-09-30",
+    "where": "map",
+    "title": "Node positions straight after a server restart",
+    "body": "The server fetches the node registry on its own, so nobody sees it as unreachable after a restart."
+  },
+  {
+    "id": "2026-09-30-quieter-send-sounds",
+    "date": "2026-09-30",
+    "where": "app",
+    "title": "Quieter send sounds",
+    "body": "The pops for Discover and trace-pings are a third as loud and shorter, so a weak reception is heard over them."
+  },
+  {
+    "id": "2026-09-29-map-names-relays-like-app",
+    "date": "2026-09-29",
+    "where": "map",
+    "title": "The map names a relay like the app",
+    "body": "A relay's name in the ticker and the popup is marked ~ as a guess. Members get the name of the one known node in reach."
+  },
+  {
     "id": "2026-09-27-hud-bottom-space",
     "date": "2026-09-27",
     "where": "app",
@@ -19,6 +40,27 @@
     "where": "app",
     "title": "A larger audio buffer",
     "body": "Sound uses a larger output buffer, against ticking while the app is busy right after start."
+  },
+  {
+    "id": "2026-09-27-float-no-prev-next",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "The floating readout has no buttons of its own",
+    "body": "Previous and next are gone from the floating window; step through receptions in the ticker."
+  },
+  {
+    "id": "2026-09-27-float-turns-with-phone",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "The fullscreen readout turns with the phone",
+    "body": "In a landscape holder the fullscreen readout now lies the right way, and it keeps to Android's auto-rotate setting."
+  },
+  {
+    "id": "2026-09-27-picker-search-focus",
+    "date": "2026-09-27",
+    "where": "both",
+    "title": "Type straight away in the target picker",
+    "body": "Opening the target picker puts the cursor in its search. In the app it opens on an empty search every time."
   },
   {
     "id": "2026-09-27-dutchmeshcore-by-default",
