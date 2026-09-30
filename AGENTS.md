@@ -768,6 +768,12 @@ default is `hunter`. `test` is a collector's sandbox region, not a label for liv
 either message. A broker marked `auth: "companion"` is signed in to as `v1_{PUBKEY}` with a token
 the companion signs itself (`app/src/companionsign.js`).
 
+A `config.json` broker can list `streams` instead of one `url` (#704): each stream has its own
+`url` and `label`, and the broker stays one row with one switch. Each stream is its own connection
+(`legsOf` in `app/src/brokers.js`), under the id `<broker>@<host>`, with its own watermark and
+token. The site configures DutchMeshCore this way: collector 1 under `hunter`, collector 2 under
+`wardriver`.
+
 ---
 
 ## 10. Resilience invariants (do not break)
@@ -779,11 +785,12 @@ the companion signs itself (`app/src/companionsign.js`).
   published is never deleted, however old — an offline phone keeps everything until it drains.
   IndexedDB is the working set; the backend deduplicates. Publication is tracked by a durable
   watermark, not an in-memory set, so a restart does not re-publish the store.
-  There is one watermark per broker (#554): each broker drains on its own, so one that is offline
-  does not hold the others back, and retention deletes only below the lowest watermark of the
-  brokers that are on. A broker switched off keeps its backlog for the retention window, not
-  beyond it; with every broker off, all of them count and nothing unsent is deleted
-  (`owedBrokers` in `app/src/brokers.js`).
+  There is one watermark per broker (#554), and per stream of a broker that has streams (#704):
+  each connection drains on its own, so one that is offline does not hold the others back, and
+  retention deletes only below the lowest watermark of the brokers that are on. A broker switched
+  off keeps its backlog for the retention window, not beyond it; with every broker off, all of them
+  count and nothing unsent is deleted (`owedLegs` in `app/src/brokers.js`, which asks per
+  connection, never per row).
   See `docs/2026-07-22-retention-and-bounded-reads.md` (#230); this replaces an earlier absolute
   "never deletes local rows" rule, which made the store unbounded.
 - Queue reads are **bounded** — never `getAll()` over the store. The display reads its time window via

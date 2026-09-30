@@ -25,8 +25,15 @@ export function normalizeConfig(raw) {
   // under, so a second entry reusing one is dropped rather than sharing it.
   c.brokers = [];
   const addBroker = (b) => {
-    if (!b || typeof b.url !== 'string' || !b.url.trim()) return;
-    const url = b.url.trim();
+    if (!b) return;
+    // streams (#704): one broker with several collectors behind it, each its
+    // own address and stream label. It stays one entry, so one row and one
+    // switch; brokers.js legsOf makes a connection of each stream.
+    const streams = Array.isArray(b.streams)
+      ? b.streams.filter((s) => s && typeof s.url === 'string' && s.url.trim()).map((s) => ({ url: s.url.trim(), label: s.label }))
+      : [];
+    const url = streams.length ? streams[0].url : (typeof b.url === 'string' ? b.url.trim() : '');
+    if (!url) return;
     let host = url;
     try { host = new URL(url).hostname || url; } catch (_) { /* keep the raw string as the name */ }
     const id = String(b.id || host).trim();
@@ -44,6 +51,19 @@ export function normalizeConfig(raw) {
     if (b.format === 'wardrive') {
       entry.format = 'wardrive';
       entry.label = String(b.label || 'hunter').trim().toLowerCase();
+    }
+    if (streams.length) {
+      // One stream per host: a connection's id is the broker's and the
+      // host's (brokers.js legsOf), so a second stream on it would share the
+      // first one's publisher and watermark.
+      const hosts = new Set();
+      entry.streams = streams.filter((s) => {
+        let h = s.url;
+        try { h = new URL(s.url).host || s.url; } catch (_) { /* keep the raw string */ }
+        if (hosts.has(h)) return false;
+        hosts.add(h);
+        return true;
+      }).map((s) => ({ url: s.url, label: String(s.label || entry.label || 'hunter').trim().toLowerCase() }));
     }
     c.brokers.push(entry);
   };
