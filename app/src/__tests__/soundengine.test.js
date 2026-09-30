@@ -110,6 +110,21 @@ describe('the engine is reachable at all', () => {
   })
 })
 
+// #709: ticking like buffering over Bluetooth right after start, while the map
+// loads and the companion syncs, which stops by itself. That is the output
+// buffer running dry under load: without a hint the browser picks its
+// smallest ("interactive"). 'playback' asks for the larger one; a cue is
+// a sound, not a keypress, and can afford the latency.
+describe('the output buffer (#709)', () => {
+  it('asks for the playback buffer, not the smallest', () => {
+    const made = []
+    globalThis.AudioContext = function (opts) { made.push(opts); return ctx }
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    expect(made).toEqual([{ latencyHint: 'playback' }])
+  })
+})
+
 // Blocker 1: a suspended context's clock does not advance, so notes scheduled
 // against it all land at t≈0 and fire simultaneously the moment it resumes.
 describe('music never schedules against a suspended clock (#145)', () => {
