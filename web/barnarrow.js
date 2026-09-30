@@ -1,4 +1,4 @@
-// What the map's bar hands off below 640px (#561).
+// What the map's bar hands off below 768px (#561, #727).
 //
 // The bar is one row at every width now, and at 375px a row cannot hold four
 // filter controls, a brand, a primary action, a login and two icon buttons:
@@ -107,9 +107,16 @@ export function applyNarrowBar(narrow) {
   }
 }
 
+// The one line the map answers "is this a phone" with: the bar, the ticker and
+// the notices all hang off it. Up to 767px, below a tablet. It was 640 until
+// #727: between 641 and 729px the wide bar wrapped to two or three rows (76 to
+// 90px) with CI's wider font, which is a phone held sideways. The stylesheet
+// repeats the number in its @media rules, since CSS cannot import it.
+export const NARROW_MEDIA = '(max-width: 767px)'
+
 // Wires the rule to the viewport and applies it once. The listener is never
 // removed: the bar lives as long as the page does.
-export function wireNarrowBar(mq = window.matchMedia('(max-width: 640px)')) {
+export function wireNarrowBar(mq = window.matchMedia(NARROW_MEDIA)) {
   applyNarrowBar(mq.matches)
   mq.addEventListener('change', (e) => applyNarrowBar(e.matches))
   return mq

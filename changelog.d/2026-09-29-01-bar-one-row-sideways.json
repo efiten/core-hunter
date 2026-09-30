@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-29-bar-one-row-sideways",
+  "date": "2026-09-29",
+  "where": "map",
+  "title": "One-row bar on a phone held sideways",
+  "body": "Below 768 px wide the map uses the phone layout, so the bar no longer wraps to three rows."
+}

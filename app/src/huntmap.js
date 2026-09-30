@@ -1,4 +1,5 @@
-import { hexCellAt, hexBoundary, hexResForZoom } from './hexgrid.js'
+import { hexCellAt, hexBoundary, hexResForZoom, HEX_MAX_RES } from './hexgrid.js'
+import { pointShare, backlogShare, labelShare, hexSlots, resForZoom, hexFillOpacity, hexBarHeight, hexBarSwitch, pointFillOpacity, pointStrokeOpacity, pillarSwitch } from './zoomfade.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
 import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing, registryMatcher } from './nodelayer.js'
@@ -11,8 +12,8 @@ import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, s
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
 import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey } from './rendercache.js'
-import { currentRideStart, isBacklog, showBacklogPoints } from './rides.js'
-import { hexCellLabel, showHexLabels, planHexLabels } from './hexlabels.js'
+import { currentRideStart, isBacklog } from './rides.js'
+import { hexCellLabel, planHexLabels } from './hexlabels.js'
 import { senderText } from './receptionlog.js'
 import { pickName } from './feed.js'
 import { skyForHour, currentHour } from './sky.js'
@@ -53,7 +54,9 @@ const bareStyle = (bg) => ({ version: 8, sources: {}, layers: [{ id: 'bg', type:
 export const LAYER_ORDER = [
   'hillshade',      // terrain shading, under everything we draw
   'trail',
-  'hex', 'hex-3d',
+  // Two cell sizes at a time (#634): the second layer of each pair holds the
+  // size that is taking over from, or handing over to, the first.
+  'hex', 'hex-b', 'hex-3d', 'hex-3d-b',
   // The noise floor per cell (#410) takes the signal cells' place while it is
   // on, so it sits where they do: under the buildings and the points.
   'noise',
@@ -102,6 +105,20 @@ const POINT_PILLAR_MIN_RADIUS_PX = 4
 // the same number rather than two copies of 0.5 that could drift apart.
 const TRAIL_OPACITY = 0.5
 
+// What a zoom step asks of the draw while the fingers move (#634). What a
+// zoom fades is the style's work and costs nothing here. `data` moves where a
+// layer's share leaves nothing, so what it shows has to be built at all: that
+// takes the full draw. `cells` moves where a size changes: the pair of hex
+// layers at every whole zoom, and the one size the labels and the noise draw
+// at every half. Only the layers that hold cells are rebuilt for that.
+export function zoomKeys(z, view, maxRes) {
+  const s = hexSlots(z, maxRes)
+  return {
+    data: [pointShare(z, view) > 0 ? 1 : 0, backlogShare(z, view) > 0 ? 1 : 0, labelShare(z) > 0 ? 1 : 0].join('|'),
+    cells: [s.a, s.b, resForZoom(z, maxRes)].join('|'),
+  }
+}
+
 export function createHuntMap(containerId) {
   const stub = { setPosition() {}, centerOn() {}, recenter() {}, onFollowChange() {}, render() {}, setView() {}, applyBasemap() {}, focusReception() {}, setAttenuator() {}, setBearing() {}, onGestureRotate() {}, setHighlight() {}, onMarkerFocus() {}, setNodePositions() {}, releaseFollow() {}, setLookAhead() {}, setNodeLayer() {}, setExaggeration() {}, setNoise() {}, pulse() {}, destroy() {} }
   // Degrade to a no-op map (never throw during app init) when MapLibre did not
@@ -131,7 +148,7 @@ export function createHuntMap(containerId) {
   } catch (e) { return stub }
   map.addControl(new maplibregl.AttributionControl({ compact: true }))
 
-  let mode = 'both', lastRecords = [], lastSelected = null
+  let mode = 'auto', lastRecords = [], lastSelected = null
   let highlightId = null, onMarkerFocusCb = null, rotateCb = null, mode3D = false
   // Terrain (#396): the 3D view raises it (Kasper, 2026-09-06: no switch of
   // its own), at the exaggeration from Settings, applied through terrainPlan.
@@ -307,6 +324,19 @@ export function createHuntMap(containerId) {
   map.on('rotate', () => { if (rotateCb && !settingBearing) rotateCb(map.getBearing()) })
   // Hex resolution depends on zoom — rebuild once the zoom settles.
   map.on('zoomend', () => draw())
+  // While the fingers move, only what zoomKeys names is redrawn: the full
+  // draw when a layer has to be built at all, the cell layers when a size
+  // changed, nothing when only a share moved.
+  let zoomDrawn = { data: '', cells: '' }
+  // The selection of the last full draw, for drawCells (below).
+  let cellsFor = { sel: null, owners: '' }
+  const zoomKeysNow = () => zoomKeys(map.getZoom(), { mode, mode3D }, HEX_MAX_RES)
+  map.on('zoom', () => {
+    fadeHexLabels()
+    const k = zoomKeysNow()
+    if (k.data !== zoomDrawn.data) draw()
+    else if (k.cells !== zoomDrawn.cells) drawCells()
+  })
 
   // ---- feature builders (GeoJSON sources are updated via setData) ----
   // The current ride's first reception (#556): everything before it is
@@ -323,7 +353,9 @@ export function createHuntMap(containerId) {
   // misses one input serves the previous tick's answer for a different question.
   const pointsCache = lastValueCache()
   function buildPointsFC(records, sel, owners) {
-    const outlines = showBacklogPoints(map.getZoom())
+    // An earlier ride is in the collection from the zoom where it starts to
+    // show; how much of it shows is the style's (pointStrokeOpacity).
+    const outlines = backlogShare(map.getZoom(), { mode, mode3D }) > 0
     const sig = recordsKey(records), hues = hueKey(coverageHue)
     // Unsignable on either axis means recompute: a key carrying "null" would
     // match another set that also could not be signed. The selection joined
@@ -337,10 +369,10 @@ export function createHuntMap(containerId) {
   }
   function buildPointsFCUncached(records, outlines, sel) {
     const feats = []
-    // Backlog (#556): below BACKLOG_OUTLINE_ZOOM a reception from an earlier
-    // ride is coverage only, its hex cell; from that zoom it comes back as an
-    // outline, in its tier colour, no fill. The ride itself is drawn filled,
-    // as before.
+    // Backlog (#556): zoomed out, a reception from an earlier ride is coverage
+    // only, its hex cell; zooming in it comes back as an outline, in its tier
+    // colour, no fill, fading in over BACKLOG_FADE_2D (#634). The ride itself
+    // is drawn filled, as before.
     const rideStart = rideStartFor(records)
     for (const r of records) {
       if (r.lat == null || r.lon == null) continue
@@ -429,9 +461,10 @@ export function createHuntMap(containerId) {
   // A cell's colour and height come from the best RSSI in it and the attenuator
   // offset, so the answer changes only when the records, the zoom resolution or
   // that offset do — all three are in the key (#462).
-  const hexCache = lastValueCache()
-  function buildHexFC(records, sel, owners) {
-    const res = hexResForZoom(map.getZoom())   // finer cells the more you zoom in
+  // One cache per hex layer (#634): two cell sizes are drawn at a time, and
+  // a single slot would rebuild both on every tick.
+  const hexCache = { hex: lastValueCache(), 'hex-b': lastValueCache() }
+  function buildHexFC(records, sel, owners, res, slot) {
     // An unsignable set must not be cached under the string "null|10|0", which
     // is a perfectly good cache key and exactly the wrong one — the null has to
     // survive into the lookup.
@@ -441,7 +474,7 @@ export function createHuntMap(containerId) {
     // serve the other theme's cells and bars from the cache. So is the
     // selection (#624), which dims cells without changing a record, and so are
     // the owners (#661), which decide the cells it keeps lit.
-    return hexCache.get(sig === null || owners === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}|${owners}`, () => buildHexFCUncached(records, res, sel))
+    return hexCache[slot].get(sig === null || owners === null ? null : `${sig}|${res}|${currentOffset()}|${cssVar('--ch-basemap')}|${selectionKey(sel)}|${owners}`, () => buildHexFCUncached(records, res, sel))
   }
   function buildHexFCUncached(records, res, sel) {
     // A cell holds receptions from several repeaters at once, so it cannot ask
@@ -594,7 +627,7 @@ export function createHuntMap(containerId) {
     // darkened a bar against its own cell (#412). Re-applied here like the
     // sky, since setStyle drops it. Guarded for an older MapLibre.
     if (typeof map.setLight === 'function') map.setLight({ anchor: 'viewport', intensity: EXTRUSION_LIGHT_INTENSITY })
-    for (const id of ['trail', 'hex', 'noise', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]) {
+    for (const id of ['trail', 'hex', 'hex-b', 'noise', 'points', 'points-3d', 'highlight', 'here', 'nodedrift', 'nodecircle', 'reach', 'pulse', 'pulse-3d', NODE_GLYPH_SOURCE, NODE_DOT_SOURCE]) {
       if (!map.getSource(id)) map.addSource(id, { type: 'geojson', data: EMPTY })
     }
     // One decision for all four signal layers (#266) — see maplayers.js. Both
@@ -604,9 +637,16 @@ export function createHuntMap(containerId) {
     const shown = (id) => (vis[id] ? 'visible' : 'none')
     if (!map.getLayer('trail')) map.addLayer({ id: 'trail', type: 'line', source: 'trail',
       paint: { 'line-color': cssVar('--ch-muted'), 'line-width': 3, 'line-opacity': TRAIL_OPACITY } })
-    if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex',
-      layout: { visibility: shown('hex') },
-      paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['get', 'op'] } })
+    // The opacity and the bar height of the hex layers, and the opacity of the
+    // points, are written by applyFades: they are zoom expressions that depend
+    // on the view and on the cell size a layer holds (#634). A style load drops
+    // them with the layers, so the signature is cleared here.
+    fadeSig = ''
+    // Each id spelled out, not looped: huntmap-order.test.js reads the adds
+    // from this file as text.
+    const hexPaint = { 'fill-color': ['get', 'color'], 'fill-opacity': 0 }
+    if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex', layout: { visibility: shown('hex') }, paint: hexPaint })
+    if (!map.getLayer('hex-b')) map.addLayer({ id: 'hex-b', type: 'fill', source: 'hex-b', layout: { visibility: shown('hex-b') }, paint: hexPaint })
     // Flat in 3D too: a noise floor has no height to give a pillar. The band
     // colours are baked in like every overlay's; a theme swap re-adds them.
     if (!map.getLayer('noise')) map.addLayer({ id: 'noise', type: 'fill', source: 'noise',
@@ -617,14 +657,16 @@ export function createHuntMap(containerId) {
     // tier is what made a faint bar a solid purple on a 19% tint (#412). The
     // bar takes 'pillar', the cell's tint pre-mixed over the background, and
     // draws it opaque: no translucent compounding, shared walls depth-test.
-    if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex',
-      layout: { visibility: shown('hex-3d') },
-      paint: { 'fill-extrusion-color': ['get', 'pillar'], 'fill-extrusion-height': ['get', 'height'],
-        // MapLibre shades extrusion sides darker toward their base by default
-        // (#412). On a building that reads as depth; on these it reads as a
-        // different tier, because colour is the signal the palette carries.
-        'fill-extrusion-vertical-gradient': false,
-        'fill-extrusion-base': 0, 'fill-extrusion-opacity': 1 } })
+    const barPaint = { 'fill-extrusion-color': ['get', 'pillar'], 'fill-extrusion-height': 0,
+      // MapLibre shades extrusion sides darker toward their base by default
+      // (#412). On a building that reads as depth; on these it reads as a
+      // different tier, because colour is the signal the palette carries.
+      'fill-extrusion-vertical-gradient': false,
+      // 0 until applyFades has written the switch: a bar of no height still
+      // draws an opaque polygon on the ground.
+      'fill-extrusion-base': 0, 'fill-extrusion-opacity': 0 }
+    if (!map.getLayer('hex-3d')) map.addLayer({ id: 'hex-3d', type: 'fill-extrusion', source: 'hex', layout: { visibility: shown('hex-3d') }, paint: barPaint })
+    if (!map.getLayer('hex-3d-b')) map.addLayer({ id: 'hex-3d-b', type: 'fill-extrusion', source: 'hex-b', layout: { visibility: shown('hex-3d-b') }, paint: barPaint })
     // Buildings reuse the hosted style's own vector source (already fetched for
     // the 2D basemap) — only present on the hosted OpenFreeMap style, not the
     // bare fallback, hence the source guard.
@@ -657,10 +699,10 @@ export function createHuntMap(containerId) {
       // A backlog reception (#556) has no fill and a heavier stroke: colour and
       // place stay, the fill says "this ride".
       paint: { 'circle-radius': 8, 'circle-color': ['get', 'color'],
-        'circle-opacity': ['case', ['==', ['get', 'backlog'], 1], 0, ['get', 'fop']],
+        'circle-opacity': 0,
         'circle-stroke-color': ['get', 'color'],
         'circle-stroke-width': ['case', ['==', ['get', 'backlog'], 1], 1.5, 1],
-        'circle-stroke-opacity': ['get', 'op'] } })
+        'circle-stroke-opacity': 0 } })
     // The pulse (#556): one ring on the reception that just arrived, animated
     // by pulse() below through the paint properties, above the points and
     // shown only where they are.
@@ -802,7 +844,7 @@ export function createHuntMap(containerId) {
     const glyph = nodeGlyphAt(e.point)
     if (glyph) { onGlyphTap(glyph); return }
     if (!coverageSel.size) return
-    const layers = ['points', 'points-3d', 'hex', 'hex-3d'].filter((id) => map.getLayer(id))
+    const layers = ['points', 'points-3d', 'hex', 'hex-b', 'hex-3d', 'hex-3d-b'].filter((id) => map.getLayer(id))
     if (!map.queryRenderedFeatures(e.point, { layers }).length) clearCoverageSelection()
   })
   for (const layerId of NODE_GLYPH_LAYERS) {
@@ -851,10 +893,14 @@ export function createHuntMap(containerId) {
     // Only the reach stop reads it: outside it no dot takes a star's hue and
     // nothing dims, so the fold is skipped there.
     const owners = cov ? ownersKey(records, ownerOf) : ''
-    map.getSource('hex').setData(vis.hex || vis['hex-3d'] ? buildHexFC(records, sel, owners) : EMPTY)
-    map.getSource('noise').setData(vis.noise ? buildNoiseFC() : EMPTY)
-    map.getSource('points').setData(vis.points ? buildPointsFC(records, sel, owners) : EMPTY)
-    map.getSource('points-3d').setData(vis['points-3d'] ? buildPoints3DFC(records, sel, owners) : EMPTY)
+    zoomDrawn.data = zoomKeysNow().data
+    const zoom = map.getZoom(), view = { mode, mode3D }
+    // Nothing is built for a layer that shows nothing at this zoom: in auto
+    // the points wait for their zoom, and in 3D that is what keeps a pillar
+    // per reception off the GPU until the closest one (#634).
+    const pointsOn = pointShare(zoom, view) > 0
+    map.getSource('points').setData(vis.points && pointsOn ? buildPointsFC(records, sel, owners) : EMPTY)
+    map.getSource('points-3d').setData(vis['points-3d'] && pointsOn ? buildPoints3DFC(records, sel, owners) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     // The trail belongs to no repeater, so it is never part of a selection and
     // always steps back with one. One LineString with no properties, so this
@@ -863,7 +909,51 @@ export function createHuntMap(containerId) {
     map.getSource('highlight').setData(buildHighlightFC())
     map.getSource('here').setData(buildHereFC())
     drawNodeLayer(records, cov)
+    cellsFor = { sel, owners }
+    drawCells()
+  }
+
+  // The layers that hold cells, at the sizes of this zoom: the two hex layers
+  // (hexSlots, each resolution in its own layer; one whose share is nothing
+  // stays empty), the noise and the labels. With the selection of the last
+  // full draw, so a size change mid-pinch needs no coverage pass.
+  function drawCells() {
+    if (!map.getSource('hex')) return
+    const records = lastRecords, vis = visibleLayers()
+    const slots = hexSlots(map.getZoom(), HEX_MAX_RES)
+    const hexOn = vis.hex || vis['hex-3d']
+    for (const [id, res] of [['hex', slots.a], ['hex-b', slots.b]]) {
+      map.getSource(id).setData(hexOn && res != null ? buildHexFC(records, cellsFor.sel, cellsFor.owners, res, id) : EMPTY)
+    }
+    applyFades(slots)
+    map.getSource('noise').setData(vis.noise ? buildNoiseFC() : EMPTY)
     drawHexLabels(records, vis['hex-labels'])
+    zoomDrawn.cells = zoomKeysNow().cells
+  }
+
+  // The zoom expressions of the hex and point layers (zoomfade.js, #634),
+  // written when the view or the cell size a layer holds has changed. Not on
+  // every draw: a tick that changes no input would re-validate nine
+  // expressions for nothing.
+  let fadeSig = ''
+  function applyFades(slots) {
+    const view = { mode, mode3D }
+    const sig = [mode, mode3D ? 3 : 2, slots.a, slots.b].join('|')
+    if (sig === fadeSig || !map.getLayer('hex')) return
+    fadeSig = sig
+    for (const [flat, bar, res] of [['hex', 'hex-3d', slots.a], ['hex-b', 'hex-3d-b', slots.b]]) {
+      if (res == null) {
+        map.setPaintProperty(flat, 'fill-opacity', 0)
+        map.setPaintProperty(bar, 'fill-extrusion-opacity', 0)
+        continue
+      }
+      map.setPaintProperty(flat, 'fill-opacity', hexFillOpacity(res, view, HEX_MAX_RES))
+      map.setPaintProperty(bar, 'fill-extrusion-height', hexBarHeight(res, view, HEX_MAX_RES))
+      map.setPaintProperty(bar, 'fill-extrusion-opacity', hexBarSwitch(res, view, HEX_MAX_RES))
+    }
+    map.setPaintProperty('points', 'circle-opacity', pointFillOpacity(view))
+    map.setPaintProperty('points', 'circle-stroke-opacity', pointStrokeOpacity(view))
+    map.setPaintProperty('points-3d', 'fill-extrusion-opacity', pillarSwitch(view))
   }
 
   // The noise cells at this zoom's resolution, rebuilt when a sample arrives
@@ -876,8 +966,9 @@ export function createHuntMap(containerId) {
   // ---- hex labels (#556) ----
   // Who was heard in a cell, as id prefixes (hexlabels.js decides the text),
   // drawn as HTML markers like the node layer: the bare fallback style has no
-  // glyphs, so a symbol layer would draw nothing there. Only from
-  // HEX_LABEL_MIN_ZOOM and only for cells in view. One marker per cell id,
+  // glyphs, so a symbol layer would draw nothing there. They fade in over
+  // LABEL_FADE (#634, it was a step at zoom 16), name the cell size drawn in
+  // full at this zoom, and only cells in view. One marker per cell id,
   // kept while the cell stays in view: planHexLabels decides which markers a
   // draw adds, relabels or removes, so a new reception in one cell touches
   // that cell's marker and a tick that changes nothing touches none.
@@ -885,8 +976,15 @@ export function createHuntMap(containerId) {
   function clearHexLabels() {
     hexLabelMarkers.forEach((m) => m.remove()); hexLabelMarkers.clear()
   }
+  // Markers are DOM, so their share is a style on the element, written on
+  // every zoom step.
+  function fadeHexLabels() {
+    if (!hexLabelMarkers.size) return
+    const share = String(labelShare(map.getZoom()))
+    hexLabelMarkers.forEach((m) => { m.getElement().style.opacity = share })
+  }
   function drawHexLabels(records, on) {
-    if (!on || !showHexLabels(map.getZoom())) { if (hexLabelMarkers.size) clearHexLabels(); return }
+    if (!on || !(labelShare(map.getZoom()) > 0)) { if (hexLabelMarkers.size) clearHexLabels(); return }
     const res = hexResForZoom(map.getZoom())
     const b = map.getBounds()
     const cells = new Map()
@@ -917,6 +1015,7 @@ export function createHuntMap(containerId) {
       el.textContent = it.label
       hexLabelMarkers.set(it.id, new maplibregl.Marker({ element: el }).setLngLat([it.lon, it.lat]).addTo(map))
     }
+    fadeHexLabels()
   }
 
   // ---- pulse (#556) ----
@@ -944,6 +1043,9 @@ export function createHuntMap(containerId) {
     const vis = layerVisibility({ mode, mode3D })
     const id = vis.pulse ? 'pulse' : vis['pulse-3d'] ? 'pulse-3d' : null
     if (!id || !map.getSource(id) || !map.getLayer(id)) return
+    // And only at a zoom that draws them (#634): a ring around a point that
+    // is not on the map marks nothing.
+    if (!(pointShare(map.getZoom(), { mode, mode3D }) > 0)) return
     if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null }
     const tier = rssiTier(rec.rssi, currentOffset())
     const color = cssVar(tierColorVar(tier))
@@ -1235,15 +1337,15 @@ export function createHuntMap(containerId) {
   function setBearing(deg) { settingBearing = true; try { map.setBearing(deg) } finally { settingBearing = false } }
   function onGestureRotate(cb) { rotateCb = cb }
   // Applies the current layer decision to the live style. Both the layer-mode
-  // switch and the 3D toggle need it: in 3D the mode decides whether hex is
-  // drawn flat (under the pillars) or extruded (#266).
+  // switch and the 3D toggle need it: the mode and the dimension together
+  // decide which layers exist (#266, maplayers.js).
   function applyLayerVisibility() {
     const vis = visibleLayers()
     // Every layer layerVisibility decides, or the FAB and the style load
     // disagree again — the exact drift #266 pulled the decision out for. The
     // 3D pulse is the one that shows it: it loads 'none' in 2D, so a tap into
     // 3D that skipped it would leave the flash off until the next style load.
-    for (const id of ['hex', 'hex-3d', 'noise', 'points', 'points-3d', 'pulse', 'pulse-3d']) {
+    for (const id of ['hex', 'hex-b', 'hex-3d', 'hex-3d-b', 'noise', 'points', 'points-3d', 'pulse', 'pulse-3d']) {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis[id] ? 'visible' : 'none')
     }
   }

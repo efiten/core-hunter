@@ -46,20 +46,6 @@ export function rxActiveIndex(scrollTop, lineH, count) {
   return i
 }
 
-// rxStepIndex moves the playhead one row back or forward (#555): the float
-// readout's previous/next buttons scrub the same list the ticker shows. Clamped
-// to the list, and a stale index (rows dropped by the cap since the last paint)
-// lands on the nearest real row. -1 on an empty list, like rxActiveIndex.
-export function rxStepIndex(active, delta, count) {
-  if (count <= 0) return -1
-  const cur = Number(active)
-  const clamp = (i) => Math.min(Math.max(i, 0), count - 1)
-  // Off the list means the position was stale: land on the nearest row
-  // first, without stepping past it.
-  if (!(cur >= 0 && cur < count)) return clamp(cur || 0)
-  return clamp(cur + (delta < 0 ? -1 : 1))
-}
-
 // ---------------------------------------------------------------------------
 // Card geometry (#560). The card used to be ten lanes or nothing: 298px, a
 // third of a 915px phone, whether it held one reception or two hundred. Worse,
@@ -358,8 +344,8 @@ export function senderText(r) {
 // printed twice. A hash id is its # mark and nothing else, until it is placed
 // on a named node by reach (#661): then the # id stands beside that name. A
 // label that is the id is no name either: meshpacket.js gives a channel_name
-// sender its decrypted name as both. For a row without an attribution this is
-// the rule of web/receptionticker.js; the map's ticker does not attribute.
+// sender its decrypted name as both. web/receptionticker.js carries the same
+// rule since #663, pinned by web/parity.test.js.
 export function senderCell(r) {
   const name = senderText(r)
   if (isHashIdKind(r.sender_kind) && r.sender_id) {
@@ -372,7 +358,7 @@ export function senderCell(r) {
 
 export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onClose, onCollapse, onModeChange, onWiden } = {}) {
   const root = document.getElementById(rootId)
-  if (!root) return { render() {}, focusRecord() {}, setCollapse() {}, setMode() {}, step() {}, follow() {}, active() { return null }, following() { return true } }
+  if (!root) return { render() {}, focusRecord() {}, setCollapse() {}, setMode() {}, follow() {}, active() { return null }, following() { return true } }
   // The ✕ hides the whole ticker (#539); the collapse chevron beside it moves
   // between full and three lanes (#560). One chevron that swaps direction, not
   // a pair of buttons. The app (onClose / onCollapse) owns both states and the
@@ -603,14 +589,6 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     if (idx >= 0) toLane(idx)
   }
 
-  // step moves the playhead one row (#555): the float readout's previous/next
-  // buttons scrub through the ticker's own list. Stepping onto the newest row
-  // is what makes the ticker follow again, the same as scrolling to the bottom.
-  function step(delta) {
-    const idx = rxStepIndex(markerIndex(view.length), delta, view.length)
-    if (idx >= 0) toLane(idx)
-  }
-
   // active is the reception on the playhead, or null with nothing to show.
   function active() {
     const i = markerIndex(view.length)
@@ -643,5 +621,5 @@ export function createReceptionLog(rootId, { onActiveChange, onRowActivate, onCl
     paint()
   }
 
-  return { render, focusRecord, setCollapse, setMode, step, follow: followAgain, active, following }
+  return { render, focusRecord, setCollapse, setMode, follow: followAgain, active, following }
 }

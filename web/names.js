@@ -34,13 +34,10 @@ export function resolvableKey(rec) {
   return isResolvableId(rec.sender_id) ? rec.sender_id.toLowerCase() : null
 }
 
-// A sender id of one byte (2 hex) is a 256-way collision space, so it is never
-// a name, and meshpacket.js carries it as its OWN sender_label for the two
-// kinds below. A surface that prints that label unguarded shows "77" exactly
-// as it would show a resolved short name. Marked with # instead, the house
-// style hudsender.js set, and kept out of the resolver by the 4-hex floor.
-const HASH_ID_KINDS = ['direct_hash', 'path_hash']
-export function isHashIdKind(kind) { return HASH_ID_KINDS.includes(kind) }
+// How a name is printed (the guess mark, a hash id, a name by reach) is
+// namerules.js, one file on both surfaces (#663).
+import { isHashIdKind, displayName } from './namerules.js'
+export { isHashIdKind, GUESS_MARK, isGuessedName, nameParts, displayName } from './namerules.js'
 
 // cachedName: resolved name ('' = resolved-but-unknown) or undefined if not yet
 // looked up. Synchronous — use it while rendering.
@@ -82,14 +79,20 @@ export async function resolveName(key) {
   return name
 }
 
-// senderName picks the best label for a point: an existing server label wins
-// (fill-only — advert broadcast names), then a cached resolved name for a
-// resolvable id (full pubkey or discover prefix), then the raw id.
+// senderName is the name a point or a ticker line prints, the app's
+// senderText (receptionlog.js) with the map's one difference: a row without a
+// label takes the name the resolve proxy cached for its id. After that the
+// rule is namerules.js: a name on a short prefix wears the guess mark (#452),
+// the attribution by reach decides a relay's name first (#661, _attr), and a
+// 1-byte hash is # and its id until it is placed on a named node. Without a
+// name the id stands, as before.
 export function senderName(pt) {
-  if (pt.sender_label) return pt.sender_label
-  if (isResolvableId(pt.sender_id)) {
+  if (!pt) return '—'
+  let rec = pt
+  if (!pt.sender_label && isResolvableId(pt.sender_id)) {
     const hit = cachedName(pt.sender_id)
-    if (hit) return hit
+    if (hit) rec = { ...pt, sender_label: hit }
   }
-  return pt.sender_id || '—'
+  if (isHashIdKind(pt.sender_kind) && pt.sender_id) return displayName(rec) || '#' + String(pt.sender_id)
+  return displayName(rec) || pt.sender_id || '—'
 }

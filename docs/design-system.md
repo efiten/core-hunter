@@ -114,9 +114,9 @@ the zoom buttons. Wherever 46px fits it is kept, as at 844x390; near the limit, 
 bar's rendered height decides, so a taller font shrinks the buttons a little.
 
 Overlays keep the rail's column clear (`--ch-rail-clear`, 14 + 46 + 8px): the readout, the
-Locate card and the node-positions notice stop at it. On a phone held sideways, narrower
-than 641px, the column reaches up to the bar, so the pinned ticker and the notices stop at
-it too.
+Locate card and the node-positions notice stop at it. Narrower than 768px and lower than 721px,
+the column reaches up to where the full ticker ends, so the pinned ticker and the notices stop
+at it too (#727).
 
 **Guard:** `e2e/barlayout.spec.js` hits every rail button at its centre at 375x812,
 390x844, 768x1024, 1280x800 and 844x390 as a guest and as a member, and at five sideways
@@ -164,7 +164,7 @@ hit-testable and invisible, which is the worst of the three: a target nobody can
 see that does something when pressed by accident.
 
 The ticker's drag frame is two 6px strips shown on hover (#424), and dragging is
-dropped below 640px rather than given a touch handle. Why is under **Panels**.
+dropped below 768px rather than given a touch handle. Why is under **Panels**.
 
 ### Native form controls take the accent
 
@@ -203,7 +203,7 @@ Anything floating over the map must be movable aside, shrinkable and dismissible
 property of the **surface**, not of the ticker: the next interaction popup added to `web/` owes
 the reader the same.
 
-**How it moves aside is a width question, not a touch one.** Above 640px it drags. Below,
+**How it moves aside is a width question, not a touch one.** From 768px it drags. Below,
 the card is pinned as in the app: centred under the bar at `calc(100vw - 20px)` (#643). It spans
 the map, so there is no "out of the way" to drag it to, and its stops and its cross are what move
 it aside there, which is what the app does at every width (#561). The position dragged on a wide
@@ -250,7 +250,7 @@ from 0 to 60 — including which lane the marker lands on for each row — and c
 
 | | app | map | reason |
 |---|---|---|---|
-| position | fixed, centred | placed and dragged above 640px; centred below, as in the app | surface rule above |
+| position | fixed, centred | placed and dragged from 768px; centred below, as in the app | surface rule above |
 | pointer events | caught | passed through | surface rule above |
 
 Everything else is the same, including the collapse stops and the cross with its bar button.
@@ -280,7 +280,7 @@ Everything that narrows the view is in it, at every width. A filter reachable on
 somewhere else is a filter the panel lies about: the map's ignore list lived in the settings
 sheet, which is where you go to change how the app behaves, not what it shows.
 
-The bar may carry a **shortcut** to a control the panel owns. Below 640px it carries none:
+The bar may carry a **shortcut** to a control the panel owns. Below 768px it carries none:
 what does not fit moves into the panel (see **Bars**).
 
 ### "Everything" is one state, drawn as an All chip
@@ -337,7 +337,7 @@ zoom buttons inside the dead strip. A bar that cannot wrap cannot grow.
 
 *Standard pattern: the overflow menu.*
 
-Below 640px the map's bar keeps the mark, two segments of the connected group
+Below 768px the map's bar keeps the mark, two segments of the connected group
 (`Select target`, `Filters`) and the icon buttons — the same two the app's group
 has carried at that width since #305. Everything else moves: what narrows the
 view into the filter panel, what acts into the menu (`web/barnarrow.js`).
@@ -385,7 +385,7 @@ right: a centred column at most 560px wide, never wider than the room between
 the rail's clearance on both sides. When the ticker lies in that column, the
 notices move to the band beside it if that band is at least 320px wide, and
 under it if not (`noticeplace.js`), so a notice, which paints over the ticker,
-never takes the clicks on its cross or its chevron. Below 640px they span the
+never takes the clicks on its cross or its chevron. Below 768px they span the
 width under the bar (8px from each edge), under the pinned ticker.
 
 ## Copy and marks
@@ -393,7 +393,7 @@ width under the bar (8px from each edge), under the pinned ticker.
 - **One brand mark**, the PWA icon (`app/public/icon.svg`), on every surface
   (#539), drawn inline so its strokes take `--ch-accent` and the signal tiers
   rather than the file's fixed palette. **Every surface names the product**:
-  mark plus wordmark on a wide screen, the mark alone below 640px with the name
+  mark plus wordmark on a wide screen, the mark alone below 768px with the name
   in the menu, which is what a mobile app bar does. The map had neither until
   #561, and the map is the surface people are sent a link to.
 - **Drawn icons, not emoji.** An emoji renders differently per platform and cannot take a token

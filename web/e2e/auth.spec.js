@@ -300,7 +300,7 @@ test('a guest cannot switch to the point layer, and the panel says why', async (
   // what it takes to open it is also what the map has to sell.
   await expect(page.locator('#lm-points')).toBeVisible()
   await expect(page.locator('#lm-points')).toBeDisabled()
-  await expect(page.locator('#lm-both')).toBeDisabled()
+  await expect(page.locator('#lm-auto')).toBeDisabled()
   await expect(page.locator('#lm-hex')).toBeEnabled()
   await expect(page.locator('#lm-hex')).toHaveAttribute('aria-pressed', 'true')
 
@@ -311,7 +311,7 @@ test('a guest cannot switch to the point layer, and the panel says why', async (
   await expect(note).toHaveText(/individual receptions/i)
   await expect(note).toHaveText(/log in/i)
   await expect(page.locator('#lm-points')).toHaveAttribute('aria-describedby', 'layer-gate-note')
-  await expect(page.locator('#lm-both')).toHaveAttribute('aria-describedby', 'layer-gate-note')
+  await expect(page.locator('#lm-auto')).toHaveAttribute('aria-describedby', 'layer-gate-note')
 
   // The disabled attribute is not the whole job: nothing in the sheet styled
   // :disabled, so the segment rendered identical to a live one. Measure what
@@ -369,7 +369,7 @@ test('a member still gets all three layers', async ({ page }) => {
     .toBeGreaterThan(0)
   await openFilters(page)
   await expect(page.locator('#lm-points')).toBeEnabled()
-  await expect(page.locator('#lm-both')).toBeEnabled()
+  await expect(page.locator('#lm-auto')).toBeEnabled()
   await expect(page.locator('#lm-points')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('#layer-gate-note')).toBeHidden()
   await page.click('#lm-hex')

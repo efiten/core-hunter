@@ -102,7 +102,7 @@
          it lived in document.title and in the walkthrough panel, so the surface
          a newcomer is most likely to be sent a link to had no wordmark at all.
          The mark is app/public/icon.svg, drawn inline so it can take theme
-         colours; below 640px the mark stands alone and the name is in the menu,
+         colours; below 768px the mark stands alone and the name is in the menu,
          which is the standard mobile app-bar pattern. -->
     <span id="brand">
       <svg id="brand-mark" width="22" height="22" viewBox="0 0 512 512" fill="none" aria-hidden="true">
@@ -120,7 +120,7 @@
     <!-- The connected group (#561), the same control the app's #topbar-controls
          is: one border, one radius, borderless children with dividers between
          them. What narrows the view reads as one unit instead of four loose
-         buttons, and below 640px the group shrinks to the two the app carries.
+         buttons, and below 768px the group shrinks to the two the app carries.
          The pickers stay DOM children of their toggles: placePopover measures
          against the toggle's box (#372, #385), so re-parenting them at open
          time is what breaks their placement. -->
@@ -193,7 +193,7 @@
           </svg>
         </button>
       </div>
-      <!-- Where the bar's group puts its two widest controls below 640px
+      <!-- Where the bar's group puts its two widest controls below 768px
            (#561). Empty and hidden above it: the controls are MOVED, not
            copied, because two instances of one filter is exactly what the
            register calls bespoke. barnarrow.js owns the move. -->
@@ -208,7 +208,7 @@
       <div class="bf-group">
         <div class="bf-group-head">Traffic types <span id="bf-types-count" class="bf-group-count" hidden></span></div>
         <span id="f-types"></span>
-        <!-- Below 640px only the first chips and every active one show; this
+        <!-- Below 768px only the first chips and every active one show; this
              reveals the rest. Fourteen 44px chips are four rows on a phone,
              and then the rest of the panel is under the fold. -->
         <button id="bf-types-more" class="bf-types-more" type="button" hidden></button>
@@ -258,7 +258,7 @@
         <span id="layer-seg" class="bf-seg" role="group" aria-label="Layer mode">
           <button id="lm-points" type="button" data-mode="points" aria-pressed="false">Points</button>
           <button id="lm-hex" type="button" data-mode="hex" aria-pressed="false">Hex</button>
-          <button id="lm-both" type="button" data-mode="both" aria-pressed="false">Both</button>
+          <button id="lm-auto" type="button" data-mode="auto" aria-pressed="false">Auto</button>
         </span>
         <!-- Why Points and Both are off below member (#493). Filled and shown
              by applyPointLayerGate; a line under the group rather than a
@@ -423,7 +423,7 @@
         </button>
       </div>
       <div class="ss-panel active" id="ss-panel-settings" role="tabpanel" aria-labelledby="ss-tab-settings">
-        <!-- Where Start mapping and Log in live below 640px (#561), moved here
+        <!-- Where Start mapping and Log in live below 768px (#561), moved here
              by barnarrow.js rather than duplicated: the phone row cannot carry
              them, and the menu is where an overflowing app bar puts what acts.
              Empty and hidden above that width. -->
