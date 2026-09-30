@@ -77,6 +77,13 @@
     "body": "Opening the target picker puts the cursor in its search. In the app it opens on an empty search every time."
   },
   {
+    "id": "2026-09-27-discover-star-on-node",
+    "date": "2026-09-27",
+    "where": "both",
+    "title": "Reach stars hang from the repeater's position",
+    "body": "A repeater heard by Discover draws its reach from its own ▲ and name, no longer from a separate estimate beside it."
+  },
+  {
     "id": "2026-09-27-dutchmeshcore-by-default",
     "date": "2026-09-27",
     "where": "app",

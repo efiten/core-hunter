@@ -616,9 +616,10 @@ reception came from are different acts. The second is one rule on both surfaces,
   marker. Should a hub get a name surface again, a 1-byte id reads `#` plus the id, never a bare
   name (§5.4 item 6).
 - Relay ids longer than 3 bytes, advert and discover keys and channel names keep their own rules.
-  On the node-position layer both surfaces pair an advert by its whole key, and a discover prefix
-  from 2 bytes only when it starts exactly one key among the nodes compared
-  (`groupSenderPointsForNodes`); the other kinds never pair. This replaces the website's refusal
+  On the node-position layer and for the reach stars (#723), both surfaces pair an advert by its
+  whole key, and a discover prefix from 2 bytes only when it starts exactly one key among the
+  nodes compared (`registryMatcher`, used by `groupSenderPointsForNodes` and `coverageStars`); the
+  other kinds never pair. This replaces the website's refusal
   to resolve a prefix to a node on its node-position layer (#296). The decision and its limits:
   `docs/2026-09-15-attribution-by-reach.md`.
 

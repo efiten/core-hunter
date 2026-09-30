@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { inBounds, nodesInView, driftPresentation, senderIdMatches, groupSenderPointsForNodes, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
+import { inBounds, nodesInView, driftPresentation, senderIdMatches, groupSenderPointsForNodes, registryMatcher, estimateFor, circleRing, TIGHT_DRIFT_M, TRUSTED_ENCIRCLEMENT, drawableNodes } from '../nodelayer.js'
 import { haversineM } from '../geometry.js'
 
 const node = (o) => ({ pubkey: 'aa'.repeat(32), name: 'Node', lat: 51.2, lon: 4.4, ...o })
@@ -339,5 +339,28 @@ describe('drawableNodes — registry rows that can actually be plotted', () => {
     for (const n of drawableNodes([node(), node({ lat: -33.9, lon: 18.4 })])) {
       expect(inBounds(n, world)).toBe(true)
     }
+  })
+})
+
+// #723: the node a reception's own id names, as one function the node layer
+// and the reach stars both pair by, so a repeater heard by Discover gets one
+// ▲ and one star under it.
+describe('registryMatcher (#723)', () => {
+  const A = { pubkey: 'db11db11f7808b97' + 'a'.repeat(48), lat: 51.84, lon: 5.84, name: 'NL-NIJ-Dikkeboom' }
+  const B = { pubkey: 'db11aa' + 'b'.repeat(58), lat: 51.9, lon: 5.9, name: 'Other' }
+  const match = registryMatcher([A, B])
+  it('names the node a discover prefix alone starts', () => {
+    expect(match({ sender_id: 'DB11DB11F7808B97', sender_kind: 'discover_pubkey' })).toBe(A)
+  })
+  it('names the node an advert key is', () => {
+    expect(match({ sender_id: A.pubkey, sender_kind: 'advert_pubkey' })).toBe(A)
+    expect(match({ sender_id: A.pubkey.slice(0, 16), sender_kind: 'advert_pubkey' })).toBeNull()
+  })
+  it('names none when the prefix starts two keys, or none', () => {
+    expect(match({ sender_id: 'db11', sender_kind: 'discover_pubkey' })).toBeNull()
+    expect(match({ sender_id: 'ffee0011', sender_kind: 'discover_pubkey' })).toBeNull()
+  })
+  it('leaves a relay hash to the attribution by reach', () => {
+    expect(match({ sender_id: 'db', sender_kind: 'path_hash' })).toBeNull()
   })
 })

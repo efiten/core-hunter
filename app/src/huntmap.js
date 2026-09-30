@@ -2,13 +2,13 @@ import { hexCellAt, hexBoundary, hexResForZoom, HEX_MAX_RES } from './hexgrid.js
 import { pointShare, backlogShare, labelShare, hexSlots, resForZoom, hexFillOpacity, hexBarHeight, hexBarSwitch, pointFillOpacity, pointStrokeOpacity, pillarSwitch } from './zoomfade.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
-import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing } from './nodelayer.js'
+import { nodesInView, driftPresentation, groupSenderPointsForNodes, estimateFor, circleRing, registryMatcher } from './nodelayer.js'
 import { unclutteredLabels, createLabelMeasurer, screenObstacles } from './nodelabels.js'
 import { advertFeature, dotFeature, nodeGlyphLayers, nearestGlyph, hitBox, drawTriangle, fc as glyphFc, EMPTY_FC as GLYPH_EMPTY, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE, NODE_ADVERT_LAYER, NODE_DOT_LAYER, NODE_GLYPH_LAYERS, TRI_IMAGE, TRI_W, TRI_H } from './nodeglyphs.js'
 import { appendTrailPoint } from './trail.js'
 import { packetTypeLabel } from './filters.js'
 import { layerVisibility, pitchTransition } from './maplayers.js'
-import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
+import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, starSelected } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
 import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey } from './rendercache.js'
@@ -204,21 +204,24 @@ export function createHuntMap(containerId) {
     if (!coverageSel.size) return
     coverageSel.clear(); nodePosSig = null; draw()
   }
+  // What the stars of the last draw were keyed with (starKeyOf), so a dot and
+  // a selection name the star the hearing hangs from, a Discover prefix
+  // included (#723).
+  let starKeys = { attributionOf }
   // The dots of the points layer take the repeater's hue while the reach is
   // on (#603), the tier colour otherwise; the pillars keep the tier. A hearing
-  // placed on a node by reach takes that node's star's hue, a collided one
-  // none (starKey, #661).
+  // takes the hue of the star it hangs from, a collided one none (starKeyOf,
+  // #661).
   function pointHue(r) {
-    if (!coverageHue.size || !isRepeaterHearing(r) || r.sender_id == null) return null
-    const key = starKey(r, attributionOf(r))
+    if (!coverageHue.size) return null
+    const key = starKeyOf(r, starKeys)
     return key == null ? null : coverageHue.get(key) || null
   }
   // The star a reception belongs to, by the same attribution the stars use
-  // (starKey, #661): the node's pubkey when reach placed it, its own id
-  // otherwise, and null for a collision or a reception that belongs to no
+  // (starKeyOf): null for a collision or a reception that belongs to no
   // repeater (#624). What selectionDim is asked about for a dot, a cell or a
   // pillar.
-  const ownerOf = (r) => (isRepeaterHearing(r) && r.sender_id != null ? starKey(r, attributionOf(r)) : null)
+  const ownerOf = (r) => starKeyOf(r, starKeys)
   // Builds the stars for this tick, puts the rays up (one setData feeds the
   // 2D line source and the 3D ray layer), a ● hub for a star with no registry
   // position, and remembers the hues. Returns the selection for the markers:
@@ -233,7 +236,10 @@ export function createHuntMap(containerId) {
     }
     const byKey = new Map(nodePositions.map((n) => [String(n.pubkey).toLowerCase(), n]))
     const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
-    const stars = coverageStars(lastReachRows || records, { positionOf, cache: starCache, attributionOf })
+    // registryNodeOf (#723): a Discover prefix joins its node's star, as it
+    // joins the node on the node layer.
+    starKeys = { attributionOf, registryNodeOf: registryMatcher(nodePositions) }
+    const stars = coverageStars(lastReachRows || records, { positionOf, cache: starCache, ...starKeys })
     const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
     const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
     const selected = coverageSelected()

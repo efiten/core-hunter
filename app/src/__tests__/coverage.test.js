@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   isRepeaterHearing, isTwoWay, hueSlot, assignHues, HUE_COUNT, NEAR_M,
   rayStrength, rayStyle, ONE_WAY_OPACITY, DIM_OPACITY,
-  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim, starKey, starSelected,
+  starOrigin, coverageStars, coverageFeatures, RAY_ALT_M, selectionDim, starKey, starKeyOf, starSelected,
 } from '../coverage.js'
-import { estimateFor } from '../nodelayer.js'
+import { estimateFor, registryMatcher } from '../nodelayer.js'
 
 const A = 'aa'.repeat(32), B = 'bb'.repeat(32)
 
@@ -398,5 +398,47 @@ describe('selectionDim', () => {
     // holds it lower-cased, so without folding the selected repeater's own
     // dots would dim along with everything else.
     expect(selectionDim(new Set([A]), A.toUpperCase())).toBe(1)
+  })
+})
+
+// #723: a Discover reply names its responder by an 8-byte prefix. The node
+// layer paired it with the one registry key it starts, the stars did not, so
+// the same repeater drew a ▲ and, beside it, a star from its estimate.
+describe('a discover prefix joins its node\'s star (#723)', () => {
+  const node = { pubkey: 'db11db11f7808b97' + 'a'.repeat(48), lat: 51.84, lon: 5.84 }
+  const other = { pubkey: 'db11aa' + 'b'.repeat(58), lat: 51.9, lon: 5.9 }
+  const heard = (id, kind, lat, lon, rssi) => ({ sender_id: id, sender_kind: kind, sender_role: 'Repeater', lat, lon, rssi })
+  const pts = [
+    heard('db11db11f7808b97', 'discover_pubkey', 51.85, 5.85, -90),
+    heard('db11db11f7808b97', 'discover_pubkey', 51.86, 5.83, -100),
+    heard(node.pubkey, 'advert_pubkey', 51.83, 5.86, -80),
+  ]
+  it('hangs the prefix\'s hearings from the node, one star with its advert', () => {
+    const stars = coverageStars(pts, { registryNodeOf: registryMatcher([node, other]) })
+    expect(stars.map((s) => [s.id, s.origin.kind, s.points.length])).toEqual([[node.pubkey, 'advertised', 3]])
+    expect(stars[0].origin).toMatchObject({ lat: node.lat, lon: node.lon })
+  })
+  it('keeps a star of its own for a prefix that starts two keys', () => {
+    const twin = { pubkey: 'db11db11f7808b97' + 'c'.repeat(48), lat: 52, lon: 6 }
+    const stars = coverageStars(pts.slice(0, 2), { registryNodeOf: registryMatcher([node, twin]) })
+    expect(stars.map((s) => s.id)).toEqual([])   // two hearings: no estimate, so no origin
+    const three = [...pts.slice(0, 2), heard('db11db11f7808b97', 'discover_pubkey', 51.87, 5.84, -95)]
+    expect(coverageStars(three, { registryNodeOf: registryMatcher([node, twin]) }).map((s) => [s.id, s.origin.kind]))
+      .toEqual([['db11db11f7808b97', 'estimate']])
+  })
+  it('leaves a relay hash to the attribution by reach', () => {
+    const attributionOf = () => ({ rule: 'collision', count: 2 })
+    const relay = [heard('db', 'path_hash', 51.85, 5.85, -90)]
+    expect(coverageStars(relay, { registryNodeOf: registryMatcher([node]), attributionOf })).toEqual([])
+  })  // The dots take their star's hue and dim with its selection by this key,
+  // so it has to name the star the hearing hangs from.
+  it('keys each hearing by the id of the star it hangs from', () => {
+    const keys = { registryNodeOf: registryMatcher([node, other]) }
+    const [star] = coverageStars(pts, keys)
+    for (const pt of pts) expect(starKeyOf(pt, keys)).toBe(star.id)
+  })
+  it('keys no star for a hearing that belongs to none', () => {
+    expect(starKeyOf(heard('db', 'path_hash', 51.85, 5.85, -90), { attributionOf: () => ({ rule: 'collision', count: 2 }) })).toBe(null)
+    expect(starKeyOf({ sender_id: 'aa11', sender_kind: 'advert_pubkey', sender_role: 'Companion' })).toBe(null)
   })
 })
