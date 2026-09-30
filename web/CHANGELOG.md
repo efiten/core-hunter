@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.26.0](https://github.com/efiten/core-hunter/compare/web-v1.25.1...web-v1.26.0) (2026-09-30)
+
+
+### Features
+
+* **app,web:** ease what the map shows by zoom, on one hex system ([#734](https://github.com/efiten/core-hunter/issues/734)) ([4c2a57b](https://github.com/efiten/core-hunter/commit/4c2a57b52d2386bea479adc2f396819980147fee))
+* **app,web:** name a relay on the map the way the app does ([#733](https://github.com/efiten/core-hunter/issues/733)) ([a9aa01a](https://github.com/efiten/core-hunter/commit/a9aa01a1cedf47af34f241079172d0aa50539d1b))
+* **app:** send one broker to several collectors under one switch ([#722](https://github.com/efiten/core-hunter/issues/722)) ([8c6da30](https://github.com/efiten/core-hunter/commit/8c6da3057800a28e17e7263354ffa133252c2fbd))
+* **web:** export the repeaters heard in view as a 1200×1200 PNG ([#725](https://github.com/efiten/core-hunter/issues/725)) ([d6186bc](https://github.com/efiten/core-hunter/commit/d6186bcea71a0d291b332d9dda4ee0e3c6b77417))
+
+
+### Bug Fixes
+
+* **app,web:** hang a Discover-heard repeater's star from its own position ([#724](https://github.com/efiten/core-hunter/issues/724)) ([15a6ada](https://github.com/efiten/core-hunter/commit/15a6ada61fe9b7c020783b4a97cfe7db781ea33f))
+* **app,web:** put the caret in the target picker's search when it opens ([#721](https://github.com/efiten/core-hunter/issues/721)) ([6bd899c](https://github.com/efiten/core-hunter/commit/6bd899c7515922538720b33707a3283f6324f8da))
+* **app:** drop the float window's previous and next buttons ([#717](https://github.com/efiten/core-hunter/issues/717)) ([c957ff3](https://github.com/efiten/core-hunter/commit/c957ff398856d149bc03fc9426d091153d6f2f1a))
+* **app:** give the sound the playback buffer instead of the smallest ([#712](https://github.com/efiten/core-hunter/issues/712)) ([dee5484](https://github.com/efiten/core-hunter/commit/dee5484ade64c54f582b6d972c6d2204f6d69afc))
+* **app:** hide Chrome's pause on the fullscreen readout ([#715](https://github.com/efiten/core-hunter/issues/715)) ([836d91e](https://github.com/efiten/core-hunter/commit/836d91e010b66111448ac18b1bbf716a064fa05f))
+* **app:** keep a space under the HUD on Android ([#710](https://github.com/efiten/core-hunter/issues/710)) ([2754716](https://github.com/efiten/core-hunter/commit/275471684a5d45a9e7316e74abdaab3e78644325))
+* **app:** let the fullscreen readout turn with the phone ([#718](https://github.com/efiten/core-hunter/issues/718)) ([fae3749](https://github.com/efiten/core-hunter/commit/fae37493ae5f914262ab0885e20ffd15fd1120ac))
+* **app:** put the transmit pop under the receptions it sat over ([#738](https://github.com/efiten/core-hunter/issues/738)) ([2bfc5fa](https://github.com/efiten/core-hunter/commit/2bfc5fa7b975c762674400e15385ddbd1a2cac6e))
+* **server:** keep the node registry in memory on a loop of its own ([#736](https://github.com/efiten/core-hunter/issues/736)) ([4f3e988](https://github.com/efiten/core-hunter/commit/4f3e9881a71f9a51a58d33bb7d3b9c10fa674523))
+* **web:** keep the map bar on one row between 641 and 767 px ([#732](https://github.com/efiten/core-hunter/issues/732)) ([c44dc1d](https://github.com/efiten/core-hunter/commit/c44dc1d815d59f5bf19435b3d2ed17c8e368ad44))
+
 ## [1.25.1](https://github.com/efiten/core-hunter/compare/web-v1.25.0...web-v1.25.1) (2026-09-26)
 
 
