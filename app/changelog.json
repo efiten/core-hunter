@@ -1,5 +1,40 @@
 [
   {
+    "id": "2026-09-30-node-positions-after-restart",
+    "date": "2026-09-30",
+    "where": "map",
+    "title": "Node positions straight after a server restart",
+    "body": "The server fetches the node registry on its own, so nobody sees it as unreachable after a restart."
+  },
+  {
+    "id": "2026-09-30-quieter-send-sounds",
+    "date": "2026-09-30",
+    "where": "app",
+    "title": "Quieter send sounds",
+    "body": "The pops for Discover and trace-pings are a third as loud and shorter, so a weak reception is heard over them."
+  },
+  {
+    "id": "2026-09-29-bar-one-row-sideways",
+    "date": "2026-09-29",
+    "where": "map",
+    "title": "One-row bar on a phone held sideways",
+    "body": "Below 768 px wide the map uses the phone layout, so the bar no longer wraps to three rows."
+  },
+  {
+    "id": "2026-09-29-map-names-relays-like-app",
+    "date": "2026-09-29",
+    "where": "map",
+    "title": "The map names a relay like the app",
+    "body": "A relay's name in the ticker and the popup is marked ~ as a guess. Members get the name of the one known node in reach."
+  },
+  {
+    "id": "2026-09-29-zoom-eases",
+    "date": "2026-09-29",
+    "where": "both",
+    "title": "Zooming eases instead of jumping",
+    "body": "Cells change size gradually and points fade in as you zoom. Auto replaces Both. In 3D the pillars appear at the closest zoom."
+  },
+  {
     "id": "2026-09-27-hud-bottom-space",
     "date": "2026-09-27",
     "where": "app",
@@ -21,6 +56,27 @@
     "body": "Sound uses a larger output buffer, against ticking while the app is busy right after start."
   },
   {
+    "id": "2026-09-27-float-no-prev-next",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "The floating readout has no buttons of its own",
+    "body": "Previous and next are gone from the floating window; step through receptions in the ticker."
+  },
+  {
+    "id": "2026-09-27-float-turns-with-phone",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "The fullscreen readout turns with the phone",
+    "body": "In a landscape holder the fullscreen readout now lies the right way, and it keeps to Android's auto-rotate setting."
+  },
+  {
+    "id": "2026-09-27-picker-search-focus",
+    "date": "2026-09-27",
+    "where": "both",
+    "title": "Type straight away in the target picker",
+    "body": "Opening the target picker puts the cursor in its search. In the app it opens on an empty search every time."
+  },
+  {
     "id": "2026-09-27-discover-star-on-node",
     "date": "2026-09-27",
     "where": "both",
@@ -33,6 +89,13 @@
     "where": "map",
     "title": "Export the repeaters you heard as a picture",
     "body": "Export in the top bar makes a 1200 × 1200 PNG of every repeater in view and where it was heard, ready to share."
+  },
+  {
+    "id": "2026-09-27-dutchmeshcore-by-default",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "Your receptions also go to DutchMeshCore",
+    "body": "Your receptions now also go to DutchMeshCore, with one switch under Manage brokers."
   },
   {
     "id": "2026-09-26-broker-presets-shown",

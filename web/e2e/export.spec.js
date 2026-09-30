@@ -58,7 +58,7 @@ test('Escape closes the sheet and hands focus back to the button', async ({ page
 })
 
 // Below 900px Export is in the menu, before Start mapping and Log in join it
-// below 640px (barnarrow.js): between 641 and 900px its label wrapped the bar
+// below 768px (barnarrow.js): between 768 and 900px its label wrapped the bar
 // into another row.
 test('Export sits in the menu below 900px and opens the sheet from there', async ({ page }) => {
   await stub(page, 'member')

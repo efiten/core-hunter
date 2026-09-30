@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-30-quieter-send-sounds",
+  "date": "2026-09-30",
+  "where": "app",
+  "title": "Quieter send sounds",
+  "body": "The pops for Discover and trace-pings are a third as loud and shorter, so a weak reception is heard over them."
+}

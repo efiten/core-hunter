@@ -37,9 +37,9 @@ async function openPointPopup(page) {
 
 test('Ignore this ID drops the sender from the query, not just from the view', async ({ page }) => {
   const urls = await setup(page)
-  // mode=both, because the point layer and the hex layer are separate requests
+  // mode=auto, because the point layer and the hex layer are separate requests
   // and the list has to reach both: the hex is what a visitor lands on (#141).
-  await page.goto('/?mode=both')
+  await page.goto('/?mode=auto')
   await openPointPopup(page)
   await page.locator('.pp-ignore').first().click()
 

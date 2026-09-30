@@ -117,11 +117,26 @@ export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, se
     listEl.replaceChildren(...items.map((rec) => row(rec, nowMs, onSelect, lastSelected)))
   }
 
-  // Reset back to the first page — call when the sheet is (re)opened.
+  // Back to the first page.
   function reset() {
     visible = PAGE_SIZE
     _lastSig = null
     _lastPinnedSig = null
+  }
+
+  // open: what the sheet does each time it opens (#714). The first page of
+  // the full list, an empty query, and the caret in the field, so the next
+  // keystroke searches. A query left from the last open used to come back
+  // with a list narrowed by it and nothing saying why. The list repaints at
+  // once when there was a query, not on the next tick, so the narrowed list
+  // never shows. The focus has to land in the tap that opened the sheet: a
+  // phone raises its keyboard only then.
+  function open() {
+    const hadQuery = !!(searchEl && searchEl.value)
+    if (searchEl) searchEl.value = ''
+    reset()
+    if (hadQuery) render(lastRows, lastIgnore, Date.now(), lastSelected)
+    if (searchEl) searchEl.focus({ preventScroll: true })
   }
 
   // Typing is a new list: page from the top of the matches rather than from
@@ -144,5 +159,5 @@ export function createTargetList(listEl, { onSelect, pinnedEl, pinnedLabelEl, se
     render(lastRows, lastIgnore, Date.now(), lastSelected)
   })
 
-  return { render, reset }
+  return { render, open }
 }

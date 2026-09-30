@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pruneFloor, owedBrokers, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary, presetsFrom } from '../brokers.js'
+import { pruneFloor, owedBrokers, dotState, parseBrokerPrefs, mergeBrokers, validateBroker, brokerStatus, probeBroker, mqttSummary, presetsFrom, legsOf, foldLegs, sharedWith, hostClashes, liveBrokers, owedLegs } from '../brokers.js'
 
 describe('pruneFloor: how far retention may delete (#554)', () => {
   it('stops at the broker that is furthest behind', () => {
@@ -274,5 +274,154 @@ describe('brokerStatus tells a refusing companion from an absent one', () => {
   it('says the companion could not sign in when the sign request was refused', () => {
     expect(brokerStatus({ enabled: true, connected: false, queued: 0, signRefused: true })).toEqual({ dot: 'warn', text: 'Your companion could not sign in' })
     expect(brokerStatus({ enabled: true, connected: false, queued: 0, needsCompanion: true })).toEqual({ dot: 'warn', text: 'Connect your companion to sign in' })
+  })
+})
+
+// #704: DutchMeshCore is one broker row with two collectors behind it. The row
+// and its switch are one; the connections are two, and each keeps its own
+// watermark and token, so each needs its own id.
+describe('legsOf: the connections behind one row (#704)', () => {
+  const dmc = { id: 'dmc', name: 'DutchMeshCore', url: 'wss://c1.example:443', auth: 'companion', format: 'wardrive', label: 'hunter', source: 'site', enabled: true,
+    streams: [{ url: 'wss://c1.example:443', label: 'hunter' }, { url: 'wss://c2.example:8443', label: 'wardriver' }] }
+
+  it('is one connection per stream, each with its own address, label and id', () => {
+    const legs = legsOf(dmc)
+    expect(legs.map((l) => [l.id, l.url, l.label])).toEqual([
+      // URL.host, like the user: ids: the default port is not part of it.
+      ['dmc@c1.example', 'wss://c1.example:443', 'hunter'],
+      ['dmc@c2.example:8443', 'wss://c2.example:8443', 'wardriver'],
+    ])
+  })
+
+  it('keeps the row\'s sign-in, format and switch on every connection', () => {
+    for (const l of legsOf(dmc)) {
+      expect(l).toMatchObject({ auth: 'companion', format: 'wardrive', enabled: true, source: 'site' })
+      expect('streams' in l).toBe(false)
+    }
+    expect(legsOf({ ...dmc, enabled: false }).every((l) => l.enabled === false)).toBe(true)
+  })
+
+  it('is the broker itself, under its own id, when it has no streams', () => {
+    const own = { id: 'default', url: 'wss://own.example/ws' }
+    expect(legsOf(own)).toEqual([own])
+    expect(legsOf({ ...own, streams: [] })).toEqual([{ ...own, streams: [] }])
+  })
+})
+
+describe('foldLegs: one status for a row of several connections (#704)', () => {
+  it('is connected only when every connection is, and counts how many are', () => {
+    expect(foldLegs([{ connected: true, queued: 0 }, { connected: false, queued: 0 }])).toMatchObject({ connected: false, up: 1, of: 2 })
+    expect(foldLegs([{ connected: true, queued: 0 }, { connected: true, queued: 0 }])).toMatchObject({ connected: true, up: 2, of: 2 })
+  })
+
+  // Each connection drains on its own, so the row is as far behind as its
+  // slowest one, not the sum of both.
+  it('queues what the connection furthest behind is still owed', () => {
+    expect(foldLegs([{ connected: true, queued: 12 }, { connected: true, queued: 300 }]).queued).toBe(300)
+  })
+
+  it('waits for the companion when any connection does', () => {
+    expect(foldLegs([{ connected: true, queued: 0 }, { connected: false, queued: 0, needsCompanion: true }]).needsCompanion).toBe(true)
+    expect(foldLegs([{ connected: false, queued: 0, signRefused: true }, { connected: false, queued: 0 }]).signRefused).toBe(true)
+  })
+})
+
+describe('brokerStatus for a row with several connections (#704)', () => {
+  it('says how many of its connections are up while not all of them are', () => {
+    expect(brokerStatus({ enabled: true, connected: false, up: 1, of: 2, queued: 0 })).toEqual({ dot: 'warn', text: '1 of 2 connected' })
+    expect(brokerStatus({ enabled: true, connected: false, up: 1, of: 2, queued: 40 })).toEqual({ dot: 'warn', text: '1 of 2 connected · 40 queued' })
+  })
+
+  it('reads as one broker when all or none are up', () => {
+    expect(brokerStatus({ enabled: true, connected: true, up: 2, of: 2, queued: 0 })).toEqual({ dot: 'on', text: 'Connected' })
+    expect(brokerStatus({ enabled: true, connected: false, up: 0, of: 2, queued: 0, needsCompanion: true })).toEqual({ dot: 'warn', text: 'Connect your companion to sign in' })
+  })
+
+  it('names why the other connection is down, not only the count', () => {
+    expect(brokerStatus({ enabled: true, connected: false, up: 1, of: 2, queued: 0, signRefused: true })).toEqual({ dot: 'warn', text: '1 of 2 connected · your companion could not sign in' })
+    expect(brokerStatus({ enabled: true, connected: false, up: 1, of: 2, queued: 5, needsCompanion: true })).toEqual({ dot: 'warn', text: '1 of 2 connected · connect your companion to sign in · 5 queued' })
+  })
+})
+
+// A second session under one client id kicks the first, and every broker the
+// companion signs in to uses the companion's key as its id. A hunter adding a
+// collector the site already publishes to would set the two fighting.
+describe('validateBroker refuses a host the site already publishes to (#704)', () => {
+  it('refuses the host of any site connection, port included', () => {
+    const r = validateBroker({ url: 'wss://c2.example:8443', auth: 'companion' }, [], { takenHosts: ['c1.example', 'c2.example:8443'] })
+    expect(r.ok).toBe(false)
+    expect(r.errors.url).toMatch(/already/)
+    expect(validateBroker({ url: 'wss://c2.example:9443', auth: 'companion' }, [], { takenHosts: ['c2.example:8443'] }).ok).toBe(true)
+  })
+})
+
+// The splash and About say where receptions go (#704), from the brokers that
+// are on, so a site without DutchMeshCore or a hunter who switched it off does
+// not read that it is there.
+describe('sharedWith: where receptions go, in one sentence (#704)', () => {
+  it('names every broker that is on', () => {
+    expect(sharedWith(['Mesh-Hunter'])).toBe('Your receptions are shared with Mesh-Hunter.')
+    expect(sharedWith(['Mesh-Hunter', 'DutchMeshCore'])).toBe('Your receptions are shared with Mesh-Hunter and DutchMeshCore.')
+    expect(sharedWith(['Mesh-Hunter', 'DutchMeshCore', 'BE community'])).toBe('Your receptions are shared with Mesh-Hunter, DutchMeshCore and BE community.')
+  })
+
+  it('names a broker once, and says the receptions stay put when every broker is off', () => {
+    expect(sharedWith(['Mesh-Hunter', 'Mesh-Hunter'])).toBe('Your receptions are shared with Mesh-Hunter.')
+    expect(sharedWith([])).toBe('Your receptions stay on this phone.')
+  })
+})
+
+// A broker a hunter added from a preset before #704 shares a host with the
+// site's stream after the deploy. Both sign in under the companion's key, so
+// the two sessions keep signing each other out, and all the hunter sees is a
+// row that blinks. The add form refuses a new one; an existing one is named
+// on its row so the hunter knows which to remove.
+describe('hostClashes names the site broker a hunter\'s own broker collides with (#704)', () => {
+  const site = { id: 'dmc', name: 'DutchMeshCore', source: 'site', url: 'wss://c1.example:443', enabled: true,
+    streams: [{ url: 'wss://c1.example:443', label: 'hunter' }, { url: 'wss://c2.example:8443', label: 'wardriver' }] }
+  const own = { id: 'default', name: 'Mesh-Hunter', source: 'site', url: 'wss://mqtt.example/ws', enabled: true }
+
+  it('finds a user broker on any host of a site broker, port included', () => {
+    const user = { id: 'user:c2.example:8443', name: 'DMC wardriver', source: 'user', url: 'wss://c2.example:8443', enabled: true }
+    expect(hostClashes([own, site, user])).toEqual(new Map([['user:c2.example:8443', 'DutchMeshCore']]))
+  })
+
+  it('names nothing for a user broker on its own host, or a site broker beside another', () => {
+    const user = { id: 'user:c2.example:9443', name: 'Mine', source: 'user', url: 'wss://c2.example:9443', enabled: true }
+    expect(hostClashes([own, site, user])).toEqual(new Map())
+    expect(hostClashes([own, site])).toEqual(new Map())
+  })
+
+  it('names the clash whether either broker is on or off', () => {
+    const user = { id: 'user:c1.example', name: 'DMC hunter', source: 'user', url: 'wss://c1.example:443', enabled: false }
+    expect(hostClashes([{ ...site, enabled: false }, user]).get('user:c1.example')).toBe('DutchMeshCore')
+  })
+})
+
+// A clashing broker a hunter added stays on its row with the hint, and is
+// never connected: both sessions sign in under the companion's key, so a
+// second one would keep signing the site's connection out (#704).
+describe('liveBrokers leaves a clashing user broker out (#704)', () => {
+  const site = { id: 'dmc', name: 'DutchMeshCore', source: 'site', url: 'wss://c1.example:443', enabled: true,
+    streams: [{ url: 'wss://c1.example:443', label: 'hunter' }, { url: 'wss://c2.example:8443', label: 'wardriver' }] }
+  const clash = { id: 'user:c2.example:8443', name: 'DMC wardriver', source: 'user', url: 'wss://c2.example:8443', enabled: true }
+  const mine = { id: 'user:mine.example', name: 'Mine', source: 'user', url: 'wss://mine.example', enabled: true }
+  it('keeps the site broker and a user broker on its own host', () => {
+    expect(liveBrokers([site, clash, mine]).map((b) => b.id)).toEqual(['dmc', 'user:mine.example'])
+  })
+})
+
+// AGENTS.md §10: a reception is pruned once every connection owed it has it,
+// and a watermark is kept per connection. So what prune asks about are the
+// connections, never the row: the row's own id has no watermark that drains.
+describe('owedLegs: what retention waits for (#704)', () => {
+  const site = { id: 'dmc', name: 'DutchMeshCore', source: 'site', url: 'wss://c1.example:443', enabled: true,
+    streams: [{ url: 'wss://c1.example:443', label: 'hunter' }, { url: 'wss://c2.example:8443', label: 'wardriver' }] }
+  const clash = { id: 'user:c1.example', name: 'DMC hunter', source: 'user', url: 'wss://c1.example:443', enabled: true }
+  it('is every connection of the brokers that are on, not the rows', () => {
+    expect(owedLegs([site]).map((l) => l.id)).toEqual(['dmc@c1.example', 'dmc@c2.example:8443'])
+  })
+  it('does not wait for a clashing broker that never connects', () => {
+    expect(owedLegs([site, clash]).map((l) => l.id)).toEqual(['dmc@c1.example', 'dmc@c2.example:8443'])
   })
 })

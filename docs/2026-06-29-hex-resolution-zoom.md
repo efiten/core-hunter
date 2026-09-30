@@ -45,6 +45,11 @@ time, not the target's.
 > and AGENTS.md §1 carries it. The §7 rule that required it in every position-bearing output was
 > removed.
 
+> **Amended 2026-09-29 by `docs/2026-09-29-zoom-transitions.md` (#634).** The app no longer has
+> bands of a fixed size. It takes the server's rule, a size per zoom level, and goes three
+> resolutions past the server's finest so the walk-in keeps its fine cells. The caveat above on
+> cells below GPS accuracy stands.
+
 ## Watch-outs
 
 - **Render cost.** At res 15 over a dense session this rebuilds many small `L.polygon`s on every pan

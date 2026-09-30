@@ -1,3 +1,4 @@
+import { pointShare, resPair, resForZoom } from './zoomfade.js'
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
 import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
@@ -7,9 +8,10 @@ import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.j
 import { heardModel, routeSegments, mappedCells, windowText, huntersText, exportFileName, FAR_KM } from './exportheard.js'
 import { renderHeardImage, lightTokens } from './exportrender.js'
 import { initExportSheet } from './exportsheet.js'
+import { createRowAttributor } from './rowattribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey, isHashIdKind } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows, registryMatcher } from './nodelayer.js'
@@ -33,7 +35,7 @@ import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeFo
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, clampUnlessNarrow, serialise, parse as parsePlacement } from './tickerplace.js'
 import { noticesPlacement } from './noticeplace.js'
-import { wireNarrowBar } from './barnarrow.js'
+import { wireNarrowBar, NARROW_MEDIA } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 import { compassNeedleTransform, zoomButtonsDisabled, nodePosTap } from './maprail.js'
 import { NODEPOS_MODES, NODEPOS_LABELS, parseNodePosMode } from './nodeposmode.js'
@@ -64,9 +66,13 @@ document.documentElement.setAttribute('data-theme', theme)
 const iLat = parseFloat(urlstate.initial('lat', '')), iLon = parseFloat(urlstate.initial('lon', ''))
 const iZoom = parseFloat(urlstate.initial('z', ''))
 const hasSavedView = Number.isFinite(iLat) && Number.isFinite(iLon)
-const MODES = ['points', 'hex', 'both']
+// 'auto' took the place of 'both' in #634: hex and points together, each at
+// the share its zoom gives it (zoomfade.js). A link or a stored view from
+// before still says both, and reads as auto.
+const MODES = ['points', 'hex', 'auto']
+const modeFrom = (v) => (v === 'both' ? 'auto' : v)
 // Cold default is hex (#141) — a URL-/persisted mode still wins via urlstate.
-let mode = MODES.includes(urlstate.initial('mode', '')) ? urlstate.initial('mode', '') : 'hex'
+let mode = MODES.includes(modeFrom(urlstate.initial('mode', ''))) ? modeFrom(urlstate.initial('mode', '')) : 'hex'
 // The camera and the 3D view from the URL (#595, mapmodel.js cameraFor):
 // ?view=3d is the layer state, ?pitch= and ?bearing= the camera, and the
 // exaggeration is a Settings choice that travels like the theme does.
@@ -328,10 +334,19 @@ const ignoreSuffix = () => (ignored.size ? ` · ${ignored.size} ignored` : '')
 // the Locate and Ignore buttons are handled by the delegated document
 // listeners further down, so nothing here needs a reference to the popup.
 let currentPoints = []
+// The rows a name is printed on carry their attribution by reach (#663), so
+// the popup and the ticker name a relay the way the app does. One attributor
+// each: the points are the view's, the ticker's lines are the latest wherever
+// they were heard, and each keeps the registry slice that covers its own rows.
+// Below member the registry is refused, so nothing is asked.
+const mayReadRegistry = () => roleKnown && canSeeObserverPoints(currentRole)
+const pointAttribution = createRowAttributor({ fetchRegistry: (b) => fetchNodeRegistry(b), allowed: mayReadRegistry })
+const tickerAttribution = createRowAttributor({ fetchRegistry: (b) => fetchNodeRegistry(b), allowed: mayReadRegistry })
 function pointPopupHtml(pt) {
   const role = pt.sender_role ? ` · ${esc(pt.sender_role)}` : ''
   const sid = pt.sender_id || ''
-  const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
+  // A relay or direct hash reads '#' and the id, as the ticker has it.
+  const idLine = sid ? `<br><span class="pp-id">${esc(isHashIdKind(pt.sender_kind) ? '#' + sid : sid)}</span>` : ''
   const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
   // Ignoring is per person and needs no role: it only ever removes rows from
   // the asker's own view. Same wording as the app's popup (huntmap.js).
@@ -341,10 +356,14 @@ function pointPopupHtml(pt) {
 // Reception ticker two-way sync (#224): clicking a point scrolls the ticker
 // to the matching line, keyed by receptionKey since /api/points rows carry no
 // stable id.
+// A tap before the registry answered opens by the label; the open popup is
+// named again when the answer lands.
+let pointsAttributed = Promise.resolve()
 const onPointClick = (props) => {
   const pt = currentPoints[props.i]
   if (!pt) return
-  wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
+  const popup = wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
+  if (pt._attr === undefined) pointsAttributed.then(() => { if (popup.isOpen()) popup.setHTML(pointPopupHtml(pt)) })
   if (rxTicker) rxTicker.focusRecord(receptionKey(pt))
 }
 // The pillar carries the index of the reception it stands for (#595), so a
@@ -376,6 +395,10 @@ async function drawPoints() {
   // until the new ones are here. The array is kept for the click handler,
   // which gets a feature index back rather than a marker object.
   currentPoints = points
+  // Not awaited: the popup reads _attr when a point is tapped, and the draw
+  // does not wait for a registry. A tap that lands first reads by the label
+  // until this settles (onPointClick).
+  pointsAttributed = pointAttribution.attribute(points).catch(() => {})
   // A selection dims what is not part of it (#624), on a fresh draw as well as
   // on a tap, or a pan would bring the whole map back to full strength.
   const { dimFor } = selectionDimmer()
@@ -400,55 +423,102 @@ async function drawPoints() {
 // A multi-sender pick restricts the heatmap too (#223): the sender filter is
 // applied server-side in SQL, so it lands before the grid-cell aggregation
 // rather than needing per-point rows the client no longer sees.
-let currentHexRings = []
+// Per hex layer since #634: two cell sizes are on the map at a time, and a
+// click names the cell by its index in its own layer.
+let currentHexRings = { hex: [], 'hex-b': [] }
 // The cells as the server sent them, kept so a selection change can re-dim
 // them without refetching the heatmap for what is only a colour change (#624).
-let currentHexFeatures = []
+let currentHexFeatures = { hex: [], 'hex-b': [] }
+const HEX_SLOTS = ['hex', 'hex-b']
+const clearHex = () => {
+  currentHexRings = { hex: [], 'hex-b': [] }; currentHexFeatures = { hex: [], 'hex-b': [] }
+  for (const id of HEX_SLOTS) wm.setData(id, null)
+}
 // The hunter count is omitted rather than shown as 0 when the server
 // withholds it (#440): a degraded caller gets no identities at all, and
 // "0 hunters" over a cell with receptions in it reads as a bug.
 const hexHover = (p) => `best RSSI ${p.best} · ${p.count} pts` + (p.hunters != null ? ` · ${p.hunters} hunters` : '')
-wm.hoverText('hex', hexHover)
-wm.hoverText('hex-3d', hexHover)
+for (const id of ['hex', 'hex-b', 'hex-3d', 'hex-3d-b']) wm.hoverText(id, hexHover)
 // Ticker sync from hex mode (#224). The point-click path only exists in
 // 'points'/'both', and the cold default is 'hex' (#141), so without this a
 // first-time visitor clicking the map got nothing. newestInRing returns null
 // when the ticker holds none of the cell's rows (ordinary — it caps at CAP
 // recent rows), and then the ticker is left as it is.
-const onHexClick = (props) => {
+const onHexClick = (slot) => (props) => {
   if (!rxTicker) return
-  const ring = currentHexRings[props.i]
+  const ring = currentHexRings[slot][props.i]
   if (!ring) return
   const hit = newestInRing(rxTicker.records(), ring)
   if (hit) rxTicker.focusRecord(receptionKey(hit))
 }
-wm.onLayerClick('hex', onHexClick)
-wm.onLayerClick('hex-3d', onHexClick)
+for (const slot of HEX_SLOTS) {
+  wm.onLayerClick(slot, onHexClick(slot))
+  wm.onLayerClick(slot === 'hex' ? 'hex-3d' : 'hex-3d-b', onHexClick(slot))
+}
 
+// The finest cell size the server hands out (server/internal/geo/hexgrid.go,
+// ResForZoom).
+const SERVER_MAX_RES = 18
+// The size of the cells in an answer, read off the first cell's id
+// ("res:q:r"). The server may answer coarser than it was asked: below member
+// it caps the zoom, and above 18 it has nothing finer.
+const resOfCells = (fc, asked) => {
+  const cell = fc.features && fc.features[0] && fc.features[0].properties && fc.features[0].properties.cell
+  const res = cell ? parseInt(String(cell).split(':')[0], 10) : NaN
+  return Number.isFinite(res) ? res : asked
+}
+// Two cell sizes at a time (#634, zoomfade.js): the one drawn in full around
+// this zoom and the neighbour it blends with, each asked for by its own z and
+// each in the layer its size belongs to. Where the server answers both asks
+// with the same size, that size is its ceiling for this caller: it is drawn
+// once, and stays in full from there up.
 async function drawHex() {
   const isCurrent = hexDraw()
-  let fc
+  const zoom = wm.getZoom()
+  const { coarse, fine } = resPair(zoom, SERVER_MAX_RES)
+  let answers
   try {
-    const r = await fetch(`${API_BASE}/api/heatmap?${qs()}`)
-    if (!r.ok) throw new Error(`heatmap ${r.status}`)
-    fc = await r.json()
+    answers = await Promise.all([...new Set([coarse, fine])].map(async (res) => {
+      const p = new URLSearchParams(qs())
+      p.set('z', String(res))
+      const r = await fetch(`${API_BASE}/api/heatmap?${p.toString()}`)
+      if (!r.ok) throw new Error(`heatmap ${r.status}`)
+      const fc = await r.json()
+      return { res: resOfCells(fc, res), asked: res, fc }
+    }))
   } catch (_) {
-    if (mayPaint(isCurrent)) { currentHexRings = []; currentHexFeatures = []; wm.setData('hex', null); setStatus('heatmap unavailable') }
+    if (mayPaint(isCurrent)) { clearHex(); setStatus('heatmap unavailable') }
     return
   }
   if (!mayPaint(isCurrent)) return
-  // The rings are kept for the click handler: a cell is an aggregate with no
-  // reception of its own, so a click matches it against the ticker's rows.
-  currentHexRings = (fc.features || []).map((f) => f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]))
-  currentHexFeatures = fc.features || []
-  // The background goes in for the bars' tint (#412): read now, so a theme
-  // switch, which refreshes, rebuilds them over the new ground.
-  wm.setData('hex', hexFeatures(currentHexFeatures, tierColor, cssVar('--ch-bg'), { dim: selectionDimmer().cellDim }))
+  const bySize = new Map(answers.map((a) => [a.res, a]))
+  const capped = answers.some((a) => a.res < a.asked)
+  const maxRes = capped ? Math.max(...bySize.keys()) : SERVER_MAX_RES
+  const sizes = { a: null, b: null }
+  const drawn = { hex: null, 'hex-b': null }
+  for (const a of bySize.values()) {
+    const even = a.res % 2 === 0
+    sizes[even ? 'a' : 'b'] = a.res
+    drawn[even ? 'hex' : 'hex-b'] = a.fc
+  }
+  for (const id of HEX_SLOTS) {
+    const features = (drawn[id] && drawn[id].features) || []
+    // The rings are kept for the click handler: a cell is an aggregate with no
+    // reception of its own, so a click matches it against the ticker's rows.
+    currentHexRings[id] = features.map((f) => f.geometry.coordinates[0].map(([lon, lat]) => [lat, lon]))
+    currentHexFeatures[id] = features
+    // The background goes in for the bars' tint (#412): read now, so a theme
+    // switch, which refreshes, rebuilds them over the new ground.
+    wm.setData(id, features.length ? hexFeatures(features, tierColor, cssVar('--ch-bg'), { dim: selectionDimmer().cellDim }) : null)
+  }
+  wm.setHexSizes(sizes)
+  // The line under the map counts the size drawn in full at this zoom.
+  const shown = (bySize.get(Math.min(maxRes, resForZoom(zoom, SERVER_MAX_RES))) || answers[0]).fc
   // "cells (capped)" under a range button reading All time is a contradiction a
   // reader cannot resolve. The truncation is the most RECENT n receptions, so
   // the honest report is the date it reaches back to (#440).
-  const cover = { truncated: fc.truncated, coversFrom: fc.covers_from }
-  setStatus(coverageLabel(fc.features.length, 'cells', cover) + ignoreSuffix(), coverageTitle(HEATMAP_CAP, cover))
+  const cover = { truncated: shown.truncated, coversFrom: shown.covers_from }
+  setStatus(coverageLabel((shown.features || []).length, 'cells', cover) + ignoreSuffix(), coverageTitle(HEATMAP_CAP, cover))
 }
 
 // The point layer, gated like Locate below (#493). Below member /api/points
@@ -546,6 +616,8 @@ function announceRoleRise(role) {
 function applyRole(me) {
   currentRole = me.role || 'guest'
   roleKnown = true
+  // The registry is the role's to read or not (#663).
+  pointAttribution.reset(); tickerAttribution.reset()
   announceRoleRise(currentRole)
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
@@ -605,8 +677,11 @@ export function refresh() {
     // The else branches take a ticket as well as clearing: a draw started
     // under the previous mode is obsolete the moment the toggle empties its
     // layer, and would otherwise still be the newest and repaint it.
-    if (roleKnown && (mode === 'points' || mode === 'both')) drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
-    if (mode === 'hex' || mode === 'both') drawHex(); else { hexDraw(); currentHexRings = []; currentHexFeatures = []; wm.setData('hex', null) }
+    // In auto the points wait for the zoom that shows them (zoomfade.js,
+    // #634): below it their share is nothing, so nothing is fetched either.
+    const pointsOn = mode === 'points' || (mode === 'auto' && pointShare(wm.getZoom(), { mode, mode3D: view3D }) > 0)
+    if (roleKnown && pointsOn) drawPoints(); else { pointsDraw(); currentPoints = []; wm.setData('points', null); wm.setData('points-3d', null) }
+    if (mode === 'hex' || mode === 'auto') drawHex(); else { hexDraw(); clearHex() }
     // Picker works in all modes, not just points mode (#288 blocker 1)
     refreshPickerCandidates()
     refreshHunterPickerCandidates()
@@ -642,6 +717,7 @@ themeBtn.addEventListener('click', () => {
 wm.on('moveend', () => { urlstate.save(); refresh() })
 window.__refresh = refresh
 window.__mapZoom = () => Number(zoomParam(wm.getZoom())) // test hook, in the URL's (Leaflet) zoom units
+window.__mapJumpZoom = (z) => wm.map.jumpTo({ zoom: z }) // test hook, in MapLibre's zoom units
 window.__mapCenter = () => wm.getCenter() // test hook
 window.__mapBounds = () => wm.getBounds() // test hook: the view the registry slice is padded around (#661)
 window.__mapProject = (lat, lon) => wm.project(lat, lon) // test hook
@@ -788,7 +864,12 @@ async function fetchTickerPage(mode) {
   // truncated travels with the rows: QueryPoints fetches one past the limit to
   // detect it precisely, and the ticker's header needs it to say whether more
   // receptions exist behind this page (#638).
-  return { points: d.points || [], truncated: !!d.truncated }
+  // Attributed before the lines render, so a line never prints a name first
+  // and drops it a moment later. A registry that does not answer leaves the
+  // rows as a guest's (rowattribution.js).
+  const points = d.points || []
+  await tickerAttribution.attribute(points).catch(() => {})
+  return { points, truncated: !!d.truncated }
 }
 
 // Snap the map to the selected hunter(s) (#195).
@@ -990,8 +1071,8 @@ function activateLocate() {
   // redraw after Locate recomputes the same signature, takes the early return,
   // and never repopulates — the layer would stay empty for the rest of the
   // session. One clear, one reset.
-  currentPoints = []; currentHexRings = []; currentHexFeatures = []
-  wm.setData('points', null); wm.setData('points-3d', null); wm.setData('hex', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
+  currentPoints = []; clearHex()
+  wm.setData('points', null); wm.setData('points-3d', null); wm.setData(csAdvertLayer, null); wm.setData(csRelayLayer, null)
   clearNodePosLayer(); nodePosSig = null
   setRxHighlight(null) // suppress ticker rings in focus mode (#287 blocker 3)
   urlstate.save()
@@ -1416,10 +1497,10 @@ function showNodePosNotice({ on = nodePosCb.checked, reason = null, registry = n
   if (next.hideAfterMs) noticeTimer = setTimeout(() => { keyEl.hidden = true }, next.hideAfterMs)
 }
 
-// Narrow is 640px, the line the bar and the ticker answer "is this a phone"
-// with. matchMedia rather than innerWidth so the answer arrives as an event.
-const narrowQuery = window.matchMedia('(max-width: 640px)')
-// The bar's group keeps two of its four controls below 640px and the filter
+// Narrow is NARROW_MEDIA, the line the bar and the ticker answer "is this a
+// phone" with. matchMedia rather than innerWidth so the answer arrives as an event.
+const narrowQuery = window.matchMedia(NARROW_MEDIA)
+// The bar's group keeps two of its four controls below 768px and the filter
 // panel takes the other two (#561). Wired to the same query rather than a
 // second matchMedia, so the bar and everything else that answers "is this a
 // phone" cannot disagree about where the line is.
@@ -1665,7 +1746,9 @@ function repaintSelection() {
     wm.setData('points', pointFeatures(currentPoints, tierColor, { colorFor: pointHue, dimFor }))
     if (view3D) wm.setData('points-3d', pillarFeatures(currentPoints, wm.getZoom(), tierColor, cssVar('--ch-bg'), { dimFor }))
   }
-  if (currentHexFeatures.length) wm.setData('hex', hexFeatures(currentHexFeatures, tierColor, cssVar('--ch-bg'), { dim: cellDim }))
+  for (const id of HEX_SLOTS) {
+    if (currentHexFeatures[id].length) wm.setData(id, hexFeatures(currentHexFeatures[id], tierColor, cssVar('--ch-bg'), { dim: cellDim }))
+  }
 }
 // The selection that dims the map, read once per paint rather than once per
 // point (coverageSelected builds a fresh Set each call). Only in the reach
@@ -1928,7 +2011,7 @@ senderEl.addEventListener('input', () => { clearTimeout(senderTitleTimer); sende
 urlstate.register({ key: 'theme', get: () => theme,
   set: (v) => { if (v === 'light' || v === 'dark') { theme = v; document.documentElement.setAttribute('data-theme', theme); wm.setTheme(theme); syncThemeBtn() } } })
 urlstate.register({ key: 'mode', get: () => mode,
-  set: (v) => { if (MODES.includes(v)) { mode = v; syncLayerSeg(); applyView() } } })
+  set: (v) => { if (MODES.includes(modeFrom(v))) { mode = modeFrom(v); syncLayerSeg(); applyView() } } })
 // The 3D view and the camera (#595). view is the layer state; pitch and
 // bearing are read at construction like lat/lon/z, so only the getters are
 // needed here, and a flat north-up view keeps them out of the URL.
@@ -1975,7 +2058,7 @@ urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 // the box is pulled inside the viewport, or a ticker left at the edge of a wide
 // monitor would be unreachable on a laptop.
 //
-// Below 640px there is no placement at all (#643): the stylesheet pins the card
+// Below 768px there is no placement at all (#643): the stylesheet pins the card
 // centred under the bar, as in the app. The stored x,y is kept rather than
 // clamped there, so the position dragged on a wide screen is still there when
 // the screen is wide again.
@@ -2005,7 +2088,7 @@ if (rxLog) {
   })
 
   function apply() {
-    // Removed rather than left stale below 640px: the narrow rule takes its top
+    // Removed rather than left stale below 768px: the narrow rule takes its top
     // from the var's own fallback, under the bar, so a written --rx-y would
     // hang the pinned card at the wide screen's height.
     if (narrowQuery.matches) {
@@ -2063,7 +2146,7 @@ if (rxLog) {
   resized.observe(rxLog)
   if (notices) resized.observe(notices)
 
-  // Also what lands a resize across 640px (#643), either way: the crossing is a
+  // Also what lands a resize across 768px (#643), either way: the crossing is a
   // window resize and re-lays the bar, and both call this, so no listener on the
   // query itself is needed. matches is read live, so it is already the new side.
   function reflow() {
@@ -2118,7 +2201,7 @@ if (rxLog) {
   // Pointer events rather than mouse so a drag works from a pen or a touch
   // screen on a wide display, where the frame is reached the same way.
   //
-  // Dragging stops below 640px (#561). The card is pinned there at
+  // Dragging stops below 768px (#561). The card is pinned there at
   // `calc(100vw - 20px)` (#643), so there is no "out of the way" to drag it to:
   // it spans the map whatever its height. Shrinking and dismissing are what
   // move it aside on a phone, which is exactly what the app does at every width.
@@ -2534,6 +2617,9 @@ syncTargetToggleLabel()
 wirePopover({
   toggleEl: spToggle, panelEl: senderPicker, wrapEl: spToggle.closest('.ms-wrap'), wrapSelector: '.ms-wrap',
   onOpen: () => { targetPicker.reset(); refresh() }, // back to page 1; the next redraw repopulates
+  // The caret in the search (#714). Its value stays: on web it is the sender
+  // filter itself, bound to ?sender=.
+  focusEl: document.getElementById('f-sender'),
 })
 
 // Hunter picker (#290): generalizes the sender picker's pattern to #f-hunter,

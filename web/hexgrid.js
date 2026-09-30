@@ -1,6 +1,8 @@
-// Pure-JS port of CoreScope's server hex grid (cmd/server/hexgrid.go) so the
-// app's live map uses the SAME cells as the analyzer coverage map. Pointy-top
-// hexes over Web Mercator; cell id "res:q:r".
+// Pure-JS port of the server's hex grid (server/internal/geo/hexgrid.go) so
+// the app's live map draws the same cells as the website. Pointy-top hexes over
+// Web Mercator; cell id "res:q:r".
+import { resForZoom } from './zoomfade.js'
+
 const R = 6378137.0;
 
 function mercator(lat, lon) {
@@ -10,37 +12,32 @@ function invMercator(x, y) {
   return [(2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI, x / R * 180 / Math.PI]; // [lat,lon]
 }
 
+// One size per zoom level (#634), the server's rule: a cell is about
+// HEX_TARGET_PX tall on screen at every zoom, point to point. The size is the
+// circumradius in Web Mercator units and halves with every resolution.
+// MERC_UPP_Z0 is Web Mercator units per pixel at Leaflet zoom 0 (world / 256).
+//
+// Until #634 the app had ten bands of a fixed size, 1500 down to 3 Mercator
+// units, which the website had left behind: a cell ran from 19 to 75 px inside
+// one band, and a change of band was a jump of a factor two or more.
+export const HEX_TARGET_PX = 28
+const MERC_UPP_Z0 = 156543.03392
 export function hexSizeForRes(res) {
-  switch (true) {
-    case res >= 15: return 3;
-    case res === 14: return 5;
-    case res === 13: return 10;
-    case res === 12: return 20;
-    case res === 11: return 40;
-    case res === 10: return 90;
-    case res === 9: return 180;
-    case res === 8: return 360;
-    case res === 7: return 720;
-    default: return 1500;
-  }
+  return (HEX_TARGET_PX / 2) * MERC_UPP_Z0 / Math.pow(2, res)
 }
 
-// hexResForZoom maps the map zoom to a hex resolution. Coarser bands mirror the
-// server's zoomToHexRes; res 12–15 (20/10/5/3 m) extend it so the live map gets
-// finer cells than the server's 40 m floor when zoomed in for close-range
-// localization (down to 3 m at max zoom). Below GPS accuracy a single point is
-// mostly noise, but the aggregated heat still surfaces the hotspot.
+// The finest resolution the app draws. The server stops at 18, which is where
+// the website's zoom ends. The app is zoomed in further for the walk-in, and
+// 21 keeps a cell at 28 px up to MapLibre zoom 20: 2.1 Mercator units, finer
+// than the 3 the old bands ended on (docs/2026-06-29-hex-resolution-zoom.md).
+// Below GPS accuracy a single cell is mostly noise; the hotspot the cells pile
+// up into is what reads.
+export const HEX_MAX_RES = 21
+
+// hexResForZoom: the resolution drawn in full at a MapLibre zoom. The map
+// blends it with its neighbour around every change (zoomfade.js).
 export function hexResForZoom(z) {
-  if (z >= 19) return 15;
-  if (z >= 18) return 14;
-  if (z >= 17) return 13;
-  if (z >= 16) return 12;
-  if (z >= 15) return 11;
-  if (z >= 13) return 10;
-  if (z >= 11) return 9;
-  if (z >= 9) return 8;
-  if (z >= 7) return 7;
-  return 6;
+  return resForZoom(z, HEX_MAX_RES)
 }
 
 function hexRound(q, r) {

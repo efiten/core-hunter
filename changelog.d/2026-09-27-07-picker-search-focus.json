@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-27-picker-search-focus",
+  "date": "2026-09-27",
+  "where": "both",
+  "title": "Type straight away in the target picker",
+  "body": "Opening the target picker puts the cursor in its search. In the app it opens on an empty search every time."
+}

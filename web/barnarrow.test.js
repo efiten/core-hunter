@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { NARROW_SLOTS, NARROW_CONTAINERS, findControl } from './barnarrow.js'
+import { NARROW_SLOTS, NARROW_CONTAINERS, findControl, NARROW_MEDIA } from './barnarrow.js'
 
 // There is no jsdom in this suite (see focustrap.test.js), so the move itself is
 // driven in e2e/barlayout.spec.js by a real browser at a real width. What is
@@ -122,5 +122,24 @@ describe('finding the control a slot moves', () => {
   it('finds every control without a selector only some engines parse', () => {
     const found = NARROW_SLOTS.map((entry) => findControl(entry, doc)?.name)
     expect(found).toEqual(['time range', 'hunter picker', 'Export', 'Start mapping', 'Log in'])
+  })
+})
+
+// The narrow line is one number in JS (NARROW_MEDIA, which the ticker and the
+// bar answer by) and in every media query of the stylesheet. #727 moved it
+// from 640 to 767; a query left behind lays the bar out for one width and
+// places the ticker for another.
+describe('the stylesheet\'s widths are NARROW_MEDIA\'s', () => {
+  const CSS = readFileSync(new URL('./style.css', import.meta.url), 'utf8')
+  const queries = [...CSS.matchAll(/@media([^{]+)\{/g)].map((m) => m[1])
+  it('finds the media queries at all', () => {
+    expect(queries.length).toBeGreaterThan(2)
+  })
+  it('uses the width NARROW_MEDIA names, or one a control leaves earlier at', () => {
+    const narrow = Number(NARROW_MEDIA.match(/(\d+)px/)[1])
+    const earlier = NARROW_SLOTS.map((s) => s.below).filter(Boolean)
+    const widths = queries.flatMap((q) => [...q.matchAll(/(?:max|min)-width:\s*(\d+)px/g)].map((m) => Number(m[1])))
+    expect(widths).toContain(narrow)
+    for (const w of widths) expect([narrow, ...earlier], `a media query at ${w}px`).toContain(w)
   })
 })

@@ -9,8 +9,8 @@ import { layerVisibility, pitchFor, pitchTransition, PITCH_3D, VIEW_STATES, VIEW
 const vis = (mode, mode3D) => layerVisibility({ mode, mode3D })
 
 describe('layerVisibility in 2D', () => {
-  it('both shows the flat hex and the flat points', () => {
-    expect(vis('both', false)).toMatchObject({ hex: true, points: true, 'hex-3d': false, 'points-3d': false })
+  it('auto shows the flat hex and the flat points', () => {
+    expect(vis('auto', false)).toMatchObject({ hex: true, points: true, 'hex-3d': false, 'points-3d': false })
   })
   it('hex shows only the flat hex', () => {
     expect(vis('hex', false)).toMatchObject({ hex: true, points: false })
@@ -19,7 +19,7 @@ describe('layerVisibility in 2D', () => {
     expect(vis('points', false)).toMatchObject({ hex: false, points: true })
   })
   it('never shows a 3D layer in 2D', () => {
-    for (const m of ['both', 'hex', 'points']) {
+    for (const m of ['auto', 'hex', 'points']) {
       expect(vis(m, false)).toMatchObject({ 'hex-3d': false, 'points-3d': false })
     }
   })
@@ -32,17 +32,16 @@ describe('layerVisibility in 3D', () => {
   // write. The pillar's fragments lose the depth test and vanish. Drawing the
   // hex FLAT on the ground removes the occluder entirely while keeping the
   // coverage context under the pillars.
-  it('draws hex FLAT under the pillars when both layers are shown', () => {
-    expect(vis('both', true)).toMatchObject({
-      hex: true, 'hex-3d': false, 'points-3d': true, points: false,
+  // Since #634 the pillars arrive at zoom 19 only and the bars drop to 95%
+  // from there (zoomfade.js), so auto draws the bars extruded, not flat.
+  it('draws the hex extruded in auto, with the pillar layer on beside it', () => {
+    expect(vis('auto', true)).toMatchObject({
+      hex: false, 'hex-3d': true, 'points-3d': true, points: false,
     })
   })
 
-  it('never shows extruded hex and pillars at the same time', () => {
-    for (const m of ['both', 'hex', 'points']) {
-      const v = vis(m, true)
-      expect(v['hex-3d'] && v['points-3d']).toBe(false)
-    }
+  it('never draws the hex flat in 3D', () => {
+    for (const m of ['auto', 'hex', 'points']) expect(vis(m, true).hex).toBe(false)
   })
 
   it('keeps the extruded bars when hex is the only layer — that is what 3D hex is for', () => {
@@ -58,16 +57,16 @@ describe('layerVisibility in 3D', () => {
   })
 
   it('never shows a flat point layer in 3D', () => {
-    for (const m of ['both', 'hex', 'points']) expect(vis(m, true).points).toBe(false)
+    for (const m of ['auto', 'hex', 'points']) expect(vis(m, true).points).toBe(false)
   })
 })
 
 describe('layerVisibility is total', () => {
   it('always answers for every layer it decides, so a caller cannot read undefined', () => {
-    for (const m of ['both', 'hex', 'points']) {
+    for (const m of ['auto', 'hex', 'points']) {
       for (const d of [true, false]) {
         const v = vis(m, d)
-        for (const k of ['hex', 'hex-3d', 'points', 'points-3d', 'hex-labels', 'pulse', 'pulse-3d']) {
+        for (const k of ['hex', 'hex-b', 'hex-3d', 'hex-3d-b', 'points', 'points-3d', 'hex-labels', 'pulse', 'pulse-3d']) {
           expect(typeof v[k], `${m}/${d} ${k}`).toBe('boolean')
         }
       }
@@ -75,6 +74,19 @@ describe('layerVisibility is total', () => {
   })
   it('treats an unknown mode as the cold default (hex), not as nothing visible', () => {
     expect(vis('', false)).toMatchObject({ hex: true, points: false })
+  })
+  // Two cell sizes are on the map while one takes over from the other (#634),
+  // so the hex is two layers, and the second follows the first in every view.
+  it('shows the second cell size wherever it shows the first', () => {
+    for (const m of ['auto', 'hex', 'points']) for (const d of [true, false]) {
+      const v = vis(m, d)
+      expect(v['hex-b'], `${m}/${d}`).toBe(v.hex)
+      expect(v['hex-3d-b'], `${m}/${d}`).toBe(v['hex-3d'])
+    }
+  })
+  it('reads both, the name auto had until #634, as auto', () => {
+    expect(vis('both', false)).toEqual(vis('auto', false))
+    expect(vis('both', true)).toEqual(vis('auto', true))
   })
 })
 
@@ -86,18 +98,18 @@ describe('layerVisibility is total', () => {
 describe('the arrival pulse has a form per dimension (#648)', () => {
   it('rings on the ground in 2D, where the flat dots are', () => {
     expect(vis('points', false)).toMatchObject({ pulse: true, 'pulse-3d': false })
-    expect(vis('both', false)).toMatchObject({ pulse: true, 'pulse-3d': false })
+    expect(vis('auto', false)).toMatchObject({ pulse: true, 'pulse-3d': false })
   })
   it('flashes the pillar in 3D, where the dots are pillars', () => {
     expect(vis('points', true)).toMatchObject({ pulse: false, 'pulse-3d': true })
-    expect(vis('both', true)).toMatchObject({ pulse: false, 'pulse-3d': true })
+    expect(vis('auto', true)).toMatchObject({ pulse: false, 'pulse-3d': true })
   })
   it('does neither in hex mode, which draws no receptions to mark', () => {
     expect(vis('hex', false)).toMatchObject({ pulse: false, 'pulse-3d': false })
     expect(vis('hex', true)).toMatchObject({ pulse: false, 'pulse-3d': false })
   })
   it('never shows both forms at once', () => {
-    for (const m of ['both', 'hex', 'points']) {
+    for (const m of ['auto', 'hex', 'points']) {
       for (const d of [true, false]) {
         const v = vis(m, d)
         expect(v.pulse && v['pulse-3d'], `${m}/${d}`).toBe(false)
@@ -113,10 +125,10 @@ describe('VIEW_STATES / nextViewIndex (#258)', () => {
   it('has exactly the 5 states in the decided order, dropping 2D hex-only', () => {
     expect(VIEW_STATES).toEqual([
       { mode: 'points', mode3D: false },
-      { mode: 'both', mode3D: false },
+      { mode: 'auto', mode3D: false },
       { mode: 'hex', mode3D: true },
       { mode: 'points', mode3D: true },
-      { mode: 'both', mode3D: true },
+      { mode: 'auto', mode3D: true },
     ])
   })
   it('never contains the dropped 2D-hex-only combination', () => {
@@ -154,7 +166,7 @@ describe('VIEW_LABELS covers VIEW_STATES (#258)', () => {
     for (const l of Object.values(VIEW_LABELS)) expect(l).not.toContain('·')
   })
   it('gives 2D and 3D distinct keys for the same layer mode', () => {
-    expect(viewKey({ mode: 'both', mode3D: false })).not.toBe(viewKey({ mode: 'both', mode3D: true }))
+    expect(viewKey({ mode: 'auto', mode3D: false })).not.toBe(viewKey({ mode: 'auto', mode3D: true }))
   })
 })
 
@@ -214,5 +226,40 @@ describe('pitchTransition — which FAB taps move the camera', () => {
       return pitchTransition(prev.mode3D, s.mode3D) !== null
     })
     expect(moved.map(viewKey)).toEqual(['points2d', 'hex3d'])
+  })
+})
+
+// The hex labels (#556) ride the flat hex layer only: a label on a pillar's
+// top would float at ground level under the pillar, so 3D keeps its drawing.
+describe('layerVisibility carries the hex labels', () => {
+  it('shows them exactly when the flat hex layer is on, in 2D', () => {
+    expect(vis('auto', false)['hex-labels']).toBe(true)
+    expect(vis('hex', false)['hex-labels']).toBe(true)
+    expect(vis('points', false)['hex-labels']).toBe(false)
+  })
+  it('never shows them in 3D', () => {
+    expect(vis('auto', true)['hex-labels']).toBe(false)
+    expect(vis('hex', true)['hex-labels']).toBe(false)
+  })
+})
+
+// The pulse (#556) rings on the reception that just arrived, so it follows the
+// flat point layer (Kasper, 2026-09-11): in hex mode no point is drawn for the
+// reception, and in 3D the flat ring would sit on the ground under its pillar.
+describe('layerVisibility carries the pulse', () => {
+  it('rings where the flat points are drawn', () => {
+    expect(vis('auto', false).pulse).toBe(true)
+    expect(vis('points', false).pulse).toBe(true)
+  })
+  it('does not ring in hex mode, where no point is drawn', () => {
+    expect(vis('hex', false).pulse).toBe(false)
+  })
+  it('does not ring in 3D, under the pillars', () => {
+    for (const m of ['auto', 'hex', 'points']) expect(vis(m, true).pulse).toBe(false)
+  })
+  it('never disagrees with the flat point layer', () => {
+    for (const m of ['auto', 'hex', 'points', '']) {
+      for (const d of [true, false]) expect(vis(m, d).pulse).toBe(vis(m, d).points)
+    }
   })
 })

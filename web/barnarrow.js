@@ -1,5 +1,5 @@
-// What the map's bar hands off below 640px (#561), and Export already below
-// 900px (#666).
+// What the map's bar hands off below 768px (#561, #727), and Export already
+// below 900px (#666).
 //
 // The bar is one row at every width now, and at 375px a row cannot hold four
 // filter controls, a brand, a primary action, a login and two icon buttons:
@@ -46,8 +46,8 @@ export const NARROW_SLOTS = [
 export const NARROW_CONTAINERS = { panel: 'bar-filters', menu: 'settings-modal' }
 
 // The width the other controls leave the bar below: map.js's "is this a
-// phone" line.
-export const NARROW_PX = 640
+// phone" line (NARROW_MEDIA below).
+export const NARROW_PX = 767
 
 // Where each control came from, recorded the first time it leaves.
 //
@@ -120,10 +120,17 @@ export function applyNarrowBar(narrowAt) {
   }
 }
 
+// The one line the map answers "is this a phone" with: the bar, the ticker and
+// the notices all hang off it. Up to 767px, below a tablet. It was 640 until
+// #727: between 641 and 729px the wide bar wrapped to two or three rows (76 to
+// 90px) with CI's wider font, which is a phone held sideways. The stylesheet
+// repeats the number in its @media rules, since CSS cannot import it.
+export const NARROW_MEDIA = `(max-width: ${NARROW_PX}px)`
+
 // Wires the rule to the viewport and applies it once. `mq` is the shared
-// 640px query; a control that leaves earlier gets a query of its own. The
-// listeners are never removed: the bar lives as long as the page does.
-export function wireNarrowBar(mq = window.matchMedia(`(max-width: ${NARROW_PX}px)`)) {
+// NARROW_MEDIA query; a control that leaves earlier gets a query of its own.
+// The listeners are never removed: the bar lives as long as the page does.
+export function wireNarrowBar(mq = window.matchMedia(NARROW_MEDIA)) {
   const queries = new Map([[NARROW_PX, mq]])
   for (const { below } of NARROW_SLOTS) {
     if (below && !queries.has(below)) queries.set(below, window.matchMedia(`(max-width: ${below}px)`))

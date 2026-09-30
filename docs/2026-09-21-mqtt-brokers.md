@@ -93,6 +93,22 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
   > hunt to a coverage drive means removing the broker and adding the other preset. Like any new
   > broker, that one starts at the newest reception, and whatever the removed one was still owed
   > is not sent.
+  >
+  > **Amended 2026-09-27 (#704, Kasper).** DutchMeshCore is one broker, on by default like the
+  > site's own, and publishes under both labels at once: collector 1 gets `hunter`, collector 2
+  > gets `wardriver`. DMC's advice is to publish to both collectors, and this sends each of them
+  > one label, so a hunter no longer swaps presets between a hunt and a coverage drive. A
+  > `config.json` broker can list `streams`, each with its own `url` and `label`. It stays one
+  > entry, so one row on the brokers page, one line in the Status tab and one switch; `legsOf`
+  > (`brokers.js`) makes a connection of each stream, with its own id (`<broker>@<host>`), so each
+  > has its own watermark, its own companion token (signed for its host) and its own socket. The
+  > row's status folds them (`foldLegs`): connected when all are, "1 of 2 connected" in between.
+  > The site drops its four DutchMeshCore presets. The add form refuses a host the site already
+  > publishes to: the companion's key is the client id on every broker it signs in to, and a
+  > second session under one id kicks the first. A preset added before this is not migrated: the
+  > app is in development, and whoever added one removes it; its row says so (`hostClashes`). Until
+  > then it does not connect (`liveBrokers`), so it cannot sign the site's connection out, and
+  > retention does not wait for it.
 - **One signature at a time.** The companion has a single sign buffer and a second
   `CMD_SIGN_START` empties it, so two brokers that both need a token queue up.
 - **Each broker drains on its own promise** (2026-09-23, review of #671). A broker whose every
@@ -119,8 +135,9 @@ DutchMeshCore (DMC) is the first such broker, and it reads a different message t
 
 - Subscribing to the DutchMeshCore feed (#374).
 - Regions, owner and clock of a repeater (#552).
-- The splash and About do not name DutchMeshCore: it is a preset a hunter adds, not something that
-  is on by default. The brokers page says where receptions go.
+- ~~The splash and About do not name DutchMeshCore: it is a preset a hunter adds, not something that
+  is on by default.~~ Since #704 DutchMeshCore is on by default, and the splash and About say
+  where receptions go: every broker that is on, by name (`sharedWith` in `brokers.js`).
 
 ## Verified, and not
 

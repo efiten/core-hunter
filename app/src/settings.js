@@ -86,7 +86,7 @@ export function loadShareName() {
 }
 
 // Index into VIEW_STATES for the persisted view (#258). No/corrupt stored
-// value falls back to both/2D — the app's cold default before that merge
+// value falls back to auto/2D (both/2D until #634) — the app's cold default before that merge
 // (huntmap.js's own mode/mode3D defaults), not index 0.
 export function loadViewIndex() {
   const v = readStored('core-hunter-view')

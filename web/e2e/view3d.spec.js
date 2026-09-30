@@ -70,7 +70,7 @@ test('turning the map writes the bearing into the URL, and the compass puts nort
   await expect(page).not.toHaveURL(/[?&]bearing=/)
 })
 
-test('in 3D the receptions stand as pillars, collapsed where they coincide, and Both keeps the cells flat under them', async ({ page }) => {
+test('in 3D the receptions stand as pillars, collapsed where they coincide, and Auto holds them back to zoom 19', async ({ page }) => {
   await page.route('**/api/auth/me', (r) => r.fulfill({ json: { role: 'member', username: 'alice' } }))
   const M = 1 / 111320
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [
@@ -88,13 +88,22 @@ test('in 3D the receptions stand as pillars, collapsed where they coincide, and 
   expect(await vis(page, 'hex-3d')).toBe(false)
 
   await openFilters(page)
-  await page.click('#lm-both')
+  await page.click('#lm-auto')
   await closeFilters(page)
-  // Both in 3D: pillars over FLAT cells (maplayers.js), since an extruded
-  // cell is at least as tall as every pillar in it and would hide them.
-  await expect.poll(() => vis(page, 'hex')).toBe(true)
-  expect(await vis(page, 'hex-3d')).toBe(false)
+  // Auto in 3D (#634): the cells are bars, and no pillar is built until the
+  // closest zoom, since a pillar per reception is what costs the most to draw.
+  await expect.poll(() => vis(page, 'hex-3d')).toBe(true)
+  expect(await vis(page, 'hex')).toBe(false)
   expect(await vis(page, 'points-3d')).toBe(true)
+  await expect.poll(() => page.evaluate(() => window.__featureCount('points-3d'))).toBe(0)
+  expect(await page.evaluate(() => window.__paint('points-3d', 'fill-extrusion-opacity'))).toEqual(['step', ['zoom'], 0, 18.999, 0, 19, 1])
+  // MapLibre zoom 19 is z=20 in the URL's Leaflet units.
+  await page.goto('/?mode=auto&view=3d&lat=51&lon=4&z=20')
+  await mounted(page)
+  await expect.poll(() => page.evaluate(() => window.__featureCount('points-3d'))).toBe(2)
+  await page.goto('/?mode=points&view=3d&lat=51&lon=4&z=16')
+  await mounted(page)
+  await page.waitForFunction(() => window.__featureCount('points') === 3)
 
   // Back in 2D the pillars are not built at all.
   await page.click('#view-toggle')

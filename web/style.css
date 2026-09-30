@@ -80,7 +80,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    Start-mapping/Log-in pair landed mid-bar — under the walkthrough's centred
    panel, where its two below-callouts could never be placed clear.
    Its own element since #561, rather than margin-left:auto on #rx-cta: that
-   button is hidden below 640px, and a gap that disappears with the control it
+   button is hidden below 768px, and a gap that disappears with the control it
    was attached to takes the layout with it. */
 .bar-spacer { margin-left:auto; }
 
@@ -311,7 +311,7 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
    across the middle-top of the map, over the content, colliding with Leaflet's
    zoom control at the top-left. It is now a box the user drags, positioned from
    --rx-x/--rx-y which tickerplace.js clamps into the viewport on load and on
-   resize. Below 640px it is pinned instead (#643), in the narrow block. The
+   resize. Below 768px it is pinned instead (#643), in the narrow block. The
    680px width is what .rx-hd/.rx-list already constrained themselves to, so
    the rows are unchanged; only the box around them moved. Short of the FAB
    rail's column since #630: below 760px a 680px card from its first-visit 12px
@@ -464,8 +464,9 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
 #map-notices > * { pointer-events:auto; max-width:100%; }
 /* bottom 44px stands the readout above MapLibre's attribution, which shares
    this corner: its 10px margin, one 24px line of credit and 10px of air. At
-   26px it covered the open credit by 8px. Wider than 640px the longest credit
-   (3D adds the terrain source's) is one line, measured down to 641px. */
+   26px it covered the open credit by 8px. From 768px, where this rule
+   applies, the longest credit (3D adds the terrain source's) is one line; it
+   was measured down to 641px. */
 #map-readout { position:fixed; right:var(--ch-rail-clear); bottom:44px; z-index:610; pointer-events:none;
   display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;
   background:var(--ch-surface-thin); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
@@ -866,7 +867,7 @@ body.wb-onboarding-on #bar { z-index:710; }
 .bf-live { font-size: 12px; color: var(--ch-muted); }
 #clear-filters { margin-left: auto; color: var(--ch-accent-2); border-color: var(--ch-accent-2); }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   /* Full-width sheet on a phone, and the six least-used type chips behind
      "+N more": fourteen 44px chips are four rows at 412px, and then the rest
      of the panel is under the fold. Active chips always show — a hidden
@@ -904,7 +905,7 @@ body.wb-onboarding-on #bar { z-index:710; }
 .ss-close:hover { color: var(--ch-text); }
 .ss-panel { min-height: 0; overflow-y: auto; padding: 16px; }
 .ss-panel[hidden] { display: none; }
-/* Start mapping and Log in, moved here below 640px (#561). They arrive with the
+/* Start mapping and Log in, moved here below 768px (#561). They arrive with the
    bar's styling stripped by location alone -- `#bar #rx-cta` no longer matches
    -- so this is where they get a menu row's box instead. */
 .ss-actions { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
@@ -953,7 +954,7 @@ body.wb-onboarding-on #bar { z-index:710; }
    sheet anchored to the bottom, which is also where a thumb is. The first
    breakpoint in this stylesheet -- see #423 for the bar itself, which is the
    bigger half of the same problem. */
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .rx-cta-long { display:none; }
   .rx-cta-short { display:inline; }
   .lc-modal:has(.ss-card) { place-items: end stretch; }
@@ -969,13 +970,13 @@ body.wb-onboarding-on #bar { z-index:710; }
    surfaces share the bar, not just what is inside their panels. What the map
    has extra goes into the panel, which is already a full-width sheet here. */
 /* Export leaves the bar for the menu below 900px, before the others (#666,
-   barnarrow.js): between 641 and 900px its label wraps the bar into another
-   row. Hidden here too, like Start mapping and Log in below 640px, so it
+   barnarrow.js): between 768 and 900px its label wraps the bar into another
+   row. Hidden here too, like Start mapping and Log in below 768px, so it
    never shows in the bar before map.js has moved it. */
 @media (max-width: 900px) {
   #bar #export-btn { display: none; }
 }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   /* The mark alone. The name is in the menu, which is what every mobile app bar
      does; the desktop bar keeps mark plus wordmark. */
   #brand-name { display: none; }
@@ -1039,8 +1040,13 @@ body.wb-onboarding-on #bar { z-index:710; }
 /* A phone held sideways (#630): the rail's column stands from under the bar to
    the bottom, so the pinned ticker and the notices, which span the screen above
    on a phone held upright, stop at the rail instead. At 640x360 the rail stood
-   on the ticker's cross and the compass was under the guest notice. */
-@media (max-width: 640px) and (max-height: 400px) {
+   on the ticker's cross and the compass was under the guest notice. Not only
+   sideways: the full ticker's bottom sits about 350px down and the rail's top
+   at the height less 326px, so the two meet below about 676px of height (at
+   720x600 the ticker ended at 350 and the rail began at 274); 720 leaves room
+   for a bar that renders taller. A tall phone held upright keeps the ticker
+   across the whole screen. */
+@media (max-width: 767px) and (max-height: 720px) {
   #rx-log { left: 10px; transform: none; width: calc(100vw - 10px - var(--ch-rail-clear)); }
   #map-notices { right: var(--ch-rail-clear); }
 }
