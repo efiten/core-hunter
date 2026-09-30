@@ -63,6 +63,16 @@ singing-bowl and sampled-ambiance beds; real music tracks vs. generative.
   density, reverb **wet 35% / decay 2.8 s** on pings, tx cues, and music.
 - Mix constants live at the top of `sound.js` (`REVERB_*`, `MUSIC_*`, `RX_GAIN`).
 
+> **Amended 2026-09-30 (#602): the transmit pop sits under the receptions.** With sound on, auto-discover was the loudest thing in the mix: a sweep of N targets is N + 2 pops every ten seconds, each at gain 0.16 with a 160 ms tail through the whole reverb, while a dit scales with RSSI and a weak one sits well under that. The cue for "a frame went out" carries no measurement; the cue for "something was heard" does. Chosen by ear in a lab on the real engine (Kasper, 2026-09-30), `TX_POP` in `sound.js`:
+>
+> | | was | is |
+> |---|---|---|
+> | peak gain | 0.16 | 0.05 |
+> | tail | 160 ms | 70 ms |
+> | share through the master and its reverb send | 100% | 15%, the rest dry at the same level |
+>
+> Measured at the master for a direct network dit at -110 dBm (0.078, `cuePeak`): the pop was 2.1 times over it, and the dit is now 1.6 times over the pop. Every transmission still sounds: the Discover broadcast as two pops, each trace-ping as one. Sounding only the Discover pops, and a silent auto-discover, were both in the lab and not chosen. The rule of #254 is untouched: the cue follows the frame, not the timer.
+
 ## Behaviour choices
 
 - Pings follow the **filtered/plotted set** plus `hops === 0` — you hear what
