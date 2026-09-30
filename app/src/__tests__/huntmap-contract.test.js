@@ -56,3 +56,38 @@ describe('applyLayerVisibility covers every layer layerVisibility decides', () =
     expect([...applied].sort()).toEqual([...decided].sort())
   })
 })
+
+// The 1 Hz tick hands every collection to MapLibre, and MapLibre tiles and
+// uploads whatever it is handed, changed or not: 93 ms for 4501 rays and 60 ms
+// for as many dots on a laptop, once a second. The collections below come out
+// of a cache or a comparison, so an unchanged one is the same object, and
+// put() leaves it where it is (lastSent, rendercache.js). That only holds while
+// nothing writes those sources around it, and a direct setData reads like the
+// lines next to it, so the next edit to draw() is where it would come back.
+describe('the collections a tick can leave unchanged go to the map through put()', () => {
+  const guarded = ['noise', 'points', 'points-3d', 'reach']
+
+  it('finds put() and its guard at all', () => {
+    expect(mapSrc).toMatch(/const put = \(id, data\) => \{ if \(sent\.isNew\(id, data\)\) map\.getSource\(id\)\.setData\(data\) \}/)
+  })
+
+  it.each(guarded)('%s is never written directly', (id) => {
+    expect(mapSrc).not.toContain(`getSource('${id}').setData(`)
+    expect(mapSrc).toContain(`put('${id}',`)
+  })
+
+  // The two hex layers (#634) are written in one loop over their slots.
+  it('writes both hex layers through put()', () => {
+    const cells = mapSrc.slice(mapSrc.indexOf('function drawCells'), mapSrc.indexOf('function applyFades'))
+    expect(cells).toContain("for (const [id, res] of [['hex', slots.a], ['hex-b', slots.b]])")
+    expect(cells).toContain('put(id, ')
+    expect(cells).not.toContain('.setData(')
+    expect(mapSrc).not.toContain("getSource('hex-b').setData(")
+  })
+
+  it('forgets what it sent when the overlays are mounted again, since the sources come back empty', () => {
+    const mount = mapSrc.slice(mapSrc.indexOf('function addOverlays'), mapSrc.indexOf('function applyBasemap'))
+    expect(mount.length).toBeGreaterThan(0)
+    expect(mount).toContain('sent.clear()')
+  })
+})
