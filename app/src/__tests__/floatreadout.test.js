@@ -460,3 +460,22 @@ describe('the fullscreen letterbox follows the theme (#555)', () => {
     expect(rule[1]).not.toMatch(/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i)
   })
 })
+
+// #706: Chrome shows its own media controls on a video in fullscreen, also
+// without a controls attribute, and their pause paused the stream: the reading
+// froze on its last frame while the app went on capturing. Measured on a phone
+// on 27 September: hiding the controls' pseudo-elements takes the pause away,
+// and pressing Home still floats the video. Pinned against the file, like the
+// letterbox above.
+describe('the fullscreen readout has no pause (#706)', () => {
+  const css = readFileSync(new URL('../styles/app.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const hidden = css.split('}').map((b) => b.split('{'))
+    .filter(([sel, body]) => sel && /display:\s*none\s*!important/.test(body || ''))
+    .flatMap(([sel]) => sel.split(',').map((s) => s.trim()))
+
+  it("hides Chrome's own controls on the float video", () => {
+    for (const part of ['-webkit-media-controls', '-webkit-media-controls-enclosure', '-webkit-media-controls-panel']) {
+      expect(hidden, `#float-video::${part}`).toContain(`#float-video::${part}`)
+    }
+  })
+})

@@ -212,6 +212,14 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
 #float-canvas { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #float-video { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 #float-video:fullscreen { opacity: 1; width: 100%; height: 100%; object-fit: contain; background: var(--ch-bg); pointer-events: auto; }
+/* No pause on the readout (#706). Chrome shows its own media controls on a
+   video in fullscreen, also without a controls attribute, and their pause
+   froze the reading on its last frame while the app went on capturing.
+   Measured on a phone on 27 September: hidden, the pause is gone and Home
+   still floats the video. */
+#float-video::-webkit-media-controls,
+#float-video::-webkit-media-controls-enclosure,
+#float-video::-webkit-media-controls-panel { display: none !important; }
 #hud-mode.all { border-color: var(--ch-muted); color: var(--ch-text); font-weight: 400; }
 /* The closed eye: something went by that the filter kept off the HUD. Amber,
    the alert colour, because it is the one thing in the row asking for a look. */
