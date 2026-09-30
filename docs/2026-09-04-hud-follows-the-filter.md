@@ -85,6 +85,9 @@ Decided in the same round (Kasper, 2026-09-04, artboards R8 and R9): the row get
 - **The two buttons Android puts on the window.** Previous and next (Media Session `previoustrack`
   / `nexttrack`) scrub the ticker's playhead, so the window steps through the same list the ticker
   shows, with each reception's own age. Stepping onto the newest row makes it follow again.
+  (Withdrawn 27 September, #716: on Android the window did not show them in the app, and desktop
+  Chrome shows a button for every action a page handles. The window has no buttons of the app's
+  own; the ticker and the HUD are the way to step through receptions.)
 - **Where it cannot work** (no canvas capture, no fullscreen or PiP on a video) the button is not
   shown.
 

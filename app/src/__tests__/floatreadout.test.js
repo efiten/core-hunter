@@ -461,6 +461,18 @@ describe('the fullscreen letterbox follows the theme (#555)', () => {
   })
 })
 
+// #716: the float window has no buttons of the app's own. Desktop Chrome puts
+// a button on the floating window for every Media Session action a page
+// handles (measured 27 September with play and pause), and on Android the
+// previous/next of #555 did not appear in the app at all. So the app handles
+// none. app.js is glue no unit test runs, so this reads it as text.
+describe('the float window carries no Media Session buttons (#716)', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8')
+  it('registers no action handler', () => {
+    expect(app).not.toMatch(/setActionHandler\s*\(/)
+  })
+})
+
 // #706: Chrome shows its own media controls on a video in fullscreen, also
 // without a controls attribute, and their pause paused the stream: the reading
 // froze on its last frame while the app went on capturing. Measured on a phone
