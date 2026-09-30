@@ -27,6 +27,14 @@ const (
 	payloadTypeTrace     = 0x09
 )
 
+// MessageIDVersion is the version of MessageID's reading of a frame. The store
+// keeps it next to every id, because an empty id means two things: the frame
+// has no cross-copy identity, or this decoder could not read it. Bump it by
+// hand whenever MessageID learns to read a frame it refused before (TRACE, a
+// header shape), and the store reads the rows it refused again (#510).
+// Without the bump the change reaches only traffic stored after it.
+const MessageIDVersion = 1
+
 // MessageID is MeshCore's own notion of "this is the same transmission",
 // ported from Packet::calculatePacketHash (firmware src/Packet.cpp:41):
 //
