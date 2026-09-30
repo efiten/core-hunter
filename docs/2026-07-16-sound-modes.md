@@ -63,6 +63,16 @@ singing-bowl and sampled-ambiance beds; real music tracks vs. generative.
   density, reverb **wet 35% / decay 2.8 s** on pings, tx cues, and music.
 - Mix constants live at the top of `sound.js` (`REVERB_*`, `MUSIC_*`, `RX_GAIN`).
 
+> **Amended 2026-09-30 (#602): the transmit pop sits under the receptions.** With sound on, auto-discover was the loudest thing in the mix: a sweep of N targets is N + 2 pops every ten seconds, each at gain 0.16 with a 160 ms tail through the whole reverb, while a dit scales with RSSI and a weak one sits well under that. The cue for "a frame went out" carries no measurement; the cue for "something was heard" does. Chosen by ear in a lab on the real engine (Kasper, 2026-09-30), `TX_POP` in `sound.js`:
+>
+> | | was | is |
+> |---|---|---|
+> | peak gain | 0.16 | 0.05 |
+> | tail | 160 ms | 70 ms |
+> | share through the master and its reverb send | 100% | 15%, the rest dry at the same level |
+>
+> Measured at the master for a direct network dit at -110 dBm (0.078, `cuePeak`): the pop was 2.1 times over it, and the dit is now 1.6 times over the pop. Every transmission still sounds: the Discover broadcast as two pops, each trace-ping as one. Sounding only the Discover pops, and a silent auto-discover, were both in the lab and not chosen. The rule of #254 is untouched: the cue follows the frame, not the timer.
+
 ## Behaviour choices
 
 - Pings follow the **filtered/plotted set** plus `hops === 0` — you hear what
@@ -142,3 +152,18 @@ either active mode, the hard stop of bed and music on hidden, and the restart
 of both on return. What went with the tone is `startBgAmbience` /
 `stopBgAmbience`, the `BG` profile, and the `setMode` call that existed only to
 keep a parked tone from being orphaned by a mode change while hidden.
+
+## Addendum 2026-09-27: the playback buffer (#709)
+
+Kasper heard a lot of ticking, like a stream buffering, over Bluetooth right after
+start: while the map loads and the companion syncs, and gone by itself after a
+while. That fits the output buffer running dry under load. The engine created its
+`AudioContext` without a `latencyHint`, so the browser picked its smallest
+("interactive"), and a 2.8 s convolver runs on the audio thread all the time (8 s
+more in the full mode).
+
+The context now asks for `latencyHint: 'playback'`, the larger buffer. A cue is a
+sound, not a keypress, so the extra latency costs nothing a user notices. Whether
+it removes the ticking is measured in the car; the clumps of receptions (39% share
+a timestamp) were ruled out first, on a mockup that spread them and sounded no
+different.

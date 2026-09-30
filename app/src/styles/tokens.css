@@ -78,3 +78,10 @@
    together are the card's geometry; the map computes the full card from them
    before the card exists. Pinned equal by web/parity.test.js. */
 :root { --ch-rx-head-h: 36px; }
+/* The bottom edge everything stands on (#705): the device's inset, and never
+   less than 14px, the HUD's own top padding. Not env()'s fallback: that only
+   applies where the browser does not know the variable, and Android Chrome
+   knows it and answers 0, which put the HUD's buttons on the navigation bar.
+   An iPhone's 34px home indicator still wins. The HUD, the FAB stack and the
+   splash close stand on it (app.css). */
+:root { --ch-bottom-edge: max(env(safe-area-inset-bottom), 14px); }

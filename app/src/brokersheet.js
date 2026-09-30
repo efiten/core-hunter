@@ -2,7 +2,7 @@
 // reception goes to, a switch per broker, and a form to add one. DOM glue only;
 // what a row says and whether a form is valid are brokers.js decisions, and
 // storing, probing and connecting are the caller's.
-import { brokerStatus } from './brokers.js'
+import { brokerStatus, hostClashes } from './brokers.js'
 
 const BACK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>'
 
@@ -154,16 +154,25 @@ export function createBrokerSheet({ root, getBrokers, getStatus, onToggle, onSav
   async function refresh() {
     const rows = $('bk-rows')
     const brokers = getBrokers()
+    const clashes = hostClashes(brokers)
     updaters = []
     rows.replaceChildren(...brokers.map((b) => {
       const row = node('div', 'bk-row')
       row.dataset.id = b.id
       const dot = node('i', 'ss-state-dot bk-dot')
       const txt = node('div', 'bk-txt')
-      txt.append(node('span', 'bk-name', b.name), node('span', 'bk-host', host(b.url)))
+      // A broker with streams (#704) sends to each of its servers under that
+      // stream's label, so the row names every one, with its label.
+      const hosts = Array.isArray(b.streams) && b.streams.length
+        ? b.streams.map((s) => host(s.url) + ' · ' + s.label)
+        : [host(b.url)]
+      txt.append(node('span', 'bk-name', b.name), ...hosts.map((h) => node('span', 'bk-host', h)))
       const status = node('span', 'bk-status', (b.source === 'site' ? 'From this site' : 'Added by you'))
       txt.append(status)
       if (b.auth === 'companion') txt.append(node('span', 'bk-status', "Signs in with your companion's key"))
+      // A broker on a host the site already publishes to (#704): the two
+      // sessions keep signing each other out, so the row says which to remove.
+      if (clashes.has(b.id)) txt.append(node('span', 'bk-status bk-clash', `Same host as ${clashes.get(b.id)}: remove this one, or the two keep signing each other out.`))
       if (b.source === 'user') {
         txt.classList.add('bk-tappable')
         txt.tabIndex = 0

@@ -148,14 +148,22 @@ const barShape = (page) => page.evaluate(() => {
   }
 })
 
-for (const [w, h, label] of [[375, 812, 'a phone'], [768, 1024, 'a tablet'], [1280, 800, 'a desktop']]) {
-  test(`the bar is one row on ${label}, as a guest`, async ({ page }) => {
-    await asGuest(page)
+// #727: between 641 and 729px the wide bar did not fit, 76 to 90px on a phone
+// held sideways (667px) or a narrow window. 660 and 720 sit in that band; the
+// member too, whose bar is shorter but wrapped there as well.
+const ONE_ROW = [[375, 812, 'a phone', 'guest'], [660, 375, 'a phone held sideways', 'guest'],
+  [660, 375, 'a phone held sideways', 'member'], [720, 800, 'a narrow window', 'guest'],
+  [720, 800, 'a narrow window', 'member'], [768, 1024, 'a tablet', 'guest'], [1280, 800, 'a desktop', 'guest']]
+for (const [w, h, label, role] of ONE_ROW) {
+  test(`the bar is one row on ${label} at ${w}px, as a ${role}`, async ({ page }) => {
+    if (role === 'guest') await asGuest(page)
     await page.setViewportSize({ width: w, height: h })
     await page.goto('/')
     // Wait for the late arrivals that used to grow it: the guest notice and the
-    // node counts both land after first paint.
-    await expect(page.locator('#guest-notice')).toBeVisible()
+    // node counts both land after first paint. The member has no notice; the
+    // bar test's own beforeEach answers /api/auth/me as one.
+    if (role === 'guest') await expect(page.locator('#guest-notice')).toBeVisible()
+    else await expect(page.locator('#rx-log')).toBeVisible()
     const s = await barShape(page)
     expect(s.centreSpread, `one centre line, got ${JSON.stringify(s.ids)}`).toBeLessThanOrEqual(2)
     expect(s.height, 'the bar is a row, not a block').toBeLessThanOrEqual(64)
@@ -194,7 +202,7 @@ for (const [w, h] of [[375, 812], [390, 844], [768, 1024], [1280, 800], [844, 39
 // that is shorter than that ran it up under the bar (740x360: the bar's lower
 // edge at 62, the rail's top at 54), and narrower than 760 its column stood on
 // the right end of the ticker, where the cross and the chevron are. Narrower
-// than 641 the ticker and the notices span the screen (#643), so the column
+// than 768 the ticker and the notices span the screen (#643, #727), so the column
 // stood on both: at 568x320 #zoom-in was under #settings-btn and the compass
 // under the guest notice, and at 667x375 the notice's right end reached into
 // the column. Every button is hit at its centre, not only the column's box.
@@ -392,3 +400,38 @@ for (const [w, h] of [[1280, 800], [844, 390], [390, 844], [375, 812]]) {
     })
   }
 }
+
+// Below 768px the ticker spans the screen, and a full one, remembered from a
+// wide screen or from a shared link (rx=…,0), ends about 350px down. On a
+// screen shorter than about 676px that is past the rail's top, so there the
+// ticker stops at the rail (#727: at 720x600 the rail stood on it). A tall
+// phone held upright keeps it across the screen.
+const fullTicker = async (page, w, h) => {
+  await asGuest(page)
+  const rows = Array.from({ length: 20 }, (_, i) => ({ lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: 'aa11bb22', sender_label: 'NEO7HI',
+    hunter_name: 'Hunter 1', packet_type: 'Advert', rx_at: new Date(Date.now() - 5000 - i * 1000).toISOString() }))
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: rows } }))
+  await page.setViewportSize({ width: w, height: h })
+  await page.goto('/?rx=0,0,0')
+  await expect(page.locator('#rx-log .rx-ln')).toHaveCount(20, { timeout: 10000 })
+  return page.evaluate(() => {
+    const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return { left: b.left, right: b.right, top: b.top, bottom: b.bottom } }
+    const hitOf = (el) => { const b = el.getBoundingClientRect(); const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return top && (top === el || el.contains(top)) }
+    return { vw: innerWidth, rail: r('#map-rail'), ticker: r('#rx-log'),
+      controls: ['.rx-fold', '.rx-close'].map((s) => [s, hitOf(document.querySelector('#rx-log ' + s))]) }
+  })
+}
+for (const [w, h] of [[720, 600], [640, 600], [375, 667]]) {
+  test(`a full ticker at ${w}x${h} stops at the rail`, async ({ page }) => {
+    const g = await fullTicker(page, w, h)
+    if (w === 720) expect(g.ticker.bottom, 'the ticker has to reach the rail\'s height for this to measure anything').toBeGreaterThan(g.rail.top)
+    const apart = g.ticker.right <= g.rail.left || g.ticker.bottom <= g.rail.top
+    expect(apart, `ticker ${JSON.stringify(g.ticker)} under rail ${JSON.stringify(g.rail)}`).toBe(true)
+    for (const [s, hit] of g.controls) expect(hit, `${s} is covered`).toBe(true)
+  })
+}
+test('a full ticker on a tall phone held upright spans the screen, clear of the rail', async ({ page }) => {
+  const g = await fullTicker(page, 412, 915)
+  expect(g.ticker.bottom).toBeLessThanOrEqual(g.rail.top)
+  expect(g.ticker.right).toBeCloseTo(g.vw - 10, 0)
+})

@@ -198,6 +198,26 @@ const MUSIC_DENSITY = 1.5 // periods divided by this — how often notes fall
 const RX_GAIN = 0.5       // reception dits, independent of the music/bed level
 const FADE_S = 0.03       // music-bus fade before cutting voices, avoids a click
 
+// cuePeak is the level a direct dit is played at: the RSSI's loudness, the rx
+// share of the mix and the family's own gain. Exported because the transmit
+// pop is set against it (TX_POP): what is on top in the mix is a relation
+// between the two, not a property of either.
+export function cuePeak(family, rssi, offset = 0) {
+  return pingGain(rssi, offset) * RX_GAIN * (VOICES[family] || VOICES.network).gain
+}
+
+// The transmit pop (#602), chosen by ear in a lab on the real engine, Kasper
+// 2026-09-30. It was 0.16 with a 160 ms tail through the whole reverb, and a
+// sweep of N targets is N + 2 of them every ten seconds: the cue that carries
+// no measurement was the loudest and most frequent thing in the mix. At 0.05 a
+// direct network dit at -110 dBm (0.078) comes out 1.6 times over it, where
+// the pop used to be 2.1 times over the dit.
+//   peak    gain at the top of the pop's envelope
+//   tail    seconds from the start to silence
+//   reverb  the share of the pop that goes through the master, and so into its
+//           reverb send; the rest goes out dry at the same level
+export const TX_POP = { peak: 0.05, tail: 0.07, reverb: 0.15 }
+
 // Generative music (Eno's Music-for-Airports technique): seven pad voices,
 // each looping ONE note of a calm F-pentatonic set on a mutually prime period.
 // The periods share no common divisor, so the combination never repeats.
@@ -243,6 +263,7 @@ export function createSoundEngine({ random = Math.random } = {}) {
 
   let ctx = null, mode = 'off', bed = null, cueState = {}
   let master = null, genTimers = [], genGain = null, activeOscs = []
+  let txDry = null
 
   // Created lazily from the FAB tap (a user gesture, which Web Audio requires).
   // If the context comes back suspended anyway (persisted mode restored at boot,
@@ -250,7 +271,12 @@ export function createSoundEngine({ random = Math.random } = {}) {
   // tap anywhere.
   function ensureCtx() {
     if (!ctx) {
-      ctx = new AC()
+      // The playback buffer, not the smallest (#709). Without a hint the
+      // browser picks "interactive", which ran dry while the phone was busy
+      // with the map and the companion right after start: ticking like a
+      // stream buffering, over Bluetooth, until the load passed. A cue can
+      // afford the larger buffer's latency; it is a sound, not a keypress.
+      ctx = new AC({ latencyHint: 'playback' })
       // Master bus: gentle lowpass rounds every voice off — nothing shrill.
       const lp = ctx.createBiquadFilter()
       lp.type = 'lowpass'
@@ -259,6 +285,12 @@ export function createSoundEngine({ random = Math.random } = {}) {
       out.gain.value = 0.9
       lp.connect(out).connect(ctx.destination)
       master = lp
+      // The master's rounding without its reverb send, for the share of a
+      // transmit pop that stays dry (TX_POP.reverb).
+      txDry = ctx.createBiquadFilter()
+      txDry.type = 'lowpass'
+      txDry.frequency.value = 6500
+      txDry.connect(out)
       // Reverb: synthesized impulse response (decaying noise), constant wet
       // send — part of the approved sound, not a runtime setting.
       const len = Math.floor(ctx.sampleRate * REVERB_SECONDS)
@@ -603,7 +635,7 @@ export function createSoundEngine({ random = Math.random } = {}) {
     const v = VOICES[c.family] || VOICES.network
     const f = harmFreq(rssi, offset)
     const frac = rssiFrac(rssi, offset)
-    const g = pingGain(rssi, offset) * RX_GAIN * v.gain * (c.damped ? DAMP.gain : 1)
+    const g = cuePeak(c.family, rssi, offset) * (c.damped ? DAMP.gain : 1)
     const len = (0.035 + frac * 0.06) * v.hold * (c.damped ? DAMP.hold : 1)
     const t = ac.currentTime
 
@@ -703,11 +735,17 @@ export function createSoundEngine({ random = Math.random } = {}) {
     osc.frequency.setValueAtTime(f * 0.55, when)
     osc.frequency.exponentialRampToValueAtTime(f, when + 0.05)
     gain.gain.setValueAtTime(0, when)
-    gain.gain.linearRampToValueAtTime(0.16, when + 0.01)
-    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.16)
-    osc.connect(gain).connect(master)
+    gain.gain.linearRampToValueAtTime(TX_POP.peak, when + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + TX_POP.tail)
+    osc.connect(gain)
+    const wet = c.createGain()
+    wet.gain.value = TX_POP.reverb
+    gain.connect(wet).connect(master)
+    const dry = c.createGain()
+    dry.gain.value = 1 - TX_POP.reverb
+    gain.connect(dry).connect(txDry)
     osc.start(when)
-    osc.stop(when + 0.2)
+    osc.stop(when + TX_POP.tail + 0.04)
   }
 
   function txBlip(kind) {
@@ -754,7 +792,7 @@ export function createSoundEngine({ random = Math.random } = {}) {
   function destroy() {
     stopBed()
     stopMusic()
-    if (ctx) { try { ctx.close() } catch (_) {} ctx = null; master = null; genGain = null }
+    if (ctx) { try { ctx.close() } catch (_) {} ctx = null; master = null; txDry = null; genGain = null }
   }
 
   return { setMode, cue, txBlip, destroy }

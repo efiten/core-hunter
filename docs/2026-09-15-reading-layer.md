@@ -113,6 +113,9 @@ The float button promises a floating window, so that is what it asks for first, 
    lock is only allowed then. The 16:9 canvas would turn the phone sideways without it. A refused
    lock still leaves the readout out. The lock is released as soon as fullscreen ends, and the
    600 ms wait for Android's fullscreen-to-window hand-over stays as it was.
+   (Amended 27 September, #707: the lock is `'any'`. Measured on a phone: it opens upright, turns
+   with the phone, and keeps to Android's auto-rotate switch, while `'portrait'` held the readout
+   sideways on a phone in a landscape holder. No lock still opens it sideways, which was #616.)
 
 **On Android the two swap places (#669).** #616 took Android Chrome's API to be off. In the field
 (21 September) the window opened without the fullscreen step, the sound parked and GPS logging
@@ -134,6 +137,14 @@ against fakes of the video, its document and `screen.orientation`. Field test on
 (Kasper, 21 September, #669): fullscreen opens upright, the window appears after Home, GPS keeps
 logging and the sound keeps playing. Not verified: whether a refused request uses up the tap the
 next one needs.
+
+**No pause in fullscreen** (#706, measured on a phone by Kasper, 27 September). Chrome shows its
+own media controls on a video in fullscreen, also without a `controls` attribute, and their pause
+froze the reading on its last frame while the app went on capturing. `app.css` hides the controls'
+pseudo-elements on `#float-video`; the pause is gone and Home still floats the video. Measured on
+the way: on Android the floating window itself shows no play or pause in any Media Session setup
+tried, and on desktop Chrome the window shows them only when the page registers play or pause
+handlers, which the app does not.
 
 ## The direction arrow (#660)
 

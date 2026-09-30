@@ -603,9 +603,13 @@ reception came from are different acts. The second is one rule on both surfaces,
   without an advertised position is no candidate, since reach cannot place it; one pubkey listed
   twice is one node.
 - **Surfaces:** the reach stars and the node-position layer in the app and on the map, and in the
-  app also the arrow (#660) and the sender names. The node-position layer draws registry nodes
-  only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2 estimate gets no marker of
-  its own. On the map, the ticker and the point popup keep their resolver names, a separate issue.
+  app also the arrow (#660). The sender names follow it on both: in the app everywhere a sender
+  is named, on the map in the ticker and the point popup (#663). How a name is printed is
+  `namerules.js` (copied whole). The map's names take their registry slice around the rows they
+  name, not around the view (`web/rowattribution.js`), since the ticker's lines are the latest
+  wherever they were heard; the target picker keeps its own rule (above). The node-position layer
+  draws registry nodes only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2
+  estimate gets no marker of its own.
   A ● hub has no name on either surface since #632 (`docs/2026-09-21-node-glyphs-in-gl.md`): it
   is a GL feature keyed by its star's id, and the tooltip that carried `starLabel` went with the
   marker. Should a hub get a name surface again, a 1-byte id reads `#` plus the id, never a bare
@@ -764,6 +768,12 @@ default is `hunter`. `test` is a collector's sandbox region, not a label for liv
 either message. A broker marked `auth: "companion"` is signed in to as `v1_{PUBKEY}` with a token
 the companion signs itself (`app/src/companionsign.js`).
 
+A `config.json` broker can list `streams` instead of one `url` (#704): each stream has its own
+`url` and `label`, and the broker stays one row with one switch. Each stream is its own connection
+(`legsOf` in `app/src/brokers.js`), under the id `<broker>@<host>`, with its own watermark and
+token. The site configures DutchMeshCore this way: collector 1 under `hunter`, collector 2 under
+`wardriver`.
+
 ---
 
 ## 10. Resilience invariants (do not break)
@@ -775,11 +785,12 @@ the companion signs itself (`app/src/companionsign.js`).
   published is never deleted, however old — an offline phone keeps everything until it drains.
   IndexedDB is the working set; the backend deduplicates. Publication is tracked by a durable
   watermark, not an in-memory set, so a restart does not re-publish the store.
-  There is one watermark per broker (#554): each broker drains on its own, so one that is offline
-  does not hold the others back, and retention deletes only below the lowest watermark of the
-  brokers that are on. A broker switched off keeps its backlog for the retention window, not
-  beyond it; with every broker off, all of them count and nothing unsent is deleted
-  (`owedBrokers` in `app/src/brokers.js`).
+  There is one watermark per broker (#554), and per stream of a broker that has streams (#704):
+  each connection drains on its own, so one that is offline does not hold the others back, and
+  retention deletes only below the lowest watermark of the brokers that are on. A broker switched
+  off keeps its backlog for the retention window, not beyond it; with every broker off, all of them
+  count and nothing unsent is deleted (`owedLegs` in `app/src/brokers.js`, which asks per
+  connection, never per row).
   See `docs/2026-07-22-retention-and-bounded-reads.md` (#230); this replaces an earlier absolute
   "never deletes local rows" rule, which made the store unbounded.
 - Queue reads are **bounded** — never `getAll()` over the store. The display reads its time window via

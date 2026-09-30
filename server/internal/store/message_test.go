@@ -1,8 +1,11 @@
 package store
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/efiten/core-hunter/server/internal/meshpacket"
 )
 
 // The Amsterdam flood of 2026-08-24, as it was actually stored: one message
@@ -198,6 +201,121 @@ func TestUnreadableFrameGetsAnEmptyIDRatherThanNull(t *testing.T) {
 	}
 	if id == nil || *id != "" {
 		t.Fatalf("want an empty id, got %v", id)
+	}
+}
+
+// idAndVersion reads what the store holds for one frame.
+func idAndVersion(t *testing.T, st *Store, raw string) (*string, int) {
+	t.Helper()
+	var id *string
+	var version int
+	if err := st.db.QueryRow(`SELECT message_id, message_id_version FROM hunter_receptions WHERE raw = ?`, raw).Scan(&id, &version); err != nil {
+		t.Fatal(err)
+	}
+	return id, version
+}
+
+func TestBackfillRereadsARefusedFrameOnceTheDecoderHasMoved(t *testing.T) {
+	// #510: '' meant both "this frame has no cross-copy identity" and "the
+	// decoder could not read it then", and the pass never looked again. msgB8 is
+	// a frame the decoder reads today, stored as an older decoder would have
+	// left it: refused, under the version before this one.
+	st := floodStore(t)
+	defer st.Close()
+	if _, err := st.db.Exec(`UPDATE hunter_receptions SET message_id = '', message_id_version = ? WHERE raw = ?`,
+		meshpacket.MessageIDVersion-1, msgB8); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.backfillMessageIDs(); err != nil {
+		t.Fatal(err)
+	}
+	want, _ := meshpacket.MessageID(msgB8)
+	id, version := idAndVersion(t, st, msgB8)
+	if id == nil || *id != want {
+		t.Fatalf("a frame refused by an older decoder must be read again: got %v, want %q", id, want)
+	}
+	if version != meshpacket.MessageIDVersion {
+		t.Fatalf("the row must carry the version that read it: got %d, want %d", version, meshpacket.MessageIDVersion)
+	}
+}
+
+func TestBackfillLeavesAFrameThisDecoderRefusedAlone(t *testing.T) {
+	// The reason '' exists at all: a restart must not re-examine the same rows
+	// forever. msgB8 is readable, so if the pass looked at this row it would
+	// fill it; staying empty is the proof that it did not look.
+	st := floodStore(t)
+	defer st.Close()
+	if _, err := st.db.Exec(`UPDATE hunter_receptions SET message_id = '', message_id_version = ? WHERE raw = ?`,
+		meshpacket.MessageIDVersion, msgB8); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.backfillMessageIDs(); err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := idAndVersion(t, st, msgB8); id == nil || *id != "" {
+		t.Fatalf("a row this decoder version already refused must not be read again, got %v", id)
+	}
+}
+
+func TestARefusedFrameIsStoredUnderTheDecoderVersionThatRefusedIt(t *testing.T) {
+	// Both ways a row gets its id: the insert, and the pass over rows stored
+	// before the column. Without the version on the row, the next start would
+	// take this decoder's refusals for an older one's and read them again.
+	st := floodStore(t)
+	defer st.Close()
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := st.Insert(Reception{HunterPubkey: "aaaa", RxAt: now, Raw: "zz", Hops: 0, PacketType: "Raw"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, version := idAndVersion(t, st, "zz"); version != meshpacket.MessageIDVersion {
+		t.Fatalf("insert: got version %d, want %d", version, meshpacket.MessageIDVersion)
+	}
+
+	if _, err := st.db.Exec(`UPDATE hunter_receptions SET message_id = NULL, message_id_version = 0 WHERE raw = 'zz'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.backfillMessageIDs(); err != nil {
+		t.Fatal(err)
+	}
+	id, version := idAndVersion(t, st, "zz")
+	if id == nil || *id != "" || version != meshpacket.MessageIDVersion {
+		t.Fatalf("backfill: got id %v version %d, want '' under version %d", id, version, meshpacket.MessageIDVersion)
+	}
+}
+
+func TestARefusedRowFromBeforeTheVersionColumnIsReadAgain(t *testing.T) {
+	// A store that predates the column says nothing about which decoder
+	// refused a row. Left at NULL, `version < ?` would never be true for it and
+	// no bump would ever reach it, which is #510 again for the oldest rows.
+	path := filepath.Join(t.TempDir(), "hunter.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := st.Insert(Reception{HunterPubkey: "aaaa", RxAt: now, Raw: msgB8, Hops: 8, PacketType: "TextMessage"}); err != nil {
+		t.Fatal(err)
+	}
+	// The store as it was before this change, holding a refusal for a frame
+	// the decoder reads today.
+	if _, err := st.db.Exec(`UPDATE hunter_receptions SET message_id = ''`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.db.Exec(`ALTER TABLE hunter_receptions DROP COLUMN message_id_version`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	want, _ := meshpacket.MessageID(msgB8)
+	if id, _ := idAndVersion(t, st, msgB8); id == nil || *id != want {
+		t.Fatalf("a refusal from before the column must be read again: got %v, want %q", id, want)
 	}
 }
 

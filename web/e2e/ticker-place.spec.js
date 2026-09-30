@@ -66,7 +66,7 @@ test('drags by its frame and remembers where it was left', async ({ page }) => {
 test('a ticker left at the edge of a wide screen is still reachable on a narrow one', async ({ page }) => {
   // The safety net the issue asks for: dragging replaces the anchor, so there
   // is no "put it back" and an off-screen ticker would be lost for good.
-  // 720, not a phone: below 640px the card is pinned rather than clamped
+  // 800, not a phone: below 768px the card is pinned rather than clamped
   // (#643), and that has its own case below.
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.goto('/')
@@ -77,11 +77,11 @@ test('a ticker left at the edge of a wide screen is still reachable on a narrow 
   await page.mouse.move(1380, 860, { steps: 8 })
   await page.mouse.up()
 
-  await page.setViewportSize({ width: 720, height: 700 })
+  await page.setViewportSize({ width: 800, height: 700 })
   // Polled: the clamp runs from the resize handler, so asserting on the first
   // measurement races it. Polling also proves it actually settles rather than
   // happening to be right at one instant.
-  await expect.poll(async () => (await box(page)).right, { timeout: 5000 }).toBeLessThanOrEqual(720)
+  await expect.poll(async () => (await box(page)).right, { timeout: 5000 }).toBeLessThanOrEqual(800)
   const b = await box(page)
   expect(b.x).toBeGreaterThanOrEqual(0)
   expect(b.right, 'stranded off the right edge').toBeLessThanOrEqual(b.vw)
@@ -89,7 +89,7 @@ test('a ticker left at the edge of a wide screen is still reachable on a narrow 
   expect(b.y).toBeGreaterThanOrEqual(b.barBottom - 1)
 })
 
-// #643: below 640px the card is pinned under the bar like the app's, and the
+// #643: below 768px the card is pinned under the bar like the app's, and the
 // position dragged on a wide screen is kept for when it is wide again. The
 // stored x,y is the part that used to be lost: urlstate writes the placement
 // back on every load, so clamping it against the phone overwrote it for good.
@@ -370,7 +370,7 @@ test('the frame is invisible at rest and never covers the map', async ({ page })
   }
 })
 
-// Dragging is a wide-screen affordance (#561). The card is pinned below 640px
+// Dragging is a wide-screen affordance (#561). The card is pinned below 768px
 // at the app's width (#643), spanning the map -- there is no "out of the way"
 // to drag it to. Shrinking and dismissing are what move it
 // aside there, which is what the app does at every width.
