@@ -6,17 +6,25 @@
 // visible than a FAB tap. And huntmap.js is DOM-bound, so AGENTS.md §5 keeps
 // it out of the unit suite; this is the part worth pinning.
 //
-// The 3D rule that is not obvious: when pillars are drawn, the hex layer is
-// drawn FLAT rather than extruded. buildHexFC gives a cell the maximum RSSI
+// What a layer shows at a zoom is not decided here: that is a share, handed
+// to the style as a zoom expression (zoomfade.js, #634). This says which
+// layers exist for a view at all.
+//
+// 'auto' took the place of 'both' in #634: hex and points together, each at
+// the share its zoom gives it.
+//
+// The 3D rule that is not obvious: buildHexFC gives a cell the maximum RSSI
 // inside it, so an extruded bar is by construction at least as tall as every
-// pillar standing in that cell — and both are fill-extrusion sharing one depth
+// pillar standing in that cell, and both are fill-extrusion sharing one depth
 // pass with depth write, so the pillar's fragments fail the depth test and are
-// discarded. (fill-extrusion-opacity does not disable depth writes.) Flattening
-// the hex removes the occluder while keeping the coverage context under the
-// pillars. Extruded bars are still what 'hex' mode shows in 3D — there are no
-// pillars to hide there, and the bars are the whole point of that view.
+// discarded. (fill-extrusion-opacity does not disable depth writes.) Until
+// #634 the hex was therefore drawn FLAT whenever pillars shared the scene.
+// Now the pillars only arrive at zoom 19 (POINT_STEP_3D), and from there the
+// bars stand at 95% of their height (HEX_UNDER_PILLARS_3D), so the strongest
+// pillar of a cell clears its bar. Up to that zoom the bars are the whole
+// view, which is what flat cells under no pillars could not give.
 
-const MODES = ['both', 'hex', 'points']
+const MODES = ['auto', 'hex', 'points']
 
 // The 5-state combined layer+3D cycle (#258): merges the old layer-toggle FAB
 // (both/hex/points) and the 2D/3D FAB into one, freeing a FAB slot. "2D · hex
@@ -24,10 +32,10 @@ const MODES = ['both', 'hex', 'points']
 // matrix (decided 2026-07-16).
 export const VIEW_STATES = [
   { mode: 'points', mode3D: false },
-  { mode: 'both', mode3D: false },
+  { mode: 'auto', mode3D: false },
   { mode: 'hex', mode3D: true },
   { mode: 'points', mode3D: true },
-  { mode: 'both', mode3D: true },
+  { mode: 'auto', mode3D: true },
 ]
 
 // Stable key per VIEW_STATES entry — the icon/label lookup in app.js and the
@@ -39,8 +47,8 @@ export const viewKey = (s) => s.mode + (s.mode3D ? '3d' : '2d')
 // missing entry would otherwise reach a screen reader as "undefined".
 // Comma, not "·": a middle dot is either spoken as "middle dot" or dropped.
 export const VIEW_LABELS = {
-  points2d: '2D, points', both2d: '2D, hex + points', hex3d: '3D, hex',
-  points3d: '3D, points', both3d: '3D, hex + points',
+  points2d: '2D, points', auto2d: '2D, hex, points when zoomed in', hex3d: '3D, hex',
+  points3d: '3D, points', auto3d: '3D, hex, points when zoomed in',
 }
 
 // Cycles forward through VIEW_STATES. An out-of-range index (corrupt/legacy
@@ -72,19 +80,23 @@ export function pitchTransition(was3D, is3D) {
 export function layerVisibility({ mode, mode3D } = {}) {
   // Unknown/absent mode follows the app's cold default rather than hiding
   // everything, so a corrupt persisted value can't produce a blank map.
-  const m = MODES.includes(mode) ? mode : 'hex'
+  // 'both' is what a view stored before #634 still says: it reads as auto.
+  const m = mode === 'both' ? 'auto' : MODES.includes(mode) ? mode : 'hex'
   const showHex = m !== 'points'
   const showPoints = m !== 'hex'
 
   if (!mode3D) {
     // The hex labels (#556) ride the flat hex layer, in 2D only; the pulse
     // rings where the flat points are drawn, and its 3D form stays off here.
-    return { hex: showHex, 'hex-3d': false, points: showPoints, 'points-3d': false, 'hex-labels': showHex, pulse: showPoints, 'pulse-3d': false }
+    return { hex: showHex, 'hex-b': showHex, 'hex-3d': false, 'hex-3d-b': false, points: showPoints, 'points-3d': false, 'hex-labels': showHex, pulse: showPoints, 'pulse-3d': false }
   }
   return {
-    // Flat when pillars share the scene, extruded when they don't.
-    hex: showHex && showPoints,
-    'hex-3d': showHex && !showPoints,
+    // Extruded whenever the hex is on (#634); see the 3D rule above.
+    hex: false,
+    'hex-b': false,
+    'hex-3d': showHex,
+    // The second cell size, while one takes over from the other (zoomfade.js).
+    'hex-3d-b': showHex,
     points: false,
     'points-3d': showPoints,
     // A label on a pillar's top would float at ground level under it, and the

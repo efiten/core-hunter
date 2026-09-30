@@ -68,6 +68,7 @@ app/                  Mobile hunter PWA (Vite ES-module)
     signal.js         Thermal tier helpers (snrTier / rssiTier)
     huntmap.js        Leaflet map: signal points + hex-heat layer
     hexgrid.js        Hex-grid binning geometry
+    zoomfade.js       What the map shows at a zoom, as shares the style eases (#634)
     transport.js      BLE transport (ported from CoreDrive RX)
     frames.js         0x88 RX-log frame decoder
     gps.js            Phone Geolocation wrapper

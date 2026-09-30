@@ -52,7 +52,7 @@ describe('applyLayerVisibility covers every layer layerVisibility decides', () =
     // one of them names the full set. hex-labels is the single exception: it is
     // not a style layer but DOM markers, applied through drawHexLabels().
     // The noise layer (#410) is decided on top of it, by withNoise.
-    const decided = Object.keys(withNoise(layerVisibility({ mode: 'both', mode3D: true }), true)).filter((id) => id !== 'hex-labels')
+    const decided = Object.keys(withNoise(layerVisibility({ mode: 'auto', mode3D: true }), true)).filter((id) => id !== 'hex-labels')
     expect([...applied].sort()).toEqual([...decided].sort())
   })
 })

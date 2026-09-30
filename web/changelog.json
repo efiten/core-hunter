@@ -28,6 +28,13 @@
     "body": "A relay's name in the ticker and the popup is marked ~ as a guess. Members get the name of the one known node in reach."
   },
   {
+    "id": "2026-09-29-zoom-eases",
+    "date": "2026-09-29",
+    "where": "both",
+    "title": "Zooming eases instead of jumping",
+    "body": "Cells change size gradually and points fade in as you zoom. Auto replaces Both. In 3D the pillars appear at the closest zoom."
+  },
+  {
     "id": "2026-09-27-hud-bottom-space",
     "date": "2026-09-27",
     "where": "app",

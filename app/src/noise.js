@@ -113,7 +113,7 @@ export function noiseFill(colors) {
 export function withNoise(vis, on) {
   if (!on) return { ...vis, noise: false }
   const out = { ...vis, noise: true }
-  for (const id of ['hex', 'hex-3d', 'hex-labels']) if (id in out) out[id] = false
+  for (const id of ['hex', 'hex-b', 'hex-3d', 'hex-3d-b', 'hex-labels']) if (id in out) out[id] = false
   return out
 }
 

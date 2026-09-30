@@ -3230,7 +3230,7 @@ function refreshWhatsNewBadge() {
 // Was two FABs (layer-toggle: both/points/hex · mode3d-toggle: 2D/3D, #147
 // phase 2) — merged into VIEW_STATES' 5-state cycle (maplayers.js) to free a
 // FAB slot. Persisted like the sound mode; unknown/corrupt storage falls back
-// to both/2D (index 1), the app's cold default — see loadViewIndex in
+// to auto/2D (index 1), the app's cold default — see loadViewIndex in
 // settings.js (guarded + unit-tested, #338).
 
 function saveViewIndex(i) {
@@ -3251,7 +3251,7 @@ const VIEW_ICONS = {
   // Hexagon (the hex-heatmap glyph) with a point dot inside — visually
   // combines the other two modes' glyphs instead of reusing a generic
   // stacked-layers icon that doesn't read as "points + hex together".
-  both2d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+  auto2d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
     <polygon points="10,2 17,6 17,14 10,18 3,14 3,6"/>
     <circle cx="10" cy="10" r="2.2" fill="currentColor" stroke="none"/>
   </svg>`,
@@ -3273,8 +3273,8 @@ const VIEW_ICONS = {
     <circle cx="14" cy="11" r="1.3" fill="currentColor" stroke="none"/>
   </svg>`,
   // Faded hex-prism outline with one solid pillar standing inside — the 3D
-  // twin of both2d's hex-outline-plus-center-dot.
-  both3d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+  // twin of auto2d's hex-outline-plus-center-dot.
+  auto3d: `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
     <path d="M10 3l6 3.5v7L10 17l-6-3.5v-7z" opacity="0.55"/>
     <line x1="10" y1="17" x2="10" y2="8" stroke-width="1.6"/>
     <circle cx="10" cy="8" r="1.6" fill="currentColor" stroke="none"/>
