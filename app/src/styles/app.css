@@ -127,7 +127,9 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
   font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
 
 /* ---- HUD ---- */
-#hud { position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 16px env(safe-area-inset-bottom, 18px);
+/* Stands on --ch-bottom-edge (tokens.css, #705): the device's inset with a
+   14px floor, the HUD's own top padding. */
+#hud { position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 16px var(--ch-bottom-edge);
   background: var(--ch-surface); backdrop-filter: blur(10px);
   display: flex; flex-direction: column; gap: 8px; z-index: 500; }
 
@@ -266,17 +268,17 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    #257: shifted 80px down from the original 192/246/300/354 — the stack sat
    in a stretch of dead space above the HUD (measured ~107px clear on a
    375x812 viewport at the old offsets), closer than the thumb zone wants.
-   Anchored to env(safe-area-inset-bottom) so the stack tracks the HUD's
+   Anchored to --ch-bottom-edge (#705) so the stack tracks the HUD's
    own inset-based positioning — clearance stays consistent across device heights
    (notched, regular, landscape, portrait) without brittle pixel math. */
-#layer-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 146px); }
-#discover-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 200px); }
-#recenter-btn { bottom: calc(env(safe-area-inset-bottom, 18px) + 254px); }
+#layer-toggle { bottom: calc(var(--ch-bottom-edge) + 146px); }
+#discover-btn { bottom: calc(var(--ch-bottom-edge) + 200px); }
+#recenter-btn { bottom: calc(var(--ch-bottom-edge) + 254px); }
 /* Next slot in the 54px stack (#197), anchored like the rest so the clearance
    above #hud stays constant across devices — see #264. 274px (308 since #555) is #sound-toggle
    (#145), so this layer takes 328 (362 since #555). #258 removed #mode3d-toggle from 274 and
    pulled both of these down one slot; the stack must stay contiguous. */
-#nodepos-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 362px); }
+#nodepos-toggle { bottom: calc(var(--ch-bottom-edge) + 362px); }
 #layer-toggle svg, #discover-btn svg, #recenter-btn svg, #sound-toggle svg, #nodepos-toggle svg { pointer-events: none; }
 /* On = the layer is drawing; same accent-ring idiom as the discover FAB. */
 #nodepos-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
@@ -286,7 +288,7 @@ html, body { margin: 0; height: 100%; background: var(--ch-bg); color: var(--ch-
    is off-screen in landscape on a phone in a car mount (~430px viewport).
    Moved 328 → 274 by #258, which freed the #mode3d-toggle slot; the top edge
    is now ~341px + inset, comfortably inside the same landscape viewport. */
-#sound-toggle { bottom: calc(env(safe-area-inset-bottom, 18px) + 308px); }
+#sound-toggle { bottom: calc(var(--ch-bottom-edge) + 308px); }
 /* Sound FAB (#145): steady accent while a sound mode is on, same pattern as auto-discover. */
 #sound-toggle.on { color: var(--ch-accent); box-shadow: 0 4px 14px rgba(0,0,0,.3), 0 0 0 2px var(--ch-accent); }
 #discover-btn:disabled { color: var(--ch-muted); cursor: not-allowed; opacity: 0.5; }
@@ -772,7 +774,7 @@ body.onboarding #sound-toggle, body.onboarding #nodepos-toggle {
 #nc-close { color: var(--ch-muted); flex: none; }
 
 .splash-close { position: fixed; left: 50%; transform: translateX(-50%); z-index: 562;
-  bottom: calc(env(safe-area-inset-bottom, 16px) + 16px); width: 44px; height: 44px; border-radius: 50%;
+  bottom: calc(var(--ch-bottom-edge) + 16px); width: 44px; height: 44px; border-radius: 50%;
   border: 1px solid var(--ch-border); background: var(--ch-surface); color: var(--ch-text); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; }
 
