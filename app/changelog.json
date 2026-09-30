@@ -56,6 +56,13 @@
     "body": "In a landscape holder the fullscreen readout now lies the right way, and it keeps to Android's auto-rotate setting."
   },
   {
+    "id": "2026-09-27-picker-search-focus",
+    "date": "2026-09-27",
+    "where": "both",
+    "title": "Type straight away in the target picker",
+    "body": "Opening the target picker puts the cursor in its search. In the app it opens on an empty search every time."
+  },
+  {
     "id": "2026-09-26-broker-presets-shown",
     "date": "2026-09-26",
     "where": "app",

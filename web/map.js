@@ -2515,6 +2515,9 @@ syncTargetToggleLabel()
 wirePopover({
   toggleEl: spToggle, panelEl: senderPicker, wrapEl: spToggle.closest('.ms-wrap'), wrapSelector: '.ms-wrap',
   onOpen: () => { targetPicker.reset(); refresh() }, // back to page 1; the next redraw repopulates
+  // The caret in the search (#714). Its value stays: on web it is the sender
+  // filter itself, bound to ?sender=.
+  focusEl: document.getElementById('f-sender'),
 })
 
 // Hunter picker (#290): generalizes the sender picker's pattern to #f-hunter,

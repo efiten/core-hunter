@@ -76,6 +76,7 @@ import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
 import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
+import { closeSheet } from './sheetfocus.js'
 
 // ---------------------------------------------------------------------------
 // State
@@ -2575,7 +2576,7 @@ function buildFilterSheet() {
     drawOnce()
   })
 
-  el('fs-close').addEventListener('click', () => { sheet.hidden = true })
+  el('fs-close').addEventListener('click', () => closeSheet(sheet, el('filter-pill')))
 }
 
 function buildTargetSheet() {
@@ -2618,7 +2619,7 @@ function buildTargetSheet() {
     document.dispatchEvent(new CustomEvent('hunt:isolate-sender', { detail: null }))
   })
 
-  el('ts-close').addEventListener('click', () => { sheet.hidden = true })
+  el('ts-close').addEventListener('click', () => closeSheet(sheet, el('target-chip')))
 }
 
 function renderIgnoreList(listEl) {
@@ -2857,7 +2858,7 @@ function buildSettingsSheet() {
   el('ss-conn-btn').addEventListener('click', () => {
     if (state.connected) {
       disconnectAll()
-      sheet.hidden = true
+      closeSheet(sheet, el('settings-btn'))
     } else {
       state.wakeLock.enable()
       connectAll()
@@ -2914,7 +2915,7 @@ function buildSettingsSheet() {
   })
 
 
-  el('ss-close').addEventListener('click', () => { sheet.hidden = true })
+  el('ss-close').addEventListener('click', () => closeSheet(sheet, el('settings-btn')))
 
   // The brokers page lives inside the settings sheet (#554), so a tap in it is
   // a tap inside the sheet for the outside-click dismissal below.
@@ -2953,7 +2954,7 @@ function buildSettingsSheet() {
   // Replaces the old topbar "?" button (#281): closes the sheet so the
   // walkthrough it re-opens isn't hidden behind it.
   el('ss-about-howto').addEventListener('click', () => {
-    el('settings-sheet').hidden = true
+    closeSheet(el('settings-sheet'), el('settings-btn'))
     state.showOnboarding = true
     refreshSplash()
   })
@@ -3921,42 +3922,39 @@ window.addEventListener('DOMContentLoaded', async () => {
   })
   el('filter-pill').addEventListener('click', () => {
     const sheet = el('filter-sheet')
-    sheet.hidden = !sheet.hidden
-    if (!sheet.hidden) {
-      el('settings-sheet').hidden = true
-      el('target-sheet').hidden = true
-      renderIgnoreList(el('ss-ignore-list'))
-    }
+    if (!sheet.hidden) { closeSheet(sheet, el('filter-pill')); return }
+    sheet.hidden = false
+    closeSheet(el('settings-sheet'), el('settings-btn'))
+    closeSheet(el('target-sheet'), el('target-chip'))
+    renderIgnoreList(el('ss-ignore-list'))
   })
 
   el('settings-btn').addEventListener('click', () => {
     const sheet = el('settings-sheet')
-    sheet.hidden = !sheet.hidden
-    if (!sheet.hidden) {
-      el('filter-sheet').hidden = true
-      el('target-sheet').hidden = true
-      // Always open on the tabs, not on wherever the brokers page was left.
-      state.brokerSheet.close()
-      refreshConnState()
-      refreshAccount()
-      checkForUpdate()
-      refreshWhatsNewBadge()
-      // Before the badge refresh this would read the flag the previous open
-      // left behind; after it, state.unseenChangelog is the current answer.
-      settingsSelectTab(initialSettingsTab(state))
-    }
+    if (!sheet.hidden) { closeSheet(sheet, el('settings-btn')); return }
+    sheet.hidden = false
+    closeSheet(el('filter-sheet'), el('filter-pill'))
+    closeSheet(el('target-sheet'), el('target-chip'))
+    // Always open on the tabs, not on wherever the brokers page was left.
+    state.brokerSheet.close()
+    refreshConnState()
+    refreshAccount()
+    checkForUpdate()
+    refreshWhatsNewBadge()
+    // Before the badge refresh this would read the flag the previous open
+    // left behind; after it, state.unseenChangelog is the current answer.
+    settingsSelectTab(initialSettingsTab(state))
   })
 
   // Target chip tap → open the target dropdown
   el('target-chip').addEventListener('click', () => {
     const sheet = el('target-sheet')
-    sheet.hidden = !sheet.hidden
-    if (!sheet.hidden) {
-      el('filter-sheet').hidden = true
-      el('settings-sheet').hidden = true
-      el('ts-clear').hidden = !state.filter.sender
-      state.targetList.reset()
-    }
+    if (!sheet.hidden) { closeSheet(sheet, el('target-chip')); return }
+    sheet.hidden = false
+    closeSheet(el('filter-sheet'), el('filter-pill'))
+    closeSheet(el('settings-sheet'), el('settings-btn'))
+    el('ts-clear').hidden = !state.filter.sender
+    state.targetList.open()
   })
 
   // Tap outside an open sheet (on the map/backdrop) closes it — standard
@@ -3977,7 +3975,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     for (const { sheet, toggle } of dismissableSheets) {
       if (sheet.hidden) continue
       if (sheet.contains(e.target) || toggle.contains(e.target)) continue
-      sheet.hidden = true
+      closeSheet(sheet, toggle)
     }
     syncPopoverTriggers()
   })

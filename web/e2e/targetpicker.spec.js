@@ -22,6 +22,24 @@ test('opening the picker lists senders from the currently loaded points', async 
   await expect(page.locator('#tp-list')).toContainText('Charlie')
 })
 
+// #714: the caret is in the search the moment the picker opens, so the next
+// keystroke searches without a press on the field; Escape hands the focus back
+// to the toggle rather than leaving it on a hidden field.
+test('opening the picker puts the caret in its search, and closing hands it back', async ({ page }) => {
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [A, B] } }))
+  await page.goto('/?mode=points')
+  await openPicker(page, '#sp-toggle', '#sender-picker')
+  await expect(page.locator('#f-sender')).toBeFocused()
+  await page.keyboard.type('cc')
+  await expect(page.locator('#f-sender')).toHaveValue('cc')
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#sender-picker')).toBeHidden()
+  await expect(page.locator('#sp-toggle')).toBeFocused()
+  // Escape in a search field clears it in Chromium and WebKit; here it only
+  // closes, so the typed prefix, which filters the map, stays.
+  await expect(page.locator('#f-sender')).toHaveValue('cc')
+})
+
 const sendersOf = (u) => new URL(u).searchParams.getAll('senders')
 
 test('a picked selection is sent to the server as repeated senders= params', async ({ page }) => {
