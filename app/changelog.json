@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-30-node-positions-after-restart",
+    "date": "2026-09-30",
+    "where": "map",
+    "title": "Node positions straight after a server restart",
+    "body": "The server fetches the node registry on its own, so nobody sees it as unreachable after a restart."
+  },
+  {
     "id": "2026-09-27-hud-bottom-space",
     "date": "2026-09-27",
     "where": "app",
