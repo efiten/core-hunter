@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { createSoundEngine } from '../sound.js'
+import { createSoundEngine, cuePeak, TX_POP } from '../sound.js'
 
 // A plain zero-hop cue: these tests are about the engine's clock and
 // lifecycle, not about which instrument plays (#468).
@@ -56,7 +56,7 @@ function makeCtx({ state = 'running', sampleRate = 48000 } = {}) {
     close() {},
     createGain: () => node({ gain: fakeParam(1) }),
     createBiquadFilter: () => node({ type: '', frequency: fakeParam(0), Q: fakeParam(0) }),
-    createConvolver: () => { ctx.convolvers++; return node({ buffer: null }) },
+    createConvolver: () => { ctx.convolvers++; return node({ buffer: null, isConvolver: true }) },
     createStereoPanner: () => { ctx.panners++; return node({ pan: fakeParam(0) }) },
     createBuffer: (ch, len) => ({ getChannelData: () => new Float32Array(len) }),
     createBufferSource: () => { ctx.bufferSources++; const n = node({ buffer: null, loop: false, start() {}, stop() {} }); ctx.sources.push(n); return n },
@@ -572,4 +572,57 @@ describe('the ambient layer has depth, and gives it all back', () => {
     expect(ctx.oscillators.some((o) => o.started), 'the default engine plays nothing').toBe(true)
   })
 
+})
+
+// #602: with sound on, auto-discover was the loudest thing in the mix. A sweep
+// of N targets is N + 2 pops every ten seconds, each at 0.16 through the full
+// reverb, over receptions whose dit scales with RSSI and sits well under that
+// when weak. The cue for "a frame went out" carries no measurement; the cue
+// for "something was heard" does, so that is the one that has to be on top.
+describe('a transmit pop sits under the receptions (#602)', () => {
+  // How much of a source reaches the reverb, and how much reaches the output
+  // without it: the product of the gains along every path, read off the fake's
+  // wiring. An envelope gain counts as 1, its resting value in the fake.
+  function shares(from) {
+    let wet = 0, dry = 0
+    const walk = (n, level, viaReverb) => {
+      if (n === ctx.destination) { if (viaReverb) wet += level; else dry += level; return }
+      const here = n.gain ? level * n.gain.value : level
+      for (const next of n.outs) walk(next, here, viaReverb || !!n.isConvolver)
+    }
+    walk(from, 1, false)
+    return { wet, dry }
+  }
+  const lastOsc = () => ctx.oscillators[ctx.oscillators.length - 1]
+
+  it('peaks below the quietest direct dit of a weak reception', () => {
+    // The issue's own measure: at -110 dBm the network voice, the driest and
+    // most common one, must come out over the pop.
+    expect(cuePeak('network', -110)).toBeGreaterThan(TX_POP.peak)
+    for (const family of ['advert', 'channel', 'message', 'trace']) {
+      expect(cuePeak(family, -110), family).toBeGreaterThan(TX_POP.peak)
+    }
+  })
+
+  it('is what cue() plays a dit at, so the comparison above is about the engine', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    const ramps = []
+    const gain = ctx.createGain
+    ctx.createGain = () => { const g = gain(); g.gain.linearRampToValueAtTime = (v) => { ramps.push(v); return g.gain }; return g }
+    e.cue(DIRECT, -110)
+    expect(ramps).toContain(cuePeak('network', -110))
+  })
+
+  it('sends a fraction of itself to the reverb where a dit sends all of it, at the same dry level', () => {
+    const e = createSoundEngine()
+    e.setMode('rxtx')
+    e.cue(DIRECT, -80)
+    const dit = shares(lastOsc())
+    e.txBlip('trace')
+    const pop = shares(lastOsc())
+    expect(dit.wet).toBeGreaterThan(0)
+    expect(pop.wet / dit.wet).toBeCloseTo(TX_POP.reverb, 5)
+    expect(pop.dry).toBeCloseTo(dit.dry, 5)
+  })
 })
