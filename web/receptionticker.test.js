@@ -370,3 +370,25 @@ describe('senderCell — the id stays beside the name it resolved to', () => {
     expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77' })).toEqual({ id: '', name: '#77' })
   })
 })
+
+// #663: the map's ticker names a relay the way the app's does.
+describe('senderCell, a relay named by the guess mark and by reach (#663)', () => {
+  const node = (name) => ({ rule: 'node', node: { pubkey: 'a1b2' + '0'.repeat(60), name } })
+  it('marks a name on a 2 or 3-byte id as a guess', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3' })).toEqual({ id: 'a1b2', name: '~repeater-3' })
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2f3', sender_label: 'repeater-3' })).toEqual({ id: 'a1b2f3', name: '~repeater-3' })
+  })
+  it('leaves a name on a longer id unmarked', () => {
+    expect(senderCell({ sender_kind: 'discover', sender_id: 'a1b2f3c4d5e6f7a8', sender_label: 'repeater-3' }).name).toBe('repeater-3')
+  })
+  it('takes the name of the one registry node in reach, marked', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: node('Mast Noord') })).toEqual({ id: 'a1b2', name: '~Mast Noord' })
+  })
+  it('names a 1-byte id by its placement, with the # id beside it', () => {
+    expect(senderCell({ sender_kind: 'path_hash', sender_id: '77', sender_label: '77', _attr: node('Mast Noord') })).toEqual({ id: '#77', name: '~Mast Noord' })
+  })
+  it('prints no name on a collision, nor when the registry knows the prefix out of reach', () => {
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } })).toEqual({ id: '', name: 'a1b2' })
+    expect(senderCell({ sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: { rule: 'estimate', prefixKnown: true } })).toEqual({ id: '', name: 'a1b2' })
+  })
+})

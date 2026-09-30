@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -95,9 +96,10 @@ func main() {
 	adminAPI := &httpapi.AdminAPI{Store: st, Mailer: mailer, BaseURL: cfg.BaseURL}
 	resolveAPI := &httpapi.ResolveAPI{Upstreams: cfg.ResolveUpstreams, Client: &http.Client{Timeout: 5 * time.Second}}
 	// Longer timeout than the resolve proxy: this fetches the whole registry
-	// (~1.3 MB per upstream), and it does so once per TTL for every visitor
-	// rather than once per request (#377).
+	// (~1.3 MB per upstream). It does so on its own loop, at boot and then on a
+	// timer, so no visitor's request waits for it (#377, #591).
 	nodesAPI := &httpapi.NodesAPI{Upstreams: cfg.NodePositionUpstreams, Client: &http.Client{Timeout: 30 * time.Second}}
+	go nodesAPI.Run(context.Background())
 	deps := &httpapi.Deps{Auth: authAPI, Admin: adminAPI, Resolve: resolveAPI, Nodes: nodesAPI}
 
 	mux := http.NewServeMux()

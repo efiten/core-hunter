@@ -467,10 +467,10 @@ function syncHudToPlayhead() {
 }
 
 // floatModelNow is what the float readout shows right now: the HUD's
-// reception, which is the ticker's playhead (#453). The PiP window's
-// previous/next buttons scrub that playhead, and the HUD moves with it. The
-// hidden count only means something while the ticker follows; a scrubbed
-// playhead is a choice, not something the filter kept off.
+// reception, which is the ticker's playhead (#453): scrubbing the ticker
+// moves it, and the HUD moves with it. The hidden count only means something
+// while the ticker follows; a scrubbed playhead is a choice, not something
+// the filter kept off.
 function floatModelNow() {
   const following = !state.rxLog || state.rxLog.following()
   const at = state.hudAt
@@ -492,10 +492,11 @@ function drawFloat() {
   state.float.draw(floatModelNow())
 }
 
-// initFloatReadout builds the float readout where the browser can, and wires
-// its button and the Media Session actions Android shows on the PiP window:
-// previous/next scrub the ticker's list, which is the one control a video
-// window has (#555). A browser without the pieces never shows the button.
+// initFloatReadout builds the float readout where the browser can and wires
+// its button. A browser without the pieces never shows the button. The window
+// has no buttons of the app's own (#716): desktop Chrome shows one for every
+// Media Session action a page handles, and on Android the previous/next of
+// #555 did not appear.
 function initFloatReadout() {
   const btn = el('hud-float')
   if (!floatSupported(window)) { btn.hidden = true; return }
@@ -516,12 +517,6 @@ function initFloatReadout() {
   // The reading goes in with the tap: the window opens on the canvas's
   // current frame, and nothing draws there while the readout is in (#616).
   btn.addEventListener('click', () => { if (state.float.isOpen()) state.float.close(); else state.float.open(floatModelNow()) })
-  if (!('mediaSession' in navigator)) return
-  try {
-    navigator.mediaSession.metadata = new MediaMetadata({ title: APP_NAME, artist: 'Float readout' })
-    navigator.mediaSession.setActionHandler('previoustrack', () => { if (state.rxLog) state.rxLog.step(-1); drawFloat() })
-    navigator.mediaSession.setActionHandler('nexttrack', () => { if (state.rxLog) state.rxLog.step(1); drawFloat() })
-  } catch (_) { /* an action the browser does not know: the window just has no such button */ }
 }
 
 // setRxMode flips the filtered/all stand for the ticker and the HUD together
