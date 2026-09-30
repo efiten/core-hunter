@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.1](https://github.com/efiten/core-hunter/compare/server-v1.10.0...server-v1.10.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **server:** keep the node registry in memory on a loop of its own ([#736](https://github.com/efiten/core-hunter/issues/736)) ([4f3e988](https://github.com/efiten/core-hunter/commit/4f3e9881a71f9a51a58d33bb7d3b9c10fa674523))
+* **server:** read a refused frame again when the message-id decoder changes ([#737](https://github.com/efiten/core-hunter/issues/737)) ([8586c71](https://github.com/efiten/core-hunter/commit/8586c719eedf2c9540c8cf7c26b617df7a5d65c0))
+
 ## [1.10.0](https://github.com/efiten/core-hunter/compare/server-v1.9.0...server-v1.10.0) (2026-09-17)
 
 
