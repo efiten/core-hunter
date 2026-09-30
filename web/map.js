@@ -5,6 +5,9 @@ import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures,
 import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, starSelected } from './coverage.js'
 import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
+import { heardModel, routeSegments, mappedCells, windowText, huntersText, exportFileName, FAR_KM } from './exportheard.js'
+import { renderHeardImage, lightTokens } from './exportrender.js'
+import { initExportSheet } from './exportsheet.js'
 import { createRowAttributor } from './rowattribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
@@ -1173,6 +1176,42 @@ function clearCoverageLayer() {
   coverageStarList = []
   starCache.clear()
 }
+// The "Repeaters heard" export (#666): the stars the reach layer would draw
+// for this view, from the same registry slice, the same window and the same
+// attribution, whether the layer is on or not, drawn as a 1200×1200 PNG.
+async function heardExport() {
+  const view = wm.getBounds()
+  const [registry, pointsRes] = await Promise.all([fetchNodeRegistry(view), windowPoints(standFilters())])
+  const nodes = registry && registry.status === 'ok' ? registry.nodes : []
+  const index = registryIndex(nodes)
+  const attributionOf = (pt) => attributeReception(pt, { index })
+  const points = await coveragePoints(pointsRes.points)
+  const byKey = new Map(nodes.map((n) => [String(n.pubkey).toLowerCase(), n]))
+  const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
+  const stars = coverageStars(points, { positionOf, attributionOf, registryNodeOf: registryMatcher(nodes) })
+  const nameOf = (id) => { const n = byKey.get(id); return (n && n.name) || null }
+  const model = heardModel({ stars, view, nameOf, cachedNameOf: cachedName })
+  if (!model.drawn.length) return { empty: 'No repeater was heard in this view. Pan to where you drove, or widen the time window.' }
+  const drawnIds = new Set(model.drawn.map((s) => s.id))
+  const hunters = [...new Set(stars.filter((s) => drawnIds.has(s.id)).flatMap((s) => s.points.map((p) => p.hunter_name)).filter(Boolean))]
+  const theirs = points.filter((p) => hunters.includes(p.hunter_name))
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  const oldest = points.reduce((m, p) => (p.rx_at && p.rx_at < m ? p.rx_at : m), new Date().toISOString())
+  const sub = [windowText(f.from || oldest, f.to || new Date().toISOString()), huntersText(hunters)]
+  if (pointsRes.capped) sub.push(`the first ${POINTS_CAP} receptions`)
+  // Without the registry every star is an estimate and none has a name.
+  if (!(registry && registry.status === 'ok')) sub.push('node list unavailable, every position estimated')
+  const off = model.offMap.length
+    ? `Left off, farther than ${FAR_KM} km from their position: ${model.offMap.map((o) => `${o.name} (${o.km} km)`).join(', ')}`
+    : ''
+  const canvas = await renderHeardImage({
+    model, routes: routeSegments(theirs), cells: mappedCells(theirs),
+    text: { title: 'Repeaters heard', sub: sub.filter(Boolean).join(' · '), off }, tokens: lightTokens(),
+  })
+  const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('no PNG'))), 'image/png'))
+  return { blob, fileName: exportFileName(Date.now()) }
+}
+
 // The receptions the stars are built from. With a target picked the layer's
 // points are already narrowed to it, and the other stars have to stay up at a
 // quarter, so the coverage set is fetched without the sender filter then. The
@@ -2716,4 +2755,13 @@ document.getElementById('role-notice-close').addEventListener('click', () => {
 window.addEventListener('focus', async () => {
   const me = await fetchMe()
   if ((me.role || 'guest') !== currentRole) applyRole(me)
+})
+
+// The Export sheet (#666). The picture is made of the same registry and
+// receptions as the node layer, so it asks the same of the account.
+initExportSheet({
+  heard: heardExport,
+  reason: () => (canSeeObserverPoints(currentRole) ? null
+    : currentRole === 'hunter' ? 'Exports need a verified member account. An admin verifies you.'
+      : 'Exports need an account. Log in to use them.'),
 })

@@ -109,6 +109,7 @@ describe('finding the control a slot moves', () => {
         node('hunter picker', { classes: ['ms-wrap'] }, [node('hunter toggle', { id: 'hp-toggle' })]),
         node('time range', { classes: ['tr-wrap'] }),
       ]),
+      node('Export', { id: 'export-btn' }),
       node('Start mapping', { id: 'rx-cta' }),
       node('Log in', { id: 'auth-btn' }),
     ]),
@@ -120,7 +121,7 @@ describe('finding the control a slot moves', () => {
 
   it('finds every control without a selector only some engines parse', () => {
     const found = NARROW_SLOTS.map((entry) => findControl(entry, doc)?.name)
-    expect(found).toEqual(['time range', 'hunter picker', 'Start mapping', 'Log in'])
+    expect(found).toEqual(['time range', 'hunter picker', 'Export', 'Start mapping', 'Log in'])
   })
 })
 
@@ -134,10 +135,11 @@ describe('the stylesheet\'s widths are NARROW_MEDIA\'s', () => {
   it('finds the media queries at all', () => {
     expect(queries.length).toBeGreaterThan(2)
   })
-  it('uses one max-width, the one NARROW_MEDIA names', () => {
+  it('uses the width NARROW_MEDIA names, or one a control leaves earlier at', () => {
     const narrow = Number(NARROW_MEDIA.match(/(\d+)px/)[1])
+    const earlier = NARROW_SLOTS.map((s) => s.below).filter(Boolean)
     const widths = queries.flatMap((q) => [...q.matchAll(/(?:max|min)-width:\s*(\d+)px/g)].map((m) => Number(m[1])))
-    expect(widths.length).toBeGreaterThan(0)
-    for (const w of widths) expect(w, `a media query at ${w}px`).toBe(narrow)
+    expect(widths).toContain(narrow)
+    for (const w of widths) expect([narrow, ...earlier], `a media query at ${w}px`).toContain(w)
   })
 })

@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-27-export-repeaters-heard",
+  "date": "2026-09-27",
+  "where": "map",
+  "title": "Export the repeaters you heard as a picture",
+  "body": "Export in the top bar makes a 1200 × 1200 PNG of every repeater in view and where it was heard, ready to share."
+}

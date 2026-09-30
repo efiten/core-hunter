@@ -284,6 +284,10 @@
          filters sheet (#467) on purpose: it is not a filter, and it is the one
          control a first-time reader is meant to find. -->
     <span class="bar-spacer"></span>
+    <!-- The Export sheet (#666): pictures of the map as it stands. Next to
+         Start mapping, since it acts rather than filters; below 900px it moves
+         into the menu with it (#561, barnarrow.js). -->
+    <button id="export-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="export-modal">Export</button>
     <a id="rx-cta" class="bar-btn" href="https://rx.mesh-hunter.eu" target="_blank" rel="noopener"
        title="Pair a companion and map the mesh yourself"><span class="rx-cta-long">Start mapping</span><span class="rx-cta-short">Map it</span></a>
     <button id="auth-btn" class="bar-btn">Log in</button>
@@ -502,6 +506,29 @@
     </div>
     <button type="button" id="wb-close" class="wb-close" aria-label="Close">✕</button>
   </aside>
+  <!-- Export (#666), on the .lc-modal shell the settings and login sheets
+       use. One item to start with; the exports epic (#665) adds the rest. -->
+  <div id="export-modal" class="lc-modal" hidden>
+    <div class="lc-card ex-card" role="dialog" aria-modal="true" aria-labelledby="ex-title">
+      <div class="ex-head">
+        <h2 id="ex-title">Export</h2>
+        <button class="ss-close" id="ex-close" type="button" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+            <line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/>
+          </svg>
+        </button>
+      </div>
+      <p class="ex-lede">A picture of the map as it stands, with its filters, time window and hunters, to pass on.</p>
+      <div class="ex-item">
+        <div class="ex-text">
+          <div class="ex-name">Repeaters heard</div>
+          <div class="ex-desc">Every repeater in view, with a line to each place it was heard. A 1200 × 1200 PNG.</div>
+          <div class="ex-status" id="ex-heard-status" role="status" hidden></div>
+        </div>
+        <button id="ex-heard" class="ex-btn" type="button">Download PNG</button>
+      </div>
+    </div>
+  </div>
   <div id="map"></div>
   <div id="rx-log" data-map-overlay></div>
   <!-- MapLibre GL (#465), the app's map, pinned to the same version app/index.html carries. -->

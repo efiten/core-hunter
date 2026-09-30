@@ -679,6 +679,21 @@ body.wb-onboarding-on #bar { z-index:710; }
 .ss-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .lc-actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* The Export sheet (#666): a heading with its close, a line on what the
+   pictures are, and one row per export with its button on the right. */
+.ex-card { width: min(460px, calc(100vw - 32px)); gap: 12px; }
+.ex-head { display: flex; align-items: center; justify-content: space-between; }
+.ex-head h2 { margin: 0; font-size: 17px; }
+.ex-lede { margin: 0; color: var(--ch-muted); font-size: 13px; line-height: 1.45; }
+.ex-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border: 1px solid var(--ch-border); border-radius: 10px; }
+.ex-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.ex-name { font-weight: 600; }
+.ex-desc { color: var(--ch-muted); font-size: 13px; line-height: 1.4; }
+.ex-status { font-size: 12px; color: var(--ch-accent); }
+.ex-status[hidden] { display: none; }
+.ex-btn { flex: none; min-height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--ch-accent);
+  background: var(--ch-accent); color: var(--ch-bg); font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.ex-btn:disabled { opacity: .5; cursor: not-allowed; }
 .lc-remember { font-size: .9em; color: var(--ch-muted); }
 /* The card's footer line (#490). Sits under .lc-actions, so the top border is
    what separates the answer to "I have no account" from the login controls. */
@@ -954,6 +969,13 @@ body.wb-onboarding-on #bar { z-index:710; }
    The shape is the app's #topbar at the same width, which is the point: the
    surfaces share the bar, not just what is inside their panels. What the map
    has extra goes into the panel, which is already a full-width sheet here. */
+/* Export leaves the bar for the menu below 900px, before the others (#666,
+   barnarrow.js): between 768 and 900px its label wraps the bar into another
+   row. Hidden here too, like Start mapping and Log in below 768px, so it
+   never shows in the bar before map.js has moved it. */
+@media (max-width: 900px) {
+  #bar #export-btn { display: none; }
+}
 @media (max-width: 767px) {
   /* The mark alone. The name is in the menu, which is what every mobile app bar
      does; the desktop bar keeps mark plus wordmark. */

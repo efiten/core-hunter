@@ -1,4 +1,5 @@
-// What the map's bar hands off below 768px (#561, #727).
+// What the map's bar hands off below 768px (#561, #727), and Export already
+// below 900px (#666).
 //
 // The bar is one row at every width now, and at 375px a row cannot hold four
 // filter controls, a brand, a primary action, a login and two icon buttons:
@@ -32,12 +33,21 @@
 export const NARROW_SLOTS = [
   { control: '.tr-wrap', slot: 'bf-slot-time', group: 'bf-group-time', into: 'panel' },
   { control: '#hp-toggle', wrap: '.ms-wrap', slot: 'bf-slot-hunters', group: 'bf-group-hunters', into: 'panel' },
+  // Export is the first to go (#666). It is the least used action, and between
+  // 641 and 900px its label is what wraps the bar into another row: measured
+  // at 768px as a guest in a font as wide as the CI runner's, 90px with it in
+  // the bar against 64px without.
+  { control: '#export-btn', slot: 'ss-slot-actions', group: 'ss-slot-actions', into: 'menu', below: 900 },
   { control: '#rx-cta', slot: 'ss-slot-actions', group: 'ss-slot-actions', into: 'menu' },
   { control: '#auth-btn', slot: 'ss-slot-actions', group: 'ss-slot-actions', into: 'menu' },
 ]
 
 // Where each destination lives in index.html, for that guard.
 export const NARROW_CONTAINERS = { panel: 'bar-filters', menu: 'settings-modal' }
+
+// The width the other controls leave the bar below: map.js's "is this a
+// phone" line (NARROW_MEDIA below).
+export const NARROW_PX = 767
 
 // Where each control came from, recorded the first time it leaves.
 //
@@ -76,10 +86,13 @@ function nextSiblingAtHome(parent, el) {
   return null
 }
 
-export function applyNarrowBar(narrow) {
+// applyNarrowBar puts each control in its slot when narrowAt(width) says the
+// viewport is below the width it leaves at, and home otherwise.
+export function applyNarrowBar(narrowAt) {
   if (!document.getElementById('bar')) return
   for (const entry of NARROW_SLOTS) {
     const { slot, group } = entry
+    const narrow = narrowAt(entry.below || NARROW_PX)
     const el = findControl(entry)
     const target = document.getElementById(slot)
     const groupEl = document.getElementById(group)
@@ -112,12 +125,18 @@ export function applyNarrowBar(narrow) {
 // #727: between 641 and 729px the wide bar wrapped to two or three rows (76 to
 // 90px) with CI's wider font, which is a phone held sideways. The stylesheet
 // repeats the number in its @media rules, since CSS cannot import it.
-export const NARROW_MEDIA = '(max-width: 767px)'
+export const NARROW_MEDIA = `(max-width: ${NARROW_PX}px)`
 
-// Wires the rule to the viewport and applies it once. The listener is never
-// removed: the bar lives as long as the page does.
+// Wires the rule to the viewport and applies it once. `mq` is the shared
+// NARROW_MEDIA query; a control that leaves earlier gets a query of its own.
+// The listeners are never removed: the bar lives as long as the page does.
 export function wireNarrowBar(mq = window.matchMedia(NARROW_MEDIA)) {
-  applyNarrowBar(mq.matches)
-  mq.addEventListener('change', (e) => applyNarrowBar(e.matches))
+  const queries = new Map([[NARROW_PX, mq]])
+  for (const { below } of NARROW_SLOTS) {
+    if (below && !queries.has(below)) queries.set(below, window.matchMedia(`(max-width: ${below}px)`))
+  }
+  const apply = () => applyNarrowBar((px) => queries.get(px).matches)
+  apply()
+  for (const q of queries.values()) q.addEventListener('change', apply)
   return mq
 }
