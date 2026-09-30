@@ -1,5 +1,26 @@
 [
   {
+    "id": "2026-09-27-hud-bottom-space",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "Space under the HUD on Android",
+    "body": "The HUD's buttons no longer sit on Android's navigation bar."
+  },
+  {
+    "id": "2026-09-27-float-no-pause",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "No pause on the fullscreen readout",
+    "body": "The fullscreen readout no longer shows a pause button that froze the reading."
+  },
+  {
+    "id": "2026-09-27-sound-playback-buffer",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "A larger audio buffer",
+    "body": "Sound uses a larger output buffer, against ticking while the app is busy right after start."
+  },
+  {
     "id": "2026-09-27-float-no-prev-next",
     "date": "2026-09-27",
     "where": "app",
