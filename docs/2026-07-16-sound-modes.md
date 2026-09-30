@@ -152,3 +152,18 @@ either active mode, the hard stop of bed and music on hidden, and the restart
 of both on return. What went with the tone is `startBgAmbience` /
 `stopBgAmbience`, the `BG` profile, and the `setMode` call that existed only to
 keep a parked tone from being orphaned by a mode change while hidden.
+
+## Addendum 2026-09-27: the playback buffer (#709)
+
+Kasper heard a lot of ticking, like a stream buffering, over Bluetooth right after
+start: while the map loads and the companion syncs, and gone by itself after a
+while. That fits the output buffer running dry under load. The engine created its
+`AudioContext` without a `latencyHint`, so the browser picked its smallest
+("interactive"), and a 2.8 s convolver runs on the audio thread all the time (8 s
+more in the full mode).
+
+The context now asks for `latencyHint: 'playback'`, the larger buffer. A cue is a
+sound, not a keypress, so the extra latency costs nothing a user notices. Whether
+it removes the ticking is measured in the car; the clumps of receptions (39% share
+a timestamp) were ruled out first, on a mockup that spread them and sounded no
+different.

@@ -271,7 +271,12 @@ export function createSoundEngine({ random = Math.random } = {}) {
   // tap anywhere.
   function ensureCtx() {
     if (!ctx) {
-      ctx = new AC()
+      // The playback buffer, not the smallest (#709). Without a hint the
+      // browser picks "interactive", which ran dry while the phone was busy
+      // with the map and the companion right after start: ticking like a
+      // stream buffering, over Bluetooth, until the load passed. A cue can
+      // afford the larger buffer's latency; it is a sound, not a keypress.
+      ctx = new AC({ latencyHint: 'playback' })
       // Master bus: gentle lowpass rounds every voice off — nothing shrill.
       const lp = ctx.createBiquadFilter()
       lp.type = 'lowpass'

@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,7 +25,7 @@ import (
 // per upstream (measured 2026-08-17). The app pays that once on a device that
 // is already committed to a hunt; a website pays it per visitor, on whatever
 // connection they arrived on. Filtering server-side turns that into a few kB
-// per pan, off one upstream fetch per TTL shared by every visitor, which is
+// per pan, off one registry in memory shared by every visitor, which is
 // also the shape /api/heatmap already has. AGENTS.md §7's rule is about
 // per-packet calls, and this is neither: one request per view, not per node.
 
@@ -36,8 +39,9 @@ type nodePosition struct {
 type nodePositionsResponse struct {
 	Nodes     []nodePosition `json:"nodes"`
 	Truncated bool           `json:"truncated,omitempty"`
-	// Stale says the registry behind this answer could not be refreshed and is
-	// older than the TTL. The layer keeps drawing; the caller can say so.
+	// Stale says the last refresh of the registry behind this answer gave none,
+	// so it is older than one refresh interval. The layer keeps drawing; the
+	// caller can say so.
 	Stale bool `json:"stale,omitempty"`
 }
 
@@ -73,8 +77,13 @@ type upstreamPositions struct {
 }
 
 const (
-	defaultNodeCacheTTL = 10 * time.Minute
-	defaultNodeCap      = 20000
+	defaultNodeRefresh = 10 * time.Minute
+	// How soon Run asks again after a refresh that gave no registry. When the
+	// fetch at boot fails there is nothing in memory, and waiting a whole
+	// interval would leave the layer without positions for ten minutes after
+	// an upstream that was down for a moment.
+	defaultNodeRetry = 30 * time.Second
+	defaultNodeCap   = 20000
 	// Pages walked per upstream before giving up. CoreScope's ~2,500 nodes are
 	// two pages of 2000; the cap is the backstop against an upstream that
 	// always answers a full page, where the layer would rather be short than
@@ -85,28 +94,40 @@ const (
 type NodesAPI struct {
 	Upstreams []string
 	Client    *http.Client
-	// TTL for the cached registry; zero means defaultNodeCacheTTL.
-	TTL time.Duration
+	// How often Run refreshes the registry; zero means defaultNodeRefresh.
+	Interval time.Duration
+	// How soon Run asks again after a refresh that gave no registry; zero
+	// means defaultNodeRetry.
+	Retry time.Duration
 	// Cap on nodes returned per request; zero means defaultNodeCap.
 	Cap int
+	// Where a failed upstream fetch is reported; nil means log.Printf.
+	Logf func(format string, args ...any)
 
-	mu         sync.Mutex
-	fetchMu    sync.Mutex
-	cache      []nodePosition
-	fetched    time.Time
-	haveData   bool
-	refreshing bool
-	// True when the last completed fetch succeeded but returned nothing. An
-	// upstream answering 200 with an empty registry is a broken upstream, not a
-	// world with no nodes in it, and the layer cannot tell the difference.
+	mu       sync.Mutex
+	cache    []nodePosition
+	haveData bool
+	// True when the last refresh gave no registry: the cache, if there is one,
+	// is older than one interval.
+	stale bool
+	// True when the last refresh answered and returned nothing. An upstream
+	// answering 200 with an empty registry is a broken upstream, not a world
+	// with no nodes in it, and the layer cannot tell the difference.
 	emptyUpstream bool
 }
 
-func (h *NodesAPI) ttl() time.Duration {
-	if h.TTL > 0 {
-		return h.TTL
+func (h *NodesAPI) interval() time.Duration {
+	if h.Interval > 0 {
+		return h.Interval
 	}
-	return defaultNodeCacheTTL
+	return defaultNodeRefresh
+}
+
+func (h *NodesAPI) retry() time.Duration {
+	if h.Retry > 0 {
+		return h.Retry
+	}
+	return defaultNodeRetry
 }
 
 func (h *NodesAPI) cap() int {
@@ -123,78 +144,61 @@ func (h *NodesAPI) client() *http.Client {
 	return &http.Client{Timeout: 15 * time.Second}
 }
 
-// registry returns the cached node set, refreshing it when the TTL has passed.
-//
-// The mutex is never held across the upstream fetch. It used to be, which meant
-// every member request arriving after the TTL expired queued behind one slow
-// registry — up to the client timeout — while a perfectly serviceable set sat in
-// memory. A warm cache is now served immediately and refreshed in the
-// background; only a cold one blocks, and then only one caller fetches while the
-// rest wait for that same result.
-//
-// `stale` says the answer did not come from a fresh fetch: either a refresh is
-// still running, or the last one failed. Both are cases where a registry a few
-// minutes old beats an empty layer, and the caller is told which it got.
-func (h *NodesAPI) registry() (nodes []nodePosition, stale bool, ok bool) {
-	h.mu.Lock()
-	cache, fetched, have, empty := h.cache, h.fetched, h.haveData, h.emptyUpstream
-	if have && time.Since(fetched) < h.ttl() {
-		h.mu.Unlock()
-		return cache, false, true
-	}
-	if have {
-		// Warm but due: hand back what we have and refresh behind the request.
-		if !h.refreshing {
-			h.refreshing = true
-			go func() { h.refreshOnce(); h.mu.Lock(); h.refreshing = false; h.mu.Unlock() }()
-		}
-		h.mu.Unlock()
-		return cache, true, true
-	}
-	if empty && time.Since(fetched) < h.ttl() {
-		// A recent fetch succeeded and returned nothing. Do not hammer the
-		// upstreams once per request while that is true.
-		h.mu.Unlock()
-		return nil, false, false
-	}
-	h.mu.Unlock()
-
-	h.refreshOnce()
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.cache, false, h.haveData
-}
-
-// refreshOnce fetches the registry and stores it, with at most one fetch in
-// flight: a cold start under concurrent load must not become one upstream
-// request per caller. Callers that arrive during a fetch wait for it and then
-// read the result the first one stored.
-func (h *NodesAPI) refreshOnce() {
-	h.fetchMu.Lock()
-	defer h.fetchMu.Unlock()
-	// Someone else may have filled it while this caller waited for the lock.
-	h.mu.Lock()
-	if h.haveData && time.Since(h.fetched) < h.ttl() {
-		h.mu.Unlock()
+func (h *NodesAPI) logf(format string, args ...any) {
+	if h.Logf != nil {
+		h.Logf(format, args...)
 		return
 	}
-	h.mu.Unlock()
+	log.Printf(format, args...)
+}
 
+// Run keeps the registry in memory until ctx is done: one fetch at boot, then
+// one per Interval (#591).
+//
+// The fetch used to ride on a member's request whenever the cache was cold,
+// which is the state after every restart. That request carried the whole
+// registry walk, up to the client timeout per page, and a reverse proxy with
+// less patience answered 504 for it; while the upstreams failed, every request
+// re-ran the fetch and failed the same way. Positions now only reads what this
+// loop stored, so how long an upstream takes is never a visitor's wait.
+func (h *NodesAPI) Run(ctx context.Context) {
+	if len(h.Upstreams) == 0 {
+		return
+	}
+	for {
+		wait := h.interval()
+		if !h.refresh() {
+			wait = min(wait, h.retry())
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+	}
+}
+
+// refresh fetches the registry once and stores it, and reports whether the
+// fetch gave one. A fetch that failed or came back empty keeps whatever is
+// cached: a registry a few minutes old beats an empty layer, and the answers
+// served from it say so (`stale`).
+func (h *NodesAPI) refresh() bool {
 	fresh, err := h.fetchAll()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err != nil {
-		return // keep whatever is cached; the caller reports it as stale
+		h.stale, h.emptyUpstream = true, false
+		return false
 	}
 	if len(fresh) == 0 {
 		// Every upstream answered, and between them they know no positioned
 		// node. Treat that as unusable rather than caching an empty registry
 		// the layer would render as "nothing here" (#398 review).
-		h.fetched, h.emptyUpstream = time.Now(), true
-		return
+		h.stale, h.emptyUpstream = true, true
+		return false
 	}
-	h.cache, h.fetched, h.haveData, h.emptyUpstream = fresh, time.Now(), true, false
+	h.cache, h.haveData, h.stale, h.emptyUpstream = fresh, true, false, false
+	return true
 }
 
 // fetchAll merges every upstream, first one wins on a duplicate pubkey — the
@@ -249,6 +253,10 @@ func pageSize(raw string) int {
 // fetchUpstream walks one registry, following `offset` while it keeps handing
 // back full pages. A short page ends it — no total is needed, and CoreScope's
 // `total` cannot serve as one anyway: it reports the page size, not the set.
+//
+// A page that fails is logged with its URL and the error (#591). The error
+// used to be dropped, so a registry the server could not reach left nothing to
+// read back: not that it failed, nor which URL.
 func (h *NodesAPI) fetchUpstream(raw string) ([]upstreamNode, error) {
 	limit := pageSize(raw)
 	var all []upstreamNode
@@ -263,6 +271,7 @@ func (h *NodesAPI) fetchUpstream(raw string) ([]upstreamNode, error) {
 		}
 		rows, err := h.fetchPage(target)
 		if err != nil {
+			h.logf("node registry: %s: %v", target, err)
 			if page == 0 {
 				return nil, err
 			}
@@ -283,7 +292,7 @@ func (h *NodesAPI) fetchPage(target string) ([]upstreamNode, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, errUpstreamStatus
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	var body upstreamPositions
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -292,18 +301,15 @@ func (h *NodesAPI) fetchPage(target string) ([]upstreamNode, error) {
 	return body.Nodes, nil
 }
 
-type upstreamStatusError struct{}
-
-func (upstreamStatusError) Error() string { return "upstream status" }
-
-var errUpstreamStatus = upstreamStatusError{}
-
 // Positions serves the registry nodes inside ?bbox=minLat,minLon,maxLat,maxLon.
 //
 // Member-gated, and the gate is checked before anything else: /api/resolve
-// strips lat/lon below member (resolve.go), so a bulk endpoint that fetched
-// first and filtered after would be a way to reach the positions the per-node
-// path refuses — including warming a shared cache on a guest's request.
+// strips lat/lon below member (resolve.go), so a bulk endpoint that read the
+// registry first and filtered after would be a way to reach the positions the
+// per-node path refuses.
+//
+// Served from memory only (#591): Run fetches, this never does. Before the
+// first fetch has landed the answer is registry_unavailable, at once.
 func (h *NodesAPI) Positions(w http.ResponseWriter, r *http.Request) {
 	if !AuthOf(r).AtLeast("member") {
 		writeErr(w, 403, "forbidden")
@@ -321,11 +327,10 @@ func (h *NodesAPI) Positions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 503, "registry_not_configured")
 		return
 	}
-	nodes, stale, have := h.registry()
+	h.mu.Lock()
+	nodes, stale, have, empty := h.cache, h.stale, h.haveData, h.emptyUpstream
+	h.mu.Unlock()
 	if !have {
-		h.mu.Lock()
-		empty := h.emptyUpstream
-		h.mu.Unlock()
 		if empty {
 			// Reachable and answering, with nothing in it. Distinct from an
 			// unreachable one, and both are distinct from "nothing in view".

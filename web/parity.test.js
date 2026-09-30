@@ -1269,7 +1269,11 @@ describe('--ch-* token parity (#407)', () => {
   // either list is a decision, not drift.
   // The noise bands (#410) are the app's while the noise layer is: it is
   // measured by the companion, and the map has no noise data yet.
-  const APP_ONLY = ['--ch-basemap', '--ch-bar-track', ...Array.from({ length: 4 }, (_, i) => `--ch-noise-${i + 1}`)]
+  // The bottom edge (#705) is the app's: its viewport covers the whole screen
+  // (viewport-fit=cover), so its HUD, FAB stack and splash close keep clear
+  // of the navigation bar themselves. The web's viewport does not cover it:
+  // the page ends above the bar.
+  const APP_ONLY = ['--ch-basemap', '--ch-bar-track', '--ch-bottom-edge', ...Array.from({ length: 4 }, (_, i) => `--ch-noise-${i + 1}`)]
   const WEB_ONLY = ['--ch-bar-h', '--ch-input-bg', '--ch-rail-clear']
   for (const theme of ['dark', 'light']) {
     it(`${theme}: the shared tokens carry one value`, () => {
