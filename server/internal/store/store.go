@@ -107,6 +107,14 @@ func Open(path string) (*Store, error) {
 			return nil, err
 		}
 	}
+	// The meshpacket.MessageIDVersion that gave the row its message_id (#510).
+	// A row stored before this column reads 0: nothing recorded which decoder
+	// read it, so the first start after the column arrives reads its refused
+	// rows once more.
+	if _, err := db.Exec("ALTER TABLE hunter_receptions ADD COLUMN message_id_version INTEGER NOT NULL DEFAULT 0"); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column name") {
+		return nil, err
+	}
 	// message_id groups every relayed copy of one transmission, so it wants an
 	// index for the same reason sender_key has one: it is what a filter narrows
 	// on. Created after the column, and IF NOT EXISTS so a restart is cheap.
@@ -161,11 +169,15 @@ func (s *Store) enforceReceptionIdentity() error {
 // on traffic captured after the deploy is no use to someone reviewing the hunt
 // they did last night, which is exactly when it is wanted.
 //
-// One pass, then never again: rows are only picked up while message_id IS NULL.
-// A frame the decoder refuses (a TRACE, or a truncated one) gets the empty
-// string rather than staying NULL, so it is not re-examined on every restart.
+// One pass per decoder version. A frame the decoder refuses (a TRACE, or a
+// truncated one) gets the empty string rather than staying NULL, so it is not
+// re-examined on every restart. But the empty string also covers "the decoder
+// could not read it then", so the row keeps the version that refused it, and a
+// later version reads it again (#510). Otherwise a decoder fix would reach only
+// the traffic stored after it, which is the case this pass exists to prevent.
 func (s *Store) backfillMessageIDs() error {
-	rows, err := s.db.Query(`SELECT id, raw FROM hunter_receptions WHERE message_id IS NULL`)
+	rows, err := s.db.Query(`SELECT id, raw FROM hunter_receptions
+		WHERE message_id IS NULL OR (message_id = '' AND message_id_version < ?)`, meshpacket.MessageIDVersion)
 	if err != nil {
 		return err
 	}
@@ -194,14 +206,14 @@ func (s *Store) backfillMessageIDs() error {
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`UPDATE hunter_receptions SET message_id = ? WHERE id = ?`)
+	stmt, err := tx.Prepare(`UPDATE hunter_receptions SET message_id = ?, message_id_version = ? WHERE id = ?`)
 	if err != nil {
 		tx.Rollback()
 		return err
 	}
 	for _, r := range todo {
 		id, _ := meshpacket.MessageID(r.raw) // "" when it cannot be read; stored as such
-		if _, err := stmt.Exec(id, r.id); err != nil {
+		if _, err := stmt.Exec(id, meshpacket.MessageIDVersion, r.id); err != nil {
 			stmt.Close()
 			tx.Rollback()
 			return err
@@ -220,11 +232,11 @@ func (s *Store) Insert(r Reception) error {
 		`INSERT OR IGNORE INTO hunter_receptions
 		 (hunter_pubkey,hunter_name,rx_at,ingested_at,snr,rssi,raw,packet_type,
 		  sender_key,sender_keylen,sender_role,sender_kind,sender_id,sender_label,channel_name,
-		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic,message_id)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic,message_id,message_id_version)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.HunterPubkey, r.HunterName, r.RxAt, r.IngestedAt, r.SNR, r.RSSI, r.Raw, r.PacketType,
 		r.SenderKey, r.SenderKeylen, r.SenderRole, r.SenderKind, r.SenderID, r.SenderLabel, r.ChannelName,
-		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic, messageID,
+		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic, messageID, meshpacket.MessageIDVersion,
 	)
 	return err
 }

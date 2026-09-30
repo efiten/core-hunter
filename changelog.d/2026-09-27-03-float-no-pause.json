@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-27-float-no-pause",
+  "date": "2026-09-27",
+  "where": "app",
+  "title": "No pause on the fullscreen readout",
+  "body": "The fullscreen readout no longer shows a pause button that froze the reading."
+}

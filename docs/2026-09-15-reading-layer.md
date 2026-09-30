@@ -138,6 +138,14 @@ against fakes of the video, its document and `screen.orientation`. Field test on
 logging and the sound keeps playing. Not verified: whether a refused request uses up the tap the
 next one needs.
 
+**No pause in fullscreen** (#706, measured on a phone by Kasper, 27 September). Chrome shows its
+own media controls on a video in fullscreen, also without a `controls` attribute, and their pause
+froze the reading on its last frame while the app went on capturing. `app.css` hides the controls'
+pseudo-elements on `#float-video`; the pause is gone and Home still floats the video. Measured on
+the way: on Android the floating window itself shows no play or pause in any Media Session setup
+tried, and on desktop Chrome the window shows them only when the page registers play or pause
+handlers, which the app does not.
+
 ## The direction arrow (#660)
 
 An arrow toward the sender of the shown reception, so a hunter can steer and see whether they are

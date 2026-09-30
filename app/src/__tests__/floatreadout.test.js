@@ -464,3 +464,34 @@ describe('the fullscreen letterbox follows the theme (#555)', () => {
     expect(rule[1]).not.toMatch(/#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(/i)
   })
 })
+
+// #716: the float window has no buttons of the app's own. Desktop Chrome puts
+// a button on the floating window for every Media Session action a page
+// handles (measured 27 September with play and pause), and on Android the
+// previous/next of #555 did not appear in the app at all. So the app handles
+// none. app.js is glue no unit test runs, so this reads it as text.
+describe('the float window carries no Media Session buttons (#716)', () => {
+  const app = readFileSync(new URL('../app.js', import.meta.url), 'utf8')
+  it('registers no action handler', () => {
+    expect(app).not.toMatch(/setActionHandler\s*\(/)
+  })
+})
+
+// #706: Chrome shows its own media controls on a video in fullscreen, also
+// without a controls attribute, and their pause paused the stream: the reading
+// froze on its last frame while the app went on capturing. Measured on a phone
+// on 27 September: hiding the controls' pseudo-elements takes the pause away,
+// and pressing Home still floats the video. Pinned against the file, like the
+// letterbox above.
+describe('the fullscreen readout has no pause (#706)', () => {
+  const css = readFileSync(new URL('../styles/app.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const hidden = css.split('}').map((b) => b.split('{'))
+    .filter(([sel, body]) => sel && /display:\s*none\s*!important/.test(body || ''))
+    .flatMap(([sel]) => sel.split(',').map((s) => s.trim()))
+
+  it("hides Chrome's own controls on the float video", () => {
+    for (const part of ['-webkit-media-controls', '-webkit-media-controls-enclosure', '-webkit-media-controls-panel']) {
+      expect(hidden, `#float-video::${part}`).toContain(`#float-video::${part}`)
+    }
+  })
+})
