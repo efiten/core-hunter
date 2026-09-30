@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-09-27-hud-bottom-space",
+    "date": "2026-09-27",
+    "where": "app",
+    "title": "Space under the HUD on Android",
+    "body": "The HUD's buttons no longer sit on Android's navigation bar."
+  },
+  {
     "id": "2026-09-27-sound-playback-buffer",
     "date": "2026-09-27",
     "where": "app",
