@@ -344,8 +344,8 @@ export function senderText(r) {
 // printed twice. A hash id is its # mark and nothing else, until it is placed
 // on a named node by reach (#661): then the # id stands beside that name. A
 // label that is the id is no name either: meshpacket.js gives a channel_name
-// sender its decrypted name as both. For a row without an attribution this is
-// the rule of web/receptionticker.js; the map's ticker does not attribute.
+// sender its decrypted name as both. web/receptionticker.js carries the same
+// rule since #663, pinned by web/parity.test.js.
 export function senderCell(r) {
   const name = senderText(r)
   if (isHashIdKind(r.sender_kind) && r.sender_id) {

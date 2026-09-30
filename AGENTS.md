@@ -603,9 +603,13 @@ reception came from are different acts. The second is one rule on both surfaces,
   without an advertised position is no candidate, since reach cannot place it; one pubkey listed
   twice is one node.
 - **Surfaces:** the reach stars and the node-position layer in the app and on the map, and in the
-  app also the arrow (#660) and the sender names. The node-position layer draws registry nodes
-  only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2 estimate gets no marker of
-  its own. On the map, the ticker and the point popup keep their resolver names, a separate issue.
+  app also the arrow (#660). The sender names follow it on both: in the app everywhere a sender
+  is named, on the map in the ticker and the point popup (#663). How a name is printed is
+  `namerules.js` (copied whole). The map's names take their registry slice around the rows they
+  name, not around the view (`web/rowattribution.js`), since the ticker's lines are the latest
+  wherever they were heard; the target picker keeps its own rule (above). The node-position layer
+  draws registry nodes only, so there the rule pairs (rule 1) or refuses (rule 3); a rule-2
+  estimate gets no marker of its own.
   A ● hub has no name on either surface since #632 (`docs/2026-09-21-node-glyphs-in-gl.md`): it
   is a GL feature keyed by its star's id, and the tooltip that carried `starLabel` went with the
   marker. Should a hub get a name surface again, a 1-byte id reads `#` plus the id, never a bare

@@ -347,19 +347,22 @@ export function rxLineHeight(raw) {
 }
 export const CAP = 200     // recent-window cap, mirrors app's; reused by map.js's fetch limit
 
-// senderCell, the app's rule for a row without an attribution
-// (app/src/receptionlog.js, #451): once a name has resolved the id stands
-// beside it in its own column, cut to the same six characters the target
-// picker uses; a line without a name keeps the id in the name cell and the
-// column empty, and a hash id is its # mark only. The map's ticker does not
-// attribute by reach, so it has no placed hash id to name.
+// senderCell is the app's rule (app/src/receptionlog.js, #451, #663): once a
+// name has resolved the id stands beside it in its own column, cut to the same
+// six characters the target picker uses; a line without a name keeps the id in
+// the name cell and the column empty. A hash id is its # mark and nothing
+// else, until it is placed on a named node by reach (#661): then the # id
+// stands beside that name. map.js puts the attribution on the row as _attr
+// (rowattribution.js).
 const ID_PREFIX_HEX_CHARS = 6
 export function senderCell(pt) {
-  const id = pt.sender_id ? String(pt.sender_id) : ''
-  if (isHashIdKind(pt.sender_kind) && id) return { id: '', name: '#' + id }
   const name = senderName(pt)
-  const resolved = !!id && name !== id
-  return { id: resolved ? id.slice(0, ID_PREFIX_HEX_CHARS) : '', name }
+  if (isHashIdKind(pt.sender_kind) && pt.sender_id) {
+    const hashId = '#' + String(pt.sender_id)
+    return { id: name === hashId ? '' : hashId, name }
+  }
+  const resolved = !!pt.sender_id && name !== String(pt.sender_id)
+  return { id: resolved ? String(pt.sender_id).slice(0, ID_PREFIX_HEX_CHARS) : '', name }
 }
 
 // createReceptionTicker builds the log inside `rootId` and owns its own
@@ -479,10 +482,20 @@ export function createReceptionTicker(rootId, { fetchFiltered, fetchAll, shouldP
       // Same rows, but they aged: refresh only the relative-time cells. Without
       // this a quiet mesh freezes every row at the age it first rendered, which
       // reads as "just received".
+      // The sender cells too (#663): a fetch returns new row objects, and what
+      // names them can have changed since these rows were drawn: the role
+      // became known, so the registry answered, or a resolver name landed.
+      // Written in place, so the reader stays where they scrolled to.
       const els = list.children
       for (let i = 0; i < els.length && i < view.length; i++) {
         const tm = els[i].children[1]
         if (tm) tm.textContent = relTime(view[i].rx_at, nowMs)
+        const cell = senderCell(view[i])
+        const idEl = els[i].children[3]
+        const snEl = els[i].children[4]
+        if (idEl && idEl.textContent !== cell.id) idEl.textContent = cell.id
+        const text = snEl && snEl.firstChild
+        if (text && text.nodeType === 3 && text.nodeValue !== cell.name + ' ') text.nodeValue = cell.name + ' '
       }
       paint(); return
     }
