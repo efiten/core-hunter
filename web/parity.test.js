@@ -608,7 +608,7 @@ describe('receptions ticker CSS parity (#322)', () => {
   // lane counts, so it drifted until someone looked at the two side by side.
   // This pins the chrome itself. What is deliberately per-surface is #rx-log's
   // own box, which is placed and draggable on a wide map and centred in the app
-  // (and on a map below 640px, #643).
+  // (and on a map below 768px, #643).
   it('draws the same card on both surfaces', () => {
     const decls = (block, selector) => {
       const found = declBlock(block, selector)
@@ -785,6 +785,15 @@ describe('receptions ticker CSS parity (#322)', () => {
       { sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer' },
       { sender_kind: 'path_hash', sender_id: '77', sender_label: '77' },
       { sender_kind: 'direct_hash', sender_id: '4a', sender_label: 'Repeater-Zuid' },
+      // #663: a name on a short prefix wears the guess mark, and the
+      // attribution by reach decides a relay's name first, on both surfaces.
+      { sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3' },
+      { sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: { rule: 'node', node: { pubkey: 'a1b2' + '0'.repeat(60), name: 'Mast Noord' } } },
+      { sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: { rule: 'collision', count: 2 } },
+      { sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: { rule: 'estimate', prefixKnown: true } },
+      { sender_kind: 'relay', sender_id: 'a1b2', sender_label: 'repeater-3', _attr: { rule: 'estimate', prefixKnown: false } },
+      { sender_kind: 'path_hash', sender_id: '77', sender_label: '77', _attr: { rule: 'node', node: { pubkey: '77' + '0'.repeat(62), name: 'Mast Noord' } } },
+      { sender_kind: 'path_hash', sender_id: '77', sender_label: '77', _attr: { rule: 'node', node: { pubkey: '77' + '0'.repeat(62), name: '' } } },
     ]
     for (const s of senders) {
       expect(webTicker.senderCell(s), JSON.stringify(s)).toEqual(appTicker.senderCell(s))
@@ -1361,7 +1370,9 @@ describe('files copied whole from the app (#595)', () => {
 // enough for it and because it catches the case a behaviour test cannot: a
 // comment on one side explaining a rule the other side no longer follows.
 describe('the filter modules are one file on both surfaces (#564)', () => {
-  for (const name of ['chiprow.js', 'barfilters.js', 'basemapswap.js']) {
+  // namerules.js since #663: how a sender's name is printed, the guess mark
+  // included, is one rule on both surfaces.
+  for (const name of ['chiprow.js', 'barfilters.js', 'basemapswap.js', 'namerules.js']) {
     it(`${name} is identical in app/src`, () => {
       const web = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
       const app = readFileSync(new URL(`../app/src/${name}`, import.meta.url), 'utf8')
@@ -1397,7 +1408,7 @@ describe('--ch-building matches the app in both themes (#595)', () => {
 // "Types" where the other said "Traffic types".
 //
 // The map adds View after the shared five, and Hunters and Time carry the
-// controls the bar hands over below 640px (#561). Those are the deliberate
+// controls the bar hands over below 768px (#561). Those are the deliberate
 // difference: analysis is map-only, because the map is the superset. Overlays
 // went with #630: node positions, its one control, is a button in the map's FAB
 // rail now, as it is in the app's.

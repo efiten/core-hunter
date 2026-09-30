@@ -126,6 +126,39 @@ describe('normalizeConfig brokers (#554)', () => {
     expect('format' in c.brokers[2]).toBe(false)
     expect('label' in c.brokers[2]).toBe(false)
   })
+
+  // #704: DutchMeshCore is one broker with two collectors behind it, each
+  // taking its own stream label. One entry, so one row and one switch.
+  it('reads a broker\'s streams, each with its own address and label', () => {
+    const c = normalizeConfig({ brokers: [{ id: 'dmc', name: 'DutchMeshCore', auth: 'companion', format: 'wardrive', streams: [
+      { url: 'wss://c1.example:443', label: 'hunter' },
+      { url: ' wss://c2.example:443 ', label: 'Wardriver' },
+    ] }] })
+    expect(c.brokers[0]).toEqual({
+      id: 'dmc', name: 'DutchMeshCore', url: 'wss://c1.example:443', auth: 'companion', format: 'wardrive', label: 'hunter',
+      streams: [{ url: 'wss://c1.example:443', label: 'hunter' }, { url: 'wss://c2.example:443', label: 'wardriver' }],
+    })
+  })
+
+  it('gives a stream without a label the broker\'s own, and drops a stream without an address', () => {
+    const c = normalizeConfig({ brokers: [{ id: 'dmc', format: 'wardrive', label: 'wardriver', streams: [
+      { url: 'wss://c1.example' }, { label: 'hunter' }, null,
+    ] }] })
+    expect(c.brokers[0].streams).toEqual([{ url: 'wss://c1.example', label: 'wardriver' }])
+  })
+
+  // A connection's id is the broker's id and the stream's host, so two
+  // streams on one host would share a publisher and a watermark.
+  it('keeps one stream per host', () => {
+    const c = normalizeConfig({ brokers: [{ id: 'dmc', format: 'wardrive', streams: [
+      { url: 'wss://c1.example:443', label: 'hunter' }, { url: 'wss://c1.example', label: 'wardriver' },
+    ] }] })
+    expect(c.brokers[0].streams).toEqual([{ url: 'wss://c1.example:443', label: 'hunter' }])
+  })
+
+  it('refuses a broker whose streams all lack an address, like one without a url', () => {
+    expect(() => normalizeConfig({ brokers: [{ id: 'dmc', streams: [{ label: 'hunter' }] }] })).toThrow(/mqttUrl/)
+  })
 })
 
 // The add form reads its presets through getConfig(), which holds the

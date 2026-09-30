@@ -221,13 +221,16 @@ export function placePopover(toggleEl, panelEl, { align = 'left', viewport } = {
 // can't tell them apart, so this takes the actual element and requires the
 // click's nearest wrapSelector ancestor to be THIS wrap, not merely any wrap.
 // onOpen lets a caller reset paging / refresh data each time the panel opens.
+// focusEl (#714) is the field the caret goes to on open, so the next keystroke
+// searches; closing with the focus inside hands it back to the toggle rather
+// than leaving it on a hidden field.
 //
 // Click detection is capture-phase, not bubble: a row click's own handler
 // replaces the clicked button via listEl.replaceChildren() synchronously, so
 // by the time a bubble-phase document listener would run, e.target is already
 // detached and closest(wrapSelector) wrongly returns null, closing the panel
 // after every pick. Capture runs before that mutation happens.
-export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, align = 'left' }) {
+export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, focusEl, align = 'left' }) {
   function open() {
     panelEl.hidden = false
     toggleEl.setAttribute('aria-expanded', 'true')
@@ -235,10 +238,15 @@ export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, a
     // After onOpen: it repopulates the rows, so the panel's height is only
     // final once it has run (#372).
     placePopover(toggleEl, panelEl, { align })
+    // In the same tap as the open, which a phone needs to raise its keyboard.
+    // preventScroll: the panel is placed already, the page must not jump.
+    if (focusEl) focusEl.focus({ preventScroll: true })
   }
   function close() {
+    const inside = panelEl.contains(document.activeElement)
     panelEl.hidden = true
     toggleEl.setAttribute('aria-expanded', 'false')
+    if (inside) toggleEl.focus()
   }
   // #bar wraps, on a resize or when late content grows it, and that moves
   // the toggle to another row, so the panel has to follow (#405: the one bar
@@ -253,6 +261,8 @@ export function wirePopover({ toggleEl, panelEl, wrapEl, wrapSelector, onOpen, a
     if (e.target.closest(wrapSelector) === wrapEl) return
     close()
   }, true)
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panelEl.hidden) close() })
+  // preventDefault: with the caret in a search field (#714), the browser's own
+  // Escape would clear it, and a cleared search is a changed filter.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panelEl.hidden) { e.preventDefault(); close() } })
   return { open, close }
 }

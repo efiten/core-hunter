@@ -5,9 +5,10 @@ import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures,
 import { coverageStars, coverageFeatures, assignHues, isRepeaterHearing, selectionDim, starKey, starSelected } from './coverage.js'
 import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
+import { createRowAttributor } from './rowattribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
 import { API_BASE } from './config.js'
-import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey } from './names.js'
+import { resolveName, cachedName, isFullPubkey, isResolvableId, senderName, resolvableKey, isHashIdKind } from './names.js'
 import { loadSeenRole, saveSeenRole, roleRose, roleNotice } from './rolechange.js'
 import { locate, toLocatePoints } from './locate.js'
 import { groupSenderPointsForNodes, nodesInView, padBounds, circleRing, nodeRows } from './nodelayer.js'
@@ -31,7 +32,7 @@ import { QUICK_RANGES, COLD_START_RANGE, matchQuickRange, rangeLabelFor, rangeFo
 import { createReceptionTicker, receptionKey, tickerFilters, isLiveWindow, newestInRing, CAP as RX_CAP, nextCollapse, atLastCollapse, RX_FULL_LANES } from './receptionticker.js'
 import { initialPlacement, clampToViewport, clampUnlessNarrow, serialise, parse as parsePlacement } from './tickerplace.js'
 import { noticesPlacement } from './noticeplace.js'
-import { wireNarrowBar } from './barnarrow.js'
+import { wireNarrowBar, NARROW_MEDIA } from './barnarrow.js'
 import { hiddenChipCount, CHIP_CAP } from './chiprow.js'
 import { compassNeedleTransform, zoomButtonsDisabled, nodePosTap } from './maprail.js'
 import { NODEPOS_MODES, NODEPOS_LABELS, parseNodePosMode } from './nodeposmode.js'
@@ -330,10 +331,19 @@ const ignoreSuffix = () => (ignored.size ? ` · ${ignored.size} ignored` : '')
 // the Locate and Ignore buttons are handled by the delegated document
 // listeners further down, so nothing here needs a reference to the popup.
 let currentPoints = []
+// The rows a name is printed on carry their attribution by reach (#663), so
+// the popup and the ticker name a relay the way the app does. One attributor
+// each: the points are the view's, the ticker's lines are the latest wherever
+// they were heard, and each keeps the registry slice that covers its own rows.
+// Below member the registry is refused, so nothing is asked.
+const mayReadRegistry = () => roleKnown && canSeeObserverPoints(currentRole)
+const pointAttribution = createRowAttributor({ fetchRegistry: (b) => fetchNodeRegistry(b), allowed: mayReadRegistry })
+const tickerAttribution = createRowAttributor({ fetchRegistry: (b) => fetchNodeRegistry(b), allowed: mayReadRegistry })
 function pointPopupHtml(pt) {
   const role = pt.sender_role ? ` · ${esc(pt.sender_role)}` : ''
   const sid = pt.sender_id || ''
-  const idLine = sid ? `<br><span class="pp-id">${esc(sid)}</span>` : ''
+  // A relay or direct hash reads '#' and the id, as the ticker has it.
+  const idLine = sid ? `<br><span class="pp-id">${esc(isHashIdKind(pt.sender_kind) ? '#' + sid : sid)}</span>` : ''
   const locBtn = (sid && canSeeLocate(currentRole)) ? `<br><button class="lc-locate" data-sender="${esc(sid)}">Locate this sender</button>` : ''
   // Ignoring is per person and needs no role: it only ever removes rows from
   // the asker's own view. Same wording as the app's popup (huntmap.js).
@@ -343,10 +353,14 @@ function pointPopupHtml(pt) {
 // Reception ticker two-way sync (#224): clicking a point scrolls the ticker
 // to the matching line, keyed by receptionKey since /api/points rows carry no
 // stable id.
+// A tap before the registry answered opens by the label; the open popup is
+// named again when the answer lands.
+let pointsAttributed = Promise.resolve()
 const onPointClick = (props) => {
   const pt = currentPoints[props.i]
   if (!pt) return
-  wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
+  const popup = wm.openPopup([pt.lon, pt.lat], pointPopupHtml(pt))
+  if (pt._attr === undefined) pointsAttributed.then(() => { if (popup.isOpen()) popup.setHTML(pointPopupHtml(pt)) })
   if (rxTicker) rxTicker.focusRecord(receptionKey(pt))
 }
 // The pillar carries the index of the reception it stands for (#595), so a
@@ -378,6 +392,10 @@ async function drawPoints() {
   // until the new ones are here. The array is kept for the click handler,
   // which gets a feature index back rather than a marker object.
   currentPoints = points
+  // Not awaited: the popup reads _attr when a point is tapped, and the draw
+  // does not wait for a registry. A tap that lands first reads by the label
+  // until this settles (onPointClick).
+  pointsAttributed = pointAttribution.attribute(points).catch(() => {})
   // A selection dims what is not part of it (#624), on a fresh draw as well as
   // on a tap, or a pan would bring the whole map back to full strength.
   const { dimFor } = selectionDimmer()
@@ -595,6 +613,8 @@ function announceRoleRise(role) {
 function applyRole(me) {
   currentRole = me.role || 'guest'
   roleKnown = true
+  // The registry is the role's to read or not (#663).
+  pointAttribution.reset(); tickerAttribution.reset()
   announceRoleRise(currentRole)
   const notice = document.getElementById('guest-notice')
   const msg = guestNotice(currentRole)
@@ -841,7 +861,12 @@ async function fetchTickerPage(mode) {
   // truncated travels with the rows: QueryPoints fetches one past the limit to
   // detect it precisely, and the ticker's header needs it to say whether more
   // receptions exist behind this page (#638).
-  return { points: d.points || [], truncated: !!d.truncated }
+  // Attributed before the lines render, so a line never prints a name first
+  // and drops it a moment later. A registry that does not answer leaves the
+  // rows as a guest's (rowattribution.js).
+  const points = d.points || []
+  await tickerAttribution.attribute(points).catch(() => {})
+  return { points, truncated: !!d.truncated }
 }
 
 // Snap the map to the selected hunter(s) (#195).
@@ -1428,10 +1453,10 @@ function showNodePosNotice({ on = nodePosCb.checked, reason = null, registry = n
   if (next.hideAfterMs) noticeTimer = setTimeout(() => { keyEl.hidden = true }, next.hideAfterMs)
 }
 
-// Narrow is 640px, the line the bar and the ticker answer "is this a phone"
-// with. matchMedia rather than innerWidth so the answer arrives as an event.
-const narrowQuery = window.matchMedia('(max-width: 640px)')
-// The bar's group keeps two of its four controls below 640px and the filter
+// Narrow is NARROW_MEDIA, the line the bar and the ticker answer "is this a
+// phone" with. matchMedia rather than innerWidth so the answer arrives as an event.
+const narrowQuery = window.matchMedia(NARROW_MEDIA)
+// The bar's group keeps two of its four controls below 768px and the filter
 // panel takes the other two (#561). Wired to the same query rather than a
 // second matchMedia, so the bar and everything else that answers "is this a
 // phone" cannot disagree about where the line is.
@@ -1989,7 +2014,7 @@ urlstate.bindControl('direct', 'f-direct', { checkbox: true })
 // the box is pulled inside the viewport, or a ticker left at the edge of a wide
 // monitor would be unreachable on a laptop.
 //
-// Below 640px there is no placement at all (#643): the stylesheet pins the card
+// Below 768px there is no placement at all (#643): the stylesheet pins the card
 // centred under the bar, as in the app. The stored x,y is kept rather than
 // clamped there, so the position dragged on a wide screen is still there when
 // the screen is wide again.
@@ -2019,7 +2044,7 @@ if (rxLog) {
   })
 
   function apply() {
-    // Removed rather than left stale below 640px: the narrow rule takes its top
+    // Removed rather than left stale below 768px: the narrow rule takes its top
     // from the var's own fallback, under the bar, so a written --rx-y would
     // hang the pinned card at the wide screen's height.
     if (narrowQuery.matches) {
@@ -2077,7 +2102,7 @@ if (rxLog) {
   resized.observe(rxLog)
   if (notices) resized.observe(notices)
 
-  // Also what lands a resize across 640px (#643), either way: the crossing is a
+  // Also what lands a resize across 768px (#643), either way: the crossing is a
   // window resize and re-lays the bar, and both call this, so no listener on the
   // query itself is needed. matches is read live, so it is already the new side.
   function reflow() {
@@ -2132,7 +2157,7 @@ if (rxLog) {
   // Pointer events rather than mouse so a drag works from a pen or a touch
   // screen on a wide display, where the frame is reached the same way.
   //
-  // Dragging stops below 640px (#561). The card is pinned there at
+  // Dragging stops below 768px (#561). The card is pinned there at
   // `calc(100vw - 20px)` (#643), so there is no "out of the way" to drag it to:
   // it spans the map whatever its height. Shrinking and dismissing are what
   // move it aside on a phone, which is exactly what the app does at every width.
@@ -2548,6 +2573,9 @@ syncTargetToggleLabel()
 wirePopover({
   toggleEl: spToggle, panelEl: senderPicker, wrapEl: spToggle.closest('.ms-wrap'), wrapSelector: '.ms-wrap',
   onOpen: () => { targetPicker.reset(); refresh() }, // back to page 1; the next redraw repopulates
+  // The caret in the search (#714). Its value stays: on web it is the sender
+  // filter itself, bound to ?sender=.
+  focusEl: document.getElementById('f-sender'),
 })
 
 // Hunter picker (#290): generalizes the sender picker's pattern to #f-hunter,

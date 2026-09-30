@@ -35,7 +35,7 @@ export function clampToViewport({ x, y }, { w, h }, { vw, vh, top = 0 }) {
 }
 
 // clampUnlessNarrow is the clamp for a position that is stored, not just drawn.
-// Below 640px the stylesheet pins the card centred under the bar, as in the app
+// Below 768px the stylesheet pins the card centred under the bar, as in the app
 // (#643), so x,y are not where the card is: they are where it was left on a wide
 // screen. urlstate writes them back on every load and every save, so clamping
 // them against a phone would overwrite that position for good. The wide screen
@@ -64,7 +64,7 @@ export const HIDDEN = 'hidden'
 // under the bar? That, not the width, is what "it covers the map" means.
 //
 // `narrow` is the other half of the same question and stays a width test,
-// because below 640px the card is pinned at `calc(100vw - 20px)` (#643) and
+// because below 768px the card is pinned at `calc(100vw - 20px)` (#643) and
 // covers the map from edge to edge whatever its height.
 //
 // The width alone was the whole rule until a phone was held sideways: 844x390

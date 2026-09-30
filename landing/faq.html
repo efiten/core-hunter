@@ -1,11 +1,21 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FAQ · Mesh-Hunter</title>
   <meta name="description" content="Short answers about mapping, hunting, accounts and what the Mesh-Hunter map shows." />
+  <meta name="color-scheme" content="light dark" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <script>
+    // The theme before the first paint: a saved choice, else the system's.
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('ch-theme'); } catch (e) {}
+      if (!(t === 'light' || t === 'dark')) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
   <link rel="stylesheet" href="/style.css" />
     <!-- Matomo (self-hosted, cookieless; production hosts only) -->
     <script>
@@ -28,16 +38,24 @@
 </head>
 <body>
   <header class="lp-top">
-    <a class="lp-brand" href="/" style="color:inherit;text-decoration:none">Mesh-Hunter</a>
-    <nav class="lp-nav">
-      <a href="https://rx.mesh-hunter.eu">RX webapp</a>
-      <a href="https://map.mesh-hunter.eu">Map</a>
-      <a href="/faq.html" class="active">FAQ</a>
-      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">🌙</button>
-    </nav>
+    <div class="lp-wrap">
+      <a class="lp-brand" href="/"><svg width="26" height="26" viewBox="0 0 512 512" aria-hidden="true"><polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="24" stroke-linejoin="round"/><g fill="none" stroke-width="26" stroke-linecap="round"><path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/><path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/></g><circle cx="256" cy="256" r="34" fill="var(--ch-sig-hot)"/></svg>Mesh-Hunter</a>
+      <nav class="lp-nav">
+        <a href="https://rx.mesh-hunter.eu">RX webapp</a>
+        <a class="lp-map" href="https://map.mesh-hunter.eu">Map</a>
+        <a href="/faq.html" class="active">FAQ</a>
+        <a class="lp-wide" href="/#community">Community</a>
+        <a class="lp-wide" href="https://github.com/efiten/core-hunter">GitHub</a>
+      </nav>
+      <button id="lp-theme" class="lp-theme" type="button" aria-label="Toggle theme">
+        <svg class="lp-th-moon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 12.5A7 7 0 0 1 7.5 4 7 7 0 1 0 16 12.5z"/></svg>
+        <svg class="lp-th-sun" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="4"/><path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"/></svg>
+      </button>
+      <a class="lp-btn lp-btn-primary" href="https://rx.mesh-hunter.eu">Start mapping</a>
+    </div>
   </header>
 
-  <main class="lp-main">
+  <main class="lp-wrap">
     <section class="faq-head">
       <h1>FAQ</h1>
       <p>Short answers about mapping, hunting, accounts and what the map shows.</p>
@@ -52,20 +70,82 @@
           shows every mapper's receptions together, and is where you follow one node's signal to
           where it transmits from.</p>
       </details>
+      <details id="rx-and-map">
+        <summary>How does the map relate to the RX webapp?</summary>
+        <p>The RX webapp is where you map: on your phone, paired with your companion, it shows
+          what your radio hears as you hear it, with the HUD, the sound and a live map of your own
+          receptions. It keeps every reception on the phone and sends it on to the server once it
+          can, so a stretch without mobile data is not lost.</p>
+        <p>The <a href="https://map.mesh-hunter.eu">map</a> is where every mapper's receptions
+          meet. It needs no radio and, for reading, no account: coverage, reach and hunting over
+          everyone's data. The account you make in the RX webapp is the one you log in with on the
+          map, and it shows your own receptions there in full detail.</p>
+      </details>
       <details id="what-do-i-need">
         <summary>What do I need to start mapping?</summary>
         <p>A MeshCore companion radio, and a phone with GPS and a browser that supports Web
-          Bluetooth, such as Chrome on Android or the Bluefy browser on iOS. Open the
+          Bluetooth (see <a href="#browsers">which browser</a>). Open the
           <a href="https://rx.mesh-hunter.eu">RX webapp</a>, pair the radio over Bluetooth, and walk
           or drive. The webapp installs as a PWA: add it to your home screen.</p>
+      </details>
+      <details id="browsers">
+        <summary>Which browser do I need?</summary>
+        <p>One that supports Web Bluetooth, the browser feature that lets a web page pair with your
+          companion radio. Only the RX webapp needs it; the map works in any browser.</p>
+        <ul>
+          <li>Android: Chrome.</li>
+          <li>iPhone and iPad: no built-in browser supports Web Bluetooth, Safari included. Install
+            Bluefy from the App Store, open rx.mesh-hunter.eu in it, and pair as you would on
+            Android.</li>
+          <li>Firefox does not support Web Bluetooth on any platform.</li>
+        </ul>
+      </details>
+      <details id="sf">
+        <summary>SF7 or SF8: which mesh does my radio map?</summary>
+        <p>The one your companion is set to. The spreading factor (SF) is part of a radio's
+          settings, and a node on SF8 does not hear one on SF7, or the other way round. So there
+          are two meshes side by side.</p>
+        <p>The RX webapp reads your companion's radio settings (the Status tab shows them under
+          Radio) and names the nodes you hear from the node list of that mesh. The map shows every
+          mapper's receptions, whichever SF their radio was on. To map the other mesh, change your
+          companion's radio settings.</p>
+      </details>
+      <details id="install">
+        <summary>How do I install the RX webapp on Android?</summary>
+        <p>Open rx.mesh-hunter.eu in Chrome, open Chrome's menu and choose Install app or Add to
+          Home screen. It then starts from your home screen like an app, in its own window without
+          the browser's address bar, and upright.</p>
+        <p>Keep the screen on and the webapp in front while you map: with the screen off or the
+          webapp in the background, the phone stops capturing.</p>
+      </details>
+      <details id="readout">
+        <summary>Can the reading stay on screen while I drive?</summary>
+        <p>Yes. The window button in the HUD, beside Ignore, opens the readout: the signal in large
+          type and in its colour, with the node it came from.</p>
+        <ul>
+          <li>Android: the readout opens full screen. Switch to your navigation app and it floats on
+            top of it in a small window.</li>
+          <li>A computer: the readout floats in a picture-in-picture window over your other
+            apps.</li>
+          <li>iPhone and iPad: the readout opens full screen.</li>
+        </ul>
       </details>
       <details id="account">
         <summary>Do I need an account?</summary>
         <p>Not to read the map: without one you see all-time coarse coverage and the last 24 hours
-          of individual receptions. An account shows your own receptions in full detail. It is made
-          in the RX webapp, from the companion you paired, which is why the map itself has no
-          sign-up form. Member verification, granted by the admins, opens the full history, Locate
-          and the CoreScope layers.</p>
+          of individual receptions. An account shows your own receptions in full detail, and it
+          starts with a radio rather than with a sign-up form, which is why it is made in the RX
+          webapp.</p>
+        <ol>
+          <li>Pair your MeshCore companion to the <a href="https://rx.mesh-hunter.eu">RX webapp</a> over
+            Bluetooth and start mapping.</li>
+          <li>Register there. The account is made from the companion you paired, which is why the map
+            itself has no sign-up form.</li>
+          <li>Log in with it on the map. Your own receptions now show in full detail, everyone else's
+            stay coarse and recent.</li>
+          <li>Ask an admin for member verification. That opens the full history, Locate and the
+            CoreScope layers for everyone's data, not only your own.</li>
+        </ol>
       </details>
       <details id="node-position">
         <summary>Does the map show where my node is?</summary>
@@ -83,6 +163,24 @@
         <p>Every reception you map is published to the shared map. Visitors without an account see
           it coarse and recent, you see your own receptions in full detail, and verified members
           see everything.</p>
+        <p>By default your receptions and the route you drove also go to
+          <a href="https://dutchmeshcore.nl/">DutchMeshCore</a>, signed with your companion's key.
+          You can switch that off in the RX webapp, under Manage brokers.</p>
+      </details>
+      <details id="own-broker">
+        <summary>Can I send my receptions to my own MQTT broker?</summary>
+        <p>Yes. In the RX webapp, open the menu, then Status, Manage brokers, and choose Add broker.</p>
+        <ul>
+          <li>Give it a name and the broker's WebSocket address, starting with wss://.</li>
+          <li>Sign in with a username and password, or with your companion's key: the companion
+            signs you in, and the key stays on the radio.</li>
+          <li>Under Advanced, Send as picks the format. Wardrive sends your receptions plus your
+            track, for a hunter map. Packets sends one message per reception, the format a
+            Mesh-Hunter server reads.</li>
+        </ul>
+        <p>The webapp connects before it saves, so a wrong address or login shows up at once. A new
+          broker gets what you hear from then on. Every broker that is on gets each reception, and
+          one that is offline catches up later.</p>
       </details>
       <details id="cost">
         <summary>Does it cost anything?</summary>
@@ -96,12 +194,24 @@
           be found.</p>
       </details>
       <details id="auto-discover">
-        <summary>What does auto-discover transmit?</summary>
-        <p>Nothing until you switch it on: the RX webapp only listens by default. With
-          auto-discover on, each cycle sends one Discover request, a zero-hop broadcast that nearby
-          nodes answer directly, and a trace-ping to each repeater you have selected as a target.
-          With no target selected it pings a few of the repeaters it has heard instead, in turn.
-          Both are direct transmissions from your companion, addressed to nodes in range; nothing is
+        <summary>What does autoping send, and how often?</summary>
+        <p>Nothing until you switch it on: the RX webapp only listens by default. The Discover button
+          on the map turns autoping (auto-discover) on and off. Each cycle sends:</p>
+        <ul>
+          <li>one Discover request, a zero-hop broadcast that nearby nodes answer directly;</li>
+          <li>a trace-ping to each repeater you selected as a target, or with no target, to a few
+            of the repeaters it has heard, in turn;</li>
+          <li>with Introduce my node to targets on and a companion as target, your own advert, so
+            that node can hear you and answer.</li>
+          <li>with a target selected, one direct question: a companion is asked for its telemetry,
+            or a repeater for its regions and clock or for its owner. A repeater gets such a
+            question at most once a minute.</li>
+        </ul>
+        <p>A cycle runs every 10 seconds, or sooner once you have moved 50 metres, but never faster
+          than the airtime budget of the band allows. That budget depends on the spreading factor,
+          so at SF8 the cycles sit further apart than at SF7. The Status tab shows the cadence it
+          is on.</p>
+        <p>Everything is a direct transmission from your companion to nodes in range; nothing is
           sent through the mesh.</p>
       </details>
       <details id="community-tools">
@@ -111,27 +221,46 @@
           links the wider ecosystem: the Dutch MeshCore Community, the DMC Triangulator, MC Radar
           and MeshWiki.</p>
       </details>
+      <details id="contribute">
+        <summary>How can I contribute?</summary>
+        <ul>
+          <li>Map: pair a companion with the <a href="https://rx.mesh-hunter.eu">RX webapp</a> and
+            walk, cycle or drive. Every reception adds to the shared map, most of all where nobody
+            has mapped yet.</li>
+          <li>Report a bug or ask for a feature in the
+            <a href="https://github.com/efiten/core-hunter/issues">issues on GitHub</a>.</li>
+          <li>Work on the code: it is <a href="https://github.com/efiten/core-hunter">on GitHub</a>.
+            Every change starts with an issue; AGENTS.md in the repository explains how the project
+            works.</li>
+        </ul>
+      </details>
     </section>
   </main>
 
-  <footer class="lp-foot">
-    <span>Mesh-Hunter</span>
+  <footer class="lp-foot" data-theme="dark">
+    <div class="lp-wrap">
+      <div class="lp-foot-top">
+        <div>
+          <a class="lp-brand" href="/"><svg width="26" height="26" viewBox="0 0 512 512" aria-hidden="true"><polygon points="424,256 340,111 172,111 88,256 172,401 340,401" fill="none" stroke="var(--ch-accent)" stroke-width="24" stroke-linejoin="round"/><g fill="none" stroke-width="26" stroke-linecap="round"><path d="M326 168 A112 112 0 0 1 326 344" stroke="var(--ch-sig-cool)"/><path d="M186 168 A112 112 0 0 0 186 344" stroke="var(--ch-sig-cool)"/></g><circle cx="256" cy="256" r="34" fill="var(--ch-sig-hot)"/></svg>Mesh-Hunter</a>
+          <p>Run by amateur-radio operators. Coverage is inferred from radio measurements via mesh topology, not from GPS tracking of any target node.</p>
+          <a class="lp-btn lp-btn-primary" href="https://rx.mesh-hunter.eu">Start mapping</a>
+        </div>
+        <div><h2>Toolkit</h2><ul><li><a href="https://rx.mesh-hunter.eu">RX webapp</a></li><li><a href="https://map.mesh-hunter.eu">Map</a></li><li><a href="/faq.html#account">Get an account</a></li><li><a href="/faq.html">FAQ</a></li></ul></div>
+        <div><h2>Community</h2><ul><li><a href="https://meshcore.io">MeshCore</a></li><li><a href="https://analyzer.on8ar.eu/#/home">CoreScope</a></li><li><a href="https://dutchmeshcore.nl/">Dutch MeshCore</a></li><li><a href="https://meshwiki.nl/">MeshWiki</a></li></ul></div>
+        <div><h2>Code</h2><ul><li><a href="https://github.com/efiten/core-hunter">GitHub</a></li><li><a href="https://github.com/efiten/core-hunter/blob/master/CHANGELOG.md">Changelog</a></li><li><a href="https://github.com/efiten/core-hunter/issues">Report an issue</a></li></ul></div>
+      </div>
+      <div class="lp-wordmark" aria-hidden="true">Mesh-Hunter</div>
+      <div class="lp-foot-bottom"><span>Free, code on GitHub, run by volunteers</span><span class="rb"></span><span>mesh-hunter.eu</span></div>
+    </div>
   </footer>
 
   <script>
+    // The theme button swaps the theme and remembers the choice.
     (function () {
-      var KEY = 'ch-theme';
       var root = document.documentElement;
-      var saved = null;
-      try { saved = localStorage.getItem(KEY); } catch (e) {}
-      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
-      var btn = document.getElementById('lp-theme');
-      function sync() { btn.textContent = root.dataset.theme === 'light' ? '☀️' : '🌙'; }
-      sync();
-      btn.addEventListener('click', function () {
-        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
-        try { localStorage.setItem(KEY, root.dataset.theme); } catch (e) {}
-        sync();
+      document.getElementById('lp-theme').addEventListener('click', function () {
+        root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem('ch-theme', root.dataset.theme); } catch (e) {}
       });
     })();
     // A link to one answer (#383) has to show that answer, and a closed
@@ -139,7 +268,10 @@
     (function () {
       function reveal() {
         var d = location.hash && document.getElementById(location.hash.slice(1));
-        if (d && d.tagName === 'DETAILS') d.open = true;
+        if (!d || d.tagName !== 'DETAILS') return;
+        d.open = true;
+        // Opened after the browser's own jump, so the jump may have landed short.
+        d.scrollIntoView({ block: 'start' });
       }
       reveal();
       window.addEventListener('hashchange', reveal);

@@ -56,7 +56,7 @@ describe('noticesPlacement', () => {
     expect(at({ vw: 1024, column: column(1024), railLeft: 964, ticker: tall })).toEqual({ left: 232, width: 560, top: 362 + NOTICE_GAP })
   })
 
-  // Below 640px the ticker is pinned across the width (#643), so there is never
+  // Below 768px the ticker is pinned across the width (#643), so there is never
   // a band: the notices go under it.
   it('drops under a ticker pinned across a phone', () => {
     const pinned = { left: 10, right: 365, top: 60, bottom: 122 }
