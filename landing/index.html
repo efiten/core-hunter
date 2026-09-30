@@ -244,11 +244,12 @@
     })();
     // The four surfaces as a slideshow (WAI-ARIA tabs). The progress line under
     // the active tab times each slide in CSS; when its animation ends, the next
-    // tab is selected. A pointer over it pauses it. A click picks a tab and the
-    // show goes on from there (Kasper, 28 September): the line starts over on
-    // the picked tab. Keyboard focus and the arrow keys stop it, so it never
-    // moves away from under a keyboard user (the carousel pattern), and a
-    // reader who asked the system for less motion never gets it started.
+    // tab is selected. A pointer that can hover pauses it while it is over it.
+    // Picking a tab stops it for good, by click, tap, keyboard focus or arrow
+    // key (the carousel pattern): that is the stop every reader has, so a
+    // panel is never swapped under someone reading its caption (WCAG 2.2.2,
+    // review of #731). A reader who asked the system for less motion never
+    // gets it started.
     (function () {
       var tour = document.querySelector('.lp-tour');
       var tabs = [].slice.call(document.querySelectorAll('.lp-tab'));
@@ -266,9 +267,10 @@
         t.addEventListener('animationend', function () {
           if (tour.classList.contains('is-playing')) select(tabs[(i + 1) % tabs.length], false);
         });
-        t.addEventListener('click', function () { select(t, false); });
-        // Keyboard focus stops the show; a click focuses the tab too, so only
-        // a focus the browser would ring (:focus-visible) counts.
+        t.addEventListener('click', function () { playing(false); select(t, false); });
+        // Keyboard focus stops the show before a key is pressed. Only a focus
+        // the browser would ring (:focus-visible) counts: a click focuses the
+        // tab too, and has stopped it already.
         t.addEventListener('focus', function () { if (t.matches(':focus-visible')) playing(false); });
         t.addEventListener('keydown', function (e) {
           var keys = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 };

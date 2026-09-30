@@ -71,6 +71,23 @@ describe('self-contained', () => {
   })
 })
 
+// AGENTS.md §7: colours come from the --ch-* tokens. Three box-shadows carried
+// a raw rgba() (review of #731), and a shadow is where the next one would go:
+// it reads as an effect, not as a colour.
+describe('colours', () => {
+  const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const tokens = [...css.matchAll(/--ch-[a-z0-9-]+\s*:\s*[^;]+;/g)]
+  const rules = css.replace(/--ch-[a-z0-9-]+\s*:\s*[^;]+;/g, '')
+
+  it('finds the token block, so stripping it strips something', () => {
+    expect(tokens.length).toBeGreaterThan(20)
+  })
+
+  it('writes no colour value outside the token block', () => {
+    expect(rules.match(/#[0-9a-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/gi) || []).toEqual([])
+  })
+})
+
 // The four surfaces as tabs above one shot. The markup is what a reader
 // without the script gets, so it has to be right on its own: one tab
 // selected, its panel shown, the others hidden, and each tab naming a panel
@@ -113,6 +130,105 @@ describe('the tour', () => {
     expect(at).toBeGreaterThan(-1)
     const panel = html.slice(at, html.indexOf('</p>', at))
     expect(panel).toMatch(/inferred from RSSI and SNR, not from GPS tracking/)
+  })
+})
+
+// The tour's behaviour, which the markup checks above cannot see: the page's
+// own inline script, run against a stand-in for the four tabs and their
+// panels. It is what decides when a panel is swapped under a reader, and it
+// changed once (a click stopped the show, then did not) with no test noticing
+// (review of #731).
+describe('the tour as a slideshow', () => {
+  const html = read('index.html')
+  const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).find((s) => s.includes('.lp-tour'))
+  const ids = [...html.matchAll(/<button\b[^>]*role="tab"[^>]*id="([^"]+)"[^>]*aria-controls="([^"]+)"/g)].map((m) => ({ id: m[1], controls: m[2] }))
+
+  // Just enough DOM for the script: elements that keep their listeners,
+  // attributes and classes, and a document that finds them.
+  function mount({ reducedMotion = false } = {}) {
+    const el = (extra = {}) => {
+      const listeners = {}, attrs = {}, classes = new Set()
+      return {
+        tabIndex: 0, hidden: false, focusVisible: false, dataset: {},
+        addEventListener(type, fn) { (listeners[type] ||= []).push(fn) },
+        fire(type, ev = {}) { for (const fn of listeners[type] || []) fn({ preventDefault() {}, ...ev }) },
+        setAttribute(k, v) { attrs[k] = v }, getAttribute: (k) => attrs[k],
+        matches(sel) { return sel === ':focus-visible' && this.focusVisible },
+        focus() { this.fire('focus') },
+        classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)), contains: (c) => classes.has(c) },
+        ...extra,
+      }
+    }
+    const tour = el(), theme = el()
+    const panels = Object.fromEntries(ids.map((t, i) => [t.controls, el({ hidden: i !== 0 })]))
+    const tabs = ids.map((t, i) => {
+      const tab = el()
+      tab.setAttribute('aria-controls', t.controls)
+      tab.setAttribute('aria-selected', i === 0 ? 'true' : 'false')
+      return tab
+    })
+    const document = {
+      documentElement: el(),
+      getElementById: (id) => (id === 'lp-theme' ? theme : panels[id]),
+      querySelector: (sel) => (sel === '.lp-tour' ? tour : null),
+      querySelectorAll: (sel) => (sel === '.lp-tab' ? tabs : []),
+    }
+    const window = { matchMedia: () => ({ matches: reducedMotion }) }
+    new Function('document', 'window', 'localStorage', script)(document, window, { setItem() {} })
+    const selected = () => tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true')
+    const shown = () => ids.map((t) => !panels[t.controls].hidden)
+    return { tour, tabs, selected, shown, playing: () => tour.classList.contains('is-playing') }
+  }
+
+  it('finds the script and the four tabs it drives', () => {
+    expect(script).toBeTruthy()
+    expect(ids.length).toBe(4)
+  })
+
+  it('moves to the next tab when the line under the active one has run out, and wraps', () => {
+    const t = mount()
+    expect(t.playing()).toBe(true)
+    t.tabs[0].fire('animationend')
+    expect(t.selected()).toBe(1)
+    expect(t.shown()).toEqual([false, true, false, false])
+    t.tabs[3].fire('animationend')
+    expect(t.selected()).toBe(0)
+  })
+
+  it('stops for good when a tab is clicked, and shows the one that was picked', () => {
+    // WCAG 2.2.2: a pointer, touch or screen-reader user needs a way to stop
+    // it too, not only a keyboard user. Picking a tab is that way.
+    const t = mount()
+    t.tabs[2].fire('click')
+    expect(t.selected()).toBe(2)
+    expect(t.playing()).toBe(false)
+    t.tabs[2].fire('animationend')
+    expect(t.selected(), 'the panel was swapped under a reader who had picked it').toBe(2)
+  })
+
+  it('stops when the keyboard reaches a tab, and does not move on', () => {
+    const t = mount()
+    t.tabs[0].focusVisible = true
+    t.tabs[0].fire('focus')
+    expect(t.playing()).toBe(false)
+    t.tabs[0].fire('animationend')
+    expect(t.selected()).toBe(0)
+  })
+
+  it('stops on an arrow key and moves the selection with it', () => {
+    const t = mount()
+    t.tabs[0].fire('keydown', { key: 'ArrowLeft' })
+    expect(t.playing()).toBe(false)
+    expect(t.selected()).toBe(3)
+    t.tabs[3].fire('keydown', { key: 'Home' })
+    expect(t.selected()).toBe(0)
+  })
+
+  it('never starts for a reader who asked for less motion', () => {
+    const t = mount({ reducedMotion: true })
+    expect(t.playing()).toBe(false)
+    t.tabs[0].fire('animationend')
+    expect(t.selected()).toBe(0)
   })
 })
 
