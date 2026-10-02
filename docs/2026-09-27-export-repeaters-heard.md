@@ -19,10 +19,11 @@ An **Export** button in #bar, next to Start mapping, opens a sheet with one item
 - **Strength as a gradient within the hue**, per ray: strong full and thick, weak lighter (mixed up to 55% towards white) and thinner. Width and opacity are the map's (`rayStyle`).
 - A dot at every hearing in the same tint. A ▲ in the hue at the advertised position, a ● where there is only an RSSI estimate.
 - **Names** as text on a white halo, in the hue. A key without a registry name reads the resolver's name, a relay hash never does (AGENTS.md §7 rule 2) and reads `#id`. Most-heard first; a name that would print over another (4 px margin) or off the image is dropped, the ▲ never.
-- **Mapped cells** in grey: the resolution of `hexgrid.js` (now copied whole into web/ and pinned) whose size is closest to 360 Mercator units, about 445 m point to point at 52°N (res 8 of today's table), so the cell stays when the table changes; and the **route** in grey, broken on a gap of more than 5 minutes, more than 3 km, or another hunter.
+- **Mapped cells** in grey: the resolution of `hexgrid.js` (now copied whole into web/ and pinned) whose size is closest to 360 Mercator units, about 445 m point to point at 52°N. Since #734 the closest is res 13 (268 units, about 330 m point to point); and the **route** in grey, broken on a gap of more than 5 minutes, more than 3 km, or another hunter.
 - A star whose nearest hearing is more than **30 km** from its origin is left off and named in the band.
 - **The band:** the mark and mesh-hunter.eu, "Repeaters heard", the window as dates and up to three hunters by name, what was left off, three numbers (repeaters, receptions, farthest in km), a legend, and the tile attribution on the map.
 - The **light theme**, whatever the page shows: it is a picture passed on to people who never chose a theme.
+- **The relief** under it all (added with #720, Kasper, 27 September): shaded from the Terrarium tiles at the exaggeration from Settings, as the 3D view shades it, with "relief 7× exaggerated" beside the scale bar. At 1× the relief is true to scale and the note is left out. The tiles' attribution joins the map's.
 
 ## What was tried and not chosen
 

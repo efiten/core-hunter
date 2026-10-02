@@ -91,6 +91,20 @@
     "body": "Export in the top bar makes a 1200 × 1200 PNG of every repeater in view and where it was heard, ready to share."
   },
   {
+    "id": "2026-09-27-export-reach",
+    "date": "2026-09-27",
+    "where": "map",
+    "title": "Export one repeater's reach as a picture",
+    "body": "Export can now draw one repeater: where it was heard, where not, and where it likely reaches."
+  },
+  {
+    "id": "2026-09-27-export-selection",
+    "date": "2026-09-27",
+    "where": "map",
+    "title": "Export what your filters select as a picture",
+    "body": "Export draws what the filters select in view: where it was heard, and where you drove without it."
+  },
+  {
     "id": "2026-09-27-dutchmeshcore-by-default",
     "date": "2026-09-27",
     "where": "app",

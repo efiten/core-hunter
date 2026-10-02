@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { test, expect } from './fixtures.js'
+import { tilePixel } from '../exportterrain.js'
 
 // The Export sheet (#666): "Repeaters heard" draws the reach layer's stars
 // into a 1200×1200 PNG and downloads it. The basemap is the fixtures' bare
@@ -78,4 +79,104 @@ test('Export sits in the menu below 900px and opens the sheet from there', async
   await expect(page.locator('#settings-btn')).toBeFocused()
   await page.setViewportSize({ width: 1024, height: 768 })
   await expect(page.locator('#bar #export-btn')).toBeVisible()
+})
+
+// #720: Reach of one repeater works on the selected star. The target picked
+// in the URL selects it; without a selection the row says what to do.
+const REACH_URL = `/?mode=points&lat=51.84&lon=5.86&z=12&from=2026-09-07T00:00&to=2026-09-08T00:00&senders=${encodeURIComponent(JSON.stringify(['db11db11f7808b97']))}`
+
+test('Reach of one repeater downloads a PNG named after the selected repeater', async ({ page }) => {
+  await stub(page, 'member')
+  await page.goto(REACH_URL)
+  await expect(async () => {
+    if (await page.locator('#export-modal').isHidden()) await page.click('#export-btn')
+    await expect(page.locator('#export-modal')).toBeVisible()
+  }).toPass({ timeout: 15000 })
+  await expect(page.locator('#ex-reach')).toBeEnabled()
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#ex-reach')])
+  expect(download.suggestedFilename()).toMatch(/^mesh-hunter-reach-nl-nij-dikkeboom-\d{4}-\d{2}-\d{2}\.png$/)
+  const png = readFileSync(await download.path())
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 1200])
+})
+
+test('Reach of one repeater asks for a repeater when none is selected', async ({ page }) => {
+  await stub(page, 'member')
+  await page.goto('/?mode=points&lat=51.84&lon=5.86&z=12')
+  await expect(async () => {
+    if (await page.locator('#export-modal').isHidden()) await page.click('#export-btn')
+    await expect(page.locator('#export-modal')).toBeVisible()
+  }).toPass({ timeout: 15000 })
+  await expect(page.locator('#ex-reach')).toBeDisabled()
+  await expect(page.locator('#ex-reach-status')).toHaveText('Select one repeater on the map: tap its ▲, or pick it as target.')
+  await expect(page.locator('#ex-heard')).toBeEnabled()
+})
+
+// A Terrarium tile with the ground at `metres` everywhere but one pixel,
+// `hole`, at 0 m. Drawn in the page, which has the PNG encoder.
+async function terrariumTile(page, metres, hole = null) {
+  const v = metres + 32768
+  const bytes = await page.evaluate(async ({ r, g, hole }) => {
+    const c = new OffscreenCanvas(256, 256)
+    const ctx = c.getContext('2d')
+    ctx.fillStyle = `rgb(${r},${g},0)`
+    ctx.fillRect(0, 0, 256, 256)
+    if (hole) { ctx.fillStyle = 'rgb(128,0,0)'; ctx.fillRect(hole.px, hole.py, 1, 1) }
+    return [...new Uint8Array(await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer())]
+  }, { r: Math.floor(v / 256), g: v % 256, hole })
+  return Buffer.from(bytes)
+}
+
+test('Reach of one repeater fills along the lines, and leaves out what the terrain hides', async ({ page }) => {
+  await stub(page, 'member')
+  await page.goto(REACH_URL)
+  await expect(async () => {
+    if (await page.locator('#export-modal').isHidden()) await page.click('#export-btn')
+    await expect(page.locator('#export-modal')).toBeVisible()
+  }).toPass({ timeout: 15000 })
+  const reach = async () => {
+    await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#ex-reach')])
+    return page.evaluate(() => window.__lastReach())
+  }
+  // The fixtures block the DEM host: the lines alone decide.
+  const open = await reach()
+  expect(open.filled).toBeGreaterThan(0)
+  // The repeater in a pit, 500 m of ground all round it: the lines are there,
+  // the repeater sees none of them.
+  const at = tilePixel(51.84, 5.86, 10)
+  const wall = await terrariumTile(page, 500)
+  const pit = await terrariumTile(page, 500, at)
+  await page.route('**/elevation-tiles-prod/**', (r) => r.fulfill({ status: 200, contentType: 'image/png',
+    headers: { 'access-control-allow-origin': '*' }, body: r.request().url().endsWith(`/10/${at.x}/${at.y}.png`) ? pit : wall }))
+  const hidden = await reach()
+  expect(hidden.heard).toBe(open.heard)
+  expect(hidden.filled).toBeLessThan(open.filled)
+})
+
+// #728: Heard with these filters. The filters here are the bar's Channel and
+// 1 byte; the server answers a query that narrows by type or id size with the
+// channel messages, any other with all of the hunter's receptions.
+test('Heard with these filters draws what the filters select, against all the cells the hunter drove', async ({ page }) => {
+  await stub(page, 'member')
+  const rx = (lat, lon, rssi, over) => ({ lat, lon, rssi, snr: 4, hops: 1, hunter_name: 'kas', rx_at: '2026-09-07T12:00:00Z', ...over })
+  const channel = { sender_id: 'db', sender_kind: 'path_hash', packet_type: 'GroupText' }
+  const selected = [rx(51.845, 5.865, -80, channel), rx(51.8451, 5.8651, -85, channel), rx(52.5, 6.5, -90, channel)]
+  const drove = [rx(51.85, 5.87, -95, { sender_id: 'ffee', sender_kind: 'relay', packet_type: 'Control' }),
+    rx(51.835, 5.85, -99, { sender_id: 'ffee', sender_kind: 'relay', packet_type: 'Control' })]
+  await page.route('**/api/points*', (r) => {
+    const q = new URL(r.request().url()).searchParams
+    r.fulfill({ json: { points: q.get('types') || q.get('idclass') ? selected : [...selected, ...drove] } })
+  })
+  await page.goto('/?mode=points&lat=51.84&lon=5.86&z=12&from=2026-09-07T00:00&to=2026-09-08T00:00&types=GroupText&idclass=1b')
+  await expect(async () => {
+    if (await page.locator('#export-modal').isHidden()) await page.click('#export-btn')
+    await expect(page.locator('#export-modal')).toBeVisible()
+  }).toPass({ timeout: 15000 })
+  const [download] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click('#ex-sel')])
+  expect(download.suggestedFilename()).toMatch(/^mesh-hunter-selection-channel-1-byte-\d{4}-\d{2}-\d{2}\.png$/)
+  const png = readFileSync(await download.path())
+  expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([1200, 1200])
+  // The reception far out of view is left out; the two cells the hunter
+  // drove without a channel message count against the one that heard them;
+  // the 1-byte id is placed on the node it alone can be within reach.
+  expect(await page.evaluate(() => window.__lastSelection())).toEqual({ receptions: 2, heardCells: 1, drivenCells: 3, share: 33, nodes: ['NL-NIJ-Dikkeboom'] })
 })
