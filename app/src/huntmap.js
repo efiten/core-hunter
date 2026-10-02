@@ -11,7 +11,7 @@ import { layerVisibility, pitchTransition } from './maplayers.js'
 import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, starSelected } from './coverage.js'
 import { createRayLayer } from './raylayer.js'
 import { octagonRing, pillarRadiusM, collapsePillars, PILLAR_MERGE_M } from './pointmarker.js'
-import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey } from './rendercache.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey, sameFeatures, lastSent } from './rendercache.js'
 import { currentRideStart, isBacklog } from './rides.js'
 import { hexCellLabel, planHexLabels } from './hexlabels.js'
 import { senderText } from './receptionlog.js'
@@ -176,6 +176,15 @@ export function createHuntMap(containerId) {
   // starCache keeps each star's estimate from tick to tick (coverage.js).
   const coverageSel = new Set(), starCache = new Map()
   let coverageHue = new Map(), lastReachRows = null, hubFeatures = []
+  // What each source was last handed. The tick draws once a second, and a
+  // collection that did not change since then stays where it is: put() for a
+  // GeoJSON source, and the same memory for the 3D rays' buffers.
+  const sent = lastSent()
+  const put = (id, data) => { if (sent.isNew(id, data)) map.getSource(id).setData(data) }
+  // The rays of the last draw, kept so a tick that builds the same ones hands
+  // over the same object (sameFeatures), and whether the mesh was on when the
+  // 3D buffers were last filled.
+  let lastRays = EMPTY, raysOnMesh = false
   // A reception's attribution by reach (#661, attribution.js): app.js works it
   // out every tick and puts it on the row as _attr, so the stars, the dots and
   // the node-position layer place a relay id exactly as the HUD names it.
@@ -184,6 +193,16 @@ export function createHuntMap(containerId) {
     toMerc: (lon, lat, alt) => maplibregl.MercatorCoordinate.fromLngLat([lon, lat], alt),
     elevation: (lon, lat) => (typeof map.queryTerrainElevation === 'function' && map.getTerrain && map.getTerrain() ? (map.queryTerrainElevation([lon, lat]) || 0) : 0),
   })
+  // The 3D rays read the terrain height under both ends when their buffers
+  // are filled, and the mesh's tiles arrive after it is switched on. So with
+  // the mesh on they are filled on every draw, as before, and once more on the
+  // first draw after it went off; otherwise only when the rays changed.
+  function putRays3D(fc) {
+    const mesh = !!(map.getTerrain && map.getTerrain())
+    const changed = sent.isNew('reach-3d', fc)
+    if (changed || mesh || raysOnMesh) rays.setData(fc.features)
+    raysOnMesh = mesh
+  }
   const coverageOn = () => nodeLayerMode === 'reach'
   function applyReachVisibility() {
     if (map.getLayer('reach')) map.setLayoutProperty('reach', 'visibility', coverageOn() && !mode3D ? 'visible' : 'none')
@@ -231,7 +250,7 @@ export function createHuntMap(containerId) {
     hubFeatures = []
     if (!coverageOn() || !map.getSource('reach')) {
       coverageHue = new Map(); starCache.clear()
-      if (map.getSource('reach')) { map.getSource('reach').setData(EMPTY); rays.setData([]) }
+      if (map.getSource('reach')) { lastRays = EMPTY; put('reach', EMPTY); putRays3D(EMPTY) }
       return null
     }
     const byKey = new Map(nodePositions.map((n) => [String(n.pubkey).toLowerCase(), n]))
@@ -243,11 +262,16 @@ export function createHuntMap(containerId) {
     const hues = assignHues(stars.map((st) => ({ id: st.id, lat: st.origin.lat, lon: st.origin.lon })))
     const colorOf = (slot) => cssVar(`--ch-hue-${slot}`)
     const selected = coverageSelected()
-    const fcRays = coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected })
+    let fcRays = coverageFeatures(stars, { slotOf: (id) => hues.get(id), colorOf, selected })
+    // Built in about a millisecond and dear to hand over, so the answer is
+    // compared rather than its inputs signed: the same rays as last draw are
+    // last draw's object, which put() and putRays3D() leave where it is.
+    if (sameFeatures(fcRays.features, lastRays.features)) fcRays = lastRays
+    else lastRays = fcRays
     const selectedStars = new Set(selected.size ? stars.filter((st) => starSelected(st, selected)).map((st) => st.id) : [])
     coverageHue = new Map([...hues].map(([id, slot]) => [id, colorOf(slot)]))
-    map.getSource('reach').setData(fcRays)
-    rays.setData(fcRays.features)
+    put('reach', fcRays)
+    putRays3D(fcRays)
     // The ● hub of a star with no registry position, in the star's hue. A
     // feature of the dot layer since #632, drawn with the estimates by
     // drawNodeLayer, so one setData carries every ●. A tap selects the star.
@@ -795,6 +819,9 @@ export function createHuntMap(containerId) {
     // the rows say: a theme swap or the bare fallback used to leave the ▲ and
     // ● gone until something else changed (#632 review).
     nodePosSig = null
+    // The same for every source put() writes and for the rays' buffers: a
+    // style swap brought them back empty, so nothing counts as sent.
+    sent.clear(); raysOnMesh = false
     draw()
   }
   // Initial style: 'load' fires once when the first style is ready. A theme
@@ -903,8 +930,10 @@ export function createHuntMap(containerId) {
     // the points wait for their zoom, and in 3D that is what keeps a pillar
     // per reception off the GPU until the closest one (#634).
     const pointsOn = pointShare(zoom, view) > 0
-    map.getSource('points').setData(vis.points && pointsOn ? buildPointsFC(records, sel, owners) : EMPTY)
-    map.getSource('points-3d').setData(vis['points-3d'] && pointsOn ? buildPoints3DFC(records, sel, owners) : EMPTY)
+    // put(): each of these is the same object as last tick when its cache
+    // hit, and EMPTY is one constant, so only what changed is handed over.
+    put('points', vis.points && pointsOn ? buildPointsFC(records, sel, owners) : EMPTY)
+    put('points-3d', vis['points-3d'] && pointsOn ? buildPoints3DFC(records, sel, owners) : EMPTY)
     map.getSource('trail').setData(buildTrailFC())
     // The trail belongs to no repeater, so it is never part of a selection and
     // always steps back with one. One LineString with no properties, so this
@@ -927,10 +956,10 @@ export function createHuntMap(containerId) {
     const slots = hexSlots(map.getZoom(), HEX_MAX_RES)
     const hexOn = vis.hex || vis['hex-3d']
     for (const [id, res] of [['hex', slots.a], ['hex-b', slots.b]]) {
-      map.getSource(id).setData(hexOn && res != null ? buildHexFC(records, cellsFor.sel, cellsFor.owners, res, id) : EMPTY)
+      put(id, hexOn && res != null ? buildHexFC(records, cellsFor.sel, cellsFor.owners, res, id) : EMPTY)
     }
     applyFades(slots)
-    map.getSource('noise').setData(vis.noise ? buildNoiseFC() : EMPTY)
+    put('noise', vis.noise ? buildNoiseFC() : EMPTY)
     drawHexLabels(records, vis['hex-labels'], vis.noise)
     zoomDrawn.cells = zoomKeysNow().cells
   }

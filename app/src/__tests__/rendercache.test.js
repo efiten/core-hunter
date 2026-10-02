@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey, rowCache } from '../rendercache.js'
+import { recordsKey, lastValueCache, hueKey, selectionKey, ownersKey, rowCache, sameFeatures, lastSent } from '../rendercache.js'
 
 const rec = (id) => ({ id, lat: 51, lon: 4, rssi: -70 })
 
@@ -266,5 +266,100 @@ describe('rowCache', () => {
     c.tick([index, 0]); c.get(rec(2), compute)
     c.tick([index, 0]); c.get(rec(1), compute)
     expect(compute).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('sameFeatures', () => {
+  // What coverageFeatures emits per hearing: a hub-to-hearing line and the
+  // ray's look. Built fresh on every call, as every tick builds them.
+  const ray = (over = {}) => ({ type: 'Feature',
+    geometry: { type: 'LineString', coordinates: [[5.85, 51.84], [5.86, 51.85]] },
+    properties: { id: 'ab12', color: '#4f8cff', op: 0.62, w: 1.8, two: false, dim: false, alt: 30, hub: 'advertised', ...over } })
+
+  it('holds across the fresh objects every tick builds', () => {
+    expect(sameFeatures([ray(), ray({ id: 'cd34' })], [ray(), ray({ id: 'cd34' })])).toBe(true)
+  })
+
+  it('sees a ray arrive', () => {
+    expect(sameFeatures([ray()], [ray(), ray()])).toBe(false)
+  })
+
+  it('sees a hub move, every property the same', () => {
+    const moved = ray()
+    moved.geometry.coordinates[0][1] = 51.8401
+    expect(sameFeatures([ray()], [moved])).toBe(false)
+  })
+
+  it('sees a selection dim a ray', () => {
+    expect(sameFeatures([ray()], [ray({ dim: true, op: 0.155 })])).toBe(false)
+  })
+
+  it('sees a property it was never told about', () => {
+    // Generic over the properties on purpose: a field added to the rays later
+    // must not be one this comparison forgets.
+    expect(sameFeatures([ray()], [ray({ added: 1 })])).toBe(false)
+    expect(sameFeatures([ray({ added: 1 })], [ray({ added: 2 })])).toBe(false)
+    expect(sameFeatures([ray({ added: 1 })], [ray()])).toBe(false)
+  })
+
+  it('sees two rays swap places, since the later one paints on top', () => {
+    const a = ray({ id: 'ab12' }), b = ray({ id: 'cd34' })
+    expect(sameFeatures([a, b], [b, a])).toBe(false)
+  })
+
+  it('sees a geometry of another kind or length', () => {
+    const points = ray()
+    points.geometry.type = 'MultiPoint'   // the same coordinates, drawn as two dots
+    expect(sameFeatures([ray()], [points])).toBe(false)
+    const longer = ray()
+    longer.geometry.coordinates.push([5.87, 51.86])
+    expect(sameFeatures([ray()], [longer])).toBe(false)
+  })
+
+  it('calls two empty lists the same, and anything that is not a list different', () => {
+    expect(sameFeatures([], [])).toBe(true)
+    expect(sameFeatures(null, [])).toBe(false)
+    expect(sameFeatures([ray()], undefined)).toBe(false)
+  })
+})
+
+describe('lastSent', () => {
+  it('lets a collection through once, and not again while it is the same object', () => {
+    const sent = lastSent()
+    const fc = { type: 'FeatureCollection', features: [] }
+    expect(sent.isNew('points', fc)).toBe(true)
+    expect(sent.isNew('points', fc)).toBe(false)
+    expect(sent.isNew('points', fc)).toBe(false)
+  })
+
+  it('goes by the object, not by what is in it', () => {
+    // The caches hand back the same object on a hit, so identity is the whole
+    // test; comparing contents here would cost what the skip is meant to save.
+    const sent = lastSent()
+    expect(sent.isNew('points', { type: 'FeatureCollection', features: [] })).toBe(true)
+    expect(sent.isNew('points', { type: 'FeatureCollection', features: [] })).toBe(true)
+  })
+
+  it('keeps each source apart', () => {
+    const sent = lastSent()
+    const empty = { type: 'FeatureCollection', features: [] }
+    expect(sent.isNew('points', empty)).toBe(true)
+    expect(sent.isNew('hex', empty)).toBe(true)
+    expect(sent.isNew('points', empty)).toBe(false)
+  })
+
+  it('remembers only the last one, so a collection that comes back is sent again', () => {
+    const sent = lastSent()
+    const a = { features: [] }, b = { features: [] }
+    sent.isNew('points', a); sent.isNew('points', b)
+    expect(sent.isNew('points', a)).toBe(true)
+  })
+
+  it('forgets everything on clear(), which is what a style swap needs: the sources come back empty', () => {
+    const sent = lastSent()
+    const fc = { features: [] }
+    sent.isNew('points', fc)
+    sent.clear()
+    expect(sent.isNew('points', fc)).toBe(true)
   })
 })
