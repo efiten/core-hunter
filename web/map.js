@@ -5,8 +5,10 @@ import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures,
 import { coverageStars, coverageFeatures, assignHues, selectionDim, starKeyOf, starSelected } from './coverage.js'
 import { advertFeature, dotFeature, fc as glyphFc, NODE_GLYPH_SOURCE, NODE_DOT_SOURCE } from './nodeglyphs.js'
 import { registryIndex, attributeReception, REACH_CAP_KM } from './attribution.js'
-import { heardModel, routeSegments, mappedCells, windowText, huntersText, exportFileName, FAR_KM } from './exportheard.js'
-import { renderHeardImage, lightTokens } from './exportrender.js'
+import { heardModel, routeSegments, mappedCells, windowText, huntersText, exportFileName, nearestKm, FAR_KM } from './exportheard.js'
+import { reachModel, pickReachStar } from './exportreach.js'
+import { loadTerrain } from './exportterrain.js'
+import { renderHeardImage, renderReachImage, lightTokens } from './exportrender.js'
 import { initExportSheet } from './exportsheet.js'
 import { createRowAttributor } from './rowattribution.js'
 import { EXAGGERATION_STEPS, DEFAULT_EXAGGERATION } from './terrain.js'
@@ -1176,10 +1178,10 @@ function clearCoverageLayer() {
   coverageStarList = []
   starCache.clear()
 }
-// The "Repeaters heard" export (#666): the stars the reach layer would draw
+// The stars an export draws (#666, #720): the ones the reach layer would draw
 // for this view, from the same registry slice, the same window and the same
-// attribution, whether the layer is on or not, drawn as a 1200×1200 PNG.
-async function heardExport() {
+// attribution, whether the layer is on or not.
+async function exportStars() {
   const view = wm.getBounds()
   const [registry, pointsRes] = await Promise.all([fetchNodeRegistry(view), windowPoints(standFilters())])
   const nodes = registry && registry.status === 'ok' ? registry.nodes : []
@@ -1190,27 +1192,63 @@ async function heardExport() {
   const positionOf = (id) => { const n = byKey.get(id); return n ? { lat: n.lat, lon: n.lon } : null }
   const stars = coverageStars(points, { positionOf, attributionOf, registryNodeOf: registryMatcher(nodes) })
   const nameOf = (id) => { const n = byKey.get(id); return (n && n.name) || null }
+  return { view, stars, points, nameOf, capped: pointsRes.capped, registryOk: Boolean(registry && registry.status === 'ok') }
+}
+// The band's second line: the window as dates, the hunters, and the cap
+// when the window held more receptions than one fetch brings.
+function exportSubline(points, hunters, capped, registryOk) {
+  const f = (window.currentFilters && window.currentFilters()) || {}
+  const oldest = points.reduce((m, p) => (p.rx_at && p.rx_at < m ? p.rx_at : m), new Date().toISOString())
+  const sub = [windowText(f.from || oldest, f.to || new Date().toISOString()), huntersText(hunters)]
+  if (capped) sub.push(`the first ${POINTS_CAP} receptions`)
+  // Without the registry every star is an estimate and none has a name.
+  if (!registryOk) sub.push('node list unavailable, every position estimated')
+  return sub.filter(Boolean).join(' · ')
+}
+const toPng = (canvas) => new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('no PNG'))), 'image/png'))
+
+// "Repeaters heard" (#666): every star in view, drawn as a 1200×1200 PNG.
+async function heardExport() {
+  const { view, stars, points, nameOf, capped, registryOk } = await exportStars()
   const model = heardModel({ stars, view, nameOf, cachedNameOf: cachedName })
   if (!model.drawn.length) return { empty: 'No repeater was heard in this view. Pan to where you drove, or widen the time window.' }
   const drawnIds = new Set(model.drawn.map((s) => s.id))
   const hunters = [...new Set(stars.filter((s) => drawnIds.has(s.id)).flatMap((s) => s.points.map((p) => p.hunter_name)).filter(Boolean))]
   const theirs = points.filter((p) => hunters.includes(p.hunter_name))
-  const f = (window.currentFilters && window.currentFilters()) || {}
-  const oldest = points.reduce((m, p) => (p.rx_at && p.rx_at < m ? p.rx_at : m), new Date().toISOString())
-  const sub = [windowText(f.from || oldest, f.to || new Date().toISOString()), huntersText(hunters)]
-  if (pointsRes.capped) sub.push(`the first ${POINTS_CAP} receptions`)
-  // Without the registry every star is an estimate and none has a name.
-  if (!(registry && registry.status === 'ok')) sub.push('node list unavailable, every position estimated')
   const off = model.offMap.length
     ? `Left off, farther than ${FAR_KM} km from their position: ${model.offMap.map((o) => `${o.name} (${o.km} km)`).join(', ')}`
     : ''
   const canvas = await renderHeardImage({
-    model, routes: routeSegments(theirs), cells: mappedCells(theirs),
-    text: { title: 'Repeaters heard', sub: sub.filter(Boolean).join(' · '), off }, tokens: lightTokens(),
+    model, routes: routeSegments(theirs), cells: mappedCells(theirs), exaggeration: exag,
+    text: { title: 'Repeaters heard', sub: exportSubline(points, hunters, capped, registryOk), off }, tokens: lightTokens(),
   })
-  const blob = await new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('no PNG'))), 'image/png'))
-  return { blob, fileName: exportFileName(Date.now()) }
+  return { blob: await toPng(canvas), fileName: exportFileName(Date.now()) }
 }
+
+// "Reach of one repeater" (#720): the selected star, heard and not heard,
+// and filled in where the repeater sees the ground (exportreach.js).
+const SELECT_ONE = 'Select one repeater on the map: tap its ▲, or pick it as target.'
+let lastReach = null
+async function reachExport() {
+  const { stars, points, nameOf, capped, registryOk } = await exportStars()
+  const { star, picked } = pickReachStar(stars, coverageSelected())
+  if (!star) return { empty: picked ? 'More than one repeater is selected. Select one.' : SELECT_ONE }
+  // The 30 km rule of Repeaters heard (heardModel): a position that far from
+  // every hearing cannot be right, and a picture fitted to it shows nothing.
+  const km = nearestKm(star)
+  if (km > FAR_KM) return { empty: `This repeater's position is ${Math.round(km)} km from its nearest hearing, so it cannot be right, and there is nothing to draw the reach from.` }
+  const hunters = [...new Set(star.points.map((p) => p.hunter_name).filter(Boolean))]
+  const theirs = points.filter((p) => hunters.includes(p.hunter_name))
+  const elevationAt = await loadTerrain([star.origin, ...star.points])
+  const model = reachModel({ star, mapped: theirs, nameOf, cachedNameOf: cachedName, elevationAt })
+  lastReach = model
+  const canvas = await renderReachImage({
+    model, exaggeration: exag,
+    text: { title: model.name, sub: exportSubline(points, hunters, capped, registryOk), off: '' }, tokens: lightTokens(),
+  })
+  return { blob: await toPng(canvas), fileName: exportFileName(Date.now(), 'reach', model.name) }
+}
+window.__lastReach = () => lastReach && { heard: lastReach.heard.length, filled: lastReach.filled.length } // test hook
 
 // The receptions the stars are built from. With a target picked the layer's
 // points are already narrowed to it, and the other stars have to stay up at a
@@ -2759,9 +2797,13 @@ window.addEventListener('focus', async () => {
 
 // The Export sheet (#666). The picture is made of the same registry and
 // receptions as the node layer, so it asks the same of the account.
+const exportReason = () => (canSeeObserverPoints(currentRole) ? null
+  : currentRole === 'hunter' ? 'Exports need a verified member account. An admin verifies you.'
+    : 'Exports need an account. Log in to use them.')
 initExportSheet({
-  heard: heardExport,
-  reason: () => (canSeeObserverPoints(currentRole) ? null
-    : currentRole === 'hunter' ? 'Exports need a verified member account. An admin verifies you.'
-      : 'Exports need an account. Log in to use them.'),
+  items: [
+    { button: 'ex-heard', status: 'ex-heard-status', run: heardExport, reason: exportReason },
+    { button: 'ex-reach', status: 'ex-reach-status', run: reachExport,
+      reason: () => exportReason() || (coverageSelected().size ? null : SELECT_ONE) },
+  ],
 })
