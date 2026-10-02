@@ -26,28 +26,45 @@ const subject = (selector) => selector.split(/\s*[>+~]\s*|\s+/).filter(Boolean).
 const rulesStyling = (id) => rules.filter((r) => r.selectors.some((s) => namesId(id, subject(s))))
 const where = (r) => r.selectors.join(', ')
 
-describe('the HUD readout rows (#637, #618)', () => {
+describe('the HUD readout rows (#637, #618, #708)', () => {
   // #637: SNR shared the row's deficit with the sender (min-width:0 and an
-  // ellipsis), so a long relay name cut it to "SNR -1…". The sender has its
-  // own row now, and the SNR keeps its digits. No rule may take that back.
-  it('never shrinks the SNR (#637)', () => {
-    const snr = rulesStyling('hud-snr')
-    expect(snr.length, 'app.css declares #hud-snr').toBeGreaterThan(0)
-    expect(snr.some((r) => /(^|[;\s])flex:\s*none\s*(;|$)/.test(r.body))).toBe(true)
-    for (const r of snr) {
-      expect(r.body, where(r)).not.toMatch(/text-overflow/)
-      expect(r.body, where(r)).not.toMatch(/(^|[;\s])min-width:\s*0/)
-      expect(r.body, where(r)).not.toMatch(/(^|[;\s])max-width:/)
-      expect(r.body, where(r)).not.toMatch(/(^|[;\s])flex:(?!\s*none\s*(;|$))/)
-      expect(r.body, where(r)).not.toMatch(/(^|[;\s])flex-shrink:(?!\s*0\s*(;|$))/)
+  // ellipsis), so a long relay name cut it to "SNR -1…". Since #708 the
+  // measurements have a row of their own, numbers of a known widest form, and
+  // none of them gives up digits. No rule may take that back.
+  for (const id of ['hud-snr', 'hud-noise']) {
+    it(`never shrinks #${id} (#637)`, () => {
+      const own = rulesStyling(id)
+      expect(own.length, `app.css declares #${id}`).toBeGreaterThan(0)
+      expect(own.some((r) => /(^|[;\s])flex:\s*none\s*(;|$)/.test(r.body))).toBe(true)
+      for (const r of own) {
+        expect(r.body, where(r)).not.toMatch(/text-overflow/)
+        expect(r.body, where(r)).not.toMatch(/(^|[;\s])min-width:\s*0/)
+        expect(r.body, where(r)).not.toMatch(/(^|[;\s])max-width:/)
+        expect(r.body, where(r)).not.toMatch(/(^|[;\s])flex:(?!\s*none\s*(;|$))/)
+        expect(r.body, where(r)).not.toMatch(/(^|[;\s])flex-shrink:(?!\s*0\s*(;|$))/)
+      }
+    })
+  }
+
+  // Kasper, 27 September (#708): who beside the number, the measurements
+  // under it. The sender is the only thing in row 1 that can give up width,
+  // and row 2 holds only numbers.
+  it('puts the number and who in row 1, the measurements in row 2', () => {
+    const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
+    const ids = (rowId) => {
+      const start = html.indexOf(`id="${rowId}"`)
+      const body = html.slice(start, html.indexOf('\n    </div>', start))
+      return [...body.matchAll(/\bid="(hud-[\w-]+)"/g)].map((m) => m[1]).filter((id) => id !== rowId)
     }
+    expect(ids('hud-readout-row')).toEqual(['hud-dir', 'hud-rssi', 'hud-sender', 'hud-backlog'])
+    expect(ids('hud-measure-row')).toEqual(['hud-snr', 'hud-noise', 'hud-since'])
   })
 
   // #hud is anchored to the bottom and the FAB rail sits a fixed distance above
   // it (#264), so a row that grows moves every button. The direction arrow
   // (#660) goes into row 1 and must not be able to do that.
   it('fixes the height of both readout rows, so an arrow cannot move the FAB rail', () => {
-    for (const id of ['hud-readout-row', 'hud-sender-row']) {
+    for (const id of ['hud-readout-row', 'hud-measure-row']) {
       const row = rulesStyling(id)
       expect(row.some((r) => /(^|[;\s])height:\s*\d+(\.\d+)?px\s*(;|$)/.test(r.body)), `#${id} declares a px height`).toBe(true)
       for (const r of row) {
@@ -126,7 +143,7 @@ describe('the HUD before app.js runs (#618)', () => {
     expect(sender, 'index.html has #hud-sender holding text only').toBeTruthy()
     expect(sender[1]).toMatch(/\bclass="([^"]*\s)?empty(\s[^"]*)?"/)
     expect(sender[2]).toBe(senderReadout(null).text)
-    for (const id of ['hud-rssi', 'hud-snr', 'hud-since']) {
+    for (const id of ['hud-rssi', 'hud-snr', 'hud-noise', 'hud-since']) {
       expect(slot(id), `index.html has #${id} holding text only`).toBeTruthy()
       expect(slot(id)[2], `#${id}`).toBe('')
     }

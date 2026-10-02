@@ -27,7 +27,7 @@ import { backlogState } from './backlog.js'
 import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M, isUsableFix } from './gps.js'
-import { buildStatsRadioRequest, parseStatsRadio, shouldSampleNoise, noiseSample } from './noise.js'
+import { buildStatsRadioRequest, parseStatsRadio, shouldSampleNoise, noiseSample, noiseReadout } from './noise.js'
 import { requestSelfInfo, radioSummary } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
@@ -325,7 +325,7 @@ const state = {
   battery: { mv: null, timer: null, failures: 0 },
   // The noise-floor sampler (#410): the connection the samples belong to, the
   // last sample's time and place for the rhythm, and the misses in a row.
-  noise: { session: null, last: null, failures: 0, busy: false },
+  noise: { session: null, last: null, failures: 0, busy: false, value: null, valueAt: null },
   // The noise layer on the map (#410): a setting, kept across launches, and
   // while it is on the samples it draws, which noiseTick appends to.
   noiseLayer: { on: loadNoiseLayer(), samples: null },
@@ -1541,6 +1541,7 @@ async function renderTick() {
   await drawOnce()
   await trackTick()
   noiseTick()
+  renderHudNoise()
   setTimeout(renderTick, 1000)
 }
 
@@ -1578,6 +1579,14 @@ async function applyNoiseLayer() {
   if (state.map) state.map.setNoise(rows)
 }
 
+// The HUD's noise line (#708), every tick, so the layer's switch, a connect
+// and a reading that goes stale all reach it within a second.
+function renderHudNoise() {
+  const text = noiseReadout({ on: state.noiseLayer.on, connected: state.connected, value: state.noise.value, at: state.noise.valueAt, now: Date.now() })
+  const out = el('hud-noise')
+  if (out.textContent !== text) out.textContent = text
+}
+
 function noiseTick() {
   const n = state.noise
   if (!state.connected || !state.transport || n.busy || !n.session || n.failures >= NOISE_FAILURES_BEFORE_GIVING_UP) return
@@ -1588,6 +1597,10 @@ function noiseTick() {
   n.busy = true
   sendAndWait(buildStatsRadioRequest(), parseStatsRadio, NOISE_REPLY_TIMEOUT_MS)
     .then(async (r) => {
+      // The HUD shows the latest answer (#708): a miss or the firmware's 0
+      // (not measured yet) clears it rather than leaving an old value up.
+      n.value = r ? r.noiseFloor : null
+      n.valueAt = now
       if (!r) { n.failures++; return }
       n.failures = 0
       const sample = noiseSample({ noiseFloor: r.noiseFloor, fix, session: n.session, rxPubkey: state.rxPubkey, nowMs: now, last: n.last })
@@ -2312,7 +2325,7 @@ async function connectAll() {
     const info = await requestSelfInfo(state.transport, 'core-hunter')
     state.rxPubkey = info.pubkey.toLowerCase()
     // A noise session is one connection (#410, Kasper 2026-09-25).
-    state.noise = { session: new Date().toISOString(), last: null, failures: 0, busy: false }
+    state.noise = { session: new Date().toISOString(), last: null, failures: 0, busy: false, value: null, valueAt: null }
     state.name = info.name || ''
     state.sf = info.sf ?? null
     // The rest of the radio (#650): what the companion reports, for the Status

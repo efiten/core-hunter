@@ -117,16 +117,70 @@ export function withNoise(vis, on) {
   return out
 }
 
-// noiseHexFC: one polygon per cell, with its median as `nf`. `cellAt(lat, lon)`
-// names a cell and `boundary(id)` gives its ring as [lat, lon] pairs, the
-// hexgrid.js pair, passed in so the zoom's resolution stays the caller's.
-export function noiseHexFC(samples, cellAt, boundary) {
+// The layer draws the cells as soft spots, not hexes (Kasper, 28 September):
+// a hex read as one of the signal cells, while a noise floor is a property
+// of the place around the sample. One blurred circle per cell at its centre,
+// NOISE_SPOT_SPREAD times the cell's radius, so neighbours flow into each
+// other and a lone reading has no hard edge.
+export const NOISE_SPOT_SPREAD = 1.3
+export const NOISE_SPOT_BLUR = 0.8
+export const NOISE_SPOT_OPACITY = 0.6
+// Pixels per Web Mercator metre at zoom 0, with MapLibre's 512px tiles: the
+// cell radius the grid works in (hexSizeForRes) is in those metres.
+export const PX_PER_MERCATOR_M_Z0 = 512 / (2 * Math.PI * 6378137)
+
+// noiseSpotFC: one point per cell at its centre, with its median as `nf` and
+// the cell's radius in mercator metres as `r`. `cellAt(lat, lon)` names a
+// cell and `centreOf(id)` answers its centre as [lat, lon], the hexgrid.js
+// pair, passed in so the zoom's resolution stays the caller's.
+export function noiseSpotFC(samples, cellAt, centreOf, radiusM) {
   const features = []
   for (const [id, c] of noiseCells(samples, (s) => cellAt(s.lat, s.lon))) {
-    const ring = boundary(id)
-    if (!ring) continue
-    features.push({ type: 'Feature', properties: { nf: c.median, count: c.n },
-      geometry: { type: 'Polygon', coordinates: [ring.map(([lat, lon]) => [lon, lat])] } })
+    const centre = centreOf(id)
+    if (!centre) continue
+    features.push({ type: 'Feature', properties: { id, nf: c.median, count: c.n, r: radiusM },
+      geometry: { type: 'Point', coordinates: [centre[1], centre[0]] } })
   }
   return { type: 'FeatureCollection', features }
+}
+
+// noiseRadius: the spot's radius in px, from `r` and the zoom. A mercator
+// metre is PX_PER_MERCATOR_M_Z0 * 2^zoom px, so the radius doubles per zoom
+// and the spot stays the cell's size on the ground. A camera expression has
+// to be the top-level interpolate, so the zoom range is spelled out.
+export function noiseRadius() {
+  const k = NOISE_SPOT_SPREAD * PX_PER_MERCATOR_M_Z0
+  return ['interpolate', ['exponential', 2], ['zoom'], 0, ['*', ['get', 'r'], k], 24, ['*', ['get', 'r'], k * 2 ** 24]]
+}
+
+// ---- the measured value (#708) ----
+// The colour says loud or quiet; these say how loud, in whole dBm.
+
+// noiseLabelItems: a label per noise cell whose centre is in view, for the
+// hex-label markers (#556), which the noise cells replace while the layer is
+// on. Read from the spots the layer draws (noiseSpotFC), so a label and its
+// colour are always the same median, at the same place. `inView(lat, lon)`
+// is the map's bounds.
+export function noiseLabelItems(fc, inView) {
+  const items = []
+  for (const f of (fc && fc.features) || []) {
+    const [lon, lat] = f.geometry.coordinates
+    if (!inView(lat, lon)) continue
+    items.push({ id: f.properties.id, label: String(Math.round(f.properties.nf)), lat, lon })
+  }
+  return items
+}
+
+// How long a reading counts as the noise floor of now: three rounds of the
+// rhythm. The companion is only asked with a fix, so without one the value
+// stops being renewed, and an old one must not stand on screen looking live.
+export const NOISE_LIVE_MS = 3 * INTERVAL_MS
+
+// noiseReadout: the HUD's line for the latest reading, taken at `at`, or ''
+// when there is nothing to say: the layer is off, no companion is connected,
+// the last ask brought no reading (none yet, a miss, or the firmware's 0), or
+// the reading is older than NOISE_LIVE_MS.
+export function noiseReadout({ on, connected, value, at, now }) {
+  if (!on || !connected || value == null || at == null || now - at > NOISE_LIVE_MS) return ''
+  return `Noise ${value} dBm`
 }

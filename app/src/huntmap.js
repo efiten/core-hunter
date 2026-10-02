@@ -1,4 +1,4 @@
-import { hexCellAt, hexBoundary, hexResForZoom, HEX_MAX_RES } from './hexgrid.js'
+import { hexCellAt, hexBoundary, hexResForZoom, hexSizeForRes, HEX_MAX_RES } from './hexgrid.js'
 import { pointShare, backlogShare, labelShare, hexSlots, resForZoom, hexFillOpacity, hexBarHeight, hexBarSwitch, pointFillOpacity, pointStrokeOpacity, pillarSwitch } from './zoomfade.js'
 import { rssiTier, tierColorVar, fillOpacity, effectivePlotOffset, extrusionHeight, tintOver, pillarAlpha, EXTRUSION_LIGHT_INTENSITY } from './signal.js'
 import { getConfig } from './config.js'
@@ -20,7 +20,7 @@ import { skyForHour, currentHour } from './sky.js'
 import { DEM_TILES, DEM_ENCODING, DEM_MAX_ZOOM, DEM_ATTRIBUTION, DEFAULT_EXAGGERATION, hillshadeFor, terrainPlan, reportMapError } from './terrain.js'
 import { followAfter, paddingAction } from './rotation.js'
 import { STYLE_RETRY_MS, nextStyleAttempt } from './basemapswap.js'
-import { noiseFill, withNoise, noiseHexFC } from './noise.js'
+import { noiseFill, withNoise, noiseSpotFC, noiseRadius, noiseLabelItems, NOISE_SPOT_BLUR, NOISE_SPOT_OPACITY } from './noise.js'
 
 // Map layer — MapLibre GL (#147). Migrated from Leaflet + leaflet-rotate: native
 // rotation/pitch replaces the plugin (and its zoom-drift patch, #167/#168), and
@@ -671,11 +671,15 @@ export function createHuntMap(containerId) {
     const hexPaint = { 'fill-color': ['get', 'color'], 'fill-opacity': 0 }
     if (!map.getLayer('hex')) map.addLayer({ id: 'hex', type: 'fill', source: 'hex', layout: { visibility: shown('hex') }, paint: hexPaint })
     if (!map.getLayer('hex-b')) map.addLayer({ id: 'hex-b', type: 'fill', source: 'hex-b', layout: { visibility: shown('hex-b') }, paint: hexPaint })
-    // Flat in 3D too: a noise floor has no height to give a pillar. The band
-    // colours are baked in like every overlay's; a theme swap re-adds them.
-    if (!map.getLayer('noise')) map.addLayer({ id: 'noise', type: 'fill', source: 'noise',
+    // Soft spots, one per cell (noise.js): a blurred circle the cell's size
+    // on the ground, lying on the map so it stays flat in 3D too, where a
+    // noise floor has no height to give a pillar. The band colours are baked
+    // in like every overlay's; a theme swap re-adds them.
+    if (!map.getLayer('noise')) map.addLayer({ id: 'noise', type: 'circle', source: 'noise',
       layout: { visibility: shown('noise') },
-      paint: { 'fill-color': noiseFill([1, 2, 3, 4].map((i) => cssVar(`--ch-noise-${i}`))) } })
+      paint: { 'circle-color': noiseFill([1, 2, 3, 4].map((i) => cssVar(`--ch-noise-${i}`))),
+        'circle-radius': noiseRadius(), 'circle-blur': NOISE_SPOT_BLUR, 'circle-opacity': NOISE_SPOT_OPACITY,
+        'circle-pitch-alignment': 'map', 'circle-pitch-scale': 'map' } })
     // 3D twin of 'hex': same source, extruded to 'height' (RSSI/SNR tier, #147).
     // fill-extrusion-opacity is not data-driven, and one opacity for every
     // tier is what made a faint bar a solid purple on a 19% tint (#412). The
@@ -956,7 +960,7 @@ export function createHuntMap(containerId) {
     }
     applyFades(slots)
     put('noise', vis.noise ? buildNoiseFC() : EMPTY)
-    drawHexLabels(records, vis['hex-labels'])
+    drawHexLabels(records, vis['hex-labels'], vis.noise)
     zoomDrawn.cells = zoomKeysNow().cells
   }
 
@@ -985,11 +989,18 @@ export function createHuntMap(containerId) {
     map.setPaintProperty('points-3d', 'fill-extrusion-opacity', pillarSwitch(view))
   }
 
-  // The noise cells at this zoom's resolution, rebuilt when a sample arrives
-  // or the resolution changes.
+  // The noise spots at this zoom's resolution, rebuilt when a sample arrives
+  // or the resolution changes. A cell's centre is the mean of its corners.
   function buildNoiseFC() {
     const res = hexResForZoom(map.getZoom())
-    return noiseCache.get(`${noiseGen}|${noiseSamples.length}|${res}`, () => noiseHexFC(noiseSamples, (lat, lon) => hexCellAt(lat, lon, res), hexBoundary))
+    const centreOf = (id) => {
+      const ring = hexBoundary(id)
+      if (!ring) return null
+      let lat = 0, lon = 0
+      for (let i = 0; i < 6; i++) { lat += ring[i][0]; lon += ring[i][1] }
+      return [lat / 6, lon / 6]
+    }
+    return noiseCache.get(`${noiseGen}|${noiseSamples.length}|${res}`, () => noiseSpotFC(noiseSamples, (lat, lon) => hexCellAt(lat, lon, res), centreOf, hexSizeForRes(res)))
   }
 
   // ---- hex labels (#556) ----
@@ -1012,14 +1023,12 @@ export function createHuntMap(containerId) {
     const share = String(labelShare(map.getZoom()))
     hexLabelMarkers.forEach((m) => { m.getElement().style.opacity = share })
   }
-  function drawHexLabels(records, on) {
-    if (!on || !(labelShare(map.getZoom()) > 0)) { if (hexLabelMarkers.size) clearHexLabels(); return }
+  // Who was heard in each cell in view, for its label (hexCellLabel).
+  function receptionLabelItems(records, inView) {
     const res = hexResForZoom(map.getZoom())
-    const b = map.getBounds()
     const cells = new Map()
     for (const r of records) {
-      if (r.lat == null || r.lon == null) continue
-      if (r.lat < b.getSouth() || r.lat > b.getNorth() || r.lon < b.getWest() || r.lon > b.getEast()) continue
+      if (r.lat == null || r.lon == null || !inView(r.lat, r.lon)) continue
       const id = hexCellAt(r.lat, r.lon, res)
       const cur = cells.get(id) || []
       cur.push(r); cells.set(id, cur)
@@ -1034,6 +1043,16 @@ export function createHuntMap(containerId) {
       for (let i = 0; i < n; i++) { lat += ring[i][0]; lon += ring[i][1] }
       items.push({ id, label, lat: lat / n, lon: lon / n })
     }
+    return items
+  }
+  // With the noise layer on, the same markers carry each noise cell's median
+  // in dBm (#708): the noise spots take the signal cells' place, so their
+  // labels take the hex labels' place, from the same zoom.
+  function drawHexLabels(records, on, noiseOn) {
+    if (!(on || noiseOn) || !(labelShare(map.getZoom()) > 0)) { if (hexLabelMarkers.size) clearHexLabels(); return }
+    const b = map.getBounds()
+    const inView = (lat, lon) => lat >= b.getSouth() && lat <= b.getNorth() && lon >= b.getWest() && lon <= b.getEast()
+    const items = noiseOn ? noiseLabelItems(buildNoiseFC(), inView) : receptionLabelItems(records, inView)
     const drawn = new Map([...hexLabelMarkers].map(([id, m]) => [id, m.getElement().textContent]))
     const { add, relabel, remove } = planHexLabels(drawn, items)
     for (const id of remove) { hexLabelMarkers.get(id).remove(); hexLabelMarkers.delete(id) }

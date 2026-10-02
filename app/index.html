@@ -103,11 +103,11 @@
   </div>
   <div id="rx-log" aria-label="Receptions" data-map-overlay></div>
   <section id="hud" data-map-overlay>
-    <!-- Row 1 is the reading, row 2 the sender line (#618). Before the first
-         reception the reading is empty and the sender line says so, here in
-         the markup, so a slow config.json or module never shows two blank
-         rows. The line is senderReadout(null) as paintSender draws a note
-         (hudlayout.test.js). -->
+    <!-- Row 1 is the number and who it came from, row 2 the measurements
+         (#708, after #618). Before the first reception the numbers are empty
+         and the sender says so, here in the markup, so a slow config.json or
+         module never shows two blank rows. The line is senderReadout(null) as
+         paintSender draws a note (hudlayout.test.js). -->
     <div id="hud-readout-row">
       <!-- The direction arrow (#660): which way the sender is, relative to
            where you are heading. Filled for an advertised position, outlined
@@ -118,14 +118,18 @@
         <svg viewBox="-12 -12 24 24" aria-hidden="true"><polygon points="0,-10.6 6.57,8.27 0,4.45 -6.57,8.27" stroke-linejoin="round"/></svg>
       </span>
       <div id="hud-rssi"></div>
-      <div id="hud-snr"></div>
-      <div id="hud-since" title="Age of the reception the ticker points at"></div>
-    </div>
-    <div id="hud-sender-row">
       <div id="hud-sender" class="empty" title="Sender of the reception the ticker points at, or the repeater it was heard via">No reception yet</div>
       <!-- Receptions captured but not yet sent on. The MQTT dot answers
            "is the socket open", which is a different question (#454). -->
       <div id="hud-backlog" role="status" hidden></div>
+    </div>
+    <div id="hud-measure-row">
+      <div id="hud-snr"></div>
+      <!-- The companion's latest noise floor (#708), while the noise layer is
+           on. Live, not the shown reception's: the companion measures it
+           between packets. -->
+      <div id="hud-noise"></div>
+      <div id="hud-since" title="Age of the reception the ticker points at"></div>
     </div>
     <!-- The filtered/all stand shared with the ticker, and the quick actions
          on the shown sender (#555). The closed eye appears while the filter

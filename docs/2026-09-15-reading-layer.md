@@ -10,7 +10,8 @@ The HUD's readout was one row: RSSI with its unit, SNR, the sender, the age and 
 360 px a long relay name took the space the SNR needed, so the SNR was cut to `SNR -1...` (#637),
 and a visible backlog wrapped inside the row and grew the HUD over the FAB rail.
 
-It is two rows now, above the unchanged tools row:
+It is two rows now, above the unchanged tools row. (Amended 27 September, #708: the rows were
+regrouped as the number and who, then the measurements; see the last section.)
 
 1. **The reading.** The RSSI as a number in its tier colour, without a unit (the float keeps
    `dBm`), the SNR, and the age at the right edge. The SNR never shrinks.
@@ -179,4 +180,19 @@ arrow points straight ahead; heading north, to the right; 17 s after the fixes s
 HUD stays 114 px throughout. Not verified: a real compass, a real phone in picture-in-picture
 (where the page is hidden and GPS and orientation events may stop, which the age gates turn into
 no arrow rather than a frozen one), and the bearing swinging close to the target.
+
+## The rows regrouped (#708)
+
+Amended 27 September 2026 (Kasper, on the artboard of that day). The noise floor needed a place in
+the HUD, and beside the SNR it wrapped to two lines at 360 px. The rows are regrouped instead:
+
+1. **The number and who.** The arrow, the RSSI, the sender at 17 px, and the backlog pill at the
+   right end. The sender is the one thing in the row that gives up width: about 20 characters
+   at 360 px and 24 at 390 px before the cut, where the line of its own held about 36.
+2. **The measurements.** The SNR, `Noise -104 dBm` while the noise layer is on, and the age at the
+   right edge. Numbers of a known widest form only: `SNR -12.5 dB`, `Noise -104 dBm` and `59m 59s`
+   fit 328 px at 360 px wide with a 12 px gap, so none of them shrinks and #637 cannot come back.
+
+The heights stay 38 px and 20 px, so the HUD stays 114 px and the FAB rail does not move. The
+float readout keeps its own layout.
 

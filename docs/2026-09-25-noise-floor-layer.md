@@ -25,12 +25,18 @@ A stretch with no receptions reads the same whether it was out of coverage or dr
 
 ## The layer
 
-- **Always hex cells**, whatever the view (points, hex + points, hex, 2D or 3D). A noise floor is a property of a place, not of a reception.
+- **Always cells**, whatever the view (points, hex + points, hex, 2D or 3D). A noise floor is a property of a place, not of a reception.
+- **Drawn as soft spots, not hexes** (amended 28 September 2026, Kasper, on the review of #708). Hexes read as the signal cells, while a noise floor is a property of the place around the sample. Each cell is one blurred circle at its centre (`circle-blur` 0.8, opacity 0.6), 1.3 times the cell's radius so neighbours flow into each other, sized on the ground by the zoom (`noiseRadius`, `PX_PER_MERCATOR_M_Z0`). The cells, the medians and the labels are unchanged.
 - **It replaces the signal cells** while it is on: `hex`, `hex-3d` and the hex labels step aside, the points stay on top. Laid over the signal cells, blue on orange mixed into grey and olive and neither read (artboard of 25 September, variants C over and D stripes).
 - **The value per cell is the median.** The stationary samples of one connection in one cell count once, as their own median: ten minutes parked is one place, not sixty readings of it.
 - **Colour:** clear below -119 dBm, then four bands at -119, -113, -107 and -101, blue that gets stronger as it gets louder (`--ch-noise-1..4`). Blue-to-black was tried first: black on the dark basemap hid exactly the loud cells.
-- **Flat in 3D.** A noise floor has no height to give a pillar.
+- **Flat in 3D.** A noise floor has no height to give a pillar; the spots lie on the map (`circle-pitch-alignment: map`).
 - **No legend.** The hint under the switch says what the colour means.
+- **The value itself** (#708, Kasper, 27 September). Each cell carries its median in whole dBm,
+  fading in with the cell names (zoom 15.5 to 16.5, #634), on the hex-label markers the noise cells take over while the layer is on, read from
+  the same cells the fill draws. The HUD shows the latest reading, `Noise -104 dBm`, while the layer
+  is on and the companion answers; a miss, the firmware's 0 or a reading older than three rounds
+  (30 s, since without a fix nothing is asked) leaves the line empty.
 
 ## Where the switch is
 
