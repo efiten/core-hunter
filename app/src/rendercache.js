@@ -175,3 +175,59 @@ export function rowCache() {
     },
   }
 }
+
+// sameFeatures says whether two feature lists would draw the same: the same
+// geometries and the same properties, in the same order. For a collection that
+// is cheap to build and dear to hand over, where signing the inputs would cost
+// more care than building: the rays (#603) come out of the records, the
+// registry, the attribution, the selection and the theme, and are built in
+// about a millisecond. So the answer is compared instead, and a collection
+// equal to the last one is not sent again (lastSent).
+//
+// Generic over the properties on purpose: a field added to the features later
+// is compared without anyone remembering to add it here. Exact, not a fold, so
+// there is no collision that would keep last tick's map up.
+export function sameFeatures(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (!sameFeature(a[i], b[i])) return false
+  return true
+}
+function sameFeature(a, b) {
+  if (a === b) return true
+  if (!a || !b) return false
+  const ga = a.geometry, gb = b.geometry
+  if (!ga || !gb || ga.type !== gb.type || !sameCoords(ga.coordinates, gb.coordinates)) return false
+  const pa = a.properties || {}, pb = b.properties || {}
+  const keys = Object.keys(pa)
+  if (keys.length !== Object.keys(pb).length) return false
+  for (const k of keys) if (pa[k] !== pb[k] || !(k in pb)) return false
+  return true
+}
+function sameCoords(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return a === b
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (!sameCoords(a[i], b[i])) return false
+  return true
+}
+
+// lastSent remembers, per source, the collection the map was last handed, so
+// one that did not change is not handed over again. MapLibre does not look:
+// setData serialises the collection, ships it to the worker, tiles it again
+// and uploads the result whether or not it is the object it already has. For
+// the 4501 rays of a Nijmegen-to-Arnhem export that was 93 ms per call on a
+// laptop, and the map drew once a second.
+//
+// By identity, which is what makes it free: the caches above hand back the
+// same object on a hit. clear() is for a style swap, after which every source
+// exists again and is empty.
+export function lastSent() {
+  const sent = new Map()
+  return {
+    isNew(id, data) {
+      if (sent.has(id) && sent.get(id) === data) return false
+      sent.set(id, data)
+      return true
+    },
+    clear() { sent.clear() },
+  }
+}
