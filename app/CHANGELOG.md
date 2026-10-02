@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.31.0](https://github.com/efiten/core-hunter/compare/app-v1.30.0...app-v1.31.0) (2026-10-02)
+
+
+### Features
+
+* **app:** show the measured noise floor in the cells and the HUD ([#711](https://github.com/efiten/core-hunter/issues/711)) ([d97cec0](https://github.com/efiten/core-hunter/commit/d97cec002447c12891c9e0d3b606079f8239b36b))
+
+
+### Performance Improvements
+
+* **app:** hand a map collection to MapLibre only when it changed ([#740](https://github.com/efiten/core-hunter/issues/740)) ([c6fc9a9](https://github.com/efiten/core-hunter/commit/c6fc9a91eede5dd8efc4940817fb48b3930ba3ca))
+
 ## [1.30.0](https://github.com/efiten/core-hunter/compare/app-v1.29.1...app-v1.30.0) (2026-09-30)
 
 
