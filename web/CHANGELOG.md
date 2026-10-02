@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.27.0](https://github.com/efiten/core-hunter/compare/web-v1.26.0...web-v1.27.0) (2026-10-02)
+
+
+### Features
+
+* **app:** show the measured noise floor in the cells and the HUD ([#711](https://github.com/efiten/core-hunter/issues/711)) ([d97cec0](https://github.com/efiten/core-hunter/commit/d97cec002447c12891c9e0d3b606079f8239b36b))
+
 ## [1.26.0](https://github.com/efiten/core-hunter/compare/web-v1.25.1...web-v1.26.0) (2026-09-30)
 
 
