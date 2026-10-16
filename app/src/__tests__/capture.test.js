@@ -11,7 +11,7 @@ describe('buildRecord', () => {
     expect(rec).toEqual({
       rx_at: '2026-06-29T10:00:00Z', rx_pubkey: 'aabbcc', raw: 'dead', snr: -3.5, rssi: -92, lat: 51, lon: 4, acc_m: 8,
       sender_kind: 'channel_name', sender_id: 'Spammer', sender_label: 'Spammer', sender_role: null, channel_name: 'public',
-      is_direct: true, hops: 0, packet_type: 'GroupText', heard_us_snr: null,
+      is_direct: true, hops: 0, packet_type: 'GroupText', heard_us_snr: null, radio: null,
     })
     expect('text' in rec).toBe(false)
   })
@@ -31,6 +31,20 @@ describe('buildRecord', () => {
     // caller happened to be holding.
     expect(buildRecord(frame, cls, gps, 'x').rx_pubkey).toBe('')
     expect(buildRecord(frame, cls, gps, 'x', null).rx_pubkey).toBe('')
+  })
+
+  // #744: same argument as the pubkey above. The backlog can be published
+  // hours later, under another preset or another companion, and the network a
+  // reception was heard on does not change with them.
+  it('stamps the radio the reception was heard on, at capture time', () => {
+    const frame = { snr: -3, rssi: -90, raw: new Uint8Array([0x01]) }
+    const cls = { packetType: 'Advert', hops: 0, isDirect: true, sender: { kind: null, id: null, label: null }, channel: null }
+    const gps = { lat: 51, lon: 4, acc_m: 8 }
+    expect(buildRecord(frame, cls, gps, 'x', 'AABB', '869.618,62.5,8,5').radio).toBe('869.618,62.5,8,5')
+    // Null, not undefined, when the companion did not report all of it: the
+    // field says "unknown", never "whatever the radio is set to now".
+    expect(buildRecord(frame, cls, gps, 'x', 'AABB').radio).toBeNull()
+    expect(buildRecord(frame, cls, gps, 'x', 'AABB', null).radio).toBeNull()
   })
 })
 

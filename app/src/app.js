@@ -28,7 +28,7 @@ import { mqttShouldRun, mqttAction } from './mqttlifecycle.js'
 import { Publisher } from './publisher.js'
 import { Gps, shouldNoticePoorFix, accuracyLabel, GPS_MAX_ACC_M, isUsableFix } from './gps.js'
 import { buildStatsRadioRequest, parseStatsRadio, shouldSampleNoise, noiseSample, noiseReadout } from './noise.js'
-import { requestSelfInfo, radioSummary } from './selfinfo.js'
+import { requestSelfInfo, radioSummary, radioString } from './selfinfo.js'
 import { requestStatsCore, mvToPercent, isLowBattery } from './battery.js'
 import { senderReadout } from './hudsender.js'
 import { hudShows, hiddenAfter, hudToggleText, hudActions, sameReadout } from './hudmode.js'
@@ -1368,7 +1368,7 @@ async function processFrame(dv) {
     cls = stripIdentity(cls)
   }
 
-  const rec = buildRecord(frame, cls, fix, new Date().toISOString(), state.rxPubkey)
+  const rec = buildRecord(frame, cls, fix, new Date().toISOString(), state.rxPubkey, radioString(state.radio))
   rec._text = cls.text // local-only, for the popup; stripped before publish
   // Sound every capture, regardless of the active filter (#468): you heard the
   // transmission, and narrowing the map to one target must not narrow what the
@@ -1740,14 +1740,14 @@ async function drainTracks(id, entry) {
 async function trackTick() {
   if (!brokerList().some((b) => b.format === 'wardrive')) return
   const fix = state.gps.latest()
-  const args = { nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey: state.rxPubkey }
+  const args = { nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey: state.rxPubkey, radio: radioString(state.radio) }
   const row = state.connected && state.rxPubkey ? state.trackWindow.tick(args) : null
   if (row) { try { await state.queue.addTrack(row) } catch (_) { /* a lost track is a gap, not an error */ } }
 }
 
 async function closeTrack(rxPubkey) {
   const fix = state.gps.latest()
-  const row = state.trackWindow.close({ nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey })
+  const row = state.trackWindow.close({ nowMs: Date.now(), fix: isUsableFix(fix) ? fix : null, rxPubkey, radio: radioString(state.radio) })
   if (row && rxPubkey) { try { await state.queue.addTrack(row) } catch (_) { /* as above */ } }
 }
 

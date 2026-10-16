@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-10-16-radio-on-published",
+    "date": "2026-10-16",
+    "where": "app",
+    "title": "Published receptions say which network heard them",
+    "body": "Every published reception and track carries the radio settings, in the format observers already send."
+  },
+  {
     "id": "2026-09-30-node-positions-after-restart",
     "date": "2026-09-30",
     "where": "map",

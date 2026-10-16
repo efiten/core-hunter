@@ -37,6 +37,16 @@ describe('Publisher.buildPayload', () => {
     expect('sender_key' in p).toBe(false)
     expect('text' in p).toBe(false)
   })
+
+  // #744: the network the reception was heard on, in the format every MQTT
+  // observer sends on status. From the stored row, not from live state: the
+  // backlog may have been heard under another preset.
+  it('carries the radio the row was stamped with, and nothing when it has none', () => {
+    const rec = { rx_at: 't', raw: 'dead', snr: -3.5, rssi: -92, lat: 51, lon: 4, acc_m: 8, radio: '869.618,62.5,8,5' }
+    expect(Publisher.buildPayload('aabb', rec, 'h').radio).toBe('869.618,62.5,8,5')
+    const bare = Publisher.buildPayload('aabb', { ...rec, radio: null }, 'h')
+    expect(JSON.stringify(bare)).not.toContain('radio')
+  })
 })
 
 describe('Publisher.publish: a broker that never answers (#554)', () => {
@@ -98,5 +108,16 @@ describe('Publisher: the wardrive format (#554)', () => {
     await p.publishTrack({ rx_pubkey: 'cd'.repeat(32), t0: 'a', t1: 'b', lat: 52.1, lon: 5.1, acc_m: 9, rx_count: 0, listening: true })
     expect(c.sent[0].topic).toBe('meshcore/hunter/' + 'CD'.repeat(32) + '/wardriver/track')
     expect(c.sent[0].payload).toEqual({ v: 1, origin_id: 'CD'.repeat(32), t0: 'a', t1: 'b', lat: 52.1, lon: 5.1, accuracy: 9, rx_count: 0, listening: true, src: 'phone' })
+  })
+
+  // #744: the obs and the track carry the radio their rows were stamped with.
+  it('passes the stored radio through to the obs and the track', async () => {
+    const c = capture()
+    const p = new Publisher({ url: 'wss://x.example', format: 'wardrive', label: 'hunter' })
+    p.client = c.client
+    await p.publish('', { ...REC, radio: '869.618,62.5,8,5' })
+    await p.publishTrack({ rx_pubkey: 'cd'.repeat(32), t0: 'a', t1: 'b', lat: 52.1, lon: 5.1, rx_count: 0, listening: true, radio: '869.618,62.5,8,5' })
+    expect(c.sent[0].payload.radio).toBe('869.618,62.5,8,5')
+    expect(c.sent[1].payload.radio).toBe('869.618,62.5,8,5')
   })
 })

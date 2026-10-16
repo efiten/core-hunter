@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSelfInfo, radioSummary } from '../selfinfo.js'
+import { parseSelfInfo, radioSummary, radioString } from '../selfinfo.js'
 
 const hexToBytes = (h) => new Uint8Array(h.match(/../g).map((x) => parseInt(x, 16)))
 
@@ -85,6 +85,21 @@ describe('parseSelfInfo — frequency, bandwidth and coding rate (#650)', () => 
     expect(info).toMatchObject({ freqKhz: null, bwHz: null, sf: null, cr: null })
     expect(info.pubkey).toHaveLength(64)
     expect(parseSelfInfo(hexToBytes(SF7).slice(0, 56))).toMatchObject({ freqKhz: 869618, bwHz: 62500, sf: null, cr: null })
+  })
+})
+
+// The status format every MeshCore MQTT observer sends: "MHz,kHz,SF,CR".
+// Four fixed positions, so a value the frame did not carry drops the whole
+// field rather than shifting the meaning of the rest (#744).
+describe('radioString', () => {
+  it('prints the four values in the observer status format', () => {
+    expect(radioString({ sf: 8, freqKhz: 869618, bwHz: 62500, cr: 5 })).toBe('869.618,62.5,8,5')
+    expect(radioString({ sf: 11, freqKhz: 868000, bwHz: 250000, cr: 8 })).toBe('868,250,11,8')
+  })
+  it('is null unless all four are known', () => {
+    expect(radioString({ sf: 8, freqKhz: 869618, bwHz: 62500, cr: null })).toBeNull()
+    expect(radioString({ sf: null, freqKhz: 869618, bwHz: 62500, cr: 5 })).toBeNull()
+    expect(radioString(null)).toBeNull()
   })
 })
 

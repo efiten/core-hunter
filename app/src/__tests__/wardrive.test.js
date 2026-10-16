@@ -88,6 +88,15 @@ describe('buildObs: one reception in the wardrive shape (#554)', () => {
   it('returns null for a reception whose frame cannot be hashed', async () => {
     expect(await buildObs({ ...REC, raw: '15' }, { originId: 'x' })).toBeNull()
   })
+
+  // #744: the network the reception was heard on, as stamped on the row at
+  // capture. A row stored before the stamp existed sends no radio at all:
+  // absent, never guessed from whatever the radio is set to now.
+  it('carries the radio the row was stamped with, and leaves it out otherwise', async () => {
+    const obs = await buildObs({ ...REC, radio: '869.618,62.5,8,5' }, { originId: 'x' })
+    expect(obs.radio).toBe('869.618,62.5,8,5')
+    expect('radio' in (await buildObs(REC, { originId: 'x' }))).toBe(false)
+  })
 })
 
 describe('buildTrack: a listening interval (#554)', () => {
@@ -105,6 +114,14 @@ describe('buildTrack: a listening interval (#554)', () => {
     expect(buildTrack({ ...base, listening: true }).listening).toBe(true)
     expect(buildTrack({ ...base, listening: undefined }).listening).toBe(false)
     expect(buildTrack({ ...base, listening: 'yes' }).listening).toBe(false)
+  })
+
+  // #744: silence evidence only counts per network. The track says which one
+  // the radio was listening on, when the row carries it.
+  it('carries the radio of the interval, and leaves it out otherwise', () => {
+    const base = { originId: 'K', t0: 'a', t1: 'b', lat: 1, lon: 2, rxCount: 0, listening: true }
+    expect(buildTrack({ ...base, radio: '869.618,62.5,8,5' }).radio).toBe('869.618,62.5,8,5')
+    expect('radio' in buildTrack(base)).toBe(false)
   })
 })
 
@@ -138,6 +155,14 @@ describe('createTrackWindow: counting what was heard between tracks (#554)', () 
   const fix = { lat: 52.0, lon: 5.0, acc_m: 8 }
   const T0 = Date.parse('2026-09-21T10:00:00.000Z')
   const KEY = 'ab'.repeat(32)
+
+  // #744: the row is stamped with the radio at cut time, like rx_pubkey: the
+  // backlog may be published under another preset than it was heard on.
+  it('stamps the row with the radio it was listening on, null when unknown', () => {
+    const w = createTrackWindow()
+    expect(w.tick({ nowMs: T0, fix, rxPubkey: KEY, radio: '869.618,62.5,8,5' }).radio).toBe('869.618,62.5,8,5')
+    expect(w.close({ nowMs: T0 + 1000, fix, rxPubkey: KEY }).radio).toBeNull()
+  })
 
   it('opens with a track at once, then one per interval carrying the count', () => {
     const w = createTrackWindow()
