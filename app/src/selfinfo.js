@@ -88,6 +88,16 @@ export function parseSelfInfo(b) {
   return { pubkey, name, sf, freqKhz, bwHz, cr };
 }
 
+// radioString is the radio in the status format every MeshCore MQTT observer
+// publishes: "MHz,kHz,SF,CR", as in "869.618,62.5,8,5". A published reception
+// carries it so a consumer can tell which network heard it (#744). All four
+// values or nothing: the format has four fixed positions, so a gap would shift
+// the meaning of the rest: a companion that reports less keeps the field off.
+export function radioString(info) {
+  if (!info || !info.freqKhz || !info.bwHz || !info.sf || !info.cr) return null;
+  return [info.freqKhz / 1000, info.bwHz / 1000, info.sf, info.cr].join(',');
+}
+
 // radioSummary is the Status tab's line for the radio: what the companion
 // reports, in the units a hunter reads, and only what it reports. A value the
 // frame did not carry is left out rather than shown as a preset.

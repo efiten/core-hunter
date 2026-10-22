@@ -731,9 +731,17 @@ Payload (JSON):
   "sender_keylen": 32,
   "sender_role": null,
   "packet_type": "channel-msg",
+  "radio": "869.618,62.5,8,5",
   "gps": { "lat": 51.0, "lon": 4.0, "acc_m": 8 }
 }
 ```
+
+**`radio` is optional (#744):** the network the reception was heard on, in the format every
+MeshCore MQTT observer sends on `status`: frequency in MHz, bandwidth in kHz, SF, CR,
+comma-separated. It is stamped on the stored row at capture, like `rx_pubkey`: a backlog may be
+published under another preset than it was heard on. The field is absent when the companion did
+not report all four values (older firmware) and on rows stored before the stamp existed, never
+guessed from current settings.
 
 The PWA publishes everything the companion hears (iteration 1) — or all zero-hop receptions
 (iteration 2 after ratification). The local map filter (direct/all toggle) affects only the local
@@ -754,13 +762,15 @@ broker. A broker marked `format: "wardrive"` (config.json, or a broker a hunter 
 other messages instead, built in `app/src/wardrive.js`:
 
 - `meshcore/{label}/{PUBKEY}/wardriver/obs`: one reception. `v, origin_id, rx_at, pub_at, hash,
-  raw, len, packet_type, route, payload_len, path[], RSSI, SNR, pos{lat, lon, accuracy, src}`.
-  `hash` is the firmware's packet hash (`Packet::calculatePacketHash`, 8 bytes, hex); a reception
-  whose frame cannot be hashed is passed over for these brokers.
+  raw, len, packet_type, route, payload_len, path[], RSSI, SNR, radio, pos{lat, lon, accuracy,
+  src}`. `hash` is the firmware's packet hash (`Packet::calculatePacketHash`, 8 bytes, hex); a
+  reception whose frame cannot be hashed is passed over for these brokers. `radio` is the optional
+  radio string described above (#744).
 - `meshcore/{label}/{PUBKEY}/wardriver/track`: one listening interval, every 10 s or 25 m.
-  `v, origin_id, t0, t1, lat, lon, accuracy, rx_count, listening, src`. `rx_count: 0` with
+  `v, origin_id, t0, t1, lat, lon, accuracy, rx_count, listening, radio, src`. `rx_count: 0` with
   `listening: true` is silence evidence, so `listening` is only true while the radio is connected,
-  and a dropped link closes the interval with `listening: false`.
+  and a dropped link closes the interval with `listening: false`. Silence only counts per network,
+  so the track carries the same optional `radio` string (#744).
 
 `{label}` is a stream label, never an airport code: a moving receiver must not be read as a fixed
 observer. DutchMeshCore has two production labels, `hunter` for direction-finding and fox hunts and

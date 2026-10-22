@@ -61,6 +61,11 @@ export class Publisher {
       sender_role: rec.sender_role,
       channel_name: rec.channel_name,
       packet_type: rec.packet_type,
+      // The network this was heard on (#744), in the format every observer
+      // sends on status. From the stored row, never from live state: the
+      // backlog may have been heard under another preset. Consumers that do
+      // not know the field ignore it; undefined is dropped by JSON.stringify.
+      radio: rec.radio || undefined,
       gps: { lat: rec.lat, lon: rec.lon, acc_m: rec.acc_m },
     };
   }
@@ -103,7 +108,7 @@ export class Publisher {
     const track = buildTrack({
       originId: String(row.rx_pubkey).toUpperCase(),
       t0: row.t0, t1: row.t1, lat: row.lat, lon: row.lon, accM: row.acc_m,
-      rxCount: row.rx_count, listening: row.listening,
+      rxCount: row.rx_count, listening: row.listening, radio: row.radio,
     });
     return this.send(trackTopic(this.opts.label || DEFAULT_LABEL, row.rx_pubkey), track);
   }

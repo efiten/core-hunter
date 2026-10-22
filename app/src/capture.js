@@ -21,7 +21,7 @@ export function shouldCapture(cls, fix) {
   return !!cls && isUsableFix(fix)
 }
 
-export function buildRecord(frame, cls, gps, nowIso, rxPubkey = '') {
+export function buildRecord(frame, cls, gps, nowIso, rxPubkey = '', radio = null) {
   return {
     rx_at: nowIso,
     // Stamped at capture, not supplied at publish time (#454). A queued
@@ -51,5 +51,10 @@ export function buildRecord(frame, cls, gps, nowIso, rxPubkey = '') {
     // the reply is one we provoked. Null everywhere else, including on an
     // overheard trace, whose path SNRs describe other nodes hearing each other.
     heard_us_snr: cls.heardUsSnr ?? null,
+    // The network this was heard on (#744), in the observer status format
+    // (selfinfo.js radioString). Stamped at capture like rx_pubkey above: the
+    // backlog may be published under another preset than it was heard on.
+    // Null when the companion did not report all of it: unknown, not guessed.
+    radio: radio || null,
   }
 }

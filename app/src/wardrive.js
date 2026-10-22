@@ -94,6 +94,10 @@ export async function buildObs(rec, { originId, pubAt } = {}) {
   obs.path = w.hops
   if (Number.isFinite(rec.rssi)) obs.RSSI = rec.rssi
   if (Number.isFinite(rec.snr)) obs.SNR = rec.snr
+  // The network the reception was heard on (#744), as stamped on the row at
+  // capture (capture.js buildRecord). A row from before the stamp existed
+  // sends no radio at all: absent, never guessed from the current settings.
+  if (rec.radio) obs.radio = rec.radio
   obs.pos = { lat: round(rec.lat, 6), lon: round(rec.lon, 6) }
   if (Number.isFinite(rec.acc_m)) obs.pos.accuracy = round(rec.acc_m, 1)
   obs.pos.src = 'phone'
@@ -103,11 +107,14 @@ export async function buildObs(rec, { originId, pubAt } = {}) {
 // buildTrack assembles one listening interval. `listening` has to be exactly
 // true to be sent as true: a dropped radio that still claimed to be listening
 // would turn a connection gap into silence on the air.
-export function buildTrack({ originId, t0, t1, lat, lon, accM, rxCount, listening }) {
+export function buildTrack({ originId, t0, t1, lat, lon, accM, rxCount, listening, radio }) {
   const tk = { v: 1, origin_id: originId, t0, t1, lat: round(lat, 6), lon: round(lon, 6) }
   if (Number.isFinite(accM)) tk.accuracy = round(accM, 1)
   tk.rx_count = Number.isFinite(rxCount) ? rxCount : 0
   tk.listening = listening === true
+  // Silence evidence only counts per network (#744): the track names the one
+  // the radio was listening on, when its row carries it.
+  if (radio) tk.radio = radio
   tk.src = 'phone'
   return tk
 }
@@ -147,7 +154,7 @@ export function createTrackWindow() {
   let lastMs = null
   let lastPos = null
 
-  function cut({ nowMs, fix, rxPubkey, listening }) {
+  function cut({ nowMs, fix, rxPubkey, radio, listening }) {
     const row = {
       t0: new Date(startMs).toISOString(),
       t1: new Date(nowMs).toISOString(),
@@ -157,6 +164,9 @@ export function createTrackWindow() {
       acc_m: fix.acc_m,
       rx_count: rxCount,
       listening,
+      // Stamped like rx_pubkey (#744): the radio this interval listened on,
+      // null when the companion did not report all of it.
+      radio: radio || null,
     }
     startMs = nowMs
     rxCount = 0
@@ -167,15 +177,15 @@ export function createTrackWindow() {
 
   return {
     heard() { rxCount++ },
-    tick({ nowMs, fix, rxPubkey }) {
+    tick({ nowMs, fix, rxPubkey, radio }) {
       if (!fix) return null
       if (startMs == null) startMs = nowMs
       if (!shouldEmitTrack({ nowMs, lastMs, lastPos, curPos: fix })) return null
-      return cut({ nowMs, fix, rxPubkey, listening: true })
+      return cut({ nowMs, fix, rxPubkey, radio, listening: true })
     },
-    close({ nowMs, fix, rxPubkey }) {
+    close({ nowMs, fix, rxPubkey, radio }) {
       if (startMs == null || !fix) { startMs = null; rxCount = 0; lastMs = null; lastPos = null; return null }
-      const row = cut({ nowMs, fix, rxPubkey, listening: false })
+      const row = cut({ nowMs, fix, rxPubkey, radio, listening: false })
       startMs = null; lastMs = null; lastPos = null
       return row
     },
