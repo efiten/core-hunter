@@ -1,14 +1,13 @@
 # Rebuilds the two shipped changelog copies from changelog.d/ (#509).
 #
-# A PR adds one file under changelog.d/ and touches neither app/changelog.json
-# nor web/changelog.json, which is what stops two release notes from ever
-# conflicting. Something still has to write those two, because neither deploy
-# can: the app image builds with app/ as its Docker context and the website is
-# copied to the nginx box as a flat file list, so both need the generated file
-# committed. That is this job.
+# A PR adds one file under changelog.d/ and commits both regenerated copies,
+# app/changelog.json and web/changelog.json: web/parity.test.js fails on the PR
+# while a copy is not what the source produces (AGENTS.md). Neither deploy can
+# generate the file itself: the app image builds with app/ as its Docker
+# context and the website is copied to the nginx box as a flat file list.
 #
-# On a PR nothing runs here: web/parity.test.js already fails if a copy is not
-# what the source produces, so a hand-edit is caught by the suite that PR runs.
+# This job is the safety net on master: if a merge still leaves the copies
+# behind changelog.d/, it rebuilds and commits them. On a PR nothing runs here.
 #
 # The push this makes retriggers the workflow once; the second run finds both
 # copies already current and commits nothing, so it stops there.
