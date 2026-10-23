@@ -2,6 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -61,13 +65,32 @@ func TestResolveAuth(t *testing.T) {
 
 func newAuthAPI(t *testing.T) (*AuthAPI, *store.Store) {
 	st, _ := store.Open(":memory:")
-	return &AuthAPI{Store: st, CookieSecure: false, Limiter: auth.NewRateLimiter(5, time.Minute)}, st
+	return &AuthAPI{Store: st, CookieSecure: false, Limiter: auth.NewRateLimiter(5, time.Minute), Prover: auth.NewCompanionProver()}, st
+}
+
+// companionKey makes a dummy companion keypair; its pubkey is lowercase hex.
+func companionKey(t *testing.T) (string, ed25519.PrivateKey) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(pub), priv
+}
+
+// proofFields answers a fresh challenge for pk with priv, as JSON members to
+// splice into a register or link-companion body.
+func proofFields(h *AuthAPI, pk string, priv ed25519.PrivateKey) string {
+	ch := h.Prover.Challenge(pk, time.Now())
+	sig := hex.EncodeToString(ed25519.Sign(priv, auth.ProofMessage(ch)))
+	return `"companion_pubkey":"` + pk + `","challenge":"` + ch + `","signature":"` + sig + `"`
 }
 
 func TestRegisterThenMe(t *testing.T) {
 	h, st := newAuthAPI(t)
 	defer st.Close()
-	body := `{"username":"alice","password":"correcthorse","companion_pubkey":"aa11"}`
+	pk, priv := companionKey(t)
+	body := `{"username":"alice","password":"correcthorse",` + proofFields(h, pk, priv) + `}`
 	w := httptest.NewRecorder()
 	h.Register(w, httptest.NewRequest("POST", "/api/auth/register", strings.NewReader(body)))
 	if w.Code != 200 {
@@ -78,7 +101,7 @@ func TestRegisterThenMe(t *testing.T) {
 		t.Fatal("register must set ch_session cookie")
 	}
 	// pubkey linked, role hunter
-	uid, _ := st.UserIDForCompanion("aa11")
+	uid, _ := st.UserIDForCompanion(pk)
 	if uid == 0 {
 		t.Fatal("companion not linked on register")
 	}
@@ -211,8 +234,9 @@ func TestLinkCompanionRequiresAuth(t *testing.T) {
 	}
 	// authenticated via context
 	uid, _ := st.CreateUser("alice", "", "h", "hunter", "active")
+	pk, priv := companionKey(t)
 	r := httptest.NewRequest("POST", "/api/auth/link-companion",
-		strings.NewReader(`{"companion_pubkey":"CC33"}`))
+		strings.NewReader(`{`+strings.Replace(proofFields(h, pk, priv), pk, strings.ToUpper(pk), 1)+`}`))
 	r = r.WithContext(context.WithValue(r.Context(), authCtxKey,
 		Auth{UserID: uid, Username: "alice", Role: "hunter"}))
 	w2 := httptest.NewRecorder()
@@ -220,7 +244,7 @@ func TestLinkCompanionRequiresAuth(t *testing.T) {
 	if w2.Code != 200 {
 		t.Fatalf("auth link should be 200, got %d", w2.Code)
 	}
-	if owner, _ := st.UserIDForCompanion("cc33"); owner != uid { // lowercased
+	if owner, _ := st.UserIDForCompanion(pk); owner != uid { // lowercased
 		t.Fatalf("companion not linked (lowercased): %d", owner)
 	}
 }
@@ -229,10 +253,11 @@ func TestLinkCompanionTakenByAnotherUser(t *testing.T) {
 	h, st := newAuthAPI(t)
 	defer st.Close()
 	alice, _ := st.CreateUser("alice", "", "h", "hunter", "active")
-	st.LinkCompanion(alice, "cc33")
+	pk, priv := companionKey(t)
+	st.LinkCompanion(alice, pk)
 	bob, _ := st.CreateUser("bob", "", "h", "hunter", "active")
 	r := httptest.NewRequest("POST", "/api/auth/link-companion",
-		strings.NewReader(`{"companion_pubkey":"CC33"}`))
+		strings.NewReader(`{`+proofFields(h, pk, priv)+`}`))
 	r = r.WithContext(context.WithValue(r.Context(), authCtxKey,
 		Auth{UserID: bob, Username: "bob", Role: "hunter"}))
 	w := httptest.NewRecorder()
@@ -240,7 +265,7 @@ func TestLinkCompanionTakenByAnotherUser(t *testing.T) {
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "companion_taken") {
 		t.Fatalf("linking alice's companion as bob: want 409 companion_taken, got %d %s", w.Code, w.Body)
 	}
-	if owner, _ := st.UserIDForCompanion("cc33"); owner != alice {
+	if owner, _ := st.UserIDForCompanion(pk); owner != alice {
 		t.Fatalf("companion moved to user %d, want it to stay with alice (%d)", owner, alice)
 	}
 }
@@ -249,17 +274,89 @@ func TestRegisterWithTakenCompanion(t *testing.T) {
 	h, st := newAuthAPI(t)
 	defer st.Close()
 	alice, _ := st.CreateUser("alice", "", "h", "hunter", "active")
-	st.LinkCompanion(alice, "aa11")
+	pk, priv := companionKey(t)
+	st.LinkCompanion(alice, pk)
 	w := httptest.NewRecorder()
 	h.Register(w, httptest.NewRequest("POST", "/api/auth/register",
-		strings.NewReader(`{"username":"bob","password":"correcthorse","companion_pubkey":"AA11"}`)))
+		strings.NewReader(`{"username":"bob","password":"correcthorse",`+proofFields(h, pk, priv)+`}`)))
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "companion_taken") {
 		t.Fatalf("registering with alice's companion: want 409 companion_taken, got %d %s", w.Code, w.Body)
 	}
-	if owner, _ := st.UserIDForCompanion("aa11"); owner != alice {
+	if owner, _ := st.UserIDForCompanion(pk); owner != alice {
 		t.Fatalf("companion moved to user %d, want it to stay with alice (%d)", owner, alice)
 	}
 	if u, _ := st.UserByUsername("bob"); u != nil {
 		t.Fatal("a refused registration must not leave an account behind")
+	}
+}
+
+// A pubkey is public, so naming one must not link it: without the companion's
+// own signature over a fresh challenge, register and link-companion refuse.
+func TestCompanionLinkRequiresProof(t *testing.T) {
+	h, st := newAuthAPI(t)
+	defer st.Close()
+	pk, priv := companionKey(t)
+	_, otherPriv := companionKey(t)
+	ch := h.Prover.Challenge(pk, time.Now())
+	forged := hex.EncodeToString(ed25519.Sign(otherPriv, auth.ProofMessage(ch)))
+	bodies := map[string]string{
+		"no proof":              `"companion_pubkey":"` + pk + `"`,
+		"signed by another key": `"companion_pubkey":"` + pk + `","challenge":"` + ch + `","signature":"` + forged + `"`,
+	}
+	for name, fields := range bodies {
+		w := httptest.NewRecorder()
+		h.Register(w, httptest.NewRequest("POST", "/api/auth/register",
+			strings.NewReader(`{"username":"bob","password":"correcthorse",`+fields+`}`)))
+		if w.Code != 403 || !strings.Contains(w.Body.String(), "companion_proof_invalid") {
+			t.Fatalf("register, %s: want 403 companion_proof_invalid, got %d %s", name, w.Code, w.Body)
+		}
+		if u, _ := st.UserByUsername("bob"); u != nil {
+			t.Fatalf("register, %s: a refused registration must not leave an account behind", name)
+		}
+
+		uid, _ := st.CreateUser("carol-"+strings.ReplaceAll(name, " ", "-"), "", "h", "hunter", "active")
+		r := httptest.NewRequest("POST", "/api/auth/link-companion", strings.NewReader(`{`+fields+`}`))
+		r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Auth{UserID: uid, Role: "hunter"}))
+		w2 := httptest.NewRecorder()
+		h.LinkCompanion(w2, r)
+		if w2.Code != 403 || !strings.Contains(w2.Body.String(), "companion_proof_invalid") {
+			t.Fatalf("link, %s: want 403 companion_proof_invalid, got %d %s", name, w2.Code, w2.Body)
+		}
+	}
+	if owner, _ := st.UserIDForCompanion(pk); owner != 0 {
+		t.Fatalf("an unproven companion was linked to user %d", owner)
+	}
+	// and the real companion still gets in
+	w := httptest.NewRecorder()
+	h.Register(w, httptest.NewRequest("POST", "/api/auth/register",
+		strings.NewReader(`{"username":"bob","password":"correcthorse",`+proofFields(h, pk, priv)+`}`)))
+	if w.Code != 200 {
+		t.Fatalf("register with a valid proof: want 200, got %d %s", w.Code, w.Body)
+	}
+}
+
+func TestCompanionChallenge(t *testing.T) {
+	h, st := newAuthAPI(t)
+	defer st.Close()
+	pk, priv := companionKey(t)
+	w := httptest.NewRecorder()
+	h.CompanionChallenge(w, httptest.NewRequest("POST", "/api/auth/companion-challenge",
+		strings.NewReader(`{"companion_pubkey":"`+strings.ToUpper(pk)+`"}`)))
+	if w.Code != 200 {
+		t.Fatalf("challenge: want 200, got %d %s", w.Code, w.Body)
+	}
+	var out struct {
+		Challenge string `json:"challenge"`
+	}
+	json.NewDecoder(w.Body).Decode(&out)
+	sig := hex.EncodeToString(ed25519.Sign(priv, auth.ProofMessage(out.Challenge)))
+	if !h.Prover.Verify(pk, out.Challenge, sig, time.Now()) {
+		t.Fatal("the served challenge must be answerable by the companion it names")
+	}
+	w2 := httptest.NewRecorder()
+	h.CompanionChallenge(w2, httptest.NewRequest("POST", "/api/auth/companion-challenge",
+		strings.NewReader(`{"companion_pubkey":"aa11"}`)))
+	if w2.Code != 400 {
+		t.Fatalf("challenge for a short pubkey: want 400, got %d", w2.Code)
 	}
 }

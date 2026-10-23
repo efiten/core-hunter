@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth, accountDisplayState, submitLabelForMode } from '../auth.js'
+import { validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, fetchMe, postAuth, accountDisplayState, submitLabelForMode, companionProof } from '../auth.js'
 
 describe('validateRegistration', () => {
   const ok = { username: 'alice', password: '0123456789', companionPubkey: 'ab'.repeat(32) }
@@ -114,5 +114,38 @@ describe('offline resilience', () => {
     const s = accountDisplayState(me, '')
     expect(s.loggedIn).toBe(false)
     expect(s.showLogin).toBe(true)
+  })
+})
+
+describe('companionProof', () => {
+  it('signs the prefixed challenge the server issued for this pubkey', async () => {
+    const post = vi.fn(async () => ({ ok: true, status: 200, data: { challenge: 'c0ffee' } }))
+    const sign = vi.fn(async () => new Uint8Array(64).fill(0xab))
+    const proof = await companionProof({ pubkeyHex: 'ff', sign, post })
+    expect(post).toHaveBeenCalledWith('/api/auth/companion-challenge', { companion_pubkey: 'ff' })
+    expect(new TextDecoder().decode(sign.mock.calls[0][0])).toBe('core-hunter-link:c0ffee')
+    expect(proof).toEqual({ challenge: 'c0ffee', signature: 'ab'.repeat(64) })
+  })
+  it('returns null when no challenge comes back', async () => {
+    const post = vi.fn(async () => ({ ok: false, status: 0, data: {} }))
+    const sign = vi.fn()
+    expect(await companionProof({ pubkeyHex: 'ff', sign, post })).toBeNull()
+    expect(sign).not.toHaveBeenCalled()
+  })
+  it('returns null when the radio does not sign', async () => {
+    const post = vi.fn(async () => ({ ok: true, status: 200, data: { challenge: 'c0ffee' } }))
+    const sign = vi.fn(async () => { throw new Error('timeout') })
+    expect(await companionProof({ pubkeyHex: 'ff', sign, post })).toBeNull()
+  })
+})
+
+describe('body builders carry the proof', () => {
+  const proof = { challenge: 'c0', signature: 'ab' }
+  it('buildRegisterBody', () => {
+    expect(buildRegisterBody({ username: 'a', password: 'p', email: '', companionPubkey: 'ff', proof }))
+      .toEqual({ username: 'a', password: 'p', companion_pubkey: 'ff', challenge: 'c0', signature: 'ab' })
+  })
+  it('buildLinkBody', () => {
+    expect(buildLinkBody('ff', proof)).toEqual({ companion_pubkey: 'ff', challenge: 'c0', signature: 'ab' })
   })
 })

@@ -8,8 +8,8 @@ export function validateRegistration({ username, password, companionPubkey }) {
   return errors
 }
 
-export function buildRegisterBody({ username, password, email, companionPubkey }) {
-  const body = { username, password, companion_pubkey: companionPubkey }
+export function buildRegisterBody({ username, password, email, companionPubkey, proof }) {
+  const body = { username, password, companion_pubkey: companionPubkey, ...proof }
   if (email && email.trim()) body.email = email.trim()
   return body
 }
@@ -18,8 +18,24 @@ export function buildLoginBody({ username, password, remember }) {
   return { username, password, remember: !!remember }
 }
 
-export function buildLinkBody(companionPubkey) {
-  return { companion_pubkey: companionPubkey }
+export function buildLinkBody(companionPubkey, proof) {
+  return { companion_pubkey: companionPubkey, ...proof }
+}
+
+// companionProof shows the server we hold the companion, not just its public
+// pubkey: the radio signs a challenge the server issued for that pubkey
+// (server/internal/auth/companionproof.go). `sign` is (bytes) =>
+// Promise<Uint8Array(64)>. null means no challenge or no signature.
+export async function companionProof({ pubkeyHex, sign, post = postAuth }) {
+  const r = await post('/api/auth/companion-challenge', { companion_pubkey: pubkeyHex })
+  const challenge = r.ok && r.data && r.data.challenge
+  if (!challenge) return null
+  try {
+    const sig = await sign(new TextEncoder().encode('core-hunter-link:' + challenge))
+    return { challenge, signature: Array.from(sig, (x) => x.toString(16).padStart(2, '0')).join('') }
+  } catch (_) {
+    return null
+  }
 }
 
 export async function fetchMe() {

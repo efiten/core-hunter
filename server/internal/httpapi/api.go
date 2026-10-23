@@ -316,6 +316,7 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 		mux.HandleFunc("/api/auth/login", deps.Auth.Login)
 		mux.HandleFunc("/api/auth/logout", deps.Auth.Logout)
 		mux.HandleFunc("/api/auth/link-companion", deps.Auth.LinkCompanion)
+		mux.HandleFunc("/api/auth/companion-challenge", deps.Auth.CompanionChallenge)
 		mux.HandleFunc("/api/auth/reset-request", deps.Auth.ResetRequest)
 		mux.HandleFunc("/api/auth/reset", deps.Auth.Reset)
 	}
