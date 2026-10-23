@@ -308,6 +308,10 @@ func (h *NodesAPI) fetchPage(target string) ([]upstreamNode, error) {
 // registry first and filtered after would be a way to reach the positions the
 // per-node path refuses.
 //
+// The gate is a product choice, not a confidentiality boundary. The positions
+// come from adverts broadcast in clear, and the nameresolver upstream serves
+// the same registry to anyone, so do not rely on it to keep a position secret.
+//
 // Served from memory only (#591): Run fetches, this never does. Before the
 // first fetch has landed the answer is registry_unavailable, at once.
 func (h *NodesAPI) Positions(w http.ResponseWriter, r *http.Request) {

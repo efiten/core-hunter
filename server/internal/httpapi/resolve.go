@@ -60,6 +60,7 @@ func (h *ResolveAPI) Resolve(w http.ResponseWriter, r *http.Request) {
 	if best == nil {
 		best = &resolveResult{Prefix: prefix, Ambiguous: true}
 	}
+	// Product choice, not a confidentiality boundary: see NodesAPI.Positions.
 	if !AuthOf(r).AtLeast("member") {
 		best.Lat, best.Lon = nil, nil
 	}
