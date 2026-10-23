@@ -1,6 +1,9 @@
 package store
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestAuthTablesExist(t *testing.T) {
 	st, err := Open(":memory:")
@@ -87,6 +90,23 @@ func TestCompanions(t *testing.T) {
 	}
 	if got, _ := st.UserIDForCompanion("zz99"); got != 0 {
 		t.Fatalf("unlinked should be 0 got %d", got)
+	}
+}
+
+func TestLinkCompanionDoesNotReassign(t *testing.T) {
+	st, _ := Open(":memory:")
+	defer st.Close()
+	alice, _ := st.CreateUser("alice", "", "h", "hunter", "active")
+	bob, _ := st.CreateUser("bob", "", "h", "hunter", "active")
+	st.LinkCompanion(alice, "aa11")
+	if err := st.LinkCompanion(bob, "aa11"); !errors.Is(err, ErrCompanionTaken) {
+		t.Fatalf("linking another user's companion: want ErrCompanionTaken got %v", err)
+	}
+	if got, _ := st.UserIDForCompanion("aa11"); got != alice {
+		t.Fatalf("companion moved to user %d, want it to stay with %d", got, alice)
+	}
+	if err := st.LinkCompanion(alice, "aa11"); err != nil {
+		t.Fatalf("re-linking your own companion must stay idempotent: %v", err)
 	}
 }
 
