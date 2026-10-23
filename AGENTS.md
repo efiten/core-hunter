@@ -426,10 +426,16 @@ below that is `changelog.d/2026-08-21-01-readable-release-notes.json`.
   which of them a reader sees first is your choice, not the alphabet's, so the filename carries it.
   The `id` inside the file stays `<date>-<slug>` and never gains the number.
 - **Never edit `app/changelog.json` or `web/changelog.json` by hand.** Both are generated from
-  `changelog.d/` by `scripts/build-changelog.mjs`, and CI rebuilds and commits them on master
-  (`.github/workflows/changelog.yml`). That is why two PRs that each add a note no longer conflict:
-  they write different files (#509). Run `node scripts/build-changelog.mjs` to regenerate locally,
-  or `--check` to ask whether the copies are current.
+  `changelog.d/` by `scripts/build-changelog.mjs`. **A PR that adds an entry also commits both
+  regenerated copies**: run `node scripts/build-changelog.mjs` and stage the two files with the
+  entry. `web/parity.test.js` runs on every PR and fails while a copy differs from what
+  `changelog.d/` produces, so an entry without its copies is red. `--check` asks whether the
+  copies are current.
+- Two PRs that each add an entry therefore conflict on the copies, never on `changelog.d/`
+  (#509 gave each entry its own file). Resolve the conflict by running the generator again on the
+  merged tree, never by picking a side. A PR stacked on another branch with an entry has the same
+  conflict against that branch. `.github/workflows/changelog.yml` rebuilds the copies on master
+  after a merge, as a safety net.
 - Two copies, `app/changelog.json` and `web/changelog.json`, kept byte-identical — neither
   deploy path can read a file outside its own directory, and neither can generate the file for
   itself: the app image builds with `app/` as its Docker context, and the website is copied to the
