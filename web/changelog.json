@@ -1,5 +1,19 @@
 [
   {
+    "id": "2026-10-23-companion-link-stays",
+    "date": "2026-10-23",
+    "where": "app",
+    "title": "A linked companion stays with its account",
+    "body": "A companion already linked to an account can no longer be linked to a second one; the app says so."
+  },
+  {
+    "id": "2026-10-23-companion-link-proof",
+    "date": "2026-10-23",
+    "where": "app",
+    "title": "Linking a companion needs the companion itself",
+    "body": "Registering or linking a companion now asks the connected radio to sign a one-time challenge, so an account can only claim a companion it actually holds."
+  },
+  {
     "id": "2026-10-16-radio-on-published",
     "date": "2026-10-16",
     "where": "app",
