@@ -1,0 +1,7 @@
+{
+  "id": "2026-09-27-export-reach",
+  "date": "2026-09-27",
+  "where": "map",
+  "title": "Export one repeater's reach as a picture",
+  "body": "Export can now draw one repeater: where it was heard, where not, and where it likely reaches."
+}

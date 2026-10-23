@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { heardModel, routeSegments, mappedCells, placeLabels, tint, windowText, huntersText, exportFileName, scaleBar, idLabel, fitText, FAR_KM, CELL_SIZE, CELL_RES } from './exportheard.js'
+import { heardModel, routeSegments, mappedCells, placeLabels, tint, windowText, huntersText, exportFileName, scaleBar, idLabel, fitText, nearestKm, tierLegend, FAR_KM, CELL_SIZE, CELL_RES, reliefNote, titleRoom, exportPoints } from './exportheard.js'
 import { hexSizeForRes } from './hexgrid.js'
 import { coverageStars, rayStyle, rayStrength } from './coverage.js'
+import { TIER_BANDS, rssiTier } from './signal.js'
 
 // #666: the "Repeaters heard" export. The image shows the reach layer's stars
 // as the map has them; these are the rules that decide what goes on it.
@@ -90,6 +91,16 @@ describe('heardModel (#666)', () => {
     expect(heardModel({ stars, view }).drawn[0].name).toBe('db11db11')
   })
 
+  // #720 applies the same 30 km rule to one star: nearestKm is what both
+  // exports ask.
+  it('measures how far a star hangs from its nearest hearing', () => {
+    // aa's two hearings 1.77 km out, and one 11 km out: the nearest counts.
+    const [aa] = starsOf([...pts.slice(0, 2), hearing('aa', 51.9, 5.9, -115)], positions)
+    expect(nearestKm(aa)).toBeCloseTo(1.77, 1)
+    const [far] = starsOf([hearing('bb', 51.91, 5.91, -90)], { bb: { lat: 51.55, lon: 5.9 } })
+    expect(nearestKm(far)).toBeCloseTo(40, 0)
+  })
+
   it('says nothing is heard when no star is in view', () => {
     const m = heardModel({ stars: [], view })
     expect(m.drawn).toEqual([])
@@ -148,7 +159,7 @@ describe('fitText (#666)', () => {
 })
 
 describe('mappedCells (#666)', () => {
-  it('gives one res-8 cell per place driven, as a closed [lon, lat] ring', () => {
+  it('gives one export cell per place driven, as a closed [lon, lat] ring', () => {
     const cells = mappedCells([{ lat: 51.8, lon: 5.8 }, { lat: 51.80001, lon: 5.80001 }, { lat: 51.9, lon: 5.9 }])
     expect(cells).toHaveLength(2)
     const ring = cells[0]
@@ -199,8 +210,61 @@ describe('the small rules of the band (#666)', () => {
   it('names the file after the export and the day', () => {
     expect(exportFileName(Date.UTC(2026, 8, 27, 12))).toBe('mesh-hunter-repeaters-heard-2026-09-27.png')
   })
+  it('names a one-repeater export after the repeater, in characters a file name takes', () => {
+    expect(exportFileName(Date.UTC(2026, 8, 27, 12), 'reach', 'NL-NIJ-Dikkeboom 🌳')).toBe('mesh-hunter-reach-nl-nij-dikkeboom-2026-09-27.png')
+    expect(exportFileName(Date.UTC(2026, 8, 27, 12), 'reach', 'DTIS | NL NIJ | 6525HT')).toBe('mesh-hunter-reach-dtis-nl-nij-6525ht-2026-09-27.png')
+  })
+  // An accent is a letter with a mark, not a character to cut on.
+  it('keeps an accented letter as its letter', () => {
+    expect(exportFileName(Date.UTC(2026, 8, 27, 12), 'reach', 'Zürich-Ost')).toBe('mesh-hunter-reach-zurich-ost-2026-09-27.png')
+    expect(exportFileName(Date.UTC(2026, 8, 27, 12), 'reach', 'Ålesund Sør')).toBe('mesh-hunter-reach-alesund-s-r-2026-09-27.png')
+  })
+  it('says how much the relief is exaggerated, and nothing when it is true to scale', () => {
+    expect(reliefNote(7)).toBe('relief 7× exaggerated')
+    expect(reliefNote(2)).toBe('relief 2× exaggerated')
+    expect(reliefNote(1)).toBe('')
+  })
+  // The legend's tiers come from signal.js's bands, so the words on the
+  // picture cannot drift from the colours the map draws.
+  it('spells the RSSI tiers from the bands rssiTier draws by', () => {
+    expect(tierLegend()).toEqual([['hot', '≥ -80'], ['warm', '-81 … -90'], ['mid', '-91 … -100'], ['cool', '-101 … -110'], ['cold', '-111 … -115'], ['faint', '< -115']])
+    for (const [tier, floor] of TIER_BANDS) {
+      expect(rssiTier(floor)).toBe(tier)
+      expect(rssiTier(floor - 1)).not.toBe(tier)
+    }
+  })
   it('picks the longest round scale length that fits', () => {
     expect(scaleBar(20)).toEqual({ px: 100, label: '2 km' })
     expect(scaleBar(3)).toEqual({ px: 100, label: '300 m' })
+  })
+})
+
+// The title runs up to the numbers, not into them (#720 review).
+describe('titleRoom', () => {
+  it('is the width left of the numbers, less a gap', () => {
+    // Three columns of 100 right-aligned at 1156 with 44 between them start
+    // at 1156 - 300 - 88 = 768; the title starts at 44.
+    expect(titleRoom([100, 100, 100])).toBe(768 - 44 - 44)
+    expect(titleRoom([])).toBe(1156 - 44)
+  })
+})
+
+// The receptions an export's picture is built from, and whether that fetch
+// was cut or failed (#720 review): with a target picked it is the unfiltered
+// fetch, not the sender-filtered one the view shows.
+describe('exportPoints', () => {
+  const view = { points: [{ id: 'v' }], capped: false }
+  it('uses the view\'s receptions when nothing narrows them', async () => {
+    const fetchAll = () => { throw new Error('not asked') }
+    expect(await exportPoints(view, { narrowed: false, fetchAll })).toEqual({ points: [{ id: 'v' }], capped: false, failed: false })
+    expect((await exportPoints({ ...view, capped: true }, { narrowed: false, fetchAll })).capped).toBe(true)
+  })
+  it('reports the cap of the unfiltered fetch when a target narrows the view', async () => {
+    const r = await exportPoints(view, { narrowed: true, fetchAll: async () => ({ points: [{ id: 'a' }, { id: 'b' }], capped: true }) })
+    expect(r).toEqual({ points: [{ id: 'a' }, { id: 'b' }], capped: true, failed: false })
+  })
+  it('falls back to the view\'s receptions and says so when that fetch fails', async () => {
+    const r = await exportPoints({ ...view, capped: true }, { narrowed: true, fetchAll: async () => { throw new Error('500') } })
+    expect(r).toEqual({ points: [{ id: 'v' }], capped: true, failed: true })
   })
 })
