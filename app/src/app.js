@@ -3057,6 +3057,7 @@ function buildSettingsSheet() {
     const r = await postAuth('/api/auth/link-companion', buildLinkBody(state.rxPubkey))
     if (r.ok) { await refreshAccount(); accMsg('Companion linked.', true) }
     else if (r.status === 401) accMsg('Log in first.')
+    else if (r.status === 409) accMsg('This companion is already linked to another account.')
     else accMsg('Linking failed — check your connection.')
   })
 
@@ -3109,6 +3110,7 @@ function buildSettingsSheet() {
         // windowed too (server/internal/httpapi/api.go).
         accMsg("Account created — you are a hunter: on the web map, filter to your own companion to see its captures in full. Seeing other hunters in full needs an admin to verify you as a member.", true)
       }
+      else if (r.status === 409 && r.data.error === 'companion_taken') accMsg('This companion is already linked to another account.')
       else if (r.status === 409) accMsg('That username is taken.')
       else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
       else accMsg('Registration failed — check your connection.')

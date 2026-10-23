@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -105,12 +106,27 @@ func (s *Store) CountActiveAdmins() (int, error) {
 	return n, err
 }
 
+// ErrCompanionTaken: the pubkey is already linked to another user. A link is
+// never moved: the companion pubkey is public, so moving it would hand that
+// companion's full history to whoever claimed it last.
+var ErrCompanionTaken = errors.New("companion linked to another user")
+
 func (s *Store) LinkCompanion(userID int64, pubkey string) error {
 	_, err := s.db.Exec(
 		`INSERT INTO companions(pubkey,user_id,linked_at) VALUES(?,?,?)
-		 ON CONFLICT(pubkey) DO UPDATE SET user_id=excluded.user_id`,
+		 ON CONFLICT(pubkey) DO NOTHING`,
 		pubkey, userID, nowRFC3339())
-	return err
+	if err != nil {
+		return err
+	}
+	owner, err := s.UserIDForCompanion(pubkey)
+	if err != nil {
+		return err
+	}
+	if owner != userID {
+		return ErrCompanionTaken
+	}
+	return nil
 }
 func (s *Store) CompanionsFor(userID int64) ([]string, error) {
 	rows, err := s.db.Query(`SELECT pubkey FROM companions WHERE user_id=? ORDER BY linked_at`, userID)

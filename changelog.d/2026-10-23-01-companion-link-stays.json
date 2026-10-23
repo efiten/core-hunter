@@ -1,0 +1,7 @@
+{
+  "id": "2026-10-23-companion-link-stays",
+  "date": "2026-10-23",
+  "where": "app",
+  "title": "A linked companion stays with its account",
+  "body": "A companion already linked to an account can no longer be linked to a second one; the app says so."
+}

@@ -224,3 +224,42 @@ func TestLinkCompanionRequiresAuth(t *testing.T) {
 		t.Fatalf("companion not linked (lowercased): %d", owner)
 	}
 }
+
+func TestLinkCompanionTakenByAnotherUser(t *testing.T) {
+	h, st := newAuthAPI(t)
+	defer st.Close()
+	alice, _ := st.CreateUser("alice", "", "h", "hunter", "active")
+	st.LinkCompanion(alice, "cc33")
+	bob, _ := st.CreateUser("bob", "", "h", "hunter", "active")
+	r := httptest.NewRequest("POST", "/api/auth/link-companion",
+		strings.NewReader(`{"companion_pubkey":"CC33"}`))
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey,
+		Auth{UserID: bob, Username: "bob", Role: "hunter"}))
+	w := httptest.NewRecorder()
+	h.LinkCompanion(w, r)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "companion_taken") {
+		t.Fatalf("linking alice's companion as bob: want 409 companion_taken, got %d %s", w.Code, w.Body)
+	}
+	if owner, _ := st.UserIDForCompanion("cc33"); owner != alice {
+		t.Fatalf("companion moved to user %d, want it to stay with alice (%d)", owner, alice)
+	}
+}
+
+func TestRegisterWithTakenCompanion(t *testing.T) {
+	h, st := newAuthAPI(t)
+	defer st.Close()
+	alice, _ := st.CreateUser("alice", "", "h", "hunter", "active")
+	st.LinkCompanion(alice, "aa11")
+	w := httptest.NewRecorder()
+	h.Register(w, httptest.NewRequest("POST", "/api/auth/register",
+		strings.NewReader(`{"username":"bob","password":"correcthorse","companion_pubkey":"AA11"}`)))
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "companion_taken") {
+		t.Fatalf("registering with alice's companion: want 409 companion_taken, got %d %s", w.Code, w.Body)
+	}
+	if owner, _ := st.UserIDForCompanion("aa11"); owner != alice {
+		t.Fatalf("companion moved to user %d, want it to stay with alice (%d)", owner, alice)
+	}
+	if u, _ := st.UserByUsername("bob"); u != nil {
+		t.Fatal("a refused registration must not leave an account behind")
+	}
+}

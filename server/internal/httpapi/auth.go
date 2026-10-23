@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"regexp"
@@ -227,6 +228,11 @@ func (h *AuthAPI) Register(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "username_taken")
 		return
 	}
+	pk := strings.ToLower(in.CompanionPubkey)
+	if owner, _ := h.Store.UserIDForCompanion(pk); owner != 0 {
+		writeErr(w, 409, "companion_taken")
+		return
+	}
 	hash, err := auth.HashPassword(in.Password)
 	if err != nil {
 		writeErr(w, 500, "hash_error")
@@ -237,7 +243,7 @@ func (h *AuthAPI) Register(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 409, "username_taken")
 		return
 	}
-	h.Store.LinkCompanion(uid, strings.ToLower(in.CompanionPubkey))
+	h.Store.LinkCompanion(uid, pk)
 	if err := h.startSession(w, uid, true, clientIP(r)); err != nil {
 		writeErr(w, 500, "session_error")
 		return
@@ -295,7 +301,10 @@ func (h *AuthAPI) LinkCompanion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pk := strings.ToLower(in.CompanionPubkey)
-	if err := h.Store.LinkCompanion(a.UserID, pk); err != nil {
+	if err := h.Store.LinkCompanion(a.UserID, pk); errors.Is(err, store.ErrCompanionTaken) {
+		writeErr(w, 409, "companion_taken")
+		return
+	} else if err != nil {
 		writeErr(w, 500, "link_error")
 		return
 	}
