@@ -92,7 +92,7 @@ func main() {
 		mailer = &mailerAdapter{sender: sender, baseURL: cfg.BaseURL}
 	}
 	limiter := auth.NewRateLimiter(5, time.Minute)
-	authAPI := &httpapi.AuthAPI{Store: st, CookieSecure: cfg.CookieSecure, Limiter: limiter, Mailer: mailer, BaseURL: cfg.BaseURL}
+	authAPI := &httpapi.AuthAPI{Store: st, CookieSecure: cfg.CookieSecure, Limiter: limiter, Mailer: mailer, BaseURL: cfg.BaseURL, Prover: auth.NewCompanionProver()}
 	adminAPI := &httpapi.AdminAPI{Store: st, Mailer: mailer, BaseURL: cfg.BaseURL}
 	resolveAPI := &httpapi.ResolveAPI{Upstreams: cfg.ResolveUpstreams, Client: &http.Client{Timeout: 5 * time.Second}}
 	// Longer timeout than the resolve proxy: this fetches the whole registry

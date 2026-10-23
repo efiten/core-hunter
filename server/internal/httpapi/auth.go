@@ -145,7 +145,24 @@ type AuthAPI struct {
 	Limiter      *auth.RateLimiter
 	Mailer       Mailer
 	BaseURL      string
+	Prover       *auth.CompanionProver
 }
+
+// CompanionChallenge hands out a challenge the companion must sign before
+// register or link-companion accepts its pubkey (auth.CompanionProver).
+func (h *AuthAPI) CompanionChallenge(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		CompanionPubkey string `json:"companion_pubkey"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || !pubkeyRe.MatchString(in.CompanionPubkey) {
+		writeErr(w, 400, "companion_required")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"challenge": h.Prover.Challenge(in.CompanionPubkey, time.Now())})
+}
+
+var pubkeyRe = regexp.MustCompile(`^[0-9A-Fa-f]{64}$`)
 
 func writeErr(w http.ResponseWriter, code int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
@@ -207,6 +224,8 @@ func (h *AuthAPI) Register(w http.ResponseWriter, r *http.Request) {
 		Password        string `json:"password"`
 		Email           string `json:"email"`
 		CompanionPubkey string `json:"companion_pubkey"`
+		Challenge       string `json:"challenge"`
+		Signature       string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeErr(w, 400, "bad_json")
@@ -226,6 +245,10 @@ func (h *AuthAPI) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	if u, _ := h.Store.UserByUsername(in.Username); u != nil {
 		writeErr(w, 409, "username_taken")
+		return
+	}
+	if !h.Prover.Verify(in.CompanionPubkey, in.Challenge, in.Signature, time.Now()) {
+		writeErr(w, 403, "companion_proof_invalid")
 		return
 	}
 	pk := strings.ToLower(in.CompanionPubkey)
@@ -295,9 +318,15 @@ func (h *AuthAPI) LinkCompanion(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		CompanionPubkey string `json:"companion_pubkey"`
+		Challenge       string `json:"challenge"`
+		Signature       string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.CompanionPubkey == "" {
 		writeErr(w, 400, "companion_required")
+		return
+	}
+	if !h.Prover.Verify(in.CompanionPubkey, in.Challenge, in.Signature, time.Now()) {
+		writeErr(w, 403, "companion_proof_invalid")
 		return
 	}
 	pk := strings.ToLower(in.CompanionPubkey)

@@ -75,7 +75,7 @@ import { compassHeading, bearingForHeading, nextCompassState, compassGlyph, comp
 import { fabRingSvg } from './fabring.js'
 import { SOUND_MODES, nextSoundMode, receptionCue, createSoundEngine } from './sound.js'
 import { parseVersion, isUpdateAvailable } from './update.js'
-import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode } from './auth.js'
+import { fetchMe, postAuth, validateRegistration, buildRegisterBody, buildLoginBody, buildLinkBody, accountDisplayState, submitLabelForMode, companionProof } from './auth.js'
 import { closeSheet } from './sheetfocus.js'
 
 // ---------------------------------------------------------------------------
@@ -656,17 +656,26 @@ async function legStatusOf(id) {
 // stored one while it has time left, otherwise a fresh signature -- which takes
 // the radio, connected and the same one the receptions belong to. null means
 // not now.
+// companionSign returns the connected radio's sign function, or null when no
+// radio is connected.
+function companionSign() {
+  if (!state.connected || !state.transport) return null
+  if (!state.signer || state.signer.transport !== state.transport) {
+    state.signer = { transport: state.transport, sign: createSigner(state.transport) }
+  }
+  return state.signer.sign
+}
+
 async function brokerCredentials(broker, owner) {
   if (broker.auth !== 'companion') return { username: broker.username, password: broker.password }
   const audience = brokerAudience(broker.url)
   const nowSec = Math.floor(Date.now() / 1000)
   const stored = state.brokerTokens[broker.id]
   if (tokenUsable(stored, { pubkeyHex: owner, audience, nowSec })) return { username: brokerUsername(owner), password: stored }
-  if (!state.connected || !state.transport || state.rxPubkey !== owner) return null
-  if (!state.signer || state.signer.transport !== state.transport) {
-    state.signer = { transport: state.transport, sign: createSigner(state.transport) }
-  }
-  const token = await buildBrokerToken({ pubkeyHex: owner, audience, nowSec, sign: state.signer.sign })
+  if (state.rxPubkey !== owner) return null
+  const sign = companionSign()
+  if (!sign) return null
+  const token = await buildBrokerToken({ pubkeyHex: owner, audience, nowSec, sign })
   state.brokerTokens = { ...state.brokerTokens, [broker.id]: token }
   saveBrokerTokens(state.brokerTokens)
   return { username: brokerUsername(owner), password: token }
@@ -3054,10 +3063,14 @@ function buildSettingsSheet() {
     if (!state.rxPubkey) return
     const short = state.rxPubkey.slice(0, 12) + '…'
     accMsg(`Linking companion ${short}…`)
-    const r = await postAuth('/api/auth/link-companion', buildLinkBody(state.rxPubkey))
+    const sign = companionSign()
+    const proof = sign && await companionProof({ pubkeyHex: state.rxPubkey, sign })
+    if (!proof) { accMsg('The companion did not sign. Keep it connected and try again.'); return }
+    const r = await postAuth('/api/auth/link-companion', buildLinkBody(state.rxPubkey, proof))
     if (r.ok) { await refreshAccount(); accMsg('Companion linked.', true) }
     else if (r.status === 401) accMsg('Log in first.')
     else if (r.status === 409) accMsg('This companion is already linked to another account.')
+    else if (r.status === 403) accMsg('The companion signature was not accepted. Try again.')
     else accMsg('Linking failed — check your connection.')
   })
 
@@ -3096,8 +3109,11 @@ function buildSettingsSheet() {
              : 'Connect a companion first.')
         return
       }
+      const sign = companionSign()
+      const proof = sign && await companionProof({ pubkeyHex: state.rxPubkey, sign })
+      if (!proof) { accMsg('The companion did not sign. Keep it connected and try again.'); return }
       const r = await postAuth('/api/auth/register',
-        buildRegisterBody({ username, password, email, companionPubkey: state.rxPubkey }))
+        buildRegisterBody({ username, password, email, companionPubkey: state.rxPubkey, proof }))
       if (r.ok) {
         closeAccForm()
         await refreshAccount()
@@ -3112,6 +3128,7 @@ function buildSettingsSheet() {
       }
       else if (r.status === 409 && r.data.error === 'companion_taken') accMsg('This companion is already linked to another account.')
       else if (r.status === 409) accMsg('That username is taken.')
+      else if (r.status === 403 && r.data.error === 'companion_proof_invalid') accMsg('The companion signature was not accepted. Try again.')
       else if (r.status === 429) accMsg('Too many attempts — wait a minute.')
       else accMsg('Registration failed — check your connection.')
       return
