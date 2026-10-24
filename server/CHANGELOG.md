@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.11.0](https://github.com/efiten/core-hunter/compare/server-v1.10.1...server-v1.11.0) (2026-10-23)
+
+
+### Features
+
+* **auth:** prove possession of a companion before linking it ([#752](https://github.com/efiten/core-hunter/issues/752)) ([5d039cd](https://github.com/efiten/core-hunter/commit/5d039cd8e5871c0185651bddf7b6f952e743ee67))
+
+
+### Bug Fixes
+
+* **server:** never move a linked companion to another account ([#750](https://github.com/efiten/core-hunter/issues/750)) ([a225b96](https://github.com/efiten/core-hunter/commit/a225b961c6acd13bda5b297e0e3e3bb3ab59e19c))
+
+
+### Documentation
+
+* **server:** say the positions member gate is not a confidentiality boundary ([#749](https://github.com/efiten/core-hunter/issues/749)) ([72c9224](https://github.com/efiten/core-hunter/commit/72c92244f42fd3a6e831428fbbba713424906e70))
+
 ## [1.10.1](https://github.com/efiten/core-hunter/compare/server-v1.10.0...server-v1.10.1) (2026-09-30)
 
 
