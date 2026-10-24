@@ -79,6 +79,11 @@ export function rssiToPct(rssi, offset = 0) {
 // at all, so dropping it converges the two surfaces (#644) rather than porting
 // a third rule across.
 
+// The tiers and the dBm each one starts at, strongest first; below the last
+// is 'faint'. Data rather than a ladder of ifs so a legend (the exports,
+// #720) can spell the same bands the map colours by.
+export const TIER_BANDS = [['hot', -80], ['warm', -90], ['mid', -100], ['cool', -110], ['cold', -115]]
+
 // Fixed RSSI dBm bands (iteration 2): hot = strong = close. `offset` is an
 // optional per-device calibration value (dBm) added before banding.
 //
@@ -90,11 +95,7 @@ export function rssiToPct(rssi, offset = 0) {
 export function rssiTier(rssi, offset = 0) {
   if (rssi == null) return 'none'
   const v = rssi + offset
-  if (v >= -80) return 'hot'
-  if (v >= -90) return 'warm'
-  if (v >= -100) return 'mid'
-  if (v >= -110) return 'cool'
-  if (v >= -115) return 'cold'
+  for (const [tier, floor] of TIER_BANDS) if (v >= floor) return tier
   return 'faint'
 }
 
