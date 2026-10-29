@@ -171,30 +171,61 @@ for (const [w, h, label, role] of ONE_ROW) {
     expect(Math.abs(s.barVar - s.height), '--ch-bar-h matches the real bar').toBeLessThanOrEqual(1)
   })
 
-  // #757: at 768 "Log in" broke into "Log" / "in". The height check above
-  // only caught it where the font's line height pushed the bar past 64px, so
-  // count the lines of every label instead. Per text node, because a control
-  // with an icon and a caption has parts at different heights on one line.
-  test(`every bar label is one line on ${label} at ${w}px, as a ${role}`, async ({ page }) => {
+}
+
+// #757: at 768 "Log in" broke into "Log" / "in", and Hunters and the time range
+// with it. The height check above only caught that where the font's line
+// height pushed the bar past 64px, so count the lines of every label instead,
+// per text node, because a control with an icon and a caption has parts at
+// different heights on one line. One line is not enough on its own: nowrap
+// alone made the time range paint 38px over Filters, so no segment may spill
+// out of its slot or into its neighbour either. The absolute range is the
+// longest label a shared link brings.
+const ABSOLUTE = '?from=2026-10-01T10:00&to=2026-10-20T12:00'
+const LABEL_CASES = [...ONE_ROW.map(([w, h, label, role]) => [w, h, label, role, '']),
+  [768, 1024, 'a tablet', 'guest', ABSOLUTE], [840, 1024, 'a small laptop', 'guest', ABSOLUTE],
+  [768, 1024, 'a tablet', 'member', ABSOLUTE], [900, 800, 'a narrow desktop', 'guest', ABSOLUTE]]
+for (const [w, h, label, role, query] of LABEL_CASES) {
+  const range = query ? ' with an absolute range' : ''
+  test(`every bar label is one line and in its own slot on ${label} at ${w}px, as a ${role}${range}`, async ({ page }) => {
     if (role === 'guest') await asGuest(page)
     await page.setViewportSize({ width: w, height: h })
-    await page.goto('/')
+    await page.goto('/' + query)
     if (role === 'guest') await expect(page.locator('#guest-notice')).toBeVisible()
     else await expect(page.locator('#rx-log')).toBeVisible()
-    const wrapped = await page.evaluate(() => [...document.querySelectorAll('#bar button, #bar a')]
-      .filter((e) => !e.closest('#bar-filters') && e.getClientRects().length)
-      .filter((e) => {
-        const walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT)
-        for (let t = walk.nextNode(); t; t = walk.nextNode()) {
-          const r = document.createRange()
-          r.selectNodeContents(t)
-          const tops = new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)))
-          if (tops.size > 1) return true
+    const found = await page.evaluate(() => {
+      const shown = (e) => e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none'
+      const name = (e) => e.id || e.className || e.textContent.trim()
+      const wrapped = [...document.querySelectorAll('#bar button, #bar a')]
+        .filter((e) => !e.closest('#bar-filters') && shown(e))
+        .filter((e) => {
+          const walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT)
+          for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+            const r = document.createRange()
+            r.selectNodeContents(t)
+            const tops = new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)))
+            if (tops.size > 1) return true
+          }
+          return false
+        })
+        .map(name)
+      const spills = []
+      for (const slot of document.getElementById('bar-controls').children) {
+        const inner = slot.matches('button') ? slot : slot.querySelector(':scope > button')
+        if (!inner || !shown(slot)) continue
+        if (inner.getBoundingClientRect().right > slot.getBoundingClientRect().right + 0.5) spills.push(name(inner))
+      }
+      const rows = [[...document.getElementById('bar').children], [...document.getElementById('bar-controls').children]]
+      for (const row of rows) {
+        const boxes = row.filter((e) => e.id !== 'bar-filters' && shown(e)).map((e) => [name(e), e.getBoundingClientRect()])
+        for (let i = 1; i < boxes.length; i++) {
+          if (boxes[i - 1][1].right > boxes[i][1].left + 0.5) spills.push(`${boxes[i - 1][0]} over ${boxes[i][0]}`)
         }
-        return false
-      })
-      .map((e) => e.id || e.textContent.trim()))
-    expect(wrapped, 'labels that wrap').toEqual([])
+      }
+      return { wrapped, spills }
+    })
+    expect(found.wrapped, 'labels that wrap').toEqual([])
+    expect(found.spills, 'segments outside their slot').toEqual([])
   })
 }
 
