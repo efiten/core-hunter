@@ -13,7 +13,9 @@ const cell = (res, n = 1) => Array.from({ length: n }, (_, i) => ({ type: 'Featu
 const POINT = { lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: 'aa11bb22', sender_label: 'NEO7HI', hunter_pubkey: 'h1', hunter_name: 'Hunter 1',
   packet_type: 'Advert', rx_at: new Date(Date.now() - 5000).toISOString() }
 
-// The server as it answers: the size asked for, up to `max`.
+// The server as it answers: the sizes asked for, up to `max`. One z answers a
+// bare collection; z=a,b answers one layer per size, a size folded by `max`
+// coming once (#742).
 async function setup(page, { role = 'member', max = 18 } = {}) {
   const asked = { heatmap: [], points: [] }
   await page.route('**/api/auth/me', (r) => (role === 'guest'
@@ -21,11 +23,12 @@ async function setup(page, { role = 'member', max = 18 } = {}) {
     : r.fulfill({ json: { role, username: 'm' } })))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
   await page.route('**/api/heatmap*', (r) => {
-    const z = Number(new URL(r.request().url()).searchParams.get('z'))
-    asked.heatmap.push(z)
-    const res = Math.min(z, max)
+    const zs = new URL(r.request().url()).searchParams.get('z').split(',').map(Number)
+    asked.heatmap.push(zs.join(','))
     // A size has as many cells as its number, so a count names the size.
-    return r.fulfill({ json: { features: cell(res, res) } })
+    const sizes = [...new Set(zs.map((z) => Math.min(z, max)))]
+    if (zs.length === 1) return r.fulfill({ json: { features: cell(sizes[0], sizes[0]) } })
+    return r.fulfill({ json: { layers: sizes.map((res) => ({ res, features: cell(res, res) })) } })
   })
   await page.route('**/api/points*', (r) => {
     const q = new URL(r.request().url()).searchParams
@@ -43,7 +46,8 @@ test('two cell sizes are asked for and drawn, each in its own layer', async ({ p
   await page.goto('/?mode=hex&lat=51&lon=4&z=14')
   await expect.poll(() => count(page, 'hex')).toBe(14)
   await expect.poll(() => count(page, 'hex-b')).toBe(15)
-  expect([...new Set(asked.heatmap)].sort()).toEqual([14, 15])
+  // Both sizes in one request, so the server queries the rows once (#742).
+  expect([...new Set(asked.heatmap)]).toEqual(['14,15'])
   // The pair hands over at 13.5; past that each holds on until the next pair.
   expect(await paint(page, 'hex', 'fill-opacity')).toEqual(['interpolate', ['linear'], ['zoom'],
     13.025, ['*', ['get', 'op'], 1], 13.975, ['*', ['get', 'op'], 0]])

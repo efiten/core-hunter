@@ -697,8 +697,13 @@ async function openOnOneCell(page) {
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [] } }))
   await page.route('**/api/hunters*', (r) => r.fulfill({ json: { hunters: [] } }))
   const ring = [[3.99, 50.995], [4.01, 50.995], [4.015, 51], [4.01, 51.005], [3.99, 51.005], [3.985, 51], [3.99, 50.995]]
-  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { features: [
-    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { best_rssi: -85, count: 7, hunters: ['a', 'b'] } },
+  // z=14 asks sizes 14 and 15 in one request (#742); the cell is in 14, the
+  // size drawn in full there.
+  await page.route('**/api/heatmap*', (r) => r.fulfill({ json: { layers: [
+    { res: 14, features: [
+      { type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { best_rssi: -85, count: 7, hunters: ['a', 'b'] } },
+    ] },
+    { res: 15, features: [] },
   ] } }))
   await page.goto('/?mode=hex&lat=51&lon=4&z=14')
   await mapSettled(page)

@@ -972,3 +972,92 @@ func TestPointsIgnoreTheOldUnnamedParam(t *testing.T) {
 		t.Fatalf("unnamed=1 must be ignored: got %d rows, want 2", len(pts))
 	}
 }
+
+// heatmapLayersOf reads the two-size answer of /api/heatmap?z=a,b (#742):
+// one FeatureCollection per cell size, each tagged with the size it holds.
+func heatmapLayersOf(t *testing.T, out map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := out["layers"].([]any)
+	if !ok {
+		t.Fatalf("a two-size ask must answer with layers, got %v", out)
+	}
+	ls := make([]map[string]any, len(raw))
+	for i, l := range raw {
+		ls[i] = l.(map[string]any)
+	}
+	return ls
+}
+
+func cellResOf(t *testing.T, fc map[string]any) string {
+	t.Helper()
+	feats := fc["features"].([]any)
+	if len(feats) == 0 {
+		t.Fatal("expected some hex features")
+	}
+	cell := feats[0].(map[string]any)["properties"].(map[string]any)["cell"].(string)
+	return cell[:strings.Index(cell, ":")]
+}
+
+// TestHeatmapTwoSizesInOneAnswer: the website draws two cell sizes at a time
+// (#634) and used to ask once per size, running the point query twice on
+// every refresh (#742). z=a,b answers both sizes from the same rows.
+func TestHeatmapTwoSizesInOneAnswer(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	ls := heatmapLayersOf(t, doHeatmap(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?z=5,6"))
+	if len(ls) != 2 {
+		t.Fatalf("two sizes asked, got %d layers", len(ls))
+	}
+	for i, want := range []string{"5", "6"} {
+		if got := ls[i]["res"]; got != float64(5+i) {
+			t.Fatalf("layer %d res = %v, want %s", i, got, want)
+		}
+		if got := cellResOf(t, ls[i]); got != want {
+			t.Fatalf("layer %d holds res-%s cells, want %s", i, got, want)
+		}
+		if got := heatmapTotal(t, ls[i]); got != 3 {
+			t.Fatalf("layer %d counts %d rows, want all 3", i, got)
+		}
+	}
+}
+
+// TestHeatmapTwoSizesFoldUnderTheGuestCeiling: above zoom 12 a guest gets res
+// 12 for either size, so the server answers that size once, not twice.
+func TestHeatmapTwoSizesFoldUnderTheGuestCeiling(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	ls := heatmapLayersOf(t, doHeatmap(t, st, Guest(), "?z=13,14"))
+	if len(ls) != 1 {
+		t.Fatalf("both sizes fold to res 12 for a guest, got %d layers", len(ls))
+	}
+	if got := cellResOf(t, ls[0]); got != "12" {
+		t.Fatalf("guest layer res = %s, want capped to 12", got)
+	}
+	if ls[0]["res"] != float64(12) {
+		t.Fatalf("guest layer is tagged res %v, want 12", ls[0]["res"])
+	}
+	props := ls[0]["features"].([]any)[0].(map[string]any)["properties"].(map[string]any)
+	if _, ok := props["hunters"]; ok {
+		t.Fatal("a guest's layer must stay anonymous")
+	}
+	// A member at the same zoom keeps both sizes.
+	if n := len(heatmapLayersOf(t, doHeatmap(t, st, Auth{Role: "member", UserID: 1, Username: "m"}, "?z=13,14"))); n != 2 {
+		t.Fatalf("member asked 13,14, got %d layers", n)
+	}
+}
+
+// TestHeatmapRefusesMoreThanTwoSizes: every size bins up to heatmapCap rows,
+// so the list is bounded to the two the website draws.
+func TestHeatmapRefusesMoreThanTwoSizes(t *testing.T) {
+	st := seedPointsStore(t)
+	defer st.Close()
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, st, nil, nil, nil)
+	r := httptest.NewRequest("GET", "/api/heatmap?z=5,6,7", nil)
+	r = r.WithContext(context.WithValue(r.Context(), authCtxKey, Auth{Role: "member"}))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("three sizes: got %d, want 400", w.Code)
+	}
+}
