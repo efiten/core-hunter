@@ -170,6 +170,32 @@ for (const [w, h, label, role] of ONE_ROW) {
     // And --ch-bar-h agrees with it, which is what everything else hangs off.
     expect(Math.abs(s.barVar - s.height), '--ch-bar-h matches the real bar').toBeLessThanOrEqual(1)
   })
+
+  // #757: at 768 "Log in" broke into "Log" / "in". The height check above
+  // only caught it where the font's line height pushed the bar past 64px, so
+  // count the lines of every label instead. Per text node, because a control
+  // with an icon and a caption has parts at different heights on one line.
+  test(`every bar label is one line on ${label} at ${w}px, as a ${role}`, async ({ page }) => {
+    if (role === 'guest') await asGuest(page)
+    await page.setViewportSize({ width: w, height: h })
+    await page.goto('/')
+    if (role === 'guest') await expect(page.locator('#guest-notice')).toBeVisible()
+    else await expect(page.locator('#rx-log')).toBeVisible()
+    const wrapped = await page.evaluate(() => [...document.querySelectorAll('#bar button, #bar a')]
+      .filter((e) => !e.closest('#bar-filters') && e.getClientRects().length)
+      .filter((e) => {
+        const walk = document.createTreeWalker(e, NodeFilter.SHOW_TEXT)
+        for (let t = walk.nextNode(); t; t = walk.nextNode()) {
+          const r = document.createRange()
+          r.selectNodeContents(t)
+          const tops = new Set([...r.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top)))
+          if (tops.size > 1) return true
+        }
+        return false
+      })
+      .map((e) => e.id || e.textContent.trim()))
+    expect(wrapped, 'labels that wrap').toEqual([])
+  })
 }
 
 // Every map control is in the FAB rail since #630, so every rail button is
