@@ -164,6 +164,23 @@ for (const [w, h] of [[760, 800], [800, 800], [900, 700], [1024, 700]]) {
   })
 }
 
+// #758: below 768 Start mapping and Log in live in the menu, so two callouts
+// have nothing to point at. They used to be skipped, left at 0,0 over the bar
+// and left out of the decision, which then hung on whether the third box fit
+// below the panel: a question of font metrics. A tall window gives that box
+// room on any font, so only the missing targets can send the copy inside.
+test('a callout whose control is in the menu sends the copy into the panel', async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 1400 })
+  await bootstrap(page, false)
+  await page.goto('/')
+  await expect(page.locator('#wb-onboarding')).toBeVisible()
+  await expect(page.locator('#auth-btn')).toBeHidden()
+  await expect(page.locator('#wb-inline')).toBeVisible()
+  for (const id of ['wb-co-filters', 'wb-co-mapping', 'wb-co-account']) {
+    await expect(page.locator(`#${id}`)).toBeHidden()
+  }
+})
+
 test('a phone-width window drops the floating callouts into the panel', async ({ page }) => {
   // The centred panel is most of a narrow viewport, so three boxes beside the
   // toolbar would sit behind it — the copy moves inside instead.
