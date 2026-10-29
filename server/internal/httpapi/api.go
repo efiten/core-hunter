@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -166,6 +167,22 @@ func oldestRxAt(pts []store.Point) string {
 
 const heatmapCap = 50000
 
+// heatmapLayer is one cell size of a two-size /api/heatmap answer (#742).
+type heatmapLayer struct {
+	Res int `json:"res"`
+	query.FeatureCollection
+}
+
+// heatmapZooms reads ?z= as a comma list, ascending. A value that does not
+// parse reads as 0, as the single z always has.
+func heatmapZooms(raw string) []int {
+	parts := strings.Split(raw, ",")
+	zs := make([]int, len(parts))
+	for i, p := range parts { zs[i], _ = strconv.Atoi(strings.TrimSpace(p)) }
+	sort.Ints(zs)
+	return zs
+}
+
 type Deps struct {
 	Auth    *AuthAPI
 	Admin   *AdminAPI
@@ -227,7 +244,11 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 	})
 	mux.HandleFunc("/api/heatmap", func(w http.ResponseWriter, r *http.Request) {
 		a := AuthOf(r)
-		z, _ := strconv.Atoi(r.URL.Query().Get("z"))
+		// z is one zoom, or two as "a,b" (#742): the website draws two cell
+		// sizes at a time and asks for both at once, so the rows are queried
+		// once and binned into each size. One zoom keeps the old answer shape.
+		zs := heatmapZooms(r.URL.Query().Get("z"))
+		if len(zs) > 2 { http.Error(w, "at most two zooms", http.StatusBadRequest); return }
 		f := filterFrom(r, ignore)
 		var ps auth.Pseudonyms
 		sub := !a.AtLeast("member")
@@ -242,7 +263,9 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 			ownFull := len(f.Hunter) == 1 && a.ownsCompanion(strings.ToLower(f.Hunter[0]))
 			anon = !ownFull
 			if !ownFull {
-				if z > guestHeatmapMaxZ { z = guestHeatmapMaxZ }
+				for i := range zs {
+					if zs[i] > guestHeatmapMaxZ { zs[i] = guestHeatmapMaxZ }
+				}
 				// Deliberately NOT windowed (#440). The 24h clamp that used to
 				// sit here made a first-time visitor land on a blank map in any
 				// area nobody had driven that day, hiding everything the project
@@ -262,14 +285,30 @@ func RegisterRoutes(mux *http.ServeMux, s *store.Store, ignore []string, cs *sto
 			for _, c := range a.Companions { own[c] = true }
 			pts = degradePoints(pts, ps, own)
 		}
-		// One aggregation, not two: this used to build the full heatmap and then
-		// throw it away for the anonymous one on every guest request, which is
-		// the traffic the unwindowed view exists to serve.
-		fc := query.Heatmap(pts, geo.ResForZoom(z))
-		if anon { fc = query.HeatmapAnon(pts, geo.ResForZoom(z)) }
-		fc.Truncated = trunc
-		if trunc { fc.CoversFrom = oldestRxAt(pts) }
-		writeJSON(w, fc)
+		coversFrom := ""
+		if trunc { coversFrom = oldestRxAt(pts) }
+		// One aggregation per size, not two: this used to build the full
+		// heatmap and then throw it away for the anonymous one on every guest
+		// request, which is the traffic the unwindowed view exists to serve.
+		bin := func(res int) query.FeatureCollection {
+			fc := query.Heatmap(pts, res)
+			if anon { fc = query.HeatmapAnon(pts, res) }
+			fc.Truncated = trunc
+			fc.CoversFrom = coversFrom
+			return fc
+		}
+		if len(zs) == 1 {
+			writeJSON(w, bin(geo.ResForZoom(zs[0])))
+			return
+		}
+		// Sizes the caller's ceiling folds into one are answered once.
+		layers := []heatmapLayer{}
+		for _, z := range zs {
+			res := geo.ResForZoom(z)
+			if len(layers) > 0 && layers[len(layers)-1].Res == res { continue }
+			layers = append(layers, heatmapLayer{Res: res, FeatureCollection: bin(res)})
+		}
+		writeJSON(w, map[string]any{"layers": layers})
 	})
 	mux.HandleFunc("/api/hunters", func(w http.ResponseWriter, r *http.Request) {
 		a := AuthOf(r)

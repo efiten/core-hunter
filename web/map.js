@@ -1,4 +1,5 @@
 import { pointShare, resPair, resForZoom } from './zoomfade.js'
+import { heatmapAnswers } from './heatmapanswers.js'
 import { tierColorVar } from './signal.js'
 import { createWebMap } from './mapcore.js'
 import { leafletZoom, mapZoomFromLeaflet, zoomParam, pointFeatures, hexFeatures, pillarFeatures, observerFeatures, locateFeatures, heatImageData, imageCoordinates, latLonBounds, cameraFor, angleParam } from './mapmodel.js'
@@ -459,40 +460,29 @@ for (const slot of HEX_SLOTS) {
 // The finest cell size the server hands out (server/internal/geo/hexgrid.go,
 // ResForZoom).
 const SERVER_MAX_RES = 18
-// The size of the cells in an answer, read off the first cell's id
-// ("res:q:r"). The server may answer coarser than it was asked: below member
-// it caps the zoom, and above 18 it has nothing finer.
-const resOfCells = (fc, asked) => {
-  const cell = fc.features && fc.features[0] && fc.features[0].properties && fc.features[0].properties.cell
-  const res = cell ? parseInt(String(cell).split(':')[0], 10) : NaN
-  return Number.isFinite(res) ? res : asked
-}
 // Two cell sizes at a time (#634, zoomfade.js): the one drawn in full around
-// this zoom and the neighbour it blends with, each asked for by its own z and
-// each in the layer its size belongs to. Where the server answers both asks
-// with the same size, that size is its ceiling for this caller: it is drawn
-// once, and stays in full from there up.
+// this zoom and the neighbour it blends with, each in the layer its size
+// belongs to. Both come in one request, from one point query (#742). Where the
+// server answers both with the same size, that size is its ceiling for this
+// caller: it is drawn once, and stays in full from there up.
 async function drawHex() {
   const isCurrent = hexDraw()
   const zoom = wm.getZoom()
   const { coarse, fine } = resPair(zoom, SERVER_MAX_RES)
-  let answers
+  const asked = [...new Set([coarse, fine])]
+  let answers, capped
   try {
-    answers = await Promise.all([...new Set([coarse, fine])].map(async (res) => {
-      const p = new URLSearchParams(qs())
-      p.set('z', String(res))
-      const r = await fetch(`${API_BASE}/api/heatmap?${p.toString()}`)
-      if (!r.ok) throw new Error(`heatmap ${r.status}`)
-      const fc = await r.json()
-      return { res: resOfCells(fc, res), asked: res, fc }
-    }))
+    const p = new URLSearchParams(qs())
+    p.set('z', asked.join(','))
+    const r = await fetch(`${API_BASE}/api/heatmap?${p.toString()}`)
+    if (!r.ok) throw new Error(`heatmap ${r.status}`)
+    ;({ answers, capped } = heatmapAnswers(await r.json(), asked))
   } catch (_) {
     if (mayPaint(isCurrent)) { clearHex(); setStatus('heatmap unavailable') }
     return
   }
   if (!mayPaint(isCurrent)) return
   const bySize = new Map(answers.map((a) => [a.res, a]))
-  const capped = answers.some((a) => a.res < a.asked)
   const maxRes = capped ? Math.max(...bySize.keys()) : SERVER_MAX_RES
   const sizes = { a: null, b: null }
   const drawn = { hex: null, 'hex-b': null }
