@@ -419,19 +419,17 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
   }
 
   // ---- popups ----
-  // One open popup at a time, as on Leaflet: opening another closes it, and
-  // the 'open'/'close' events reach map.js so a name-resolution redraw can be
-  // held while a popup is under the cursor (#271).
+  // One open popup at a time, as on Leaflet: opening another closes it. It is
+  // not tied to a feature, so a redraw (setData) leaves it open (#763).
   let popup = null
-  const popupCbs = []
   function closePopup() { if (popup) { const p = popup; popup = null; p.remove() } }
   function openPopup(lngLat, html, { closeButton = true, closeOnClick = true, className = '' } = {}) {
     closePopup()
-    popup = new maplibregl.Popup({ closeButton, closeOnClick, maxWidth: '280px', className })
+    const p = new maplibregl.Popup({ closeButton, closeOnClick, maxWidth: '280px', className })
       .setLngLat(lngLat).setHTML(html).addTo(map)
-    for (const cb of popupCbs) cb(true)
-    popup.on('close', () => { if (popup) { popup = null; for (const cb of popupCbs) cb(false) } })
-    return popup
+    popup = p
+    p.on('close', () => { if (popup === p) popup = null })
+    return p
   }
   // A hover line for the hex cells: MapLibre has no tooltip, so it is a small
   // closeless popup that follows the pointer and goes on mouseleave.
@@ -552,7 +550,7 @@ export function createWebMap(containerId, { center, zoom, theme = 'dark', mode =
     onOverlaysReady(cb) { readyCbs.push(cb); if (overlaysReady) cb() },
     isReady() { return overlaysReady },
     setData, setHeat, syncSize, setHexSizes,
-    openPopup, closePopup, onPopup(cb) { popupCbs.push(cb) }, hoverText, onLayerClick, onEmptyClick, onGlyphTap,
+    openPopup, closePopup, hoverText, onLayerClick, onEmptyClick, onGlyphTap,
     // Test hook (#632): where a glyph paints, in page px, for a real click on it.
     glyphPagePoint(key, kind) {
       const src = kind === 'advert' ? NODE_GLYPH_SOURCE : NODE_DOT_SOURCE

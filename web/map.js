@@ -21,7 +21,6 @@ import { unclutteredLabels, createLabelMeasurer, screenObstacles } from './nodel
 import { fetchPointsPaged } from './pagedpoints.js'
 import { windowKey, createWindowCache } from './windowpoints.js'
 import { latestWins } from './latestwins.js'
-import { deferWhile } from './deferredredraw.js'
 import * as urlstate from './urlstate.js'
 import { startBarWatch, onBarChange } from './barwatch.js'
 import { initAuthBar } from './login.js'
@@ -134,22 +133,6 @@ const csRelayLayer = 'observer-rxlog'
 // this covers what is drawn from the current state rather than a fetch.
 wm.onOverlaysReady(() => { refresh() })
 
-// A name-resolution redraw clears its layer, and removing a marker closes its
-// popup — so a popup opened just before a background lookup finished would
-// vanish under the cursor (#271). Hold those redraws while a popup is open and
-// run the last one when it closes. Only automatic redraws go through this: a
-// redraw the user asked for (filter, pan, layer toggle) closing a popup is
-// expected behaviour.
-let popupOpen = false
-const nameRedraw = deferWhile(() => popupOpen)
-wm.onPopup((open) => {
-  popupOpen = open
-  // Deferred a tick, and flush() re-checks: opening a popup from another
-  // closes the first one before the next is open, so a synchronous flush on
-  // close would clear the layer out from under it — this bug, one
-  // interaction later.
-  if (!open) setTimeout(() => nameRedraw.flush(), 0)
-})
 // Target-list picker (#223), created near the end of this file once its DOM
 // exists; refreshPickerCandidates() (called from refresh()) feeds it on every
 // redraw in all modes, guarded since it's still null during the handful of
@@ -413,10 +396,11 @@ async function drawPoints() {
   const cover = { truncated: capped, coversFrom: oldestRxAt(points) }
   setStatus(coverageLabel(points.length, 'points', cover) + ignoreSuffix(), coverageTitle(POINTS_CAP, cover))
   // Look up unknown full-pubkey senders once each; redraw if any resolved to a
-  // name — but not out from under an open popup (#271).
+  // name. An open popup stays open: since MapLibre (#763) a redraw replaces
+  // source data and never closes it.
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
-      if (names.some((n) => n)) nameRedraw.run('points', () => refresh())
+      if (names.some((n) => n)) refresh()
     })
   }
 }
@@ -773,7 +757,7 @@ function renderPickerRows(points) {
   targetPicker.render(points, Date.now())
   if (!misses.size) return
   Promise.all([...misses].map((k) => resolveName(k))).then((names) => {
-    if (names.some((n) => n)) nameRedraw.run('picker', () => renderPickerRows(points))
+    if (names.some((n) => n)) renderPickerRows(points)
   })
 }
 
@@ -1306,16 +1290,9 @@ async function drawObserverPoints(src, layer, ring) {
   if (unresolved.size) {
     Promise.all([...unresolved].map((k) => resolveName(k))).then((names) => {
       // Same guard as above: don't redraw for a layer that's been switched off
-      // (or gone into Locate focus) while the names were resolving. The guard
-      // moved inside the callback because the redraw can now be held until a
-      // popup closes (#271) — by then, either may have changed.
+      // (or gone into Locate focus) while the names were resolving.
       if (!names.some((n) => n)) return
-      // Keyed per source: the advert and relay layers redraw independently and
-      // are never redrawn by a pan or a filter change, so sharing one slot
-      // would drop one of them silently rather than defer it.
-      nameRedraw.run(`cs:${src}`, () => {
-        if (csOn.checked && !locateActive) drawObserverPoints(src, layer, ring)
-      })
+      if (csOn.checked && !locateActive) drawObserverPoints(src, layer, ring)
     })
   }
 }

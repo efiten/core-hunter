@@ -496,54 +496,57 @@ test('the site is installable: manifest is linked and valid, no service worker (
   expect(regs).toHaveLength(0)
 })
 
-// #271: every redraw path clears its layer, and removing a marker closes its
-// popup — so a name resolving in the background used to shut a popup the user
-// had just opened. The redraw is held until the popup closes.
-test('an open popup survives a name-resolution redraw, and the redraw still happens after', async ({ page }) => {
-  await page.route('**/api/observer-points*', (route) => {
-    const src = new URL(route.request().url()).searchParams.get('src')
-    const pts = src === 'rxlog'
-      ? [{ lat: 51, lon: 4, rssi: -100, snr: -5, heard_key: '1d6f', src: 'rxlog', observer: 'Erwin Mobile', rx_at: '2026-06-30T15:00:00Z' }]
-      : []
-    route.fulfill({ json: { points: pts } })
-  })
+// #271 held name-resolution redraws while a popup was open, because on
+// Leaflet removing a marker closed its popup. On MapLibre the popup is not tied
+// to a feature and a redraw only replaces source data, so the hold went (#763).
+// What is left to guard: the redraw runs while the popup is open, and the
+// popup stays.
+test('a name-resolution redraw runs under an open popup and leaves it open', async ({ page }) => {
+  const sender = 'ab'.repeat(32)
+  await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [{
+    lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: sender, sender_kind: 'advert_pubkey', sender_label: '',
+    hunter_pubkey: 'h1', hunter_name: 'Hunter 1', channel_name: '', packet_type: 'Advert', hops: 0,
+    rx_at: new Date(Date.now() - 5000).toISOString(),
+  }] } }))
+  // Map draws page /api/points by 5000; the ticker asks with its own limit.
+  // An absolute range stops the live timers (the range refresh and the
+  // ticker poll), so a map draw after the name lands is that redraw and no
+  // other.
+  let mapDraws = 0
+  page.on('request', (r) => { if (r.url().includes('/api/points') && r.url().includes('limit=5000')) mapDraws++ })
   // The resolver answers only when the test lets it (#761), so the popup is
-  // open and waiting when the name lands. A fixed delay raced everything the
-  // test does before the click, and lost under load.
+  // open before the name lands.
   let release
   const gate = new Promise((res) => { release = res })
   await page.route('**/api/resolve*', async (r) => {
     await gate
-    r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
+    r.fulfill({ json: { name: 'Named Node', ambiguous: false } })
   })
-  await page.goto('/')
-  await setNodePos(page, 'positions')
-  await expect.poll(() => page.evaluate(() => window.__featureCount('observer-rxlog')), { timeout: 10000 }).toBe(1)
+  const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  const from = local(new Date(Date.now() - 86400000)), to = local(new Date(Date.now() + 86400000))
+  await page.goto(`/?mode=points&lat=51&lon=4&z=15&from=${from}&to=${to}`)
+  await expect.poll(() => page.evaluate(() => window.__featureCount('points')), { timeout: 10000 }).toBe(1)
   await mapSettled(page)
 
-  // Open the popup while the lookup is still in flight. Pinned as "not yet
-  // resolved", not merely "contains the id": the id line is present either
-  // way, so on a slow machine the redraw could already have happened and every
-  // later assertion would pass for the wrong reason.
+  const popup = page.locator('.maplibregl-popup:not(.ch-hover)')
   await expect(async () => {
     await clickMapAt(page, 51, 4)
-    await expect(page.locator('.maplibregl-popup-content')).toContainText('relay 1d6f', { timeout: 1000 })
+    await expect(popup).toBeVisible({ timeout: 1000 })
   }).toPass()
-  await expect(page.locator('.maplibregl-popup-content')).not.toContainText('BE-HSS-DinX')
+  await expect(popup).not.toContainText('Named Node')
 
-  // Let the name land. The popup is still there afterwards: this is the
-  // regression.
-  const answered = page.waitForResponse((r) => r.url().includes('/api/resolve'))
+  // The name lands and the layer redraws: a fresh map draw proves the redraw
+  // ran, rather than waiting a fixed time and hoping it did.
+  const before = mapDraws
   release()
-  await answered
-  await page.waitForTimeout(600)
-  await expect(page.locator('.maplibregl-popup-content')).toBeVisible()
+  await expect.poll(() => mapDraws, { timeout: 3000 }).toBeGreaterThan(before)
+  await expect(popup).toBeVisible()
 
-  // ...and the held redraw runs on close, so the name is not lost either.
+  // The name is there for the next popup.
   await page.locator('.maplibregl-popup-close-button').click()
   await expect(async () => {
     await clickMapAt(page, 51, 4)
-    await expect(page.locator('.maplibregl-popup-content')).toContainText('BE-HSS-DinX', { timeout: 1000 })
+    await expect(popup).toContainText('Named Node', { timeout: 1000 })
   }).toPass({ timeout: 10000 })
 })
 
