@@ -133,4 +133,19 @@ describe('createRowAttributor (#663)', () => {
     expect(fetchRegistry).toHaveBeenCalledTimes(2)
     expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
   })
+  it('still attributes the late answer\'s own rows by that answer, which covers them', async () => {
+    let now = 1000
+    let answerFirst
+    const fetchRegistry = vi.fn()
+      .mockImplementationOnce(() => new Promise((res) => { answerFirst = () => res(ok([NODE])) }))
+      .mockImplementation(async () => ok([]))
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true, now: () => now })
+    const rows = [{ ...ROW }]
+    const first = a.attribute(rows)
+    now += 10
+    await a.attribute([{ ...ROW, lat: 45, lon: 10 }])   // newer, elsewhere
+    answerFirst()
+    await first
+    expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
+  })
 })
