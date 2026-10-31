@@ -507,9 +507,13 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
       : []
     route.fulfill({ json: { points: pts } })
   })
-  // Slow resolver, so the popup is open and waiting when the name lands.
+  // The resolver answers only when the test lets it (#761), so the popup is
+  // open and waiting when the name lands. A fixed delay raced everything the
+  // test does before the click, and lost under load.
+  let release
+  const gate = new Promise((res) => { release = res })
   await page.route('**/api/resolve*', async (r) => {
-    await new Promise((res) => setTimeout(res, 600))
+    await gate
     r.fulfill({ json: { name: 'BE-HSS-DinX', ambiguous: false } })
   })
   await page.goto('/')
@@ -527,8 +531,12 @@ test('an open popup survives a name-resolution redraw, and the redraw still happ
   }).toPass()
   await expect(page.locator('.maplibregl-popup-content')).not.toContainText('BE-HSS-DinX')
 
-  // Past the resolver delay the popup is still there — this is the regression.
-  await page.waitForTimeout(1200)
+  // Let the name land. The popup is still there afterwards: this is the
+  // regression.
+  const answered = page.waitForResponse((r) => r.url().includes('/api/resolve'))
+  release()
+  await answered
+  await page.waitForTimeout(600)
   await expect(page.locator('.maplibregl-popup-content')).toBeVisible()
 
   // ...and the held redraw runs on close, so the name is not lost either.
