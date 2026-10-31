@@ -130,6 +130,20 @@ html,body { margin:0; height:100%; background:var(--ch-bg); color:var(--ch-text)
   background:var(--ch-input-bg); border:1px solid var(--ch-accent); border-radius:6px;
   padding:5px 8px; color:var(--ch-accent); text-decoration:none; white-space:nowrap; }
 #bar #rx-cta:hover { background:var(--ch-accent); color:var(--ch-bg); }
+/* #757: between 768 and 900px these broke mid-label ("Log" / "in") and grew
+   the bar to 68px. On one line the row is short of room: at 768 as a guest
+   about 55px, and an absolute range is longer still. Hunters is one word and
+   keeps its width; the time range is what gives, on its own ellipsis like
+   #sp-toggle's. The full range stays in the picker it opens. */
+#bar #hp-toggle, #bar #tr-toggle, #bar #auth-btn { white-space:nowrap; }
+#bar-controls > .ms-wrap:has(> #hp-toggle) { flex-shrink:0; }
+/* The range gives first: shrinking is weighted by flex-shrink, so at 100 it
+   takes nearly all of the shortfall before Select target loses its caret, and
+   it stops at the clock plus a few characters. */
+#bar-controls > .tr-wrap { display:flex; flex-shrink:100; min-width:72px; }
+#bar #bar-controls > .tr-wrap > #tr-toggle { min-width:0; max-width:100%; }
+#bar #tr-toggle > svg { flex-shrink:0; }
+#bar #tr-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 /* Two labels, because the bar wraps by content width: measured at 375px, the
    row this lands on holds a control up to ~80px before the whole bar gains a
    37px row, and "Start mapping" is 109px. The phone is the surface the RX
