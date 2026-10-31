@@ -140,7 +140,10 @@ export function positionCallouts() {
       .filter((elm) => elm && elm.getBoundingClientRect)
       .map((elm) => elm.getBoundingClientRect())
       .filter((r) => r.width > 0 || r.height > 0)
-    if (!rects.length) continue
+    // No visible target (#758): below 768 Start mapping and Log in are in the
+    // menu. A box with nothing to point at cannot be placed either, so the copy
+    // goes into the panel, where it describes the menu entries just as well.
+    if (!rects.length) { spotlight = false; continue }
     const size = box.getBoundingClientRect()
     const anchored = calloutPosition(unionRect(rects), viewport, size, co)
     const { top, left } = avoidOverlap(
