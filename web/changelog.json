@@ -7,6 +7,13 @@
     "body": "On a tablet-width window, Hunters, the time range and Log in no longer break over two lines."
   },
   {
+    "id": "2026-10-29-tour-narrow-panel",
+    "date": "2026-10-29",
+    "where": "map",
+    "title": "The tour fits a narrow window",
+    "body": "Below tablet width the tour's notes sit in its panel, instead of floating over the top bar."
+  },
+  {
     "id": "2026-10-23-companion-link-stays",
     "date": "2026-10-23",
     "where": "app",

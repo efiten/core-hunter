@@ -1,0 +1,7 @@
+{
+  "id": "2026-10-29-tour-narrow-panel",
+  "date": "2026-10-29",
+  "where": "map",
+  "title": "The tour fits a narrow window",
+  "body": "Below tablet width the tour's notes sit in its panel, instead of floating over the top bar."
+}
