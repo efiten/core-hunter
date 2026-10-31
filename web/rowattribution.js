@@ -70,7 +70,8 @@ export function createRowAttributor({ fetchRegistry, allowed = () => true, now =
     const want = fresh ? union(slice.bounds, bounds) : bounds
     // Dated from the question (#764): a slow answer is as old as the moment it
     // was asked for, and one that lands after a newer slice does not replace it.
-    // Its own rows still read by it: the newer slice need not cover them.
+    // Its own rows still read by it, unless a reset came in between: the newer
+    // slice need not cover them.
     const askedAt = now()
     const asked = generation
     const answer = await fetchRegistry(want)

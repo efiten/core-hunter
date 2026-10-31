@@ -150,6 +150,21 @@ describe('createRowAttributor (#663)', () => {
     await a.attribute([{ ...ROW }])
     expect(fetchRegistry).toHaveBeenCalledTimes(2)
   })
+  it('does not let a failure asked for before a reset hold back the first ask after it', async () => {
+    let failFirst
+    const fetchRegistry = vi.fn()
+      .mockImplementationOnce(() => new Promise((res) => { failFirst = () => res({ status: 'server_unreachable', nodes: [] }) }))
+      .mockImplementation(async () => ok([NODE]))
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true })
+    const first = a.attribute([{ ...ROW }])
+    a.reset()
+    failFirst()
+    await first
+    const rows = [{ ...ROW }]
+    await a.attribute(rows)
+    expect(fetchRegistry).toHaveBeenCalledTimes(2)
+    expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
+  })
   it('does not let an older failure that lands late hold back asks a newer answer allows', async () => {
     let now = 1000
     let failFirst
