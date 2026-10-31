@@ -133,6 +133,40 @@ describe('createRowAttributor (#663)', () => {
     expect(fetchRegistry).toHaveBeenCalledTimes(2)
     expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
   })
+  // #768: reset() is a change of role. An answer asked for before it belongs to
+  // the old role, so it neither fills the slice nor names the rows it was for.
+  it('drops an answer that was asked for before a reset', async () => {
+    let answerFirst
+    const fetchRegistry = vi.fn()
+      .mockImplementationOnce(() => new Promise((res) => { answerFirst = () => res(ok([NODE])) }))
+      .mockImplementation(async () => ok([NODE]))
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true })
+    const before = [{ ...ROW }]
+    const first = a.attribute(before)
+    a.reset()
+    answerFirst()
+    await first
+    expect(before[0]._attr).toEqual({ rule: 'estimate', prefixKnown: false })
+    await a.attribute([{ ...ROW }])
+    expect(fetchRegistry).toHaveBeenCalledTimes(2)
+  })
+  it('does not let an older failure that lands late hold back asks a newer answer allows', async () => {
+    let now = 1000
+    let failFirst
+    const fetchRegistry = vi.fn()
+      .mockImplementationOnce(() => new Promise((res) => { failFirst = () => res({ status: 'server_unreachable', nodes: [] }) }))
+      .mockImplementation(async () => ok([NODE]))
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true, now: () => now })
+    const first = a.attribute([{ ...ROW }])
+    now += 10
+    await a.attribute([{ ...ROW, lat: 45, lon: 10 }])   // newer, elsewhere, answered
+    failFirst()
+    await first
+    const rows = [{ ...ROW }]                             // outside the newer slice
+    await a.attribute(rows)
+    expect(fetchRegistry).toHaveBeenCalledTimes(3)
+    expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
+  })
   it('still attributes the late answer\'s own rows by that answer, which covers them', async () => {
     let now = 1000
     let answerFirst

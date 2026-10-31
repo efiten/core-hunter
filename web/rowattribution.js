@@ -56,6 +56,10 @@ export const RETRY_MS = 15000
 export function createRowAttributor({ fetchRegistry, allowed = () => true, now = () => Date.now() } = {}) {
   let slice = null   // { bounds, at, index }
   let failedAt = null
+  // Bumped by reset(), a change of role (#768). An answer asked for under an
+  // earlier generation belongs to the old role: it changes nothing, and the
+  // rows it was for read without a registry.
+  let generation = 0
   async function indexFor(rows) {
     if (!allowed()) return null
     const bounds = rowsBounds(rows.filter((r) => attributableId(r) != null))
@@ -68,8 +72,14 @@ export function createRowAttributor({ fetchRegistry, allowed = () => true, now =
     // was asked for, and one that lands after a newer slice does not replace it.
     // Its own rows still read by it: the newer slice need not cover them.
     const askedAt = now()
+    const asked = generation
     const answer = await fetchRegistry(want)
-    if (!answer || answer.status !== 'ok' || answer.truncated) { failedAt = now(); return null }
+    if (asked !== generation) return null
+    if (!answer || answer.status !== 'ok' || answer.truncated) {
+      // A failure older than the slice says nothing about the registry now.
+      if (!slice || slice.at <= askedAt) failedAt = now()
+      return null
+    }
     failedAt = null
     const index = registryIndex(answer.nodes)
     if (!slice || slice.at <= askedAt) slice = { bounds: want, at: askedAt, index }
@@ -81,6 +91,6 @@ export function createRowAttributor({ fetchRegistry, allowed = () => true, now =
       for (const r of rows || []) r._attr = attributeReception(r, { index })
       return rows
     },
-    reset() { slice = null; failedAt = null },
+    reset() { slice = null; failedAt = null; generation++ },
   }
 }
