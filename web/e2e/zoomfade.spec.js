@@ -92,10 +92,15 @@ test('the pointer reads the cell drawn in full, not the one faded out over it', 
   // MapLibre zoom 13: size 14 in full, 15 loaded above it at nothing.
   await page.goto('/?mode=hex&lat=51&lon=4&z=14')
   await expect.poll(() => count(page, 'hex-b')).toBe(15)
-  const at = await page.evaluate(() => window.__mapProject(51, 4))
-  const box = await page.locator('#map').boundingBox()
-  await page.mouse.move(box.x + at.x, box.y + at.y)
-  await page.mouse.move(box.x + at.x + 2, box.y + at.y + 1)
+  // The source holding the cells is not the layer having painted them, so the
+  // move is repeated until a painted cell answers (#766).
+  await expect(async () => {
+    const at = await page.evaluate(() => window.__mapProject(51, 4))
+    const box = await page.locator('#map').boundingBox()
+    await page.mouse.move(box.x + at.x, box.y + at.y)
+    await page.mouse.move(box.x + at.x + 2, box.y + at.y + 1)
+    await expect(page.locator('.ch-hover')).toBeVisible({ timeout: 1000 })
+  }).toPass()
   await expect(page.locator('.ch-hover')).toContainText('14 pts')
 })
 
