@@ -102,4 +102,50 @@ describe('createRowAttributor (#663)', () => {
     await a.attribute([{ ...ROW }])
     expect(fetchRegistry).toHaveBeenCalledTimes(2)
   })
+  // #764: a slice is as old as the question, not the answer. Stamped when the
+  // answer landed, a slow answer counted as fresh for a minute from then, and
+  // the names it lacked stayed off the rows that long.
+  it('dates a slice from when it was asked for, not from when the answer landed', async () => {
+    let now = 1000
+    const fetchRegistry = vi.fn(async () => { now += 61000; return ok([]) })
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true, now: () => now })
+    await a.attribute([{ ...ROW }])
+    fetchRegistry.mockImplementation(async () => ok([NODE]))
+    const rows = [{ ...ROW }]
+    await a.attribute(rows)
+    expect(fetchRegistry).toHaveBeenCalledTimes(2)
+    expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
+  })
+  it('does not let an older answer that lands late replace a newer slice', async () => {
+    let now = 1000
+    let answerFirst
+    const fetchRegistry = vi.fn()
+      .mockImplementationOnce(() => new Promise((res) => { answerFirst = () => res(ok([])) }))
+      .mockImplementation(async () => ok([NODE]))
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true, now: () => now })
+    const first = a.attribute([{ ...ROW }])
+    now += 61000
+    await a.attribute([{ ...ROW }])
+    answerFirst()
+    await first
+    const rows = [{ ...ROW }]
+    await a.attribute(rows)
+    expect(fetchRegistry).toHaveBeenCalledTimes(2)
+    expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
+  })
+  it('still attributes the late answer\'s own rows by that answer, which covers them', async () => {
+    let now = 1000
+    let answerFirst
+    const fetchRegistry = vi.fn()
+      .mockImplementationOnce(() => new Promise((res) => { answerFirst = () => res(ok([NODE])) }))
+      .mockImplementation(async () => ok([]))
+    const a = createRowAttributor({ fetchRegistry, allowed: () => true, now: () => now })
+    const rows = [{ ...ROW }]
+    const first = a.attribute(rows)
+    now += 10
+    await a.attribute([{ ...ROW, lat: 45, lon: 10 }])   // newer, elsewhere
+    answerFirst()
+    await first
+    expect(rows[0]._attr).toEqual({ rule: 'node', node: NODE })
+  })
 })

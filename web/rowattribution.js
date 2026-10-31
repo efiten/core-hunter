@@ -64,11 +64,16 @@ export function createRowAttributor({ fetchRegistry, allowed = () => true, now =
     if (fresh && covers(slice.bounds, bounds)) return slice.index
     if (failedAt != null && now() - failedAt < RETRY_MS) return null
     const want = fresh ? union(slice.bounds, bounds) : bounds
+    // Dated from the question (#764): a slow answer is as old as the moment it
+    // was asked for, and one that lands after a newer slice does not replace it.
+    // Its own rows still read by it: the newer slice need not cover them.
+    const askedAt = now()
     const answer = await fetchRegistry(want)
     if (!answer || answer.status !== 'ok' || answer.truncated) { failedAt = now(); return null }
     failedAt = null
-    slice = { bounds: want, at: now(), index: registryIndex(answer.nodes) }
-    return slice.index
+    const index = registryIndex(answer.nodes)
+    if (!slice || slice.at <= askedAt) slice = { bounds: want, at: askedAt, index }
+    return index
   }
   return {
     async attribute(rows) {
