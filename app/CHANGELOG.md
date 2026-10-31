@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.32.1](https://github.com/efiten/core-hunter/compare/app-v1.32.0...app-v1.32.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **web:** a callout with its control in the menu sends the tour copy into the panel ([#760](https://github.com/efiten/core-hunter/issues/760)) ([8592da6](https://github.com/efiten/core-hunter/commit/8592da6c4036921084c7a7e0f569ef57b80b41ec))
+* **web:** keep the bar's labels on one line at tablet widths ([#759](https://github.com/efiten/core-hunter/issues/759)) ([f27390c](https://github.com/efiten/core-hunter/commit/f27390c9259e1044510190384b25bddeb2d9e4d4))
+
 ## [1.32.0](https://github.com/efiten/core-hunter/compare/app-v1.31.0...app-v1.32.0) (2026-10-23)
 
 

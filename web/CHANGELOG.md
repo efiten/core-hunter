@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.28.1](https://github.com/efiten/core-hunter/compare/web-v1.28.0...web-v1.28.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **web:** a callout with its control in the menu sends the tour copy into the panel ([#760](https://github.com/efiten/core-hunter/issues/760)) ([8592da6](https://github.com/efiten/core-hunter/commit/8592da6c4036921084c7a7e0f569ef57b80b41ec))
+* **web:** a registry answer from before a role change, or an older failure, no longer moves the attributor ([#769](https://github.com/efiten/core-hunter/issues/769)) ([087377d](https://github.com/efiten/core-hunter/commit/087377d647df9f2bc98916bd79e536123e7140a3))
+* **web:** date a registry slice from when it was asked for ([#765](https://github.com/efiten/core-hunter/issues/765)) ([77badec](https://github.com/efiten/core-hunter/commit/77badecf4ceaaec1150a4341b8252ec3e8ccb282))
+* **web:** keep the bar's labels on one line at tablet widths ([#759](https://github.com/efiten/core-hunter/issues/759)) ([f27390c](https://github.com/efiten/core-hunter/commit/f27390c9259e1044510190384b25bddeb2d9e4d4))
+
+
+### Performance Improvements
+
+* **server,web:** one point query per hex refresh for both cell sizes ([#755](https://github.com/efiten/core-hunter/issues/755)) ([78868fc](https://github.com/efiten/core-hunter/commit/78868fc9c2d922f92667b2623e43eb0423ded194))
+
+
+### Code Refactoring
+
+* **web:** drop the name-redraw hold, MapLibre never closes a popup on redraw ([#770](https://github.com/efiten/core-hunter/issues/770)) ([ba9a9b0](https://github.com/efiten/core-hunter/commit/ba9a9b0f5fe94f1c30a281fd9ac5d627148df4d3))
+
+
+### Tests
+
+* **web:** release the mocked resolver when the popup is open, not after 600 ms ([#762](https://github.com/efiten/core-hunter/issues/762)) ([2abc959](https://github.com/efiten/core-hunter/commit/2abc959948958306c90aae79f851ee67ed373a40))
+* **web:** retry the zoomfade hover until a painted cell answers ([#767](https://github.com/efiten/core-hunter/issues/767)) ([9331dfa](https://github.com/efiten/core-hunter/commit/9331dfa19082df82d826a085bbeb2f8f2cb857e1))
+
 ## [1.28.0](https://github.com/efiten/core-hunter/compare/web-v1.27.0...web-v1.28.0) (2026-10-23)
 
 
