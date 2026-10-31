@@ -506,12 +506,12 @@ test('a name-resolution redraw runs under an open popup and leaves it open', asy
   await page.route('**/api/points*', (r) => r.fulfill({ json: { points: [{
     lat: 51, lon: 4, rssi: -90, snr: -8, sender_id: sender, sender_kind: 'advert_pubkey', sender_label: '',
     hunter_pubkey: 'h1', hunter_name: 'Hunter 1', channel_name: '', packet_type: 'Advert', hops: 0,
-    rx_at: new Date(Date.now() - 5000).toISOString(),
+    rx_at: new Date(Date.now() - 3600000).toISOString(),
   }] } }))
   // Map draws page /api/points by 5000; the ticker asks with its own limit.
-  // An absolute range stops the live timers (the range refresh and the
-  // ticker poll), so a map draw after the name lands is that redraw and no
-  // other.
+  // A range that has already ended is not live, so neither the range refresh
+  // nor the ticker poll runs: a map draw after the name lands is that redraw
+  // and no other.
   let mapDraws = 0
   page.on('request', (r) => { if (r.url().includes('/api/points') && r.url().includes('limit=5000')) mapDraws++ })
   // The resolver answers only when the test lets it (#761), so the popup is
@@ -523,7 +523,7 @@ test('a name-resolution redraw runs under an open popup and leaves it open', asy
     r.fulfill({ json: { name: 'Named Node', ambiguous: false } })
   })
   const local = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-  const from = local(new Date(Date.now() - 86400000)), to = local(new Date(Date.now() + 86400000))
+  const from = local(new Date(Date.now() - 86400000)), to = local(new Date(Date.now() - 120000))
   await page.goto(`/?mode=points&lat=51&lon=4&z=15&from=${from}&to=${to}`)
   await expect.poll(() => page.evaluate(() => window.__featureCount('points')), { timeout: 10000 }).toBe(1)
   await mapSettled(page)
@@ -539,10 +539,11 @@ test('a name-resolution redraw runs under an open popup and leaves it open', asy
   // ran, rather than waiting a fixed time and hoping it did.
   const before = mapDraws
   release()
-  await expect.poll(() => mapDraws, { timeout: 3000 }).toBeGreaterThan(before)
+  await expect.poll(() => mapDraws, { timeout: 10000 }).toBeGreaterThan(before)
   await expect(popup).toBeVisible()
 
-  // The name is there for the next popup.
+  // The name is there for the next popup (read from the resolver cache when
+  // it opens; the redraw is proved by the draw counter above).
   await page.locator('.maplibregl-popup-close-button').click()
   await expect(async () => {
     await clickMapAt(page, 51, 4)

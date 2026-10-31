@@ -1404,12 +1404,11 @@ function nodePosPopup(name, id, p, est, { reachOn = false, selected = false, hea
 // trigger one). Without this the later pass clears the layer and both then add their
 // markers, leaving duplicates behind.
 let nodePosGen = 0
-// Signature of what is currently drawn. Rebuilding the layer destroys every
-// marker, which silently closes any popup the user has open — and this layer
-// redraws on each refresh (pan, zoom, filter change, the name-resolution
-// pass), so an unguarded rebuild can yank a popup away mid-read. Skip the
-// rebuild when the rendered content is identical, mirroring targetlist.js's
-// _lastSig guard in the app.
+// Signature of what is currently drawn. This layer redraws on each refresh
+// (pan, zoom, filter change, the name-resolution pass), so the rebuild is
+// skipped when the rendered content is identical, mirroring targetlist.js's
+// _lastSig guard in the app. It no longer guards an open popup: on MapLibre a
+// redraw leaves it open (#763).
 let nodePosSig = null
 // The repeater whose popup comes back after a selecting press or tap (#623).
 // A selection redraws the node layer, so the popup is reopened with the
