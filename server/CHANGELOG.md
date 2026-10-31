@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/efiten/core-hunter/compare/server-v1.11.0...server-v1.11.1) (2026-10-31)
+
+
+### Performance Improvements
+
+* **server,web:** one point query per hex refresh for both cell sizes ([#755](https://github.com/efiten/core-hunter/issues/755)) ([78868fc](https://github.com/efiten/core-hunter/commit/78868fc9c2d922f92667b2623e43eb0423ded194))
+
 ## [1.11.0](https://github.com/efiten/core-hunter/compare/server-v1.10.1...server-v1.11.0) (2026-10-23)
 
 
