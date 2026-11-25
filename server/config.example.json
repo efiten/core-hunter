@@ -6,5 +6,15 @@
   "dbPath": "/app/data/hunter.db",
   "httpAddr": ":8090",
   "resolveUpstreams": ["https://<resolver-host>/sf7/api/nodes/resolve", "https://<resolver-host>/sf8/api/nodes/resolve"],
-  "nodePositionUpstreams": ["https://<resolver-host>/sf7/api/nodes/positions", "https://<corescope-host>/api/nodes?limit=2000"]
+  "nodePositionUpstreams": ["https://<resolver-host>/sf7/api/nodes/positions", "https://<corescope-host>/api/nodes?limit=2000"],
+  "extraBrokers": [
+    {
+      "id": "dmc",
+      "url": "tcp://<dutchmeshcore-host>:1883",
+      "username": "<read account>",
+      "password": "<set me>",
+      "topics": ["meshcore/hunter/+/wardriver/obs", "meshcore/wardriver/+/wardriver/obs"],
+      "format": "wardrive"
+    }
+  ]
 }

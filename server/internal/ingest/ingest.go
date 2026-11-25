@@ -12,8 +12,21 @@ type Store interface {
 }
 
 func Handle(s Store, topic string, body []byte, now func() string) error {
+	return handle(s, topic, body, now, store.ParsePayload)
+}
+
+// HandleObs ingests a wardrive obs read from an extra broker; source is the
+// broker's id and is stored with the reception (#735).
+func HandleObs(s Store, source, topic string, body []byte, now func() string) error {
+	return handle(s, topic, body, now, func(topic string, body []byte, ts string) (store.Reception, error) {
+		return store.ParseObs(topic, body, ts, source)
+	})
+}
+
+func handle(s Store, topic string, body []byte, now func() string,
+	parse func(topic string, body []byte, ts string) (store.Reception, error)) error {
 	ts := now()
-	r, err := store.ParsePayload(topic, body, ts)
+	r, err := parse(topic, body, ts)
 	if err != nil {
 		return deadLetter(s, topic, body, ts, "parse: "+err.Error())
 	}

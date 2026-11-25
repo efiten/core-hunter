@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -52,5 +53,64 @@ func TestLoadAuthExplicit(t *testing.T) {
 	if c.CookieSecure || c.BaseURL != "https://map.mesh-hunter.eu" || c.BrevoSmtpPort != 587 ||
 		c.BootstrapAdmin != "efite" || len(c.ResolveUpstreams) != 2 || len(c.NodePositionUpstreams) != 2 {
 		t.Fatalf("fields not parsed: %+v", c)
+	}
+}
+
+func writeCfg(t *testing.T, body string) string {
+	t.Helper()
+	path := t.TempDir() + "/c.json"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	return path
+}
+
+func TestLoadReadsExtraBrokers(t *testing.T) {
+	c, err := Load(writeCfg(t, `{"mqttUrl":"x","extraBrokers":[{"id":"dmc","url":"tcp://h:1883","username":"u","password":"p","topics":["a/+/obs","b/+/obs"],"format":"wardrive"}]}`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(c.ExtraBrokers) != 1 {
+		t.Fatalf("want 1 broker, got %+v", c.ExtraBrokers)
+	}
+	b := c.ExtraBrokers[0]
+	if b.ID != "dmc" || b.URL != "tcp://h:1883" || b.Username != "u" || b.Password != "p" ||
+		b.Format != "wardrive" || len(b.Topics) != 2 || b.Topics[1] != "b/+/obs" {
+		t.Fatalf("broker not read back as given: %+v", b)
+	}
+}
+
+func TestLoadRefusesABadExtraBroker(t *testing.T) {
+	ok := func(id string) string {
+		return `{"id":"` + id + `","url":"tcp://h:1883","topics":["a"],"format":"wardrive"}`
+	}
+	cases := []struct{ name, brokers, want string }{
+		{"empty id", `[{"id":"","url":"tcp://h","topics":["a"],"format":"wardrive"}]`, "extraBrokers[0] ()"},
+		{"id site", `[` + ok("site") + `]`, "extraBrokers[0] (site)"},
+		{"duplicate id", `[` + ok("dmc") + `,` + ok("dmc") + `]`, "extraBrokers[1] (dmc)"},
+		{"bad format", `[{"id":"dmc","url":"tcp://h","topics":["a"],"format":"hunter"}]`, "extraBrokers[0] (dmc)"},
+		{"empty url", `[{"id":"dmc","url":"","topics":["a"],"format":"wardrive"}]`, "extraBrokers[0] (dmc)"},
+		{"empty topics", `[{"id":"dmc","url":"tcp://h","topics":[],"format":"wardrive"}]`, "extraBrokers[0] (dmc)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Load(writeCfg(t, `{"mqttUrl":"x","extraBrokers":`+tc.brokers+`}`))
+			if err == nil {
+				t.Fatalf("want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadWithoutExtraBrokers(t *testing.T) {
+	c, err := Load("testdata/min.json")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if c.ExtraBrokers != nil {
+		t.Fatalf("want nil, got %+v", c.ExtraBrokers)
 	}
 }

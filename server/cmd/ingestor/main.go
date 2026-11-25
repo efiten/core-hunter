@@ -126,6 +126,13 @@ func main() {
 		log.Fatalf("mqtt connect: %v", t.Error())
 	}
 
+	// An extra broker that is down must not stop the ingestor: paho keeps
+	// retrying the connection in the background, so Connect is not waited on.
+	var extras []mqtt.Client
+	for _, b := range cfg.ExtraBrokers {
+		extras = append(extras, connectExtraBroker(b, st))
+	}
+
 	log.Printf("ingestor listening on %s, topic %s", cfg.HTTPAddr, cfg.MQTTTopic)
 
 	sigCh := make(chan os.Signal, 1)
@@ -133,7 +140,45 @@ func main() {
 	<-sigCh
 	log.Printf("shutting down")
 	client.Disconnect(250)
+	for _, c := range extras {
+		c.Disconnect(250)
+	}
 	_ = st.Close()
+}
+
+// connectExtraBroker starts a client for one extra broker and returns at once.
+// The connection is retried in the background, so a broker that is down at
+// startup is logged by paho and picked up when it comes back.
+func connectExtraBroker(b config.Broker, st *store.Store) mqtt.Client {
+	opts := mqtt.NewClientOptions().
+		AddBroker(b.URL).
+		SetUsername(b.Username).
+		SetPassword(b.Password).
+		SetClientID("core-hunter-ingestor-" + b.ID).
+		SetAutoReconnect(true).
+		SetConnectRetry(true).
+		SetCleanSession(false)
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		log.Printf("mqtt connection lost on %s: %v", b.ID, err)
+	})
+	opts.SetOnConnectHandler(func(c mqtt.Client) {
+		for _, topic := range b.Topics {
+			if tok := c.Subscribe(topic, 1, func(_ mqtt.Client, m mqtt.Message) {
+				if err := ingest.HandleObs(st, b.ID, m.Topic(), m.Payload(), func() string {
+					return time.Now().UTC().Format(time.RFC3339)
+				}); err != nil {
+					log.Printf("ingest error on %s: %v", b.ID, err)
+				}
+			}); tok.Wait() && tok.Error() != nil {
+				log.Printf("subscribe error on %s: %s: %v", b.ID, topic, tok.Error())
+			} else {
+				log.Printf("subscribed to %s on %s", topic, b.ID)
+			}
+		}
+	})
+	c := mqtt.NewClient(opts)
+	c.Connect()
+	return c
 }
 
 // mailerAdapter implements httpapi.Mailer over mail.Sender, building the
