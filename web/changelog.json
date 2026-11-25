@@ -1,5 +1,12 @@
 [
   {
+    "id": "2026-11-25-dutchmeshcore-wardrive-on-map",
+    "date": "2026-11-25",
+    "where": "map",
+    "title": "DutchMeshCore wardrives on the map",
+    "body": "Receptions that others publish to DutchMeshCore's wardrive topics now show up on the map, with the new hunters they bring."
+  },
+  {
     "id": "2026-10-29-bar-labels-one-line",
     "date": "2026-10-29",
     "where": "map",

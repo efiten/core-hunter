@@ -2,7 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"slices"
+
+	"github.com/efiten/core-hunter/server/internal/store"
 )
 
 type Config struct {
@@ -39,6 +43,21 @@ type Config struct {
 	// must carry the ?limit= it should ask for per page — that is what opts it
 	// into paging, and it caps a page at 2000 rows.
 	NodePositionUpstreams []string `json:"nodePositionUpstreams"`
+
+	// ExtraBrokers are other MQTT brokers whose wardrive obs messages are read
+	// into hunter_receptions next to our own (#735).
+	ExtraBrokers []Broker `json:"extraBrokers"`
+}
+
+// Broker is one extra MQTT broker. ID names it in logs and is stored as the
+// source of every reception read from it.
+type Broker struct {
+	ID       string   `json:"id"`
+	URL      string   `json:"url"`
+	Username string   `json:"username"`
+	Password string   `json:"password"`
+	Topics   []string `json:"topics"`
+	Format   string   `json:"format"`
 }
 
 func Load(path string) (Config, error) {
@@ -59,5 +78,33 @@ func Load(path string) (Config, error) {
 	if c.HTTPAddr == "" {
 		c.HTTPAddr = ":8090"
 	}
+	if err := checkExtraBrokers(c.ExtraBrokers); err != nil {
+		return c, err
+	}
 	return c, nil
+}
+
+func checkExtraBrokers(bs []Broker) error {
+	seen := map[string]bool{}
+	for i, b := range bs {
+		bad := func(reason string) error {
+			return fmt.Errorf("extraBrokers[%d] (%s): %s", i, b.ID, reason)
+		}
+		switch {
+		case b.ID == "":
+			return bad("id is empty")
+		case b.ID == store.SourceSite:
+			return bad(`id "site" is reserved for our own broker`)
+		case seen[b.ID]:
+			return bad("id is used twice")
+		case b.Format != "wardrive":
+			return bad(`format must be "wardrive"`)
+		case b.URL == "":
+			return bad("url is empty")
+		case len(b.Topics) == 0 || slices.Contains(b.Topics, ""):
+			return bad("topics must list at least one topic")
+		}
+		seen[b.ID] = true
+	}
+	return nil
 }

@@ -751,7 +751,7 @@ guessed from current settings.
 
 The PWA publishes everything the companion hears (iteration 1) — or all zero-hop receptions
 (iteration 2 after ratification). The local map filter (direct/all toggle) affects only the local
-view, not what is published upstream. The ingestor deduplicates by `(origin_id, rx_at, sender_key)`.
+view, not what is published upstream. The ingestor deduplicates by `(hunter_pubkey, rx_at, raw)` (`server/internal/store/store.go`, `enforceReceptionIdentity`).
 Receptions without a GPS fix are dropped at the PWA before publishing (no row, no publish), and a
 fix too inaccurate to place one is refused there too (#274).
 
@@ -791,6 +791,23 @@ A `config.json` broker can list `streams` instead of one `url` (#704): each stre
 (`legsOf` in `app/src/brokers.js`), under the id `<broker>@<host>`, with its own watermark and
 token. The site configures DutchMeshCore this way: collector 1 under `hunter`, collector 2 under
 `wardriver`.
+
+### Reading wardrive brokers (#735)
+
+`extraBrokers` in the ingestor's `config.json` lists other brokers (`id`, `url`, `username`,
+`password`, `topics`, `format`) whose `.../wardriver/obs` messages are read into `hunter_receptions`
+next to our own. Each entry gets its own MQTT client (`core-hunter-ingestor-<id>`), and a broker that
+is down at startup does not stop the ingestor. `format` can only be `"wardrive"`, and `id` must be
+unique and not `"site"`: `site` is the source of a reception from our own broker.
+
+- The sender is read off `raw` alone by `meshpacket.Classify`. Its five rules need no channel keys
+  and no app state, so `channel_name` and the `trace_reply`, `telemetry_reply` and `anon_reply`
+  senders, which the app resolves from its own requests, are not set for these rows.
+- The `track` message is not read, only `obs`.
+- The `source` column holds the broker `id` (`site` for our own broker).
+- `origin_id` and `raw` are folded to lower case, so the same reception through two brokers is one key.
+- Insert rule: a row from our own broker replaces an extra-broker copy of the same reception, never
+  the reverse (`server/internal/store/store.go`).
 
 ---
 

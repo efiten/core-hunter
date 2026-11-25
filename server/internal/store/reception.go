@@ -3,7 +3,21 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"math"
+	"strings"
+	"time"
+
+	"github.com/efiten/core-hunter/server/internal/meshpacket"
 )
+
+// SourceSite marks a reception that arrived through our own broker, as opposed
+// to a copy read from an extra broker.
+const SourceSite = "site"
+
+// ErrNoSignal is returned for an obs without RSSI or SNR. A reception that
+// carries no signal strength cannot be drawn on the coverage map, and a value
+// type would turn the missing figure into 0 dB, a real reading.
+var ErrNoSignal = errors.New("obs has no RSSI or SNR")
 
 // ErrNoPosition is returned for a payload that carries no usable position.
 // A reception without one is useless to this product — the hunter app refuses
@@ -11,6 +25,25 @@ import (
 // missing lat/lon into 0,0, a real coordinate in the Gulf of Guinea. Callers
 // route it to the dead-letter table like any other parse failure (#346).
 var ErrNoPosition = errors.New("payload has no gps lat/lon")
+
+// ErrOriginNotTopic is returned for an obs whose origin_id is empty or differs
+// from the pubkey segment of its topic, or whose topic is not
+// meshcore/<label>/<pubkey>/wardriver/obs. The broker authenticates the topic,
+// not the body, so origin_id is only a claim: a publisher could otherwise file
+// receptions under another hunter's key.
+var ErrOriginNotTopic = errors.New("obs origin_id does not match its topic")
+
+// ErrBadRxAt is returned for an obs whose rx_at does not parse as RFC 3339 or
+// lies more than maxRxAtAhead after the ingest time. Every time filter compares
+// strings, and a future-dated row would sit in every guest's 24 h window and
+// sort first under every LIMIT.
+var ErrBadRxAt = errors.New("obs rx_at is not a usable time")
+
+const maxRxAtAhead = 10 * time.Minute
+
+// rxAtLayout is the shape JS toISOString() produces, which is what our own app
+// sends, so our own obs stay byte-identical and dedup keeps working.
+const rxAtLayout = "2006-01-02T15:04:05.000Z"
 
 type Reception struct {
 	HunterPubkey string
@@ -37,6 +70,9 @@ type Reception struct {
 	// value the column can hold (#346).
 	PosAccM   *float64
 	MQTTTopic string
+	// Source is the broker the reception was read from; empty is stored as
+	// SourceSite.
+	Source string
 }
 
 type payload struct {
@@ -75,13 +111,13 @@ func ParsePayload(topic string, body []byte, ingestedAt string) (Reception, erro
 		return Reception{}, ErrNoPosition
 	}
 	return Reception{
-		HunterPubkey: p.OriginID,
+		HunterPubkey: strings.ToLower(p.OriginID),
 		HunterName:   p.Origin,
 		RxAt:         p.Timestamp,
 		IngestedAt:   ingestedAt,
 		SNR:          p.SNR,
 		RSSI:         p.RSSI,
-		Raw:          p.Raw,
+		Raw:          strings.ToLower(p.Raw),
 		PacketType:   p.PacketType,
 		SenderKey:    p.SenderKey,
 		SenderKeylen: p.SenderKeylen,
@@ -96,5 +132,75 @@ func ParsePayload(topic string, body []byte, ingestedAt string) (Reception, erro
 		Lon:          *p.GPS.Lon,
 		PosAccM:      p.GPS.AccM,
 		MQTTTopic:    topic,
+		Source:       SourceSite,
+	}, nil
+}
+
+// obs is the message a wardrive publisher sends (app/src/wardrive.js buildObs).
+// hash, path, route, packet_type and radio are left out on purpose: they are
+// all read off raw, or not stored.
+type obs struct {
+	OriginID string   `json:"origin_id"`
+	RxAt     string   `json:"rx_at"`
+	Raw      string   `json:"raw"`
+	RSSI     *float64 `json:"RSSI"`
+	SNR      *float64 `json:"SNR"`
+	Pos      *struct {
+		Lat      *float64 `json:"lat"`
+		Lon      *float64 `json:"lon"`
+		Accuracy *float64 `json:"accuracy"`
+	} `json:"pos"`
+}
+
+// ParseObs reads a wardrive obs from an extra broker. The origin and the raw
+// frame are folded to lower case because the keys of the same reception must
+// match whatever case a publisher wrote them in, or the copy through the other
+// broker would not collapse into one row. The sender is read off raw alone by
+// meshpacket.Classify.
+func ParseObs(topic string, body []byte, ingestedAt, source string) (Reception, error) {
+	var o obs
+	if err := json.Unmarshal(body, &o); err != nil {
+		return Reception{}, err
+	}
+	seg := strings.Split(topic, "/")
+	if len(seg) != 5 || seg[0] != "meshcore" || seg[3] != "wardriver" || seg[4] != "obs" ||
+		o.OriginID == "" || strings.ToLower(o.OriginID) != strings.ToLower(seg[2]) {
+		return Reception{}, ErrOriginNotTopic
+	}
+	if o.Pos == nil || o.Pos.Lat == nil || o.Pos.Lon == nil {
+		return Reception{}, ErrNoPosition
+	}
+	if o.RSSI == nil || o.SNR == nil {
+		return Reception{}, ErrNoSignal
+	}
+	ing, err := time.Parse(time.RFC3339, ingestedAt)
+	if err != nil {
+		return Reception{}, err
+	}
+	rx, err := time.Parse(time.RFC3339Nano, o.RxAt)
+	if err != nil || rx.After(ing.Add(maxRxAtAhead)) {
+		return Reception{}, ErrBadRxAt
+	}
+	raw := strings.ToLower(o.Raw)
+	c := meshpacket.Classify(raw)
+	return Reception{
+		HunterPubkey: strings.ToLower(o.OriginID),
+		RxAt:         rx.UTC().Format(rxAtLayout),
+		IngestedAt:   ingestedAt,
+		SNR:          *o.SNR,
+		RSSI:         int(math.Round(*o.RSSI)),
+		Raw:          raw,
+		PacketType:   c.PacketType,
+		SenderKind:   c.SenderKind,
+		SenderID:     c.SenderID,
+		SenderLabel:  c.SenderLabel,
+		SenderRole:   c.SenderRole,
+		IsDirect:     c.IsDirect,
+		Hops:         c.Hops,
+		Lat:          *o.Pos.Lat,
+		Lon:          *o.Pos.Lon,
+		PosAccM:      o.Pos.Accuracy,
+		MQTTTopic:    topic,
+		Source:       source,
 	}, nil
 }

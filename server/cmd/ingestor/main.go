@@ -126,6 +126,13 @@ func main() {
 		log.Fatalf("mqtt connect: %v", t.Error())
 	}
 
+	// An extra broker that is down must not stop the ingestor: each one is
+	// connected, and retried, on its own goroutine.
+	var extras []mqtt.Client
+	for _, b := range cfg.ExtraBrokers {
+		extras = append(extras, connectExtraBroker(b, st))
+	}
+
 	log.Printf("ingestor listening on %s, topic %s", cfg.HTTPAddr, cfg.MQTTTopic)
 
 	sigCh := make(chan os.Signal, 1)
@@ -133,7 +140,56 @@ func main() {
 	<-sigCh
 	log.Printf("shutting down")
 	client.Disconnect(250)
+	for _, c := range extras {
+		c.Disconnect(250)
+	}
 	_ = st.Close()
+}
+
+// connectExtraBroker starts a client for one extra broker and returns at once.
+// The first connection is retried every 30 s on a goroutine, and each failure
+// is logged here: paho's own ConnectRetry logs a refused or unreachable broker
+// only at DEBUG, so a wrong password would be silent. Once connected,
+// AutoReconnect takes over.
+func connectExtraBroker(b config.Broker, st *store.Store) mqtt.Client {
+	opts := mqtt.NewClientOptions().
+		AddBroker(b.URL).
+		SetUsername(b.Username).
+		SetPassword(b.Password).
+		SetClientID("core-hunter-ingestor-" + b.ID).
+		SetAutoReconnect(true).
+		SetCleanSession(false)
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		log.Printf("mqtt connection lost on %s: %v", b.ID, err)
+	})
+	opts.SetOnConnectHandler(func(c mqtt.Client) {
+		for _, topic := range b.Topics {
+			if tok := c.Subscribe(topic, 1, func(_ mqtt.Client, m mqtt.Message) {
+				if err := ingest.HandleObs(st, b.ID, m.Topic(), m.Payload(), func() string {
+					return time.Now().UTC().Format(time.RFC3339)
+				}); err != nil {
+					log.Printf("ingest error on %s: %v", b.ID, err)
+				}
+			}); tok.Wait() && tok.Error() != nil {
+				log.Printf("subscribe error on %s: %s: %v", b.ID, topic, tok.Error())
+			} else {
+				log.Printf("subscribed to %s on %s", topic, b.ID)
+			}
+		}
+	})
+	c := mqtt.NewClient(opts)
+	go func() {
+		for {
+			t := c.Connect()
+			t.Wait()
+			if t.Error() == nil {
+				return
+			}
+			log.Printf("mqtt connect %s: %v", b.ID, t.Error())
+			time.Sleep(30 * time.Second)
+		}
+	}()
+	return c
 }
 
 // mailerAdapter implements httpapi.Mailer over mail.Sender, building the
