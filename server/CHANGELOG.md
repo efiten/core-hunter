@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/efiten/core-hunter/compare/server-v1.11.1...server-v1.12.0) (2026-11-25)
+
+
+### Features
+
+* **server:** read what others publish to DutchMeshCore's wardrive topics ([#735](https://github.com/efiten/core-hunter/issues/735)) ([#772](https://github.com/efiten/core-hunter/issues/772)) ([2bc7530](https://github.com/efiten/core-hunter/commit/2bc75302a1d1cff25f4f4ecd23ef0de789626e6e))
+
 ## [1.11.1](https://github.com/efiten/core-hunter/compare/server-v1.11.0...server-v1.11.1) (2026-10-31)
 
 
