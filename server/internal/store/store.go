@@ -115,6 +115,12 @@ func Open(path string) (*Store, error) {
 		!strings.Contains(err.Error(), "duplicate column name") {
 		return nil, err
 	}
+	// Which broker a reception was read from; every row stored before the
+	// column came through our own.
+	if _, err := db.Exec("ALTER TABLE hunter_receptions ADD COLUMN source TEXT NOT NULL DEFAULT 'site'"); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column name") {
+		return nil, err
+	}
 	// message_id groups every relayed copy of one transmission, so it wants an
 	// index for the same reason sender_key has one: it is what a filter narrows
 	// on. Created after the column, and IF NOT EXISTS so a restart is cheap.
@@ -152,6 +158,12 @@ func Open(path string) (*Store, error) {
 // lowest id is kept -- the first arrival, whose ingested_at is the honest one.
 // This deletes rows, which is why it is narrow: byte-identical frames from one
 // hunter at one millisecond carry no information the survivor does not.
+//
+// The same key also joins a reception to its copy through an extra broker, and
+// there the first arrival does not always win: a row from our own broker
+// replaces the extra-broker copy (Insert). The app's classification knows the
+// channel and the replies it asked for, the server's classification of the raw
+// frame does not, so the site row is the one with more in it.
 func (s *Store) enforceReceptionIdentity() error {
 	if _, err := s.db.Exec(`DELETE FROM hunter_receptions WHERE id NOT IN (
 		SELECT MIN(id) FROM hunter_receptions GROUP BY hunter_pubkey, rx_at, raw
@@ -228,15 +240,33 @@ func (s *Store) Insert(r Reception) error {
 	// raw frame the row already carries, so a publisher cannot get it wrong and
 	// the app needs no change to benefit.
 	messageID, _ := meshpacket.MessageID(r.Raw)
+	if r.Source == "" {
+		r.Source = SourceSite
+	}
+	// A site row takes over the row an extra broker stored first, never the
+	// reverse; id, ingested_at and message_id stay as stored. Any other source
+	// is ignored when the key exists, so the first arrival keeps it.
+	verb, tail := "INSERT OR IGNORE", ""
+	if r.Source == SourceSite {
+		verb = "INSERT"
+		tail = ` ON CONFLICT(hunter_pubkey, rx_at, raw) DO UPDATE SET
+		  hunter_name=excluded.hunter_name, snr=excluded.snr, rssi=excluded.rssi, packet_type=excluded.packet_type,
+		  sender_key=excluded.sender_key, sender_keylen=excluded.sender_keylen, sender_role=excluded.sender_role,
+		  sender_kind=excluded.sender_kind, sender_id=excluded.sender_id, sender_label=excluded.sender_label,
+		  channel_name=excluded.channel_name, is_direct=excluded.is_direct, hops=excluded.hops,
+		  lat=excluded.lat, lon=excluded.lon, pos_acc_m=excluded.pos_acc_m, mqtt_topic=excluded.mqtt_topic,
+		  source=excluded.source
+		  WHERE hunter_receptions.source <> 'site'`
+	}
 	_, err := s.db.Exec(
-		`INSERT OR IGNORE INTO hunter_receptions
+		verb+` INTO hunter_receptions
 		 (hunter_pubkey,hunter_name,rx_at,ingested_at,snr,rssi,raw,packet_type,
 		  sender_key,sender_keylen,sender_role,sender_kind,sender_id,sender_label,channel_name,
-		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic,message_id,message_id_version)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		  is_direct,hops,lat,lon,pos_acc_m,mqtt_topic,message_id,message_id_version,source)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`+tail,
 		r.HunterPubkey, r.HunterName, r.RxAt, r.IngestedAt, r.SNR, r.RSSI, r.Raw, r.PacketType,
 		r.SenderKey, r.SenderKeylen, r.SenderRole, r.SenderKind, r.SenderID, r.SenderLabel, r.ChannelName,
-		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic, messageID, meshpacket.MessageIDVersion,
+		b2i(r.IsDirect), r.Hops, r.Lat, r.Lon, r.PosAccM, r.MQTTTopic, messageID, meshpacket.MessageIDVersion, r.Source,
 	)
 	return err
 }
