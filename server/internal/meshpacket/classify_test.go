@@ -81,3 +81,22 @@ func TestClassifyUnknownPayloadType(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// Vectors are Node TextDecoder output, the app's reading of an advert name.
+func TestAdvertNameDecodesLikeTextDecoder(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"41e28241", "A�A"},
+		{"41ff41", "A�A"},
+		{"41fffe41", "A��A"},
+		{"41c041", "A�A"},
+		{"41eda080", "A���"},
+		{"41f0908041", "A�A"},
+		{"41e2", "A�"},
+		{"41f4908080", "A����"},
+	} {
+		b, _ := hex.DecodeString(c.in)
+		if got := decodeUTF8(b); got != c.want {
+			t.Errorf("%s: got %q want %q", c.in, got, c.want)
+		}
+	}
+}

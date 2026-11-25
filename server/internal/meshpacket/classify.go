@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -195,7 +196,7 @@ func classifyAdvert(c Classification, p []byte) Classification {
 // advertLabel is the name as the app shows it: cut at the first NUL, trimmed,
 // control characters removed, falling back to the cut name when that empties it.
 func advertLabel(raw []byte) string {
-	name := strings.ToValidUTF8(string(raw), "�")
+	name := decodeUTF8(raw)
 	if i := strings.IndexByte(name, 0); i >= 0 {
 		name = name[:i]
 	}
@@ -209,4 +210,56 @@ func advertLabel(raw []byte) string {
 		return cleaned
 	}
 	return name
+}
+
+// decodeUTF8 is the WHATWG UTF-8 decoder, which is what the app's TextDecoder
+// runs: a truncated but so-far-valid sequence becomes one U+FFFD, and a byte
+// that cannot continue it is then read afresh. Go's own replacement differs
+// (it collapses runs, or counts per byte), so it cannot stand in.
+func decodeUTF8(b []byte) string {
+	var sb strings.Builder
+	for i := 0; i < len(b); {
+		c := b[i]
+		if c < 0x80 {
+			sb.WriteByte(c)
+			i++
+			continue
+		}
+		var need int
+		lo, hi := byte(0x80), byte(0xBF)
+		switch {
+		case c >= 0xC2 && c <= 0xDF:
+			need = 1
+		case c >= 0xE0 && c <= 0xEF:
+			need = 2
+			if c == 0xE0 {
+				lo = 0xA0
+			} else if c == 0xED {
+				hi = 0x9F
+			}
+		case c >= 0xF0 && c <= 0xF4:
+			need = 3
+			if c == 0xF0 {
+				lo = 0x90
+			} else if c == 0xF4 {
+				hi = 0x8F
+			}
+		default:
+			sb.WriteRune(utf8.RuneError)
+			i++
+			continue
+		}
+		j := i + 1
+		for ; j < len(b) && j <= i+need && b[j] >= lo && b[j] <= hi; j++ {
+			lo, hi = 0x80, 0xBF
+		}
+		if j-i == need+1 {
+			r, _ := utf8.DecodeRune(b[i:j])
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune(utf8.RuneError)
+		}
+		i = j
+	}
+	return sb.String()
 }
