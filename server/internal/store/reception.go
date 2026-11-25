@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"strings"
+	"time"
 
 	"github.com/efiten/core-hunter/server/internal/meshpacket"
 )
@@ -24,6 +25,25 @@ var ErrNoSignal = errors.New("obs has no RSSI or SNR")
 // missing lat/lon into 0,0, a real coordinate in the Gulf of Guinea. Callers
 // route it to the dead-letter table like any other parse failure (#346).
 var ErrNoPosition = errors.New("payload has no gps lat/lon")
+
+// ErrOriginNotTopic is returned for an obs whose origin_id is empty or differs
+// from the pubkey segment of its topic, or whose topic is not
+// meshcore/<label>/<pubkey>/wardriver/obs. The broker authenticates the topic,
+// not the body, so origin_id is only a claim: a publisher could otherwise file
+// receptions under another hunter's key.
+var ErrOriginNotTopic = errors.New("obs origin_id does not match its topic")
+
+// ErrBadRxAt is returned for an obs whose rx_at does not parse as RFC 3339 or
+// lies more than maxRxAtAhead after the ingest time. Every time filter compares
+// strings, and a future-dated row would sit in every guest's 24 h window and
+// sort first under every LIMIT.
+var ErrBadRxAt = errors.New("obs rx_at is not a usable time")
+
+const maxRxAtAhead = 10 * time.Minute
+
+// rxAtLayout is the shape JS toISOString() produces, which is what our own app
+// sends, so our own obs stay byte-identical and dedup keeps working.
+const rxAtLayout = "2006-01-02T15:04:05.000Z"
 
 type Reception struct {
 	HunterPubkey string
@@ -135,12 +155,17 @@ type obs struct {
 // ParseObs reads a wardrive obs from an extra broker. The origin and the raw
 // frame are folded to lower case because the keys of the same reception must
 // match whatever case a publisher wrote them in, or the copy through the other
-// broker would not collapse into one row. The sender is classified from raw,
-// the same way the app does it for a reception of our own.
+// broker would not collapse into one row. The sender is read off raw alone by
+// meshpacket.Classify.
 func ParseObs(topic string, body []byte, ingestedAt, source string) (Reception, error) {
 	var o obs
 	if err := json.Unmarshal(body, &o); err != nil {
 		return Reception{}, err
+	}
+	seg := strings.Split(topic, "/")
+	if len(seg) != 5 || seg[0] != "meshcore" || seg[3] != "wardriver" || seg[4] != "obs" ||
+		o.OriginID == "" || strings.ToLower(o.OriginID) != strings.ToLower(seg[2]) {
+		return Reception{}, ErrOriginNotTopic
 	}
 	if o.Pos == nil || o.Pos.Lat == nil || o.Pos.Lon == nil {
 		return Reception{}, ErrNoPosition
@@ -148,11 +173,19 @@ func ParseObs(topic string, body []byte, ingestedAt, source string) (Reception, 
 	if o.RSSI == nil || o.SNR == nil {
 		return Reception{}, ErrNoSignal
 	}
+	ing, err := time.Parse(time.RFC3339, ingestedAt)
+	if err != nil {
+		return Reception{}, err
+	}
+	rx, err := time.Parse(time.RFC3339Nano, o.RxAt)
+	if err != nil || rx.After(ing.Add(maxRxAtAhead)) {
+		return Reception{}, ErrBadRxAt
+	}
 	raw := strings.ToLower(o.Raw)
 	c := meshpacket.Classify(raw)
 	return Reception{
 		HunterPubkey: strings.ToLower(o.OriginID),
-		RxAt:         o.RxAt,
+		RxAt:         rx.UTC().Format(rxAtLayout),
 		IngestedAt:   ingestedAt,
 		SNR:          *o.SNR,
 		RSSI:         int(math.Round(*o.RSSI)),

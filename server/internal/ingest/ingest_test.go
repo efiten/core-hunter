@@ -147,26 +147,28 @@ func TestHandleLogsNothingForAGoodPayload(t *testing.T) {
 
 const obsTopic = "meshcore/hunter/AA/wardriver/obs"
 
+const obsNow = "2026-11-25T10:00:30Z"
+
 func TestHandleObsInsertsAReception(t *testing.T) {
 	f := &fake{}
 	body := []byte(`{"origin_id":"AA","rx_at":"2026-11-25T10:00:00Z","raw":"00","RSSI":-90,"SNR":5.5,"pos":{"lat":51.1,"lon":4.2,"accuracy":8}}`)
-	if err := HandleObs(f, "dmc", obsTopic, body, func() string { return "now" }); err != nil {
+	if err := HandleObs(f, "dmc", obsTopic, body, func() string { return obsNow }); err != nil {
 		t.Fatalf("HandleObs: %v", err)
 	}
 	if len(f.got) != 1 || len(f.raws) != 0 {
 		t.Fatalf("want one insert and no dead letter, got %+v / %+v", f.got, f.raws)
 	}
-	if f.got[0].Source != "dmc" || f.got[0].IngestedAt != "now" {
+	if f.got[0].Source != "dmc" || f.got[0].IngestedAt != obsNow {
 		t.Fatalf("source/ingested_at = %q / %q", f.got[0].Source, f.got[0].IngestedAt)
 	}
 }
 
 func TestHandleObsDeadLettersAnUnusableObs(t *testing.T) {
 	f := &fake{}
-	noSignal := []byte(`{"origin_id":"AA","rx_at":"t","raw":"00","SNR":5,"pos":{"lat":51.1,"lon":4.2}}`)
-	noRaw := []byte(`{"origin_id":"AA","rx_at":"t","raw":"","RSSI":-90,"SNR":5,"pos":{"lat":51.1,"lon":4.2}}`)
+	noSignal := []byte(`{"origin_id":"AA","rx_at":"2026-11-25T10:00:00Z","raw":"00","SNR":5,"pos":{"lat":51.1,"lon":4.2}}`)
+	noRaw := []byte(`{"origin_id":"AA","rx_at":"2026-11-25T10:00:00Z","raw":"","RSSI":-90,"SNR":5,"pos":{"lat":51.1,"lon":4.2}}`)
 	for _, b := range [][]byte{noSignal, noRaw} {
-		if err := HandleObs(f, "dmc", obsTopic, b, func() string { return "now" }); err != nil {
+		if err := HandleObs(f, "dmc", obsTopic, b, func() string { return obsNow }); err != nil {
 			t.Fatalf("HandleObs: %v", err)
 		}
 	}

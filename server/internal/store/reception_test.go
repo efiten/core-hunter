@@ -184,6 +184,9 @@ func f64(v float64) *float64 { return &v }
 
 const advertRaw = "12002168d3f174084ac4d4ab0f10f2e69626894bd732a92fd16c426a2ab1a95fdb633f854e66be472732fcc36e2da5ba9be65e224b37ca3cf831586e0ac598ea576115467cbb4e23691b657d41ad6222a0d7a152416e86371eef03504b91930662969ac53303926a530603656decff4957205768697070696e6768616d202d204f6d6e69"
 
+const obsTopicT = "meshcore/dmc/AABB/wardriver/obs"
+const ingT = "2026-11-25T10:00:10Z"
+
 func obsJSON(raw, rssi, extra string) []byte {
 	return []byte(`{"v":1,"origin_id":"AABB","rx_at":"2026-11-25T10:00:00.123Z","pub_at":"2026-11-25T10:00:05Z",` +
 		`"hash":"h","raw":"` + raw + `","len":10,"packet_type":4,"route":"F","payload_len":8,"path":[],` +
@@ -202,7 +205,7 @@ func TestParsePayloadFoldsCase(t *testing.T) {
 
 func TestParseObsMapsTheFields(t *testing.T) {
 	body := obsJSON(advertRaw, `"RSSI":-97,`, `"pos":{"lat":51.1,"lon":4.2,"accuracy":4.2,"src":"phone"}`)
-	r, err := ParseObs("dmc/topic", body, "ing", "dmc")
+	r, err := ParseObs(obsTopicT, body, ingT, "dmc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +213,7 @@ func TestParseObsMapsTheFields(t *testing.T) {
 	if r.RxAt != "2026-11-25T10:00:00.123Z" || r.RSSI != -97 || r.SNR != 6.5 || r.Lat != 51.1 || r.Lon != 4.2 {
 		t.Fatalf("got %+v", r)
 	}
-	if r.PosAccM == nil || *r.PosAccM != 4.2 || r.MQTTTopic != "dmc/topic" || r.Source != "dmc" || r.IngestedAt != "ing" {
+	if r.PosAccM == nil || *r.PosAccM != 4.2 || r.MQTTTopic != obsTopicT || r.Source != "dmc" || r.IngestedAt != ingT {
 		t.Fatalf("got %+v", r)
 	}
 	if r.HunterName != "" || r.ChannelName != "" || r.HunterPubkey != "aabb" || r.Raw != advertRaw {
@@ -223,14 +226,14 @@ func TestParseObsMapsTheFields(t *testing.T) {
 	if r.SenderKind != "advert_pubkey" {
 		t.Fatalf("fixture is not an advert: %+v", r)
 	}
-	r, err = ParseObs("t", obsJSON(advertRaw, `"RSSI":-97,`, `"pos":{"lat":51.1,"lon":4.2}`), "i", "dmc")
+	r, err = ParseObs(obsTopicT, obsJSON(advertRaw, `"RSSI":-97,`, `"pos":{"lat":51.1,"lon":4.2}`), ingT, "dmc")
 	if err != nil || r.PosAccM != nil {
 		t.Fatalf("accuracy absent must be nil: %+v %v", r, err)
 	}
 }
 
 func TestParseObsFoldsCaseAndRoundsRSSI(t *testing.T) {
-	r, err := ParseObs("t", obsJSON(strings.ToUpper(advertRaw), `"RSSI":-97.4,`, `"pos":{"lat":1,"lon":2}`), "i", "dmc")
+	r, err := ParseObs(obsTopicT, obsJSON(strings.ToUpper(advertRaw), `"RSSI":-97.4,`, `"pos":{"lat":1,"lon":2}`), ingT, "dmc")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,20 +244,20 @@ func TestParseObsFoldsCaseAndRoundsRSSI(t *testing.T) {
 
 func TestParseObsRefusesMissingSignalOrPosition(t *testing.T) {
 	pos := `"pos":{"lat":1,"lon":2}`
-	if _, err := ParseObs("t", obsJSON("0a", ``, pos), "i", "dmc"); !errors.Is(err, ErrNoSignal) {
+	if _, err := ParseObs(obsTopicT, obsJSON("0a", ``, pos), ingT, "dmc"); !errors.Is(err, ErrNoSignal) {
 		t.Fatalf("no RSSI: %v", err)
 	}
-	noSNR := []byte(`{"origin_id":"aa","rx_at":"x","raw":"0a","RSSI":-90,` + pos + `}`)
-	if _, err := ParseObs("t", noSNR, "i", "dmc"); !errors.Is(err, ErrNoSignal) {
+	noSNR := []byte(`{"origin_id":"AABB","rx_at":"2026-11-25T10:00:00.123Z","raw":"0a","RSSI":-90,` + pos + `}`)
+	if _, err := ParseObs(obsTopicT, noSNR, ingT, "dmc"); !errors.Is(err, ErrNoSignal) {
 		t.Fatalf("no SNR: %v", err)
 	}
-	if _, err := ParseObs("t", obsJSON("0a", `"RSSI":-90,`, `"src":"phone"`), "i", "dmc"); !errors.Is(err, ErrNoPosition) {
+	if _, err := ParseObs(obsTopicT, obsJSON("0a", `"RSSI":-90,`, `"src":"phone"`), ingT, "dmc"); !errors.Is(err, ErrNoPosition) {
 		t.Fatalf("no pos: %v", err)
 	}
-	if _, err := ParseObs("t", obsJSON("0a", `"RSSI":-90,`, `"pos":{"lon":2}`), "i", "dmc"); !errors.Is(err, ErrNoPosition) {
+	if _, err := ParseObs(obsTopicT, obsJSON("0a", `"RSSI":-90,`, `"pos":{"lon":2}`), ingT, "dmc"); !errors.Is(err, ErrNoPosition) {
 		t.Fatalf("no lat: %v", err)
 	}
-	if _, err := ParseObs("t", []byte(`{nope`), "i", "dmc"); err == nil {
+	if _, err := ParseObs(obsTopicT, []byte(`{nope`), ingT, "dmc"); err == nil {
 		t.Fatal("invalid JSON accepted")
 	}
 }
@@ -347,5 +350,64 @@ func TestInsertExtraBrokerCopiesDoNotReplaceEachOther(t *testing.T) {
 	o := readRow(t, st)
 	if o.n != 1 || o.source != "dmc" || o.kind != "" {
 		t.Fatalf("got %+v", o)
+	}
+}
+
+func TestParseObsRefusesOriginNotMatchingTopic(t *testing.T) {
+	body := obsJSON("0a", `"RSSI":-90,`, `"pos":{"lat":1,"lon":2}`)
+	for _, topic := range []string{
+		"meshcore/dmc/CCDD/wardriver/obs",
+		"meshcore/dmc/AABB/wardriver",
+		"meshcore/dmc/AABB/other/obs",
+		"x/meshcore/dmc/AABB/wardriver/obs",
+		"t",
+	} {
+		if _, err := ParseObs(topic, body, ingT, "dmc"); !errors.Is(err, ErrOriginNotTopic) {
+			t.Fatalf("topic %q: %v", topic, err)
+		}
+	}
+	empty := []byte(`{"origin_id":"","rx_at":"2026-11-25T10:00:00.123Z","raw":"0a","RSSI":-90,"SNR":1,"pos":{"lat":1,"lon":2}}`)
+	if _, err := ParseObs("meshcore/dmc//wardriver/obs", empty, ingT, "dmc"); !errors.Is(err, ErrOriginNotTopic) {
+		t.Fatalf("empty origin: %v", err)
+	}
+	if _, err := ParseObs(obsTopicT, empty, ingT, "dmc"); !errors.Is(err, ErrOriginNotTopic) {
+		t.Fatalf("empty origin, good topic: %v", err)
+	}
+	if r, err := ParseObs("meshcore/dmc/aabb/wardriver/obs", body, ingT, "dmc"); err != nil || r.HunterPubkey != "aabb" {
+		t.Fatalf("case-insensitive match: %+v %v", r, err)
+	}
+	if _, err := ParseObs(obsTopicT, body, ingT, "dmc"); err != nil {
+		t.Fatalf("upper-case topic and origin: %v", err)
+	}
+}
+
+func TestParseObsNormalizesRxAt(t *testing.T) {
+	for in, want := range map[string]string{
+		"2026-11-25T09:34:56.789Z":      "2026-11-25T09:34:56.789Z",
+		"2026-11-25T10:34:56.789+01:00": "2026-11-25T09:34:56.789Z",
+		"2026-11-25T09:34:56Z":          "2026-11-25T09:34:56.000Z",
+	} {
+		body := []byte(`{"origin_id":"AABB","rx_at":"` + in + `","raw":"0a","RSSI":-90,"SNR":1,"pos":{"lat":1,"lon":2}}`)
+		r, err := ParseObs(obsTopicT, body, ingT, "dmc")
+		if err != nil || r.RxAt != want {
+			t.Fatalf("%s: got %q %v want %q", in, r.RxAt, err, want)
+		}
+	}
+	at := func(rx, ing string) error {
+		body := []byte(`{"origin_id":"AABB","rx_at":"` + rx + `","raw":"0a","RSSI":-90,"SNR":1,"pos":{"lat":1,"lon":2}}`)
+		_, err := ParseObs(obsTopicT, body, ing, "dmc")
+		return err
+	}
+	if err := at("yesterday", ingT); !errors.Is(err, ErrBadRxAt) {
+		t.Fatalf("unparseable: %v", err)
+	}
+	if err := at("2026-11-25T10:11:00Z", "2026-11-25T10:00:00Z"); !errors.Is(err, ErrBadRxAt) {
+		t.Fatalf("11 min ahead: %v", err)
+	}
+	if err := at("2026-11-25T10:09:00Z", "2026-11-25T10:00:00Z"); err != nil {
+		t.Fatalf("9 min ahead: %v", err)
+	}
+	if err := at("2026-11-25T10:00:00Z", "garbage"); err == nil {
+		t.Fatal("bad ingestedAt accepted")
 	}
 }

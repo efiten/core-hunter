@@ -126,8 +126,8 @@ func main() {
 		log.Fatalf("mqtt connect: %v", t.Error())
 	}
 
-	// An extra broker that is down must not stop the ingestor: paho keeps
-	// retrying the connection in the background, so Connect is not waited on.
+	// An extra broker that is down must not stop the ingestor: each one is
+	// connected, and retried, on its own goroutine.
 	var extras []mqtt.Client
 	for _, b := range cfg.ExtraBrokers {
 		extras = append(extras, connectExtraBroker(b, st))
@@ -147,8 +147,10 @@ func main() {
 }
 
 // connectExtraBroker starts a client for one extra broker and returns at once.
-// The connection is retried in the background, so a broker that is down at
-// startup is logged by paho and picked up when it comes back.
+// The first connection is retried every 30 s on a goroutine, and each failure
+// is logged here: paho's own ConnectRetry logs a refused or unreachable broker
+// only at DEBUG, so a wrong password would be silent. Once connected,
+// AutoReconnect takes over.
 func connectExtraBroker(b config.Broker, st *store.Store) mqtt.Client {
 	opts := mqtt.NewClientOptions().
 		AddBroker(b.URL).
@@ -156,7 +158,6 @@ func connectExtraBroker(b config.Broker, st *store.Store) mqtt.Client {
 		SetPassword(b.Password).
 		SetClientID("core-hunter-ingestor-" + b.ID).
 		SetAutoReconnect(true).
-		SetConnectRetry(true).
 		SetCleanSession(false)
 	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
 		log.Printf("mqtt connection lost on %s: %v", b.ID, err)
@@ -177,7 +178,17 @@ func connectExtraBroker(b config.Broker, st *store.Store) mqtt.Client {
 		}
 	})
 	c := mqtt.NewClient(opts)
-	c.Connect()
+	go func() {
+		for {
+			t := c.Connect()
+			t.Wait()
+			if t.Error() == nil {
+				return
+			}
+			log.Printf("mqtt connect %s: %v", b.ID, t.Error())
+			time.Sleep(30 * time.Second)
+		}
+	}()
 	return c
 }
 
