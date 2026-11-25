@@ -1,0 +1,1972 @@
+[
+ {
+  "raw": "050f607128792f068b91ab32279fdd577d04d1a46d603ad7f45fed159abe48f229a9cec114",
+  "packet_type": "Response",
+  "hops": 15,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "7d",
+  "sender_label": "7d",
+  "sender_role": ""
+ },
+ {
+  "raw": "2e009237573575536be3d8ed0f35c762",
+  "packet_type": "Control",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "discover_pubkey",
+  "sender_id": "6be3d8ed0f35c762",
+  "sender_label": "",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "2e009220f4a24752711e341172963dd6",
+  "packet_type": "Control",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "discover_pubkey",
+  "sender_id": "711e341172963dd6",
+  "sender_label": "",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "1507664f579fddf6c8744127ef6dbe306fd14d8b91a37931b606d1e0e0c9129b130d462ca61b36859de08ffe904381233a0b0b60dbdb5c9501f26f1183a268e6806375bcf4b12c4bffe65197f2ac78ac0d80612de38a0dca71b7a912",
+  "packet_type": "GroupText",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "c8",
+  "sender_label": "c8",
+  "sender_role": ""
+ },
+ {
+  "raw": "2e0092d74d2f6087a8a4159d85b6a5fb",
+  "packet_type": "Control",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "discover_pubkey",
+  "sender_id": "a8a4159d85b6a5fb",
+  "sender_label": "",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "1504f5557e291132788f8ba9e0f5168f6495ea52c0c576ac28db45f896b88dac36a43f60ce5b778ba9ff376093e1313672c447ff19333840a2",
+  "packet_type": "GroupText",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "29",
+  "sender_label": "29",
+  "sender_role": ""
+ },
+ {
+  "raw": "260127ebec24380000000000ae",
+  "packet_type": "Trace",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1506b693dd5729a02a34337b3024722e0751f4aec1b6411058b54b96f4c1158614e13d1ab619f4384e1ba8",
+  "packet_type": "GroupText",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "a0",
+  "sender_label": "a0",
+  "sender_role": ""
+ },
+ {
+  "raw": "01057ef38229f42b0b61351950b6bb11762888ad610e1fa98e6a94",
+  "packet_type": "Request",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "f4",
+  "sender_label": "f4",
+  "sender_role": ""
+ },
+ {
+  "raw": "014c64cd8fcb3c9d5760a372563ebcca2e1c72c4dd335765857e1d3cc644841e58e17e076369ef9d345cf2219c64",
+  "packet_type": "Request",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "01057e7df6858aac0b031175a988c59aa2592b26ed1a80a99c88c5",
+  "packet_type": "Request",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "8a",
+  "sender_label": "8a",
+  "sender_role": ""
+ },
+ {
+  "raw": "11082ead36047e29dd85302617869cc40944a90fe61f024abd4c1f8cbfe526622c16d0b4377b38e88f39a8ba6c662e617446b34f2443ba648f162e64d8c93b06ac5a50cb2b49d04736a673bb62d4205148548fd81778c505ac9a78c6c7d2e1691c77fe4c8c7582453431879f850b9298cc1003cee2feff534532365f5250545231",
+  "packet_type": "Advert",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "85",
+  "sender_label": "85",
+  "sender_role": ""
+ },
+ {
+  "raw": "04b65900000540ee1194f0013747dc1a9f9924a562a2c02d42904823be7d71",
+  "packet_type": "Response",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "f0",
+  "sender_label": "f0",
+  "sender_role": ""
+ },
+ {
+  "raw": "11051af38f7abad22bb764e609c5436d8136c5a19544d44e07b8b19916f49e1341dbd34766ef613a4cfb6ad37f8fbff5c6a6147a56e055797cc6f77addb0ce1c64c980c5448a44f07518ea588bcc616d51c0077337130a773ef8aa8b7577a1e9701d6cfe7ece1e3f31760a92d94d0703ab60ffff53616c746465616e5f57657374",
+  "packet_type": "Advert",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "ba",
+  "sender_label": "ba",
+  "sender_role": ""
+ },
+ {
+  "raw": "010965ed28f991f0047e122a2ffa4b0f7c4d66941cfa6c662b6702b88954ac",
+  "packet_type": "Request",
+  "hops": 9,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "12",
+  "sender_label": "12",
+  "sender_role": ""
+ },
+ {
+  "raw": "21049af5557eeeb4211c49ac085c7d9a35baf969f8e3379bcdc8",
+  "packet_type": "Path",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "7e",
+  "sender_label": "7e",
+  "sender_role": ""
+ },
+ {
+  "raw": "198c2a997aa945641a98d1f6ad462168d37cac77a36f2f25ce808082d87cac7716e4cf1273046f859b1f66a4a586e7b86ed10e9b2129e83c6d5fb674f1064730116ad0e71825e57247",
+  "packet_type": "GroupData",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "127304",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "054d08fc25ccd7013c9d5760bcca38332e1c0244dd33576595c60b6f3c649f1f8589518221fa2fa2dc22144ddbbd8d0a",
+  "packet_type": "Response",
+  "hops": 13,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "0b6f",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "260133e36c5906000000000071",
+  "packet_type": "Trace",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "090a7c56f6b7a77abaf4a0852f89279adc4823e24a44442a3c5a2b8309c705c3",
+  "packet_type": "TextMessage",
+  "hops": 10,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "85",
+  "sender_label": "85",
+  "sender_role": ""
+ },
+ {
+  "raw": "2117b8ade5e35815dca54ebbb7917669ab6459479fddf6cb120ba0ef76da5e17f8c34ed09c88dfc1c1d042d636bc7b4b998a1a97ab2e3c298bf2b07af349e3969e54c243ba",
+  "packet_type": "Path",
+  "hops": 23,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "12",
+  "sender_label": "12",
+  "sender_role": ""
+ },
+ {
+  "raw": "260123483764c2000000000021",
+  "packet_type": "Trace",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "14a5d0000048f1e45531cccc03551601a0a2e0d9ae790311c3d35aff751837ac6cb005c0c408d419ac0efdae2c0768876c1ec06e134cc771b8",
+  "packet_type": "GroupText",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "ae79",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "2601232386ef59000000000021",
+  "packet_type": "Trace",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d4164c460d938f98701b6d7f4668488f1e05620c08a6456da20fa365fe489006c4562d2ea6625fcbaba3be9429ffaf76335051c504344",
+  "packet_type": "AnonRequest",
+  "hops": 1,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "2601f3394d5599000000000085",
+  "packet_type": "Trace",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "110df621317c177304f036ad2c7339ac441e7a48aa30c4487db2fa3e9b2008475679105328e8c832b4ccd7b52de9b142d35a667dd6a2c28fe103dd31c13781d02064f773465980a075c08256f20be390a091baae46eec8ac958975f20c64130c6ae29cf330de707a2f80f91eb079b7e20cd00e92751404031168edff49572055707065722056656e746e6f72202d204f6d6e69",
+  "packet_type": "Advert",
+  "hops": 13,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "39",
+  "sender_label": "39",
+  "sender_role": ""
+ },
+ {
+  "raw": "02449316e2927a35a1ff48d9150d7712da6527650da020f4df0a9d555002",
+  "packet_type": "Request",
+  "hops": 4,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1456dc000002e0db67f5bad87712678cacd7e0e8cba8920115c91bb36f37137c5671c29c25f0eb566224bc433e3d3627440ebf08addbcf83979eeb",
+  "packet_type": "GroupText",
+  "hops": 2,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "db",
+  "sender_label": "db",
+  "sender_role": ""
+ },
+ {
+  "raw": "2601e9595dc8bd0000000000f0",
+  "packet_type": "Trace",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "154722b9c9bfbb4f117de198444acb9e15bf84812f6cf9df71f9e620d0cf117ec1b0519313d0f99cce3272b19f8c3e5c3b531bf68ea9b9fdc5fdbd9fd2f902c722a11283150f907a17c7effb1aca4f69982257",
+  "packet_type": "GroupText",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "cb9e",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "14c84e00004c57075731afc424476227b9b7af25e94dfc6fe0d9db1123f811f55a10dbfe341ae0a02560c34857dead1e641d6fa16849a2cbb85b09b97923544ec442f6a5835b2be0fb664d2fa37e1eabdcb6d3e4789418a5931e4298b12ad1b489",
+  "packet_type": "GroupText",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "210f5d7cad91b16b6a047e12ca21ec31f87c81249bcbf1f96ceee97d5d20b376491fb5e1f4",
+  "packet_type": "Path",
+  "hops": 15,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "f8",
+  "sender_label": "f8",
+  "sender_role": ""
+ },
+ {
+  "raw": "1545f7dc1799a00112732168e7664435a23a0d5283db9b221f73cba4d29fe1c9933ef7b84e33e8cf84fcf144e79fe6",
+  "packet_type": "GroupText",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "2168",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "19853413ba256fbfc87e89f6ad462168d36fb41a54eb5f76105f4457989284d731f5843a09e3301159be7910084aa68fb3320085",
+  "packet_type": "GroupData",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "2168d3",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1555380676c3fb2b3c9d5760a372353cdeadbcca051b57dc5a8b1220c0aa2e1c72c4dd335765c872f6ada8a44a68411a6145c460438518d600be09e7bf7cb06870b502746b3e34cac1e0489d29f8f62440803ed0deb5bfc641bdfc0415c34ca385e87e1e5475a67e775837616a5cbb514bcde30b85fa171066a5923b87bf5d",
+  "packet_type": "GroupText",
+  "hops": 21,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "a8a4",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "052aa19ae405fc42d76e152ead2c9b79bac0096b6d59e64bc333b62980f6bbb0c7274eb791f06bb5479fdd57d9bfa8e51370b745a4fafa58a0472a63c4e17cae00facbc9ad417513997ec00478710b",
+  "packet_type": "Response",
+  "hops": 42,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "57",
+  "sender_label": "57",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d025ff657fdc2d7ab51c9887fb106bfd88fb2d65f2f6a450740d6ac00b84ee4ecd99f7aad39d1c73a23e6800fc260a3f050c5092fd324",
+  "packet_type": "AnonRequest",
+  "hops": 2,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "f6",
+  "sender_label": "f6",
+  "sender_role": ""
+ },
+ {
+  "raw": "1918eec952ffc605c09f32918591d19fc070212e72ddf6f580311265fad0defdcc778b9bbe025986",
+  "packet_type": "GroupData",
+  "hops": 24,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "31",
+  "sender_label": "31",
+  "sender_role": ""
+ },
+ {
+  "raw": "014b12202e1c72c4dd334997563e432d7876a001857ef6ad36f99d26d6da8912717722c1a8d112e27f71c6ac",
+  "packet_type": "Request",
+  "hops": 11,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f6ad",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "09124ab5c67128794e8b9cab329fdd57567c0bec642da0c9b83fc64362bc11205f9e38954285a19b67beca61f7946e349d926650002917a3",
+  "packet_type": "TextMessage",
+  "hops": 18,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "ec",
+  "sender_label": "ec",
+  "sender_role": ""
+ },
+ {
+  "raw": "091a01e3f6317225280cf2ab82a6d37b91f032cd9fdd5790aaacf685f387bb3e8afabca0fdbea1ee32966ad81f485321",
+  "packet_type": "TextMessage",
+  "hops": 26,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "85",
+  "sender_label": "85",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d29dfe736f051b051f091bb2fa5dc156dc7b063b629f698c36dbee75979ad360912bbd5bd0e047e122180b9e5d2522dcd32d246c351bea9fab7386434787685d58ec5271097b8af1de24b885e48422bcf436f3f9a139aa90ee57d9cbfba",
+  "packet_type": "AnonRequest",
+  "hops": 41,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "80",
+  "sender_label": "80",
+  "sender_role": ""
+ },
+ {
+  "raw": "050bdd559132b5329155047ef6146ebf97c82327fd7b4bebfaed393537914a8693",
+  "packet_type": "Response",
+  "hops": 11,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "f6",
+  "sender_label": "f6",
+  "sender_role": ""
+ },
+ {
+  "raw": "14500f0000468023de55228be7bdfc6f23f8cd86d94057b9a17e3d4e7c6cb592a937f69bbc18b4eba48dd82a665f805a25688eb41331c1f1088af19342e73b5a6dc1b1a2c7ec274880fcd18e720942e93dae4c26ff2d9231bcd62046c9a6b383e3f5bbaa37",
+  "packet_type": "GroupText",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1906579fddf6827d44d09c951c02cfafcfb9844af71c35c200c1611f691469d02686d73a576520d7f99f444e367cf0c091bc7ae854572a14f04fce",
+  "packet_type": "GroupData",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "7d",
+  "sender_label": "7d",
+  "sender_role": ""
+ },
+ {
+  "raw": "1148432da2b7431695c67cac57659012aa752d467314da492b4d096d8bba56d04facf9347e2ddc7dc27a7b98fef3b1f23fce4dacf56a227eaf243d9820ca2148c640821056f8b1330dc50096af8580a34dc267ed722946d0e6b085129c9ef728341aac2cf9ef52adea2966b8237b4e9c61ed5638500e924aff0803f4fae8ff547970686f6f6e2d44617461",
+  "packet_type": "Advert",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "aa75",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "14c513000088694eba11b1a11bcebd4099e2842c56bbcadcc1f69964c4ce5a3e2d16fc3bff538c7ba4f9ac98145a63667aa86f0c450b5c41fb71fa212b582c2b6e",
+  "packet_type": "GroupText",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4ce",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1586a967be3413ba256fbfc87e89f6ad46857e536fee93844489379b4e3589725e2319ea7107e2edd34b2e543bb11ec8c7d50a732695e4",
+  "packet_type": "GroupText",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e53",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "198c5c1a6f3413ba256fbf1a98d12dec991b89f9f38db93c68f7798f8ac36f5ff6ad4648de376f40dfb6688a423ad711ac3732f1828c0a9aeecdc83a705415fa31f58410246a78a096",
+  "packet_type": "GroupData",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "48de37",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d0cd19b5ef38f7df6858a48315a9d986e3f4b31c7ddbbc3145576de1c71215e7bff5aa3ab4c1ebaa8c3a4dd2a830bcfa20cdc43ce6b0b260c80d9d5b542a3acf7",
+  "packet_type": "AnonRequest",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "5a",
+  "sender_label": "5a",
+  "sender_role": ""
+ },
+ {
+  "raw": "014164c460d9d7f0fb7ec2cb39c38a6c5888f2b518226a04",
+  "packet_type": "Request",
+  "hops": 1,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "00b658000045842cd6dd64c4f0460c09ee16260b20ed21bdcd952633a8a0d441dbd4c4b3",
+  "packet_type": "Request",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "0c09",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "11443c62453b722164c4ea8894d030ca309f0963957e3d98fffcad13e4481c9bf83620c19226eda63ad35c00fa6a5b144fdafbc4b4ebf62333267f23b1d431c64f2c6013a9d18ebd6cb8ffa95bea71a7122dcb7baaf32692952956d3894554f08f30250e68fcf0bd205e8f3cdb06926678e70296468c0064652e62772e73207c204173656d77616c642d53",
+  "packet_type": "Advert",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0888a400004094b193d0ba885594b062dd1d6d5a58d03c58fd16",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "b1",
+  "sender_label": "b1",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e45f0e39316e2927a35a1ff48d938f98701b6d7f4668488f1e05620c08a6456da20fa365fe489006c4562d2ea8f51656ad0e2948a81c2f64f67e649d30a8a",
+  "packet_type": "AnonRequest",
+  "hops": 5,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0194a967be3413bac8b1092a997a01aa30ea7cb81a98d1c87e897ea9712dec99a7dde57a2b3b8288158f4750f6ad46fc1e0712730449450148de37857e5320a45d30e465c44162bcd0614532ccc2aab97cc2",
+  "packet_type": "Request",
+  "hops": 20,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e53",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "114348de857ef6adcbd16b4fb1fa49816933a05bf9e6488bb4a76e7adc9e685ccae51cfd732773b82633ff6aa5e2d75b41288589853cc8888db8a373630ea1eec3f8e5e5977fc3f2c8a2278a043708f1fceb23bc66fd643679485ff806e7ddf0c0273b7ba38dfc9740f8d90c9250fe070339b2eeff506f7274636865737465722048656967687473",
+  "packet_type": "Advert",
+  "hops": 3,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f6ad",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "054e17032605076f7974cbc22cbc3601c2f99557aa5df38d3c68798fc36f4d36bd25658f05227547fb257a4b16c832d786aa",
+  "packet_type": "Response",
+  "hops": 14,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "c36f",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0d10cf7b91e5138791f0047ee95df8e949ddb44b0cec",
+  "packet_type": "Ack",
+  "hops": 16,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "dd",
+  "sender_label": "dd",
+  "sender_role": ""
+ },
+ {
+  "raw": "04f091000048859b345f5731afc4e94dfc6fe0d99ccd0277eb9463f1a3abe41609c7149c9c79cd74964cab8a702f71ec1c3d65deb1050f1c504af83e64c4f779c769a4a0b8ebbdcfbf98ffd272c2f6ea1d802e921e9c5b8739c4",
+  "packet_type": "Response",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "9ccd",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "21573601200c5e84f38df6addd332e1c1635f17e5a8bc0ff2ca4bcca91ede920bcca051b5a8b2e1cdd33f6ad857e16e40de96daa619604d9015ee9dec1a8762e417d5f12214e",
+  "packet_type": "Path",
+  "hops": 23,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "16e4",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0991c1537838b70dba9fc995fb4cab72980ee5274922f7d5ff16a67943e3158e39c1a7c8a57c6d28e329b1b6e29266a4a51264c4ce63976b0c94382b6b6545ed0fbeb4aa7e8558f4a1",
+  "packet_type": "TextMessage",
+  "hops": 17,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4ce",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "00bb7200004bc2204d6e8fa3ca7406c5244601f19149af25f24223f8c2a03a0ca2dca8f90ab7b6ac10906c39a33950fa",
+  "packet_type": "Request",
+  "hops": 11,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "21482092fa45c77f506c8e1ce0d9db1123f88d94fb387549d4e19172031a33bb854275719b73fde50327a7352241f9be976a8fb43459",
+  "packet_type": "Path",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "00e116000048a93106c52446228be7bdfc6f23f8db11d9b683b4718f1ad047bab68122afcfb66e163acb",
+  "packet_type": "Request",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "db11",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "14dd3b000003ea84573e2b4d46a48037f669f52a6e2ad2c5ec0c57655a88974342db7f0e10801a5072d20a9e1866be17d105f0502b7ebee64d6ec7ee",
+  "packet_type": "GroupText",
+  "hops": 3,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "57",
+  "sender_label": "57",
+  "sender_role": ""
+ },
+ {
+  "raw": "095d60dcec9a15d2dd6a6546f8eb88f4c0119c2aeae7c7cd9cc8c34f3bba999c3c9d5760bcca051bc420c7a82e1c72c4dd33576556a57cac8092f85fd99c72d7056bee7f9590ad8e9d2f57b3635df072e0b3466ddfe8fa970f112b0c2e8e81a9881e42c31c049777082c85b1650df5e746b32b8ae695f4ca7097f9ff75af544e5afd3de2c9a839324937c156e2d86109",
+  "packet_type": "TextMessage",
+  "hops": 29,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f85f",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0d14cf7b91e5138791f0047ee95df8e949dd577d7a8fb44b0cec",
+  "packet_type": "Ack",
+  "hops": 20,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "8f",
+  "sender_label": "8f",
+  "sender_role": ""
+ },
+ {
+  "raw": "12002168d3f174084ac4d4ab0f10f2e69626894bd732a92fd16c426a2ab1a95fdb633f854e66be472732fcc36e2da5ba9be65e224b37ca3cf831586e0ac598ea576115467cbb4e23691b657d41ad6222a0d7a152416e86371eef03504b91930662969ac53303926a530603656decff4957205768697070696e6768616d202d204f6d6e69",
+  "packet_type": "Advert",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "advert_pubkey",
+  "sender_id": "2168d3f174084ac4d4ab0f10f2e69626894bd732a92fd16c426a2ab1a95fdb63",
+  "sender_label": "IW Whippingham - Omni",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "0943db11e0d98e1c948d832d4dd90881ee2c243410346de5ff796e2e",
+  "packet_type": "TextMessage",
+  "hops": 3,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "8e1c",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "00f2f300008c77581f7b023bda1e2f22a804c357416724c395395dbcc3e9a0a2bf23f8c8b59547be04410a01c1522bda8314ad799bea4b7ad1a3ed94d94a",
+  "packet_type": "Request",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "be0441",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0245f0e39316e2927a35a1ff48d92c4928fc987fb9f97ede540c17b702af7075",
+  "packet_type": "Request",
+  "hops": 5,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0d1503106565c70226409ab290d0ad3658047e0b957c31070f1e3d7af4e8d0a163e2083ce9fa397171e4f66d11439a29f80bc9ee0747f5492a73a1617b205d76f7b43d74dc0070c2fccf751d860b2c8ee9eaef267cd69e2588dfce36ac20ca3300d7d2",
+  "packet_type": "Ack",
+  "hops": 21,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "31",
+  "sender_label": "31",
+  "sender_role": ""
+ },
+ {
+  "raw": "14dd3b000005ea8457810c3e2b4d46a48037f669f52a6e2ad2c5ec0c57655a88974342db7f0e10801a5072d20a9e1866be17d105f0502b7ebee64d6ec7ee",
+  "packet_type": "GroupText",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "0c",
+  "sender_label": "0c",
+  "sender_role": ""
+ },
+ {
+  "raw": "0600497136039ff8b76515bb895bab200d4bf715d9534286a665ab86f4ec25a5065a76e4b2fb927d19a3d4add70efa942727a2cded5f",
+  "packet_type": "Response",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "71",
+  "sender_label": "71",
+  "sender_role": ""
+ },
+ {
+  "raw": "0600d0f5bddb1122b4e5e7c165b45e0d744d5f2f2235ff756a686ae7205a8926cafb8e64da52ff2a7961bebd24adf370ea60ae7d1e6ae10a9851cd456c646063f1799830a054",
+  "packet_type": "Response",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "f5",
+  "sender_label": "f5",
+  "sender_role": ""
+ },
+ {
+  "raw": "08552f0000510b2e4a0af4f16582aa1a3587cb94298cf2026767ba5e011e5b75cccc0355a0a223f82ef5efb48f654a5ddd87948121a5ce3056d8dbe3401ae6acca7f5ce32aa2ddb1cb311f7e",
+  "packet_type": "TextMessage",
+  "hops": 17,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e45f0e39316e2927a35a1ff48d938f98701b6d7f4668488f1e05620c08a6456da20fa365fe489006c4562d2ea5647eccc4004bff75abf68ab359c48f8cd55",
+  "packet_type": "AnonRequest",
+  "hops": 5,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "087ed5000041db1194b11fc583cbe6fe8369fe0fe8992eeebce81aca",
+  "packet_type": "TextMessage",
+  "hops": 1,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "db11",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0600d0f5a55e02e6c5a762d0dc52f8d2556c24e453a5964de45d73df0c77b67996cae6939fd517d55520d5b0f5b9c8e1d5c8a5e7b2192ebb7520a40b23edd56b69b958663ce0",
+  "packet_type": "Response",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "f5",
+  "sender_label": "f5",
+  "sender_role": ""
+ },
+ {
+  "raw": "21545e644a91e2627ceabeac3277ccad8ca83955794bf7962b095c1a1a982dec8f47f6ad5765d135432db23b253b711694c73e598b6ff2c25cd16dd6ccc3514d30ca4d5cdce5371f99301cf9c8cc",
+  "packet_type": "Path",
+  "hops": 20,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "432d",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "08cd4f00008928373b563cc607fa2289879abb40196f037024ad29c1f69964c4ce24fee00524a12bb2c902a9dbdc68c81504a8e206",
+  "packet_type": "TextMessage",
+  "hops": 9,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4ce",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e45f0e39316e2927a35a1ff48d938f98701b6d7f4668488f1e05620c08a6456da20fa365fe489006c4562d2ea7efa4c820b2a6f60c658a0e10db516c48844",
+  "packet_type": "AnonRequest",
+  "hops": 5,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d51de3a08b12c33b4c49a74f173e8a2cbc22cbcaa5df38d8f478288f6adcbd1d6f61273969270b8b012ea2248f243aa0c977ee89d6696056c513837362d9a7270422b1ca508696d93e9c2135a8532608f821c9959ca13",
+  "packet_type": "AnonRequest",
+  "hops": 17,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "1273",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1c8b55000082f242bf23f8c823bf05de402aac3e7bd71aae8d463abc3c711c667f6f8012f4ae57974db382a558f1f310f68c04839fd3aed88f9a7f0ade153f",
+  "packet_type": "AnonRequest",
+  "hops": 2,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8c8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "08785100004e0b17e1e17dbfbd25adef34ff213a92ef06c5244601f1c3b4a0a223f860f1fe7ebd96c6b5860e01383b6a7c5e9b51fc5e7974167d736b878731180bc0649a86e4",
+  "packet_type": "TextMessage",
+  "hops": 14,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0200f6fdabcd4727229ecb6d55eea4b1f3ace7ceeaa0",
+  "packet_type": "Request",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "fd",
+  "sender_label": "fd",
+  "sender_role": ""
+ },
+ {
+  "raw": "0958b9b4ae41b7c357961e847e8af39cc06ee262b165599474968372aa5df38d8f47f6addd33499732ce563e432d7cacec9af406ce6a50b051b2a35c6e2420",
+  "packet_type": "TextMessage",
+  "hops": 24,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "ec9a",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0188a967be3413ba256fbff38db98f4750f6ad4648de3731882a8ea45c880aed62fb50f5e4a1635fab47e2b8e491",
+  "packet_type": "Request",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "31882a",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d4364c498a1a4a560d938f98701b6d7f4668488f1e05620c08a6456da20fa365fe489006c4562d2ead02a4aedc947143bcca032b6e821ef431f5b",
+  "packet_type": "AnonRequest",
+  "hops": 3,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "a4a5",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1585a967be3413ba256fbfc87e89f6ad466fee93844489379b4e3589725e2319ea7107e2edd34b2e543bb11ec8c7d50a732695e4",
+  "packet_type": "GroupText",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f6ad46",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "104b5900004701f1757b30e95ae9a0a2e0d923f8456b558a7588af2a7f20d04dea11c19100c4c819f8bf93323e685346fee387efe707036bafc23d91b008d6aa1750f720e71d7cc6aedc9226b9acf6ee5cc1a4e38be0182e04177053fc4b9a1ef2b5c70a983d4337e37bc4a07bfb125cc9f86f1d9c90590792e6f71903cce05c004e4c2d456c6c65636f6d",
+  "packet_type": "Advert",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1915660dcc219fd147596c6bf02619b5cb0e0449ddf69d74d1fee2cdbc166fd14d8b96a3a931b606d1e0e0c9129b130d462ca61b36859de08ffe904381233a0b0b60dbdb509501f26f11f4dae774410988bc220939756462fd20e48d13a8db8fbd1ca3b9e9a8a8c5f3d5",
+  "packet_type": "GroupData",
+  "hops": 21,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "9d",
+  "sender_label": "9d",
+  "sender_role": ""
+ },
+ {
+  "raw": "257a33e994763c48903b7c25b58208924265cd1ff3c4faa1cebb3a5f45ec5397e00c1b69ed6724e2cab4ddd81fad188201c68c95a1f468827c52bfd41b7df57d47cffa2b6e4468361879773837c6c7",
+  "packet_type": "Unknown",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "02449316e2927a35a1ff48d97ead633a54a63f4944156cc535c8eadfb97b",
+  "packet_type": "Request",
+  "hops": 4,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "2192e262717cea50e722fe4be77ac38be78ca8f8a945641a98d12dec991b89f9f38db97a2b3b828815f6ad465765b7857e532168d3f85f49883428985b5218d39a44f992681092667140c07d",
+  "packet_type": "Path",
+  "hops": 18,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f85f49",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "02807b80023b573178953d085b5c14a9f38396c3d786",
+  "packet_type": "Request",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "80",
+  "sender_label": "80",
+  "sender_role": ""
+ },
+ {
+  "raw": "1588a967be3413ba256fbfc87e89f6ad462168d331882a7cac776fee93844489379b4e3589725e2319ea7107e2edd34b2e543bb11ec8c7d50a732695e4",
+  "packet_type": "GroupText",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "7cac77",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "01853413ba256fbfc87e89f6ad4631882aa9a400d5ff78caed318f850d547bd2ac79a9b87c",
+  "packet_type": "Request",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "31882a",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "2e008004ac98c81600000000",
+  "packet_type": "Control",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0d56fb146d20192fb57173f4b00b63e3b613f6ec9083c38b8239c38b8ca8a9451a987ea9f6ad4e26565756a5576578723f7d006e",
+  "packet_type": "Ack",
+  "hops": 22,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "5765",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1200f6ad465018c5a98017e5ab4e1b1cdefb271447e34d0e7f88aba920679d04d538325dfc6a14a546c1489321582714d91413b0f822b213ece0f9ddee6e4d9df4d7eefb6df046c5f1b6883b9de8d104c9ffc5d3c172bea75ae6855b21dd864b77872481ea0a92a36b040368faecff4957205344202d204f6d6e69",
+  "packet_type": "Advert",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "advert_pubkey",
+  "sender_id": "f6ad465018c5a98017e5ab4e1b1cdefb271447e34d0e7f88aba920679d04d538",
+  "sender_label": "IW SD - Omni",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "2031c8000045b49547ce4099842cf0e3b437643b1d30f2bec6a4d584bc8c48986a527826188bc5dc871c79714bd8c50065bd2c15",
+  "packet_type": "Path",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f0e3",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "93ad1a225a12d22e937e0b481f8b3e69ca6e8453cd19bdd5703542849ba0bdf60b4c2fd58223c6dc41396a93ad1a7d",
+  "packet_type": "Advert",
+  "hops": 18,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "194db7656c215dfa317102d531071b77f6adf53f14578a7716e4857e01dc998882756197d4643524cbf65ccfc4",
+  "packet_type": "GroupData",
+  "hops": 13,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "15401f7098e73172f2abf0567420b1820a0dd20d9db73694810192df009121a4871438710afcebc29054fd3900d51174f8e84805f11258c2f5ae4544bfaaf32d827da29ef11bd118b92f69826510d84046c9c0575a620581997fe53edee097e1112a6aad79",
+  "packet_type": "GroupText",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "10986a0000484d8473eb5707afc4af25a2eea0a223f823907e886cce9cad84b9b79c0a37d610820a3d8e92d1364f5081651a310ba3df0c14036bf2831caee53fa5400d1f9cc5521e6e14db70164f823ffcfbe1498fe1afb16f8255e8023930cbb072058f993be1ef49ac9cd553db056dad03453d0069cf66d90d815041334641542054442b",
+  "packet_type": "Advert",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "068123f8c8bf9c609d851ae5b6eca80915aa1f01618c16456c",
+  "packet_type": "Response",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0cb8e4000086672d1f0a3d0c26f5c4953244c1f69964c4cefa52d86c",
+  "packet_type": "Ack",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4ce",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0d5cfb14cf26192f73f4bb3db00b63e3b613c0ff5e24dbe2268274fe465fcb7fccad0c5ba94501aaea7c1a987ea9798fc36ff6adf53f0bbb3188c87947c6007d",
+  "packet_type": "Ack",
+  "hops": 28,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "3188",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "20505c000086228b5f06067432ae8aa0a2bfe0d9beae79ecbf88fae7a620ef792ae4490b3b105cad465ef0171e1424eade7e0b797c015f0c7bf8640f",
+  "packet_type": "Path",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "ae79ec",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "04bbde00004a5dac1d31ca7406c52446af25e94dfc6fe0d9ae79214f9f8ff2f270d65943731c787071d458d58e46",
+  "packet_type": "Response",
+  "hops": 10,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "ae79",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "204fcd0000493e3d68955483c58e03559226a0a2db1123f8d7edfccb5586562dbc4533c4cced50d9bd7c51243a9338ef1734766a53a5583c9705d113b68a0985fde256c8194b36784987aed850b0fecf8f55d6ec36e96f8e229c0d5ba4da8cc6d86cbc373b9d47d33315af11",
+  "packet_type": "Path",
+  "hops": 9,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0a00f6fd2bad23ffb7d2d01214e18f9e1279039b2ad9",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "fd",
+  "sender_label": "fd",
+  "sender_role": ""
+ },
+ {
+  "raw": "20f972000048fb748888cccc9226a2eef24223f8db11bef5702f6fb3061ff66f2c74f9f53bb11708db0e",
+  "packet_type": "Path",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "db11",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "004f95000085a7be284099e2842c56e19a4b056cf6b7a816e2e71b4998654dcaf4d6a8149cda733505",
+  "packet_type": "Request",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "056cf6",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0545c2e7624f3319387213c5dec1783979ec7b494fd9387ee87370dc9f9c31a1",
+  "packet_type": "Response",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "13c5",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1183dd3375f6ad46857e53ec9a6c36b3d16b4057b2337c4e0f47584aa7930a89c4e980a051077839b959185c81fc6a1cb54df51e5888cd552f61382c8441a95702bda4479e91c14f25afbf546f758e786342a864d3d019af94a99d90553f00149dbbd53876d791519281ceb2fa980d92589f0503acdbebff495720436172697362726f6f6b65204f6d6e692d4733",
+  "packet_type": "Advert",
+  "hops": 3,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e53",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0027fe00008777581fe7ce59333643989aecf242bf23f8c8db11db2801bb68f8067959e6cae36babeec45aa5c50bc3",
+  "packet_type": "Request",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "db11db",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "14df8800008c9a318d09150e6ed25bf1e4b75531ff442f2201dc3a989aeccccc2f9226c5a0a2bf23f8c816ca5311dcdcf75571a450d7de4a16e94d1d59b0b638a4c657f6ad240e0f8fbc09a767eb9be9e9976cc20b7d0a551a5bd4015f2093069aa8a8ab669052307e2736649abffe7df506ed8f1197c8225ecaf0fde9",
+  "packet_type": "GroupText",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8c8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1100287d7af5a4e1c91fb296c37edf88d9f9c5d702eec7d87fbc5f389c27fe4369c86c9d0e6b5fd3d813784b35347c8aed425c08d8a662c48f3168265034c2b7ab1c70d8ca75c27505124cbe462eb3d35668a2de938620fff68052d198fa049dd7fcbf2d300792b2a0eb02688391006d732d536f6c61722d42617274656e62616368",
+  "packet_type": "Advert",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "advert_pubkey",
+  "sender_id": "287d7af5a4e1c91fb296c37edf88d9f9c5d702eec7d87fbc5f389c27fe4369c8",
+  "sender_label": "ms-Solar-Bartenbach",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "12009dbf8a7e86819f5ed3d0b0bf24bd8786049460d6e2cfedc3aa33b8327a7701519c36046bbdda31baaab4fcfe68f877cca29842e68c5f9a3704387b0e67cd4eabd8f1b7331ee335b63f52d3ac7c43a0a94f834ac19278a4a732bb489f3460cdad3bfdb80693d37f05031963ecfff09f8d8a4d657368636f726520494f5720464220424253",
+  "packet_type": "Advert",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "advert_pubkey",
+  "sender_id": "9dbf8a7e86819f5ed3d0b0bf24bd8786049460d6e2cfedc3aa33b8327a770151",
+  "sender_label": "🍊Meshcore IOW FB BBS",
+  "sender_role": "Room Server"
+ },
+ {
+  "raw": "218b7e7a04b1bab02e24b15e843d2cbc17360156955757aa5d18f38db98f4750f6ad4634884cebe7dbe34a0fdb51301cac7b04d9986e83",
+  "packet_type": "Path",
+  "hops": 11,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f6ad46",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "20505c000085228b5f06067432ae8aa0a2bfe0d9bebf88fae7a620ef792ae4490b3b105cad465ef0171e1424eade7e0b797c015f0c7bf8640f",
+  "packet_type": "Path",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "e0d9be",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "22015f57fd630b273bf7a3e3b340a6d1ef9f67e94036b0",
+  "packet_type": "Path",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0817db00008712a988d6dddd3f5db8bbcadcf0e36e0c09dd246d4d67a449f725dfa792e9e93853b0e2ba8a5833b167",
+  "packet_type": "TextMessage",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "246d4d",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "06903700004526f56fec694607fa842c0690bd0217b094494764c8e5c53674762ccc8a6b4e27c50ad87df078194a26db1352c8cb4da69845bd99b59c5b2d9e407c398d3476cb25d8114f3524882dddffeebd5d",
+  "packet_type": "Response",
+  "hops": 16,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1cf97b0000852cea2639469dd6dddd64c4cea4a512fe95286f659453163ec54d1b90c814eaac2cd830692c15cb6c1202dec92b47d4624f98838a2a4d0ef079d5a72e122c48b3448e",
+  "packet_type": "AnonRequest",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "a4a512",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1092d400000785ceac03a0e0ae77614424769874cc23d90f5f32ab4f1e9610453dd83a7c8d6ae2ab57d57f662d8e55046b05bf5d401edf0b62c7aae6d2ebb6f7a233e8e090361978eb256d9d3b507abeeb9614c3a5d20e5da6724a877abaacef28dcd5a8331d1feabf9d2af26840ff1207929d031303fafb48004e4c2d4e422d4252442d5068616e5265706561746572",
+  "packet_type": "Advert",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "ae",
+  "sender_label": "ae",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d87db026d99d52bec05c8e29266a4a5128a3a6b64c4ce6578bae42e2632f08c3157596a6ed751233268da80e0ea07dc8aec0501493b1eec7d86c548d253b2b41306e253a377e1f902f2",
+  "packet_type": "AnonRequest",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4ce",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1c5c30000083f242bf23f8c8ae79ec23bf05de402aac3e7bd71aae8d463abc3c711c667f6f8012f4ae57974db382a558c5440e90cfabed64001f2c1eba042ff9d9d1",
+  "packet_type": "AnonRequest",
+  "hops": 3,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "ae79ec",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1c16cb000050f8d31f601337792c08111bdaf8891d3192ef06c52446c0f8a0a2e0d9b595be04810fee9e0dfc888ee04a539eb1687f277f2e907beef1e395f4aad83228b3f61846c3fbcd55a5ffe37e9a434394494770014ef8",
+  "packet_type": "AnonRequest",
+  "hops": 16,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "be04",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "081e940000857673b962af18d8b54f1dea8ff0e36e24fe2398237366736190bdbb4376ab3af8b20edacfaf2c987fab3177e97b0e270775a532",
+  "packet_type": "TextMessage",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f0e36e",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "14f91600008ada3c9f2394de5010e8fd6d1095caf007fa221dea8f57cf2b81c5280c09ddcb5e9652837b18e24123f2174b83198dae2ea2687ed468a92915c5bc928659f76a95861acb8ec1c40496cf3ca160f5ec709ce7",
+  "packet_type": "GroupText",
+  "hops": 10,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "0c09dd",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "01002e3033c84b0c0153d8291a5d4adc6bc6fe596604",
+  "packet_type": "Request",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "30",
+  "sender_label": "30",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e807b80ea5b381de5d4e6d49d1831d6f502fcb2627f7e9ae49380fa37574cacee5cd4e105d8f539121b2fc79a7dcc3f3c38ac6d83",
+  "packet_type": "AnonRequest",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "02015f57fd086b246a95677da51fb547a05740efcd67d4",
+  "packet_type": "Request",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "04599200000440eec164e09a5cac77578b22d603592e4e6870887b4d32e4",
+  "packet_type": "Response",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "64",
+  "sender_label": "64",
+  "sender_role": ""
+ },
+ {
+  "raw": "00083100000ffb5db5987ee7c3677995bc92a0e0ae8d3cde3a31a057f6e0330e38ccfeda69146f816d",
+  "packet_type": "Request",
+  "hops": 15,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "ae",
+  "sender_label": "ae",
+  "sender_role": ""
+ },
+ {
+  "raw": "109f97000045a3bae19af0e38c11db6f520355d432189ec0a47763447dcbc594a28baea0142f9307c54be3ccaadbe6ef330bfb6a0185bf1cb69477c207e55ec15a2c835d91a1d92ee0ddc52df147f39c48436739959ae9fda33d1135ee1a1d36f91b5c5782eb5c511d110244315204671822fc0a92c8c0ea022aea8d0044452e42572e4c425f4572646d616e6e68617573656e32",
+  "packet_type": "Advert",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "db6f",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "218b999cfc3c9d56576089bccaf12ca4f5c0ffeef17eb72e1cc8dd3375f6ad46857e53419fe08daab3428b83e97d162c90b7ab6dfebbb87024c09b0a77e8043c2d5f20f266fdc9353586512cb323a05467eeb8b31eacd7",
+  "packet_type": "Path",
+  "hops": 11,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e53",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e00f6fdc2d7ab51c9887fb106bfd88fb2d65f2f6a450740d6ac00b84ee4ecd99f7aad97ca3c5124153ae4be0fb73c6e351770d183",
+  "packet_type": "AnonRequest",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "195bb7656c215dfa317102d531071b77f6ad7a2bc36f5765be2973b55574f5bc794eec1c423add3372c42e1cd277dd33f6adfc1e528b7cac01dc998882756197d4643524cbf65ccfcc",
+  "packet_type": "GroupData",
+  "hops": 27,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "7cac",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "043671000084a7be284099e2842c56056cf6a8d48873772b1c09103da81f908f16d4fa103bec",
+  "packet_type": "Response",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "056cf6",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "2100fd57a86c0ad1e3131861bbd3223ef4d6b6c9227e",
+  "packet_type": "Path",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "04a98f00004de86c44ae6dc49aa1fd6d95ca3fbc842cbbca044024adc1f664c4edd149feb86655ef8b480f39030496b80a494b1d404f190f64613d56a7c8e3b67875323e698c41ec1322d7709a709a5ef6298dd8394180000374e47b0723bdf203eca2a7",
+  "packet_type": "Response",
+  "hops": 13,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "450051bfe625f28302199df2ed16e9173056dfb72235182aaf1660b5ef6a9db01bcd9920249126b91c89327098f554c2a4a868b6f0b186d4d40fb74713870d67a3fea8875ee26dbc854ee87265f5c5170a44e3",
+  "packet_type": "Response",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "bf",
+  "sender_label": "bf",
+  "sender_role": ""
+ },
+ {
+  "raw": "0601960494e7c56aa55e71cfcdfa1620abddf21cf14588ac56c363d39fdfe25b02ab91e15848d4acabc46cda0ff18085c1fa3980c9d3605d2055ef4cf7635d6b22f336d56655a0",
+  "packet_type": "Response",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "195ab7656c215dfa317102d531071b77f6ad7a2bc36f5765be2973b55574f5bc794eec1c423add3372c42e1cd277dd33f6adcbd1318801dc998882756197d4643524cbf65ccfcc",
+  "packet_type": "GroupData",
+  "hops": 26,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "3188",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "02807b804068e5b87baf70db91e77ea20b0bb7804cde",
+  "packet_type": "Request",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "80",
+  "sender_label": "80",
+  "sender_role": ""
+ },
+ {
+  "raw": "1c0eea00004cc30fbbfefb748888cccce32d96d79226bcc3a0a2e0d9ae797b17ba71cc812b645d42b0414285516fd64e96e8f37148ef4deb2f1188575e89b56305b026989867b5dacb17d98e260fe783d7",
+  "packet_type": "AnonRequest",
+  "hops": 12,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "ae79",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "22408d49121ce4cd67bcb68bbeb820afa8637c592dca",
+  "packet_type": "Path",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "068181c5286505fa5e2ce87c873d51863ec3201755e1644324e39a73134a36b117573c8a8502623565516b38f3b9f5bd83d3a9ca4a13f0ab693ac016dc10428db3c3da7c0426696b6f3a98dbf6e51a5ccb9b154f1343b5e6c59a3d39875bb48d85f7624cb901ed9ca773d264e60a61cd62a353d9aa5bce8efa",
+  "packet_type": "Response",
+  "hops": 1,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1140f6ad465018c5a98017e5ab4e1b1cdefb271447e34d0e7f88aba920679d04d538b6b2f56a87c5751dac43c34c6efc474566766404e90830d0d9802d362cdf89e676cc7e904f47e55c0805f7b53fbb721872a0b6de43ce8409584effbf649d95f535dd860692a36b040368faecff4957205344202d204f6d6e69",
+  "packet_type": "Advert",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "advert_pubkey",
+  "sender_id": "f6ad465018c5a98017e5ab4e1b1cdefb271447e34d0e7f88aba920679d04d538",
+  "sender_label": "IW SD - Omni",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "0d4248de7cac5e52b4b80c8ea54b48a9289b60983220d4aa0f60c09cce640f4325df2e1ccff116873a43ed1b3f20ae7aaa2c2d141cc753b36bbb3f342a32a612",
+  "packet_type": "Ack",
+  "hops": 2,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "7cac",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0a00fd31c4994c28a8764d204b159ce45806a7fbd7a11cb806b9e6b19cf8ed5c412da3fbf21d",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "31",
+  "sender_label": "31",
+  "sender_role": ""
+ },
+ {
+  "raw": "f3d0e80b6f6fb0f1f9de27d9e32627ee1d87728bcef26d59ff3e203676",
+  "packet_type": "Unknown",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "8ea7adb22eab0787919cab04327eddf68ea7ad094402f0f269f4f2851307142bf740b6b2",
+  "packet_type": "Unknown",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "15006bb889cb282bf554ebd3872e9eeafe93e1519748a15ad6ee6a4cd41a3906ff040c1a1b56fa1efbcf358c59ccf68123961c2078",
+  "packet_type": "GroupText",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "154019feed4fda6cd49a0116912d6998bdcb25432c3a3cca739892fce1c8f7b30c763f55d5",
+  "packet_type": "GroupText",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "cbdc4c926cacc9b8acdc5b557d1e7591d5a1f12a44ee293edb54f64d52188edeb85c1feb0ac57d663beb0588d437c036c2f228b71f16800a0526843360d320d343f11af00080eb4d7321bc8caf2dc657aece2b280ada2f388110cd429bc9c471bf778adecccd7d581998d6eb2dbcaf7ca8803ba0f0f2f090da6644b4a0",
+  "packet_type": "Unknown",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1c834d000049de3013f350a173316bd0ccccbcc3a0a223f816194b6a3c8119fa7c474e175370f730ecd97618db190fd4c899254bd5c6b780da99b191d5912d42ded5d8a2b10a41cc9278ff",
+  "packet_type": "AnonRequest",
+  "hops": 9,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e000bfdc2d7ab51c9887fb106bfd88fb2d65f2f6a450740d6ac00b84ee4ecd99f7aadc2ed8ec708b47c4aa18ce195d504eac6dd9e",
+  "packet_type": "AnonRequest",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "829c57dfccc651a8d6ea51c94111f3151cf696a01303f7c275c5a0b5f1f4c57f3afd604a39fb5901887f0119156060f26a57022599b50c556dafb1ce5607a93bd42c3754920d1d69d7e9016549dc394bd14a5321f1a023f82abf856be8f7cb3a8e107970b8ea86995e20c0418282da3e1f0cbdfe6e3957d4d98facb94647f5665653cf4489a3825640d730103fe0",
+  "packet_type": "Request",
+  "hops": 28,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1540194f96e508b4a106590e0c3dc704c0815ecc793e61ca5a0b8530edbf8ed7251355be79",
+  "packet_type": "GroupText",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d0057fdc2d7ab51c9887fb106bfd88fb2d65f2f6a450740d6ac00b84ee4ecd99f7aad39d1c73a23e6800fc260a3f050c5092fd324",
+  "packet_type": "AnonRequest",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "04599200000440ee1df0e09a5cac77578b22d603592e4e6870887b4d32e4",
+  "packet_type": "Response",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "f0",
+  "sender_label": "f0",
+  "sender_role": ""
+ },
+ {
+  "raw": "0cb8e4000087672d1fd599fbd6dddd07fa223fbc861dea8ff0e36efa52d86c",
+  "packet_type": "Ack",
+  "hops": 7,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f0e36e",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "014030dd44983f344f1a269375dc0277bfad19115344",
+  "packet_type": "Request",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "dd",
+  "sender_label": "dd",
+  "sender_role": ""
+ },
+ {
+  "raw": "1140ec9a9cd54963d91d897446170f5f72e33008567a4a12dea26ce0d47559131b104639046b328a6ad63eadc8841fa12664318ef15701a37fe2b9aee3a900675db597f68b5e18708bf8a22ca1ac58a085b9d14df79a0050b712e8d926a9f056670f811e470492929c0503aee3ebff495720436172697362726f6f6b65204f6d6e692d4733",
+  "packet_type": "Advert",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "advert_pubkey",
+  "sender_id": "ec9a9cd54963d91d897446170f5f72e33008567a4a12dea26ce0d47559131b10",
+  "sender_label": "IW Carisbrooke Omni-G3",
+  "sender_role": "Repeater"
+ },
+ {
+  "raw": "0c22aa000049bad5a111b1b7a3ad1d31adef193a8fa3f78ef5df7d230007",
+  "packet_type": "Ack",
+  "hops": 9,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "f78e",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0203c8395b56e19cd347b1b9e1db8eb72f3f054291389e5301",
+  "packet_type": "Request",
+  "hops": 3,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0a00fd311e1f3b96abe37061b506ed0f74f87d715315f15e61ceff79735c8f8f321b0cd4ec8a",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "31",
+  "sender_label": "31",
+  "sender_role": ""
+ },
+ {
+  "raw": "1038e6000004bb52c164a3ba9152586d8baca514132a0ad0f90307813c766b51ac0b7577811b26745d15672f9d6630aad79b2bdc3ad7d0d01557c1fa4def3a1270727446295407eb5a78f145cd81bfd4f0ec9e20a2dc7c78b6510adad21e8d3eb5b66ca34d9384058da8b6102b0392b64bec02469e8e0064652e62772e73747220426f747477617274616c",
+  "packet_type": "Advert",
+  "hops": 4,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "64",
+  "sender_label": "64",
+  "sender_role": ""
+ },
+ {
+  "raw": "1185dd3375f6ad460b6f977cac778092e7ec9a6c36b3d16b4057b2337c4e0f47584aa7930a89c4e980a051077839b959185c81fc6a1cb54df51e5888cd552f61382c8441a95702bda4479e91c14f25afbf546f758e786342a864d3d019af94a99d90553f00149dbbd53876d791519281ceb2fa980d92589f0503acdbebff495720436172697362726f6f6b65204f6d6e692d4733",
+  "packet_type": "Advert",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "8092e7",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0991901b77e262717cea50e722fe327702e6f4c8ccad104e8975395534794b16a9456401aa30ea7cb81a98d1f6ad4648de37857e53887eb42d805d0f7e83c9330f606b9ddc68af4f9dffae525821a859de78683f52ac35dba7",
+  "packet_type": "TextMessage",
+  "hops": 17,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "857e53",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "04110c000085b9b7f7af2514e94d7cfc6f5323f8c8bf884836f283979e213a829cd8a7745d5d3acc3f",
+  "packet_type": "Response",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8c8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "20fc6400008d8fe34acccc2f035543345fee99999910580f57316dafc4e2244785622778af2514f242bf23f8c8bf2370a47e88164562293bb93bed49372bdf85d204cd0d87a3d98d700f97c6893f0daa68a2faeef88ebfd35bfe295896e7dc99be",
+  "packet_type": "Path",
+  "hops": 13,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "23f8c8",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "2256a0a2922696d7ad92b2a4fa1d8b49ca231f680355c58e7936763bc30f5b03b6678888b4be87aa6c1f75e92092948d6a0514e3dc272a8cf24ed4524a556ec64f2e881dd090fbb1980e8aabfffee75abeeb",
+  "packet_type": "Path",
+  "hops": 22,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0585e3f6318092e72168d35765b71b779872a9b006b1c18a0a04a5879cf0329f82941f4753c312e6bb320ed5bb127681cd42ec040249dd577c0b081fbe11170f9ffae1d9dce7518c3b6cd78cf7d1",
+  "packet_type": "Response",
+  "hops": 5,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "1b7798",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "22461601bcc3cccc3336cb94adef948d89c414e3dc272a8cf24ed4524a556ec64f2e35357354f648f22f786c5061dcbacc1c",
+  "packet_type": "Path",
+  "hops": 6,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1092d400000685ceac03a0e077614424769874cc23d90f5f32ab4f1e9610453dd83a7c8d6ae2ab57d57f662d8e55046b05bf5d401edf0b62c7aae6d2ebb6f7a233e8e090361978eb256d9d3b507abeeb9614c3a5d20e5da6724a877abaacef28dcd5a8331d1feabf9d2af26840ff1207929d031303fafb48004e4c2d4e422d4252442d5068616e5265706561746572",
+  "packet_type": "Advert",
+  "hops": 6,
+  "is_direct": true,
+  "sender_kind": "path_hash",
+  "sender_id": "e0",
+  "sender_label": "e0",
+  "sender_role": ""
+ },
+ {
+  "raw": "09002f8909923d8843c4c2a4bfbc90581048c6267805",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "89",
+  "sender_label": "89",
+  "sender_role": ""
+ },
+ {
+  "raw": "20208b0000004971c1606fd78eba9758454e0be2e529a31e81bf",
+  "packet_type": "Path",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1e000bfdc2d7ab51c9887fb106bfd88fb2d65f2f6a450740d6ac00b84ee4ecd99f7aad4117ac09d7f09c3a2dd47d069df7fec5ac88",
+  "packet_type": "AnonRequest",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1444ae000040f0d2f8f3d938ed6056b6fe0ba565067796f6d85401b0423bdf45c95471d2661107c4e3",
+  "packet_type": "GroupText",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0a408d496bda1b53c435ce437ea1e9b2bd815c2f8368c259e5a2967e3c1c77efcdc1226e41e6",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "49",
+  "sender_label": "49",
+  "sender_role": ""
+ },
+ {
+  "raw": "a8305b3fb8ef40397ca916a189d31604e4f76c99dbc6f5f69b1a4c8b7d76465a00d0dc4db4",
+  "packet_type": "Unknown",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "10824800008864a7eae3eeaa65b7edc1f6992ec118adbba672210164c4ce608a5df8a91a0451c514977fc7f93046c67908344a06e0ad6e46f7c61cc1e06d6bd9f96ab117d151cb5b1c67b1e4b6e512aa92118dc93ad3197dd798bd06c332913b9017aca8e1ed2472ffc5cb65f6a2d92eb4d3eae24771e9bda00810c02ab144eebf039350efe5022276850057696c646265726720496e666f2d526f6f6d3d4e6f5057",
+  "packet_type": "Advert",
+  "hops": 8,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "64c4ce",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "08cb9000004094b156c7b52d996a16502e51a000811b3363b006",
+  "packet_type": "TextMessage",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "b1",
+  "sender_label": "b1",
+  "sender_role": ""
+ },
+ {
+  "raw": "0580bf9cb912d8e9df32d9c6885f433b276d89acf9b2",
+  "packet_type": "Response",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "9c",
+  "sender_label": "9c",
+  "sender_role": ""
+ },
+ {
+  "raw": "22809cbfb3e001f104dfbd4dafdfef95742522b9b8c2",
+  "packet_type": "Path",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "1d893413bab926ebf796dd794b16a945641a98d1f6ad46f85f498092e73c6c1438a16a4ea928b3ca8b7106fe96f0d460adebb172e68c717cd7f2ae8a669f6cb188754e953239bb5a3ea9e20b04da70c1",
+  "packet_type": "AnonRequest",
+  "hops": 9,
+  "is_direct": true,
+  "sender_kind": "relay",
+  "sender_id": "8092e7",
+  "sender_label": "",
+  "sender_role": ""
+ },
+ {
+  "raw": "0465730000004971c7de7d3160a79ca1029ae84aec1477bcbcca3eb59f6cefcdc29218ad15a1c7b34b5e8680cc7e7d1a2d831cd5dc56469c921794e47695e131e49a5c055b033cd0aff4",
+  "packet_type": "Response",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "71",
+  "sender_label": "71",
+  "sender_role": ""
+ },
+ {
+  "raw": "02807b8099c3b3ab530c95d1658ae58f4f400f0307f3",
+  "packet_type": "Request",
+  "hops": 0,
+  "is_direct": true,
+  "sender_kind": "direct_hash",
+  "sender_id": "80",
+  "sender_label": "80",
+  "sender_role": ""
+ },
+ {
+  "raw": "0e0099e18fbf",
+  "packet_type": "Ack",
+  "hops": 0,
+  "is_direct": false,
+  "sender_kind": "",
+  "sender_id": "",
+  "sender_label": "",
+  "sender_role": ""
+ }
+]
