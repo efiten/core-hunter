@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.33.0](https://github.com/efiten/core-hunter/compare/app-v1.32.1...app-v1.33.0) (2026-11-25)
+
+
+### Features
+
+* **server:** read what others publish to DutchMeshCore's wardrive topics ([#735](https://github.com/efiten/core-hunter/issues/735)) ([#772](https://github.com/efiten/core-hunter/issues/772)) ([2bc7530](https://github.com/efiten/core-hunter/commit/2bc75302a1d1cff25f4f4ecd23ef0de789626e6e))
+
 ## [1.32.1](https://github.com/efiten/core-hunter/compare/app-v1.32.0...app-v1.32.1) (2026-10-31)
 
 
